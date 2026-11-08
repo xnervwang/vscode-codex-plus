@@ -135,7 +135,10 @@ function node(raw, depth, budget) {
   const title = text(raw.title, 200);
   if (!title) return null;
   budget.left--;
-  const state = STATES.includes(raw.state) ? raw.state : 'todo';
+  /* A state this build does not know - written by a newer plugin - is kept as written: drawn as it is and counted as
+     neither open nor closed. Only a row with no state at all reads as todo. */
+  const state = STATES.includes(raw.state) ? raw.state
+    : typeof raw.state === 'string' && raw.state.trim() ? text(raw.state, 30) : 'todo';
   const children = [];
   if (depth < MAX_DEPTH && Array.isArray(raw.children)) {
     for (const child of raw.children) {

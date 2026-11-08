@@ -66,7 +66,8 @@ function build(list, { folders = [], readPlan, planFile = () => '', now = Date.n
       if (now - mtime > CLOSED_DAYS * 86400e3) continue;
     }
     const questions = planQuestions(nodes);
-    let state = c.running ? c.state : 'idle';
+    // A state this build does not know is shown as idle (protocol section 7, rule 4).
+    let state = c.running && RANK[c.state] !== undefined && c.state !== 'needs' ? c.state : 'idle';
     if (questions.length && state !== 'prompt') state = 'needs';
     out.push({ ...c, state, questions, doing: doingRows(nodes), open, hasPlan: !!(plan && !plan.error),
       title: c.title || (plan && plan.title) || c.sessionId });

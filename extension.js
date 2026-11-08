@@ -185,6 +185,7 @@ async function activate(context) {
 
   const link = await hostLink.link(vscode, source, {
     log: say,
+    memento: context.globalState,
     onHosted: (registration) => {
       if (standalone) { standalone.dispose(); standalone = null; }
       context.subscriptions.push(registration);

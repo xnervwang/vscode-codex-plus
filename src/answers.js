@@ -22,6 +22,9 @@ const path = require('path');
 const { languageOf, textFor } = require('./conversations-text');
 
 const FOLDER = 'answers';
+/* The shape of an answer record this code writes and understands (protocol section 7, rule 4). A record of a newer
+   format is left for a window that understands it; if none takes it, its sender copies it to the clipboard. */
+const FORMAT = 1;
 /* How long an answer waits for a window to take it, how long a taken one waits for its panel, and how long any file in
    the folder is kept. */
 const TAKE_MS = 15000;
@@ -42,7 +45,7 @@ function writeWhole(target, text) {
 function post(dir, answer, now = Date.now()) {
   fs.mkdirSync(dir, { recursive: true });
   const id = now.toString(36) + '-' + crypto.randomBytes(4).toString('hex');
-  writeWhole(file(dir, id, '.json'), JSON.stringify(Object.assign({}, answer, { id, at: now })));
+  writeWhole(file(dir, id, '.json'), JSON.stringify(Object.assign({ format: FORMAT }, answer, { id, at: now })));
   return id;
 }
 
@@ -55,7 +58,8 @@ function waiting(dir) {
     if (!n.endsWith('.json') || !NAME.test(n.slice(0, -5))) continue;
     try {
       const a = JSON.parse(fs.readFileSync(path.join(dir, n), 'utf8'));
-      if (a && a.id === n.slice(0, -5) && typeof a.sessionId === 'string' && typeof a.text === 'string') out.push(a);
+      if (a && a.id === n.slice(0, -5) && typeof a.sessionId === 'string' && typeof a.text === 'string'
+        && !(Number(a.format) > FORMAT)) out.push(a);
     } catch (_) { /* next time */ }
   }
   return out;
@@ -223,5 +227,5 @@ async function deliver(vscode, source, q, text, { canType = false } = {}) {
   });
 }
 
-module.exports = { FOLDER, TAKE_MS, SEND_MS, KEEP_MS, folder, post, waiting, take, settle, outcome, withdraw, taken, sweep, message,
+module.exports = { FORMAT, FOLDER, TAKE_MS, SEND_MS, KEEP_MS, folder, post, waiting, take, settle, outcome, withdraw, taken, sweep, message,
   Courier, receive, deliver };

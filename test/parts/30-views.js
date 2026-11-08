@@ -78,19 +78,32 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
       /* ── the host hand-over ── */
       const hostLink = require('../../src/host-link');
       const registered = [];
-      const host = (version) => ({ isActive: true, exports: { workPlanHost: { version, registerSource: (s) => { registered.push(s); return { dispose() {} }; } } } });
-      control.state.extensions.set(hostLink.HOST_ID, host(2));
+      const host = (majors) => ({ isActive: true, exports: { workPlanHost: { version: Math.max(...majors), majors, features: [],
+        registerSource: (s) => { registered.push(s); return { dispose() {} }; } } } });
+      eq([source.protocol, Array.isArray(source.features)], [3, true], 'the source says it implements protocol 3 and lists its features');
+      control.state.extensions.set(hostLink.HOST_ID, host([3]));
       let linked = await hostLink.link(vscode, source);
       eq([linked.hosted, registered.length, registered[0] === source, control.state.context[hostLink.CONTEXT_KEY]], [true, 1, true, false],
-        'a host of version 2 gets the source, and this extension does not mark itself standalone');
-      control.state.extensions.set(hostLink.HOST_ID, host(1));
-      linked = await hostLink.link(vscode, source);
-      eq([linked.hosted, control.state.context[hostLink.CONTEXT_KEY]], [false, true], 'a host older than version 2 is not used: standalone');
+        'a host whose majors include 3 gets the source, and this extension does not mark itself standalone');
+      const told = [];
+      vscode.window.showInformationMessage = async (m) => { told.push(m); };
+      const mem = fake.memento();
+      control.state.extensions.set(hostLink.HOST_ID, host([2]));
+      linked = await hostLink.link(vscode, source, { memento: mem });
+      eq([linked.hosted, control.state.context[hostLink.CONTEXT_KEY], told.length], [false, true, 1],
+        'a host that does not take major 3 is not used: standalone, and the user is told once to update it');
+      await hostLink.link(vscode, source, { memento: mem });
+      eq(told.length, 1, 'and only once');
+      control.state.extensions.set(hostLink.HOST_ID, { isActive: true, exports: {} });
+      linked = await hostLink.link(vscode, source, { memento: fake.memento() });
+      eq([linked.hosted, told.length], [false, 2], 'claude-code-extras without the API counts as too old, with the same one notice');
+      eq([hostLink.hostHas({ features: ['x'] }, 'x'), hostLink.hostHas({ features: [] }, 'x'), hostLink.hostHas({}, 'x')], [true, false, false],
+        'an optional host capability is used only when the host lists it');
       control.state.extensions.delete(hostLink.HOST_ID);
       let later = null;
       linked = await hostLink.link(vscode, source, { onHosted: (r) => { later = r; } });
       eq([linked.hosted, control.state.context[hostLink.CONTEXT_KEY]], [false, true], 'no host: standalone');
-      control.state.extensions.set(hostLink.HOST_ID, host(2));
+      control.state.extensions.set(hostLink.HOST_ID, host([2, 3]));
       control.fireExtensions();
       await new Promise((r) => setTimeout(r, 20));
       eq([!!later, control.state.context[hostLink.CONTEXT_KEY]], [true, false], 'a host enabled later takes over the views');
@@ -132,8 +145,15 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
       };
       writePlan(idle.id, [{ title: 'Ask', state: 'waiting', waitingOn: 'user', question: 'Ship it?' }, { title: 'Build', state: 'doing' }]);
       writePlan(archived.id, [{ title: 'Old', state: 'todo' }], Date.now() - 10 * 86400e3);
-      const { readPlan } = require('../../src/workplan');
+      const { readPlan, countOpen } = require('../../src/workplan');
+
       const listed = await source.listConversations();
+      writePlan(unread.id, [{ title: 'Future', state: 'reviewing' }, { title: 'Now', state: 'doing' }]);
+      const future = readPlan(unread.id);
+      eq([future.nodes[0].state, countOpen(future.nodes).doing, conversations.openCount(future.nodes)], ['reviewing', 1, 1],
+        'a row state this build does not know is kept as written and not counted as open');
+      const odd = conversations.build([{ ...listed[0], state: 'thinking', running: true, cwd: '/work/a' }], { folders: ['/work/a'], readPlan: () => null });
+      eq(odd[0] && odd[0].state, 'idle', 'a conversation state this build does not know is shown as idle');
       const shown = conversations.build(listed.map((c) => ({ ...c, running: c.title !== 'Archived' })), {
         folders: ['/work/a'], readPlan, planFile: (id) => source.planPath(id) });
       eq(shown.map((c) => c.title), ['Idle here', 'Working here'], 'only this workspace\'s conversations, needs before working');
@@ -199,6 +219,11 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
 
     /* ── answers without the patch go to the clipboard and open the conversation ── */
     const answers = require('../../src/answers');
+    const adir = tmp('answers');
+    const id1 = answers.post(adir, { sessionId: idle.id, text: 'a' });
+    eq(JSON.parse(fs.readFileSync(path.join(adir, id1 + '.json'), 'utf8')).format, answers.FORMAT, 'an answer record carries its format');
+    fs.writeFileSync(path.join(adir, 'zzzz-0000aaaa.json'), JSON.stringify({ id: 'zzzz-0000aaaa', sessionId: idle.id, text: 'b', format: answers.FORMAT + 1 }));
+    eq(answers.waiting(adir).map((a) => a.id), [id1], 'a record of a newer format is left for a window that understands it');
     let revealed = '';
     const r = await answers.deliver(vscode, { id: 'codex', reveal: async (id) => { revealed = id; return true; } },
       { sessionId: idle.id, row: '1', question: 'Ship it?', key: 'k' }, 'yes');

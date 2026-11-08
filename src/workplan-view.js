@@ -305,7 +305,7 @@ class WorkPlanProvider {
       return item;
     }
     const node = element.node;
-    const look = LOOK[node.state] || LOOK.todo;
+    const look = LOOK[node.state] || { icon: 'circle-small-filled', color: 'descriptionForeground', word: node.state };
     const kids = node.children || [];
     /* The dot is only in the label; element.num stays bare because children are numbered from it. */
     const item = new vscode.TreeItem(`${element.num}. ${node.title}`, kids.length

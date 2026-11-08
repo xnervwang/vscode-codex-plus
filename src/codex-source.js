@@ -5,7 +5,7 @@
 'use strict';
 /*
  * Codex as a source of conversations for the shared work plan sidebar and Conversations panel (the source interface of
- * the claude-code-extras workPlanHost, version 2). The same object feeds that host when it is installed and this
+ * the claude-code-extras workPlanHost, protocol major 3). The same object feeds that host when it is installed and this
  * extension's own views when it is not, so the two can never show Codex differently.
  *
  *   id, label, logo            who the conversations belong to
@@ -32,6 +32,8 @@ const STALE_WORKING_MS = 2 * 60 * 60 * 1000;
 /* A conversation counts as running while it is working, open in a tab of this window, or was active this recently. */
 const RECENT_MS = 15 * 60 * 1000;
 const POLL_MS = 3000;
+/* The shared-sidebar protocol major this source implements. */
+const PROTOCOL = 3;
 
 function logoOf(vscode) {
   const ext = vscode.extensions.getExtension('openai.chatgpt');
@@ -100,6 +102,9 @@ function createCodexSource(vscode, { log = () => {} } = {}) {
   }
 
   const source = {
+    protocol: PROTOCOL,
+    // Optional capabilities by name (protocol section 7): none beyond the interface yet.
+    features: [],
     id: 'codex',
     label: 'Codex',
     get logo() { return logoOf(vscode); },
@@ -134,4 +139,4 @@ function createCodexSource(vscode, { log = () => {} } = {}) {
   return source;
 }
 
-module.exports = { createCodexSource, conversationOf, logoOf, STALE_WORKING_MS, RECENT_MS };
+module.exports = { createCodexSource, conversationOf, logoOf, PROTOCOL, STALE_WORKING_MS, RECENT_MS };

@@ -23,7 +23,7 @@ async function run(root, tmp, withHost) {
   const registered = [];
   if (withHost) {
     control.state.extensions.set('xnervwang.claude-code-extras', { isActive: true,
-      exports: { workPlanHost: { version: 2, registerSource: (s) => { registered.push(s); return { dispose() {} }; } } } });
+      exports: { workPlanHost: { version: 3, majors: [3], features: [], registerSource: (s) => { registered.push(s); return { dispose() {} }; } } } });
   }
   const ext = require(path.join(root, 'extension.js'));
   const subs = [];
