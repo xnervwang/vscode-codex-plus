@@ -22,8 +22,9 @@ const path = require('path');
 const { languageOf, textFor } = require('./conversations-text');
 
 const FOLDER = 'answers';
-/* The shape of an answer record this code writes and understands (protocol section 7, rule 4). A record of a newer
-   format is left for a window that understands it; if none takes it, its sender copies it to the clipboard. */
+/* The shape of an answer record this code writes and understands (work plan host protocol, "Answers across
+   windows"). A record of a newer format is left for a window that understands it; if none takes it, its sender
+   copies it to the clipboard. */
 const FORMAT = 1;
 /* How long an answer waits for a window to take it, how long a taken one waits for its panel, and how long any file in
    the folder is kept. */
@@ -219,7 +220,7 @@ async function deliver(vscode, source, q, text, { canType = false } = {}) {
     return { kind: 'clipboard' };
   }
   return new Promise((resolve) => {
-    const id = courier.send({ source: source.id, sessionId: q.sessionId, row: q.row, text: body }, { key: q.key });
+    const id = courier.send({ sourceId: source.id, sessionId: q.sessionId, row: q.row, text: body }, { key: q.key });
     finished.set(id, async (outcome) => {
       if (outcome.kind !== 'sent') await vscode.env.clipboard.writeText(body);
       // Codex takes an answer as a draft in the message box; the reader still presses Enter there.

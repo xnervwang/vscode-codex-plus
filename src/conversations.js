@@ -5,10 +5,10 @@
 'use strict';
 /*
  * Builds the list for this extension's own Conversations view from a source's conversations, by the rules the shared
- * host applies (the shared-sidebar protocol, section 2): a running conversation is listed when it was started in one of
- * this window's workspace folders or a folder under one; a stopped one only while its plan still has open rows and was
- * written in the last week. A conversation's plan adds its `doing` rows and the questions on rows waiting on the user,
- * and any question makes its state `needs`, above everything but `prompt`.
+ * host applies (work plan host protocol, "Conversations and plans"): a running conversation is listed when it was
+ * started in one of this window's workspace folders or a folder under one; a stopped one only while its plan still has
+ * open rows and was written in the last week. A conversation's plan adds its `doing` rows and the questions on rows
+ * waiting on the user, and any question makes its state `needs`, above everything but `prompt`.
  */
 const fs = require('fs');
 const path = require('path');
@@ -66,7 +66,7 @@ function build(list, { folders = [], readPlan, planFile = () => '', now = Date.n
       if (now - mtime > CLOSED_DAYS * 86400e3) continue;
     }
     const questions = planQuestions(nodes);
-    // A state this build does not know is shown as idle (protocol section 7, rule 4).
+    // A state this build does not know is shown as idle (work plan host protocol, "Conversations and plans").
     let state = c.running && RANK[c.state] !== undefined && c.state !== 'needs' ? c.state : 'idle';
     if (questions.length && state !== 'prompt') state = 'needs';
     out.push({ ...c, state, questions, doing: doingRows(nodes), open, hasPlan: !!(plan && !plan.error),

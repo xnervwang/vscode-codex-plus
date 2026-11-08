@@ -4,13 +4,13 @@
 
 'use strict';
 /*
- * Which conversation is in front, for this extension's own views when no host draws them (the shared-sidebar protocol,
- * section 3).
+ * Which conversation is in front, for this extension's own views when no host draws them (the work plan host protocol
+ * in claude-code-extras' docs/work-plan-host.md, "The active conversation").
  *
  * The active editor tab is offered to every source's sessionForTab; the first that claims it is in front. A source's
  * onDidFocus puts one of its conversations in front from somewhere that is not an editor tab. Whichever happened last
- * wins. When the active tab is nobody's - a file, a terminal, the settings - the conversation in front stays what it was,
- * so the plan beside the code does not vanish the moment the reader looks at the code.
+ * wins. When the active tab is nobody's - a file, a terminal, the settings - the conversation in front stays what it
+ * was, so the plan beside the code does not vanish the moment the reader looks at the code.
  */
 class FocusTracker {
   constructor(vscode, sources) {

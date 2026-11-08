@@ -5,11 +5,12 @@
 'use strict';
 /*
  * A conversation row's icon in the Conversations view: its agent's logo with a dot in its state's colour on the corner
- * (the shared-sidebar protocol, section 2.1). The logo is read from the agent's own installed extension and the
- * composite written into this extension's global storage, so no copy of anyone's logo ships here.
+ * (the work plan host protocol in claude-code-extras' docs/work-plan-host.md, "The active conversation"). The logo is
+ * read from the agent's own installed extension and the composite written into this extension's global storage, so no
+ * copy of anyone's logo ships here.
  *
- * The logo is drawn inside a 24-unit box with a circle masked out round the dot, so the dot reads against any theme.
- * A logo that is not one SVG element with a viewBox is not composited, and the row keeps its plain state icon.
+ * The logo is drawn inside a 24-unit box with a circle masked out round the dot, so the dot reads against any theme. A
+ * logo that is not one SVG element with a viewBox is not composited, and the row keeps its plain state icon.
  */
 const crypto = require('crypto');
 const fs = require('fs');

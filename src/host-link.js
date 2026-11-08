@@ -4,18 +4,18 @@
 
 'use strict';
 /*
- * Whether claude-code-extras draws the shared work plan sidebar and Conversations panel, and handing it the Codex source
- * when it does (the shared-sidebar protocol, major 3).
+ * Whether claude-code-extras draws the shared work plan sidebar and Conversations panel, and handing it the Codex
+ * source when it does (the work plan host protocol in claude-code-extras' docs/work-plan-host.md, major 3).
  *
- * The host is xnervwang.claude-code-extras when it is installed, enabled, and its activate() returned a workPlanHost whose
- * `majors` include the source's `protocol`. Then the Codex source is registered with it and this extension draws none
- * of those views. Otherwise this extension sets codexExtras.standalone, which every one of its shared views is gated on,
- * and draws them itself. The Codex session list, which no host draws, is contributed twice - into this extension's
- * container under the standalone key and into the host's container under the hosted key - so it always sits in the
- * one sidebar there is. When claude-code-extras is there but cannot take this source - too old to have the API, or
- * past this major - the user is told once that updating it puts both agents in one sidebar; until then there are two.
- * The key says "draw" rather than "hosted": before this extension activates it is unset, so a view gated on it stays
- * hidden in that moment instead of flashing up and away when there is a host.
+ * The host is xnervwang.claude-code-extras when it is installed, enabled, and its activate() returned a workPlanHost
+ * whose `majors` include the source's `protocol`. Then the Codex source is registered with it and this extension draws
+ * none of those views. Otherwise this extension sets codexExtras.standalone, which every one of its shared views is
+ * gated on, and draws them itself. The Codex session list, which no host draws, is contributed twice - into this
+ * extension's container under the standalone key and into the host's container under the hosted key - so it always sits
+ * in the one sidebar there is. When claude-code-extras is there but cannot take this source - too old to have the API,
+ * or past this major - the user is told once that updating it puts both agents in one sidebar; until then there are
+ * two. The key says "draw" rather than "hosted": before this extension activates it is unset, so a view gated on it
+ * stays hidden in that moment instead of flashing up and away when there is a host.
  */
 const HOST_ID = 'xnervwang.claude-code-extras';
 const CONTEXT_KEY = 'codexExtras.standalone';
@@ -41,7 +41,7 @@ async function probeHost(vscode, protocol) {
 /** The host's workPlanHost if it takes `protocol`, or null. */
 async function findHost(vscode, protocol = 3) { return (await probeHost(vscode, protocol)).host; }
 
-/** Whether the host offers an optional capability (protocol section 7, rule 1). */
+/** Whether the host offers an optional capability (work plan host protocol, "Compatibility and releases"). */
 const hostHas = (host, name) => !!(host && Array.isArray(host.features) && host.features.includes(name));
 
 /*

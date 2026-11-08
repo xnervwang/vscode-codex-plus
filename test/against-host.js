@@ -4,9 +4,10 @@
 
 'use strict';
 /*
- * Checks this extension against the claude-code-extras build the marketplace is shipping now (the shared-sidebar
- * protocol, section 7): whether it accepts this source's protocol major, and whether both sides understand each other's
- * answer files. It only reads the marketplace and unpacks into a temporary folder; nothing is installed.
+ * Checks this extension against the claude-code-extras build the marketplace is shipping now (the work plan host
+ * protocol, "Compatibility and releases"): whether it accepts this source's protocol major, and whether both sides
+ * understand each other's answer files. It only reads the marketplace and unpacks into a temporary folder; nothing is
+ * installed.
  *
  *   node test/against-host.js
  *

@@ -5,7 +5,7 @@
 - `extension.js`: activation, settings, commands, status bar; wires the parts below together.
 - `src/codex-files.js`: CODEX_HOME, the state database (read-only), rollouts (plain or `.jsonl.zst`), read receipts.
 - `src/codex-tabs.js`: Codex conversation tabs (`chatgpt.conversationEditor`, `openai-codex://route/local/<id>`), opening one in a tab.
-- `src/codex-source.js`: Codex as a source of the shared-sidebar protocol (major 3).
+- `src/codex-source.js`: Codex as a source of the work plan host protocol (major 3), defined in claude-code-extras' `docs/work-plan-host.md`.
 - `src/host-link.js`: finding claude-code-extras' `workPlanHost`, registering, the `codexExtras.standalone` / `codexExtras.hosted` keys.
 - `src/focus.js`: which conversation is in front when this extension draws the shared views.
 - `src/workplan.js`, `src/workplan-view.js`: plan files and their tree (from claude-code-extras, plan directory changed).

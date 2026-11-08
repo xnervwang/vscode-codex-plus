@@ -32,7 +32,7 @@ const STALE_WORKING_MS = 2 * 60 * 60 * 1000;
 /* A conversation counts as running while it is working, open in a tab of this window, or was active this recently. */
 const RECENT_MS = 15 * 60 * 1000;
 const POLL_MS = 3000;
-/* The shared-sidebar protocol major this source implements. */
+/* The work plan host protocol major this source implements (claude-code-extras' docs/work-plan-host.md). */
 const PROTOCOL = 3;
 
 function logoOf(vscode) {
@@ -104,7 +104,7 @@ function createCodexSource(vscode, { log = () => {} } = {}) {
 
   const source = {
     protocol: PROTOCOL,
-    // Optional capabilities by name (protocol section 7): none beyond the interface yet.
+    // Optional capabilities by name (work plan host protocol, "Compatibility and releases"): none defined yet.
     features: [],
     id: 'codex',
     label: 'Codex',
