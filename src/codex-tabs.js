@@ -10,11 +10,18 @@
  * A Codex conversation tab is a custom editor of view type chatgpt.conversationEditor whose resource is
  * openai-codex://route/local/<thread id> (or /remote/<id> for a cloud task). Codex reads that path as the tab's first
  * route, and restores its own tabs by opening the same URI with the same view type - which is what openInTab does.
+ *
+ * Not every Codex conversation tab names its thread. Codex opens a new one at openai-codex://route/extension/panel/new
+ * and that URI never changes, so a conversation the reader started with Codex's own New button has no id in its tab for
+ * as long as the tab lives. The id for those comes from the patch, which is handed each panel with its thread
+ * (src/patching.js panelThreads); from the URI alone such a tab is indistinguishable from an empty one.
  */
 const VIEW_TYPE = 'chatgpt.conversationEditor';
 const SCHEME = 'openai-codex';
 const AUTHORITY = 'route';
-const ROUTE = /^\/?(local|remote)\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:[/?#]|$)/i;
+/* Codex accepts any non-empty second segment as the id and checks its shape nowhere, so neither does this: the id is
+   looked up in the thread list afterwards, and rejecting one Codex would have accepted loses a real tab. */
+const ROUTE = /^\/?(local|remote)\/([^/?#]+)(?:[/?#]|$)/i;
 
 /* VS Code may report a custom editor's view type with a prefix of its own; only the end is Codex's. */
 const isCodexViewType = (viewType) => typeof viewType === 'string' && (viewType === VIEW_TYPE || viewType.endsWith('.' + VIEW_TYPE)
@@ -41,6 +48,20 @@ function threadOfTab(vscode, tab) {
 function isCodexTab(vscode, tab) {
   const input = tab && tab.input;
   return !!input && input instanceof vscode.TabInputCustom && isCodexViewType(input.viewType);
+}
+
+/*
+ * What a tab looks like, for the log line about a Codex tab whose thread could not be read. The URI's query is left
+ * out: Codex puts route state in it, which can carry what the reader typed.
+ */
+function tabShape(tab) {
+  const input = tab && tab.input;
+  if (!input) return 'no input';
+  const ctor = (input.constructor && input.constructor.name) || typeof input;
+  const parts = [`input ${ctor}`];
+  if (typeof input.viewType === 'string') parts.push(`viewType ${input.viewType}`);
+  if (input.uri) parts.push(`uri ${input.uri.scheme || '?'}:${input.uri.path || ''}`);
+  return parts.join(', ');
 }
 
 /** Every Codex conversation tab in this window: [{ thread, tab, group }], in tab-group order. */
@@ -77,5 +98,5 @@ async function openInTab(vscode, thread, { preserveFocus = false } = {}) {
   return codexTabs(vscode).some((t) => t.thread === thread);
 }
 
-module.exports = { VIEW_TYPE, SCHEME, AUTHORITY, isCodexViewType, isCodexTab, threadOfUri, threadOfTab, codexTabs, activeThread, threadUri,
-  openInTab };
+module.exports = { VIEW_TYPE, SCHEME, AUTHORITY, isCodexViewType, isCodexTab, tabShape, threadOfUri, threadOfTab, codexTabs, activeThread,
+  threadUri, openInTab };

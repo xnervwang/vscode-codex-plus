@@ -26,6 +26,7 @@ const hostLink = require('./src/host-link');
 const { readPlan, planQuestions } = require('./src/workplan');
 const { TabMemory } = require('./src/tab-memory');
 const { SessionsProvider, COLORS, looksLikeId } = require('./src/sessions-view');
+const { folderTest } = require('./src/folders');
 const patching = require('./src/patching');
 
 const CONFIG = 'codexExtras';
@@ -99,6 +100,8 @@ async function activate(context) {
   const memory = new TabMemory(vscode, context.workspaceState, {
     titleOf: (id) => (reader.thread(id) || {}).title || '',
     exists: (id) => reader.present(id),
+    // Tabs Codex opened with its own New button do not name their conversation in their URI; the patch does.
+    alsoOpen: () => patching.panelThreads(),
   });
   context.subscriptions.push(memory);
   let lastConversations = new Map();
@@ -159,7 +162,8 @@ function lastConversation(memory) {
   const last = memory.lastUsed();
   if (last && (!reader.threads() || reader.present(last))) return last;
   const folders = (vscode.workspace.workspaceFolders || []).map((f) => f.uri.fsPath);
-  const inside = (cwd) => !folders.length || folders.some((f) => cwd === f || String(cwd).startsWith(f + path.sep));
+  const test = folderTest(folders, new Map());
+  const inside = (cwd) => !folders.length || test(cwd);
   const t = (reader.threads() || []).find((x) => x.kind === 'user' && !x.archived && inside(x.cwd));
   return t ? t.id : '';
 }
@@ -227,6 +231,10 @@ function registerCommands(context, { source, memory, sessionsProvider, say, link
     } catch (e) { vscode.window.showErrorMessage(`Could not remove the plugin: ${e.message}`); }
   });
   reg('refreshSessions', () => { source._poll(); sessionsProvider.refresh(); });
+  reg('showAllFolders', async () => {
+    await vscode.workspace.getConfiguration(CONFIG).update('sessionsInWorkspaceOnly', false, vscode.ConfigurationTarget.Global);
+    sessionsProvider.refresh();
+  });
   reg('newInTab', () => vscode.commands.executeCommand('chatgpt.newCodexPanel'));
   reg('newInSidebar', async () => {
     await vscode.commands.executeCommand('chatgpt.openSidebar');
@@ -243,7 +251,11 @@ function registerCommands(context, { source, memory, sessionsProvider, say, link
   });
   reg('openThreadInTab', async (arg) => {
     const id = threadArg(arg);
-    if (id && !(await tabs.openInTab(vscode, id))) vscode.window.showWarningMessage('Codex could not open that conversation in a tab.');
+    if (!id) return;
+    // A tab already showing it without naming it in its URI: raise that panel, or opening the URI leaves a second tab
+    // on the same conversation.
+    if (!tabs.codexTabs(vscode).some((t) => t.thread === id) && patching.revealPanel(id)) return;
+    if (!(await tabs.openInTab(vscode, id))) vscode.window.showWarningMessage('Codex could not open that conversation in a tab.');
   });
   reg('openThreadInSidebar', async (arg) => {
     const id = threadArg(arg);

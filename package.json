@@ -107,6 +107,10 @@
         "title": "Codex Extras: Text Color..."
       },
       {
+        "command": "codexExtras.showAllFolders",
+        "title": "Codex Extras: List Conversations from Every Folder"
+      },
+      {
         "command": "codexExtras.findThread",
         "title": "Codex Extras: Find a Codex Conversation by Title or ID",
         "icon": "$(search)"

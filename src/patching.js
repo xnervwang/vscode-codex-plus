@@ -54,6 +54,24 @@ function canType() { return !!(state.active && state.provider); }
 function sidebarThread() { return sidebar; }
 function canDeliver(thread) { return canType() && (panels.get(thread) || new Set()).size > 0; }
 
+/*
+ * The threads Codex's own panels in this window show, as it handed each one over. This is the only way to learn the
+ * thread of a tab Codex opened with its New button: that tab's URI stays /extension/panel/new whatever conversation
+ * ends up in it (src/codex-tabs.js). Empty without the patch, and then the tab URIs are all there is.
+ */
+function panelThreads() { return [...panels.keys()]; }
+
+/*
+ * Bring the panel showing `thread` to the front, for a conversation whose tab does not name it in its URI: opening it
+ * by URI would leave a second tab on the same conversation. False when no panel here has it.
+ */
+function revealPanel(thread) {
+  const set = panels.get(thread);
+  const panel = set && [...set][0];
+  if (!panel) return false;
+  try { panel.reveal(undefined, false); return true; } catch (_) { return false; }
+}
+
 function postTo(panel, msg) {
   const p = state.provider;
   try {
@@ -202,5 +220,5 @@ function activate(context, opts) {
   return state;
 }
 
-module.exports = { activate, statusLines, openInSidebar, canType, canDeliver, deliver, sidebarThread, removePatch, figuresOf, installHooks,
-  refreshPanels, _state: () => state, _panels: panels, TAB_DOTS };
+module.exports = { activate, statusLines, openInSidebar, canType, canDeliver, deliver, sidebarThread, panelThreads, revealPanel, removePatch,
+  figuresOf, installHooks, refreshPanels, _state: () => state, _panels: panels, TAB_DOTS };

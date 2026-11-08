@@ -12,6 +12,10 @@
  *   Ungrouped             the rest
  *   Archived              Codex's archived threads (collapsed)
  *
+ * Above them, when the workspace filter left anything out, a row saying how many and offering to list those too. The
+ * filter compares real paths (src/folders.js): the same directory reached through a symbolic link used to match
+ * nothing, and the whole view came up empty with no reason shown.
+ *
  * Threads Codex started by itself - sub-agents, the reviews of approval requests - and `codex exec` runs are left out
  * unless codexExtras.hideBackgroundSessions is off, when they are listed under Background. Clicking a conversation opens
  * it in a tab. The hover gives its thread id and which group it sits in, and the title can be given a colour.
@@ -20,7 +24,7 @@
  * agent's conversation is in front. The threads come
  * from the reader's latest snapshot (src/codex-reader.js), so drawing it reads no file.
  */
-const path = require('path');
+const { folderTest } = require('./folders');
 
 /* The colours a title can be given: the eight Claude Code's /color offers, as theme colours. */
 const COLORS = {
@@ -102,6 +106,8 @@ class SessionsProvider {
     this.threads = [];
     this.sections = new Map();
     this.groups = [];
+    /* How many conversations the workspace filter left out, so the view never just comes up empty with no reason given. */
+    this.hidden = 0;
   }
 
   colors() { return this.memento.get(COLOR_KEY) || {}; }
@@ -123,8 +129,13 @@ class SessionsProvider {
     this.threads = this.reader.threads() || [];
     this.sections = this.reader.sections();
     const folders = (this.vscode.workspace.workspaceFolders || []).map((f) => f.uri.fsPath);
-    const cwdFilter = this.settings().sessionsInWorkspaceOnly && folders.length
-      ? (cwd) => folders.some((f) => cwd === f || cwd.startsWith(f + path.sep)) : null;
+    /*
+     * Real paths, not the strings: VS Code gives the workspace folder as /home/<user>/... where Codex recorded the
+     * thread's cwd as /local/home/<user>/..., the same directory through a symbolic link. The memo lasts this pass
+     * only, so a folder created or moved since is resolved again next time.
+     */
+    const cwdFilter = this.settings().sessionsInWorkspaceOnly && folders.length ? folderTest(folders, new Map()) : null;
+    this.hidden = cwdFilter ? this.threads.filter((t) => t.kind === 'user' && !cwdFilter(t.cwd)).length : 0;
     this.groups = group(this.threads, {
       open: this.memory.openThreads(), closed: this.memory.recentlyClosed(this.settings().recentClosedSessions),
       sections: this.sections, hideBackground: this.settings().hideBackgroundSessions, cwdFilter,
@@ -134,13 +145,29 @@ class SessionsProvider {
   }
 
   getChildren(element) {
-    if (!element) return this.groups.filter((g) => g.threads.length || g.key === 'open').map((g) => ({ kind: 'group', group: g }));
+    if (!element) {
+      const rows = this.groups.filter((g) => g.threads.length || g.key === 'open').map((g) => ({ kind: 'group', group: g }));
+      if (this.hidden > 0) rows.unshift({ kind: 'hidden', count: this.hidden });
+      return rows;
+    }
     if (element.kind === 'group') return element.group.threads.map((t) => ({ kind: 'thread', thread: t, group: element.group.key }));
     return [];
   }
 
   getTreeItem(element) {
     const vscode = this.vscode;
+    if (element.kind === 'hidden') {
+      const n = element.count;
+      const item = new vscode.TreeItem(`${n} conversation${n === 1 ? '' : 's'} hidden: not in this workspace`,
+        vscode.TreeItemCollapsibleState.None);
+      item.id = 'hidden';
+      item.iconPath = new vscode.ThemeIcon('filter');
+      item.contextValue = 'codexExtrasHidden';
+      item.tooltip = 'Started in a folder outside this window\'s workspace. Click to list every conversation instead'
+        + ' (codexExtras.sessionsInWorkspaceOnly).';
+      item.command = { command: 'codexExtras.showAllFolders', title: 'List conversations from every folder' };
+      return item;
+    }
     if (element.kind === 'group') {
       const g = element.group;
       const item = new vscode.TreeItem(g.label, g.expanded ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed);

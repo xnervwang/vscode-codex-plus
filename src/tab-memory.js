@@ -28,11 +28,12 @@ const KEEP_CLOSED = 50;
 const REOPEN_LIMIT = 20;
 
 class TabMemory {
-  constructor(vscode, memento, { titleOf = () => '', exists = () => true } = {}) {
+  constructor(vscode, memento, { titleOf = () => '', exists = () => true, alsoOpen = () => [] } = {}) {
     this.vscode = vscode;
     this.memento = memento;
     this.titleOf = titleOf;
     this.exists = exists;
+    this.alsoOpen = alsoOpen;
     this.lastFront = new Map();
     this.emitter = new vscode.EventEmitter();
     this.onDidChange = this.emitter.event;
@@ -42,7 +43,18 @@ class TabMemory {
     this.noteFront();
   }
 
-  openThreads() { return tabs.codexTabs(this.vscode).map((t) => t.thread); }
+  /*
+   * The conversations open here: those their tab's URI names, and those only the patch can name - a tab Codex opened
+   * with its New button keeps the URI /extension/panel/new whatever conversation goes into it, so without `alsoOpen`
+   * every such conversation is missing from the open list and gets reopened in a second tab as though dropped.
+   */
+  openThreads() {
+    const out = tabs.codexTabs(this.vscode).map((t) => t.thread);
+    let extra = [];
+    try { extra = this.alsoOpen() || []; } catch (_) { extra = []; }
+    for (const t of extra) if (t && !out.includes(t)) out.push(t);
+    return out;
+  }
 
   noteFront() {
     const t = tabs.activeThread(this.vscode);

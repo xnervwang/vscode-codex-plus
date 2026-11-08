@@ -76,6 +76,30 @@ function conversationOf(thread, { unread, openHere, now = Date.now(), state = nu
 }
 
 /*
+ * The conversation of a Codex tab whose URI does not name one, when it cannot be any other: exactly one such tab in
+ * this window, and exactly one conversation the patch reports a panel for that no other tab already claims. With two
+ * of either it stays '' - which tab holds which conversation is not knowable from outside Codex, and a guess would
+ * hang one conversation's work plan on another.
+ */
+function unnamedTabThread(vscode, patching) {
+  if (!patching || typeof patching.panelThreads !== 'function') return '';
+  const groups = (vscode.window.tabGroups && vscode.window.tabGroups.all) || [];
+  const claimed = new Set();
+  let unnamed = 0;
+  for (const group of groups) {
+    for (const tab of group.tabs || []) {
+      if (!tabs.isCodexTab(vscode, tab)) continue;
+      const id = tabs.threadOfTab(vscode, tab);
+      if (id) claimed.add(id); else unnamed++;
+    }
+  }
+  if (unnamed !== 1) return '';
+  let free = [];
+  try { free = patching.panelThreads().filter((t) => t && !claimed.has(t)); } catch (_) { return ''; }
+  return free.length === 1 ? free[0] : '';
+}
+
+/*
  * `deps`: reader (src/codex-reader.js), patching (src/patching.js), enabled() (codexExtras.workPlan), trusted()
  * (not in Restricted Mode) and log.
  */
@@ -114,7 +138,26 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
     }
   }
 
-  const openThreads = () => tabs.codexTabs(vscode).map((t) => t.thread);
+  /*
+   * The conversations open in this window: those their tab's URI names, and those only the patch can name. A tab Codex
+   * opened with its New button keeps the URI /extension/panel/new whatever conversation goes into it, so the URIs alone
+   * miss every conversation the reader started that way (src/codex-tabs.js).
+   */
+  const openThreads = () => {
+    const out = tabs.codexTabs(vscode).map((t) => t.thread);
+    if (patching && typeof patching.panelThreads === 'function') {
+      try { for (const t of patching.panelThreads()) if (t && !out.includes(t)) out.push(t); } catch (_) { /* no patch */ }
+    }
+    return out;
+  };
+  /* Shapes of Codex tabs whose thread could not be read, already said once. */
+  const unreadable = new Set();
+  function noteUnreadableTab(tab) {
+    const shape = tabs.tabShape(tab);
+    if (unreadable.has(shape)) return;
+    unreadable.add(shape);
+    log(`a Codex tab does not name its conversation and the patch could not say which it is: ${shape}`);
+  }
   function poll() {
     reader.refresh({ home: files.codexHome(), extra: openThreads() }).then((moved) => { if (moved) changed.fire(); })
       .catch((e) => log(`codex source: ${(e && e.message) || e}`));
@@ -136,7 +179,11 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
     sessionForTab(tab) {
       const id = tabs.threadOfTab(vscode, tab);
       if (id) return id;
-      return tabs.isCodexTab(vscode, tab) ? '' : null;
+      if (!tabs.isCodexTab(vscode, tab)) return null;
+      const only = unnamedTabThread(vscode, patching);
+      if (only) return only;
+      noteUnreadableTab(tab);
+      return '';
     },
     onDidFocus: focused.event,
     /*
@@ -169,6 +216,11 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
       if (!files.THREAD_ID.test(String(sessionId || ''))) return false;
       if (tabs.codexTabs(vscode).some((t) => t.thread === sessionId)) {
         try { return await tabs.openInTab(vscode, sessionId); } catch (e) { log(`reveal ${sessionId}: ${e.message}`); return false; }
+      }
+      // A tab whose URI does not name it: the patch can raise that panel, where opening the URI would leave a second
+      // tab on the same conversation.
+      if (patching && typeof patching.revealPanel === 'function') {
+        try { if (patching.revealPanel(sessionId)) return true; } catch (_) { /* no panel here */ }
       }
       const t = reader.thread(sessionId);
       const st = reader.state(sessionId);
@@ -218,4 +270,4 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
   return source;
 }
 
-module.exports = { createCodexSource, conversationOf, logoOf, PROTOCOL, EXTENSION_ID, STALE_WORKING_MS, RECENT_MS };
+module.exports = { createCodexSource, conversationOf, logoOf, unnamedTabThread, PROTOCOL, EXTENSION_ID, STALE_WORKING_MS, RECENT_MS };
