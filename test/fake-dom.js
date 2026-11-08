@@ -13,15 +13,35 @@
  * wrong: the timers (so a debounce can be stepped through) and the mutation observer (so the records it is handed can
  * be chosen, including records that are the script's own writing coming back).
  *
- * The selector engine takes a comma-separated list of `tag`, `.class` and `[attr]` or `[attr="value"]` in any order,
- * which is every selector that script uses.
+ * The selector engine takes a comma-separated list of selectors, each a chain of `tag`, `*`, `.class`,
+ * `[attr]`/`[attr="value"]` and `:not(...)` pieces joined by spaces for descendant, which is every selector that
+ * script uses. The approval card's is Codex's own and uses all of it:
+ * `[data-codex-approval-surface]:not([data-app-shell-active-page="false"] *)`.
  */
 
-function parseOne(text) {
-  const part = { tag: '', classes: [], attrs: [] };
+/* Split on `sep` at the top level only, so a separator inside [] or () stays where it is. */
+function splitTop(text, sep) {
+  const out = [];
+  let depth = 0, at = 0;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (c === '[' || c === '(') depth++;
+    else if (c === ']' || c === ')') depth--;
+    else if (depth === 0 && (sep === ' ' ? /\s/.test(c) : c === sep)) { out.push(text.slice(at, i)); at = i + 1; }
+  }
+  out.push(text.slice(at));
+  return out.filter((s) => s.trim() !== '');
+}
+
+/** One compound: everything about a single element, `:not()` included. */
+function parseCompound(text) {
+  const part = { tag: '', classes: [], attrs: [], nots: [] };
   let rest = String(text).trim();
-  const tag = /^[a-zA-Z][\w-]*/.exec(rest);
-  if (tag) { part.tag = tag[0].toUpperCase(); rest = rest.slice(tag[0].length); }
+  if (rest.startsWith('*')) rest = rest.slice(1);
+  else {
+    const tag = /^[a-zA-Z][\w-]*/.exec(rest);
+    if (tag) { part.tag = tag[0].toUpperCase(); rest = rest.slice(tag[0].length); }
+  }
   for (;;) {
     const cls = /^\.([\w-]+)/.exec(rest);
     if (cls) { part.classes.push(cls[1]); rest = rest.slice(cls[0].length); continue; }
@@ -31,14 +51,28 @@ function parseOne(text) {
       rest = rest.slice(attr[0].length);
       continue;
     }
+    if (rest.startsWith(':not(')) {
+      let depth = 0, end = -1;
+      for (let i = 4; i < rest.length; i++) {
+        if (rest[i] === '(') depth++;
+        else if (rest[i] === ')' && --depth === 0) { end = i; break; }
+      }
+      if (end < 0) throw new Error(`fake-dom cannot read the selector ${JSON.stringify(text)}`);
+      part.nots.push(parseSelector(rest.slice(5, end)));
+      rest = rest.slice(end + 1);
+      continue;
+    }
     break;
   }
   if (rest) throw new Error(`fake-dom cannot read the selector ${JSON.stringify(text)}`);
   return part;
 }
-const parseSelector = (text) => String(text).split(',').map(parseOne);
 
-function matchesOne(el, part) {
+/** One selector as its chain of compounds, the element it selects last. */
+const parseChain = (text) => splitTop(String(text).trim(), ' ').map(parseCompound);
+const parseSelector = (text) => splitTop(String(text), ',').map(parseChain);
+
+function matchesCompound(el, part) {
   if (part.tag && el.tagName !== part.tag) return false;
   for (const c of part.classes) if (!el.classList.contains(c)) return false;
   for (const a of part.attrs) {
@@ -46,8 +80,25 @@ function matchesOne(el, part) {
     if (v === null) return false;
     if (a.value !== undefined && String(v) !== a.value) return false;
   }
+  for (const nots of part.nots) if (nots.some((chain) => matchesChain(el, chain))) return false;
   return true;
 }
+
+/* The chain right to left: the last compound is this element, and each one before it has to be met by some ancestor,
+   nearer ones first. Backtracking, since a nearer ancestor meeting one compound can leave the rest unmet. */
+function matchesChain(el, chain) {
+  const at = (node, i) => {
+    if (i < 0) return true;
+    if (!node || node.nodeType !== 1) return false;
+    if (!matchesCompound(node, chain[i])) return false;
+    if (i === 0) return true;
+    for (let up = node.parentElement; up; up = up.parentElement) if (at(up, i - 1)) return true;
+    return false;
+  };
+  return at(el, chain.length - 1);
+}
+
+const matchesAny = (el, chains) => chains.some((chain) => matchesChain(el, chain));
 
 class Text {
   constructor(value) { this.nodeType = 3; this.nodeValue = value; this.parentNode = null; }
@@ -127,18 +178,18 @@ class El {
     if (value !== '' && value !== null && value !== undefined) this.appendChild(new Text(String(value)));
   }
 
-  matches(sel) { return parseSelector(sel).some((p) => matchesOne(this, p)); }
+  matches(sel) { return matchesAny(this, parseSelector(sel)); }
   closest(sel) {
-    const parts = parseSelector(sel);
-    for (let n = this; n && n.nodeType === 1; n = n.parentElement) if (parts.some((p) => matchesOne(n, p))) return n;
+    const chains = parseSelector(sel);
+    for (let n = this; n && n.nodeType === 1; n = n.parentElement) if (matchesAny(n, chains)) return n;
     return null;
   }
   contains(node) { for (let n = node; n; n = n.parentNode) if (n === this) return true; return false; }
 
   querySelectorAll(sel) {
-    const parts = parseSelector(sel), out = [];
+    const chains = parseSelector(sel), out = [];
     const walk = (el) => {
-      for (const k of el.children) { if (parts.some((p) => matchesOne(k, p))) out.push(k); walk(k); }
+      for (const k of el.children) { if (matchesAny(k, chains)) out.push(k); walk(k); }
     };
     walk(this);
     return out;

@@ -41,6 +41,8 @@ Codex asks its client for an approval as a request and writes it to no file — 
 | What shows but is not counted | The requests Codex answers by itself when its countdown runs out — an empty input, or a declined elicitation. Counting those would put a number in the status bar for something about to go away on its own, usually within 90 seconds |
 | What ends a wait | The answer this window sent, the notification that somebody else answered it, or — the net under both — the conversation's turn no longer running, which takes two polls so that a request arriving between them is never dropped |
 | Where the chime can be heard | In a Codex tab of this window, since the sound is made in that tab's page. A conversation with no tab open still shows and still counts; it just makes no sound |
+| What the page adds | A flag, and nothing else: whether an approval card is on its screen. It finds one with Codex's own selector — the same `[data-codex-approval-surface]:not([data-app-shell-active-page="false"] *)` Codex queries to decide whether an approval surface is up |
+| Why the page has a second observer | An approval card is drawn above the message box, outside the element the conversation scrolls, so the observer the timestamps use cannot see it appear. This one is on the activity root, which holds both, and it is not dropped while the page is hidden — a tab in the background is the case it is for |
 
 ### What it cannot see
 
@@ -101,7 +103,7 @@ These three are drawn into Codex's own page, so each needs the patch **and** a w
 | Where your own message's time comes from | First the clock Codex itself renders beside the message, which it shows on hover. Then, as a second source, the conversation's rollout: the rollout's seconds are used where its minute is the one Codex rendered, and its times are used at all only when it holds exactly as many messages of yours as the page shows. |
 | Why seconds are sometimes missing | A stamp is `HH:MM:SS` when the source carried seconds and `HH:MM` when it did not. A zero in that place would be a time nobody wrote. |
 | What goes on Codex's elements | Class names, and nothing else: no node of Codex's is moved, removed or given an inline style. What those class names mean is in one stylesheet of this extension's own, so a setting going off takes its rules with it. |
-| What the page watches | One observer, on the element the conversation scrolls, debounced; dropped while the page is hidden, and dropped altogether when all three are off. `Codex Extras: Remove the Patch from Codex` clears every mark out of the pages still open before restoring Codex's files. |
+| What the page watches | One observer for these three, on the element the conversation scrolls, debounced; dropped while the page is hidden, and dropped altogether when all three are off. `Codex Extras: Remove the Patch from Codex` clears every mark out of the pages still open before restoring Codex's files. The approval card has its own observer, which neither of those two applies to — see Waiting for your permission. |
 
 - Which of Codex's attributes these select by is checked against a real sample of a Codex conversation (`test/fixtures/`), so a Codex release that drops one fails a check rather than quietly showing nothing.
 - Nothing read out of the conversation leaves the page: the opening words on a navigation row are read in the page and shown in the page.

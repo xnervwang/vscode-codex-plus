@@ -178,6 +178,20 @@ module.exports = async ({ ok, bad, note, eq, tmp }) => {
   globalThis.__codexExtrasAppServer('answer', { id: 11 });
   eq(patching.TAB_DOTS.prompt, '#f59e0b', 'and the tab dot has a colour for waiting on the reader, beside working and unread');
 
+  /* ── what a page reports, and which conversation it is taken to be about ── */
+  const sidebarPage = {};
+  globalThis.__codexExtrasMessage(fresh.webview, { kind: 'approval', on: true }, provider);
+  eq([patching.approvalsOf(THREAD).decide, patching.decideCount()], [1, 1],
+    'a page saying a card is up is taken to be about the conversation whose panel that page belongs to');
+  globalThis.__codexExtrasMessage(fresh.webview, { kind: 'approval', on: false }, provider);
+  eq(patching.decideCount(), 0, 'and the card going off that page ends it');
+  globalThis.__codexExtrasBroadcast('thread-stream-following-changed', { conversationId: OTHER, following: true });
+  globalThis.__codexExtrasMessage(sidebarPage, { kind: 'approval', on: true }, provider);
+  eq([patching.approvalsOf(OTHER).decide, patching.waitingThreads()], [1, [OTHER]],
+    'a page with no panel of its own is the sidebar, so its card is about the conversation the sidebar last went to');
+  globalThis.__codexExtrasMessage(sidebarPage, { kind: 'approval', on: false }, provider);
+  eq(patching.decideCount(), 0, 'which ends the same way');
+
   const line = patching.statusLines().filter((l) => l.startsWith('Waiting for you'))[0];
   eq(line, 'Waiting for you: nothing', 'the status command says so when nothing is waiting');
   globalThis.__codexExtrasAppServer('request', { id: 12, method: 'item/tool/requestUserInput', params: { threadId: THREAD } });

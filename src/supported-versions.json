@@ -40,12 +40,15 @@
       ],
       "pageAnchors": [
         "data-app-action-timeline-scroll",
+        "data-app-shell-active-page",
         "data-assistant-message-sent-time",
+        "data-codex-approval-surface",
         "data-codex-composer",
         "data-content-search-turn-key",
         "data-conversation-role",
         "data-local-conversation-final-assistant",
         "data-local-conversation-user-anchor",
+        "data-request-input-activity-root",
         "data-response-annotation-target",
         "data-turn-key",
         "data-user-message-bubble"

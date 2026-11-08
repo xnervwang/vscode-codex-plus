@@ -13,7 +13,7 @@ const path = require('path');
 const fake = require('../fake-vscode');
 const fixture = require('../fixture');
 
-async function run(root, tmp, { core = 'accept', trusted = true, config = {}, takesRoute = false } = {}) {
+async function run(root, tmp, { core = 'accept', trusted = true, config = {}, takesRoute = false, probe = null } = {}) {
   const { vscode, control } = fake.create();
   vscode.workspace.isTrusted = trusted;
   vscode.workspace.onDidGrantWorkspaceTrust = () => ({ dispose() {} });
@@ -40,6 +40,8 @@ async function run(root, tmp, { core = 'accept', trusted = true, config = {}, ta
   await ext.activate(context);
   await new Promise((r) => setTimeout(r, 300));
   const out = { state: control.state, registered, home, wroteSettings: fs.existsSync(path.join(home, 'plugins', 'data', 'agent-work-plan-codex-extras', 'config.json')) };
+  /* Asked while the extension is still up, since the lines below dispose it. */
+  if (probe) out.probed = await probe({ vscode, control, home });
   for (const d of subs) { try { d.dispose(); } catch (_) { /* gone */ } }
   ext.deactivate();
   return out;
@@ -54,10 +56,29 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
     [1, 'codex', 1], 'the Codex source is registered with Agent Work Plan, at protocol 1');
   eq(hosted.state.context['codexExtras.registered'], true, 'an accepted registration shows the session list');
   eq(hosted.state.views, ['codexExtras.sessions'], 'the session list is the only view this extension provides');
-  eq(hosted.state.status.filter((s) => s.shown).length, 0, 'and it makes no status bar entry');
+  eq(hosted.state.status.filter((s) => s.shown).length, 0, 'and nothing of its own is in the status bar while no conversation is waiting on anybody');
   eq(declared.filter((c) => !hosted.state.registered.includes(c)), [], 'every command in the manifest is registered');
   eq(hosted.wroteSettings, true, 'in a trusted window the hooks\' settings are written');
   eq(hosted.state.said.length, 0, 'nothing is said when it is taken');
+
+  /*
+   * The count of conversations stopped waiting for permission, which appears only while there is one. Fed through the
+   * hook the patch calls, so what is checked is the whole way from an app-server request to the status bar.
+   */
+  const waiting = await run(root, tmp, { probe: async ({ control, home }) => {
+    const id = fs.readdirSync(path.join(home, 'sessions'), { recursive: true }).filter((f) => String(f).endsWith('.jsonl'))[0];
+    const thread = /([0-9a-f-]{36})\.jsonl$/.exec(String(id).replace(/\\/g, '/'))[1];
+    globalThis.__codexExtrasAppServer('request', { id: 'q1', method: 'item/commandExecution/requestApproval', params: { threadId: thread } });
+    const shown = [...control.state.status].reverse().find((s) => s.shown) || null;
+    globalThis.__codexExtrasAppServer('answer', { id: 'q1' });
+    const after = [...control.state.status].reverse().find((s) => s.shown) || null;
+    return { text: shown && shown.text, command: shown && shown.command, tooltip: shown && shown.tooltip,
+      hiddenAgain: !(after && after.shown) };
+  } });
+  eq([waiting.probed.text, waiting.probed.command, /One/.test(waiting.probed.tooltip || '')],
+    ['$(bell-dot) 1 to decide', 'codexExtras.goToWaiting', true],
+    'a conversation waiting for permission puts a count in the status bar, naming it on hover and going to it when clicked');
+  eq(waiting.probed.hiddenAgain, true, 'and the count goes once the request is answered, rather than sitting there at nought');
 
   const refused = await run(root, tmp, { core: 'refuse' });
   eq([refused.state.context['codexExtras.registered'], refused.state.said.length], [false, 0],

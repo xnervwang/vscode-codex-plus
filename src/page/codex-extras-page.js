@@ -7,7 +7,10 @@
  * ahead of Codex's own, so it runs first.
  *
  *   - The page's time zone goes to the extension host, since this is the one part that runs where the reader is.
- *   - A chime plays when the host says a turn finished, or a plan question appeared, for the conversation shown here.
+ *   - Whether an approval card is on screen goes to the host as a flag, which is how the conversation Codex's sidebar
+ *     is showing is seen as waiting even though it has no tab of its own.
+ *   - A chime plays when the host says a turn finished, a plan question appeared, or Codex stopped for permission, for
+ *     the conversation shown here.
  *   - The strip shows the figures the host sends for this conversation: the last turn's duration, how much of the
  *     context window is in use, model and effort, and while a turn runs, the tool call in progress and for how long.
  *   - On request, a sample of the conversation layout: its shape and nothing it says.
@@ -49,6 +52,65 @@
         o.start(audio.currentTime + i * 0.12); o.stop(audio.currentTime + i * 0.12 + 0.12);
       });
     } catch (e) { /* no audio here */ }
+  }
+
+  /*
+   * Whether an approval card is on this page, told to the host as a flag and nothing else.
+   *
+   * The host reads approvals from the app-server itself (src/approvals.js), which needs no page at all. This adds the
+   * one conversation that has no tab of its own: the one Codex's sidebar is showing. It is also the page's own
+   * immediate answer, where the host's arrives on the next request through the message pump.
+   *
+   * The selector is Codex's own, copied as it stands: Codex uses the same one to decide whether an approval surface is
+   * up (its Escape handler and its keyboard navigation both query this attribute). So this is not a guess at what an
+   * approval card looks like - it is the thing Codex itself calls one. The :not() excludes a card on a page of its
+   * desktop app's shell that is not in front; VS Code's webview has no such attribute, so there it selects nothing
+   * extra, and keeping it means this stays Codex's query rather than a trimmed version of it.
+   *
+   * Two things this watcher does differently from the one below, and both matter:
+   *
+   *   - It is not the scroller's observer. An approval card is drawn above the message box, outside the element the
+   *     conversation scrolls, so the observer down there cannot see it appear. This one is on the activity root, which
+   *     is the narrowest element Codex keeps around both the scroller and the message box.
+   *   - It is not dropped while the page is hidden. A tab in the background is exactly when being told matters, and
+   *     Codex's webviews all keep their context when hidden, so the page is still running and the card still appears.
+   */
+  var APPROVAL_SEL = '[data-codex-approval-surface]:not([data-app-shell-active-page="false"] *)';
+  var ACTIVITY_SEL = '[data-request-input-activity-root]';
+  var APPROVAL_DEBOUNCE_MS = 150;
+  var approvalOn = null, approvalObserver = null, approvalObserved = null, approvalDue = 0, approvalWaiting = false;
+
+  function tellApproval() {
+    var on = false;
+    try { on = !!document.querySelector(APPROVAL_SEL); } catch (e) { return; }
+    if (on === approvalOn) return;
+    approvalOn = on;
+    post({ kind: 'approval', on: on });
+  }
+
+  function watchApproval() {
+    if (typeof MutationObserver !== 'function' || !document.body) return;
+    var target = null;
+    try { target = document.querySelector(ACTIVITY_SEL); } catch (e) { target = null; }
+    target = target || document.body;
+    if (approvalObserver && approvalObserved === target) return;
+    if (approvalObserver) { try { approvalObserver.disconnect(); } catch (e) { /* gone */ } }
+    approvalObserver = new MutationObserver(function () {
+      if (approvalDue) return;
+      approvalDue = setTimeout(function () { approvalDue = 0; watchApproval(); tellApproval(); }, APPROVAL_DEBOUNCE_MS);
+    });
+    approvalObserved = target;
+    try { approvalObserver.observe(target, { childList: true, subtree: true }); }
+    catch (e) { approvalObserver = null; approvalObserved = null; }
+  }
+
+  function approvalReady() {
+    if (!document.body) {
+      if (!approvalWaiting) { approvalWaiting = true; document.addEventListener('DOMContentLoaded', function () { approvalWaiting = false; approvalReady(); }); }
+      return;
+    }
+    watchApproval();
+    tellApproval();
   }
 
   var strip = null, figures = null, timer = null;
@@ -884,6 +946,8 @@
     }
     if (!visWired) {
       visWired = true;
+      /* Only the marks' observer goes when the page is hidden; the approval watcher stays, since a tab in the
+         background is the case it is for. */
       document.addEventListener('visibilitychange', function () {
         if (document.hidden) unwatch(); else { watch(); refresh(); }
       });
@@ -919,4 +983,8 @@
       ready();
     }
   });
+
+  /* The approval watcher starts with the page rather than waiting for the host to speak: it is not one of the marks,
+     it carries no setting of its own, and the host has nothing to tell it. */
+  approvalReady();
 })();
