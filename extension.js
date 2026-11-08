@@ -29,6 +29,7 @@ const { AnswerView } = require('./src/answer-view');
 const answers = require('./src/answers');
 const sessionInfo = require('./src/session-info');
 const patching = require('./src/patching');
+const requestLimit = require('./src/request-limit');
 
 const CONFIG = 'codexExtras';
 let log = null;
@@ -225,6 +226,9 @@ async function activate(context) {
     if (e.affectsConfiguration(CONFIG)) { writeHookSettings(context); sessionsProvider.refresh(); if (standalone) standalone.redrawConversations(); }
   }));
 
+  const limit = requestLimit.create(vscode, context, { cfg, log: say });
+  context.subscriptions.push(vscode.commands.registerCommand(`${CONFIG}.restoreWebviewRequestLimit`, () => limit.putBack()));
+  setTimeout(() => limit.check().catch((e) => say(`webview request limit: ${e.message}`)), 8000);
   registerCommands(context, { source, memory, sessionsProvider, say });
   writeHookSettings(context);
   setTimeout(() => offerPlugin(context, say), 3000);

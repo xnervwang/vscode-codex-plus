@@ -136,6 +136,10 @@
       {
         "command": "codexExtras.removePatch",
         "title": "Codex Extras: Remove the Patch from Codex (restore original files)"
+      },
+      {
+        "command": "codexExtras.restoreWebviewRequestLimit",
+        "title": "Codex Extras: Put Back VS Code's Request Limit"
       }
     ],
     "viewsContainers": {
@@ -415,6 +419,21 @@
           "type": "boolean",
           "default": true,
           "markdownDescription": "With the patch: a line at the bottom right of a Codex tab with the last turn's duration, context use, model and effort, and the tool call running now."
+        },
+        "codexExtras.webviewRequestLimit": {
+          "type": "string",
+          "enum": [
+            "ask",
+            "raise",
+            "leave"
+          ],
+          "enumDescriptions": [
+            "Ask once per VS Code version",
+            "Raise it without asking, again after each update. On Linux it still asks",
+            "Do not change it"
+          ],
+          "default": "ask",
+          "markdownDescription": "VS Code lets webview tabs, Codex's among them, have only 32 requests in flight at once, across all windows, and a tab can stay blank waiting for one. The extension can raise the limit to 1000000 in VS Code's `service-worker.js`. It takes effect after a restart, and VS Code updates reset it. To return to 32, run `Codex Extras: Put Back VS Code's Request Limit`."
         }
       }
     }
