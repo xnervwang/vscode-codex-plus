@@ -199,6 +199,24 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
       eq(plain.getTreeItem(plain.getChildren()[0]).iconPath instanceof vscode.ThemeIcon, true, 'without a logo the plain state icon is used');
     } finally { source.dispose(); }
 
+    /* ── plans of conversations that are gone are swept, recent ones and live ones kept ── */
+    const { sweepOrphans } = require('../../src/workplan');
+    const sweepDir = tmp('sweep');
+    const old = Date.now() - 30 * 86400e3;
+    const ids = { live: idle.id, dead: '0dead000-0000-7000-8000-000000000000', fresh: '0f000000-0000-7000-8000-000000000000' };
+    for (const [k, id] of Object.entries(ids)) {
+      for (const ext of ['.json', '.turn']) {
+        const f = path.join(sweepDir, id + ext);
+        fs.writeFileSync(f, '{}');
+        if (k !== 'fresh') fs.utimesSync(f, old / 1000, old / 1000);
+      }
+    }
+    fs.writeFileSync(path.join(sweepDir, 'config.json'), '{}');
+    const swept = sweepOrphans({ dir: sweepDir, live: new Set([ids.live]) });
+    eq([swept.deleted, fs.readdirSync(sweepDir).sort()], [2, ['config.json', `${ids.fresh}.json`, `${ids.fresh}.turn`, `${ids.live}.json`, `${ids.live}.turn`].sort()],
+      'a gone conversation\'s plan and side files are removed; a live one, one written this week and other files stay');
+    eq(sweepOrphans({ dir: sweepDir, live: null }).deleted, 0, 'and nothing is removed when the live set could not be read');
+
     /* ── session list ── */
     const { group, dateSpan, looksLikeId } = require('../../src/sessions-view');
     const threads = files.listThreads();
