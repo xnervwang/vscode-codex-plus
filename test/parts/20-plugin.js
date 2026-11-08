@@ -33,6 +33,10 @@ module.exports = ({ ok, bad, note, eq, tmp, root }) => {
   if (planPath.includes(`PLUGIN_DIR_NAME = "${install.DATA_DIR}"`)) ok('the hooks fall back to the same data directory');
   else bad('plan_path.py names a different data directory');
 
+  // The keys Codex 0.164 listed for this plugin's hooks (hooks/list), which uninstalling removes from config.toml.
+  const listed = ['pre_tool_use:0:0', 'post_tool_use:0:0', 'post_tool_use:0:1', 'session_start:0:0', 'session_start:0:1',
+    'user_prompt_submit:0:0', 'user_prompt_submit:0:1', 'stop:0:0', 'stop:0:1'].map((k) => `${install.PLUGIN_ID}:hooks/hooks.json:${k}`);
+  eq(install.hookKeys().sort(), listed.sort(), 'the hook trust keys computed for uninstalling are the ones Codex lists');
   const hooks = JSON.parse(fs.readFileSync(path.join(hooksDir, 'hooks.json'), 'utf8')).hooks;
   const KNOWN = ['UserPromptSubmit', 'PreToolUse', 'PermissionRequest', 'PostToolUse', 'PreCompact', 'PostCompact',
     'SessionStart', 'SessionEnd', 'SubagentStart', 'SubagentStop', 'Stop'];

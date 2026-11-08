@@ -94,8 +94,23 @@ async function uninstall({ binary, home }) {
   await withAppServer(binary, home, async (server) => {
     try { await server.request('plugin/uninstall', { pluginId: PLUGIN_ID }); } catch (_) { /* not installed */ }
     try { await server.request('marketplace/remove', { marketplaceName: MARKETPLACE }); } catch (_) { /* not added */ }
+    // The trust the user gave the hooks is kept by Codex under each hook's key; a null removes it.
+    const edits = hookKeys().map((key) => ({ keyPath: `hooks.state.${JSON.stringify(key)}`, value: null, mergeStrategy: 'replace' }));
+    try { await server.request('config/batchWrite', { edits, filePath: null, expectedVersion: null, reloadUserConfig: true }); } catch (_) { /* none kept */ }
   });
   return kept;
+}
+
+/* The keys Codex files the plugin's hooks under: <plugin id>:<hooks file>:<event in snake case>:<group>:<handler>. */
+function hookKeys(source = SOURCE) {
+  const file = path.join(source, PLUGIN, 'hooks', 'hooks.json');
+  const hooks = JSON.parse(fs.readFileSync(file, 'utf8')).hooks || {};
+  const snake = (e) => e.replace(/([a-z])([A-Z])/g, '$1_$2').toLowerCase();
+  const out = [];
+  for (const [event, groups] of Object.entries(hooks)) {
+    groups.forEach((g, gi) => (g.hooks || []).forEach((_, hi) => out.push(`${PLUGIN_ID}:hooks/hooks.json:${snake(event)}:${gi}:${hi}`)));
+  }
+  return out;
 }
 
 /* Our plugin's hooks as Codex lists them for `cwds`. */
@@ -137,5 +152,5 @@ async function trustHooks({ binary, home, cwds }) {
 
 module.exports = {
   MARKETPLACE, PLUGIN, PLUGIN_ID, DATA_DIR, SOURCE, planDir, cacheDir, installedVersions, pluginVersion, stageMarketplace,
-  writeHookSettings, install, uninstall, hookStatus, trustHooks,
+  writeHookSettings, install, uninstall, hookStatus, trustHooks, hookKeys,
 };
