@@ -57,7 +57,9 @@ function postTo(panel, msg) {
 }
 
 /* Put `text` into the conversation's message box as a draft. Codex's composer takes a draft from the route state it is
-   navigated with, and leaves a box that already has text alone. */
+   navigated with, and leaves a box that already has text alone, and nothing reports back which of the two happened.
+   So the result is never "delivered": the sender keeps the answer and copies it to the clipboard, and a box that was
+   empty also shows it as a draft. */
 async function deliver(thread, text) {
   const set = panels.get(thread);
   const panel = set && [...set][0];
@@ -66,7 +68,7 @@ async function deliver(thread, text) {
     state.provider.sendMessageToPanel(panel, { type: 'navigate-to-route', path: `/local/${thread}`,
       state: { prefillPrompt: text, prefillPromptOnlyIfEmpty: true } });
     panel.reveal(undefined, false);
-    return { delivered: true, reason: 'drafted' };
+    return { delivered: false, reason: 'draft-unconfirmed' };
   } catch (e) { return { delivered: false, reason: String(e && e.message || e) }; }
 }
 

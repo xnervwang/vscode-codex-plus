@@ -12,8 +12,8 @@ through one of its tools goes straight through.
 
 It speaks MCP over standard input and output, one JSON-RPC message per line, and offers two tools that take the same
 arguments as the row command. Every call is handed to plan-row.py's run(), so the rules for what a row may say live in
-one place. A path it is given must be a plan file in this plugin's data directory, named by a thread id: the tools write
-only there.
+one place. A path it is given must be a plan file in this plugin's data directory of the Codex home the server was started
+for, named by a thread id: the tools write only there.
 """
 import importlib.util
 import json
@@ -24,7 +24,7 @@ import types
 sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from plan_path import PLAN_NAME, PLUGIN_DIR_NAME, STATES, WAITING_ON  # noqa: E402
+from plan_path import PLAN_NAME, PLUGIN_DIR_NAME, STATES, WAITING_ON, codex_home  # noqa: E402
 
 
 def load_row_command():
@@ -78,11 +78,28 @@ class Refused(Exception):
     pass
 
 
+def trusted_home():
+    """The CODEX_HOME this server belongs to, fixed at start.
+
+    An installed copy sits under <CODEX_HOME>/plugins/cache/..., which names its home whatever environment Codex gave
+    the server; a copy run from anywhere else falls back to CODEX_HOME or ~/.codex."""
+    here = os.path.realpath(os.path.abspath(__file__))
+    parts = here.split(os.sep)
+    for i in range(len(parts) - 2, 0, -1):
+        if parts[i] == "plugins" and parts[i + 1] == "cache":
+            return os.sep.join(parts[:i]) or os.sep
+    return codex_home()
+
+
+PLAN_DIR = os.path.realpath(os.path.join(trusted_home(), "plugins", "data", PLUGIN_DIR_NAME))
+
+
 def plan_path(value):
-    path = os.path.abspath(os.path.expanduser(str(value or "")))
-    if not PLAN_NAME.match(os.path.basename(path)) or os.path.basename(os.path.dirname(path)) != PLUGIN_DIR_NAME:
-        raise Refused("%s is not a work plan file: a plan is <thread id>.json in a directory named %s."
-                      % (path, PLUGIN_DIR_NAME))
+    # Resolved, so neither a symbolic link nor a look-alike directory elsewhere passes for the plan directory: a server
+    # outside the sandbox writes only the plans of the home it was started for.
+    path = os.path.realpath(os.path.abspath(os.path.expanduser(str(value or ""))))
+    if not PLAN_NAME.match(os.path.basename(path)) or os.path.dirname(path) != PLAN_DIR:
+        raise Refused("%s is not a work plan file: a plan is <thread id>.json in %s." % (path, PLAN_DIR))
     return path
 
 

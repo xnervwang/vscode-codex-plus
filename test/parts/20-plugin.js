@@ -79,7 +79,9 @@ module.exports = ({ ok, bad, note, eq, tmp, root }) => {
   }
 
   // The MCP server over stdio: initialize, list, add a row, refuse a write outside the plan directory.
-  const data = path.join(tmp('mcp'), install.DATA_DIR);
+  const mcpHome = tmp('mcp');
+  const data = path.join(mcpHome, 'plugins', 'data', install.DATA_DIR);
+  const lookalike = path.join(tmp('mcp-elsewhere'), install.DATA_DIR, '01a1b8e8-f7e2-7251-95a9-a95b65992849.json');
   const plan = path.join(data, '01a1b8e8-f7e2-7251-95a9-a95b65992849.json');
   const msgs = [
     { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18' } },
@@ -88,16 +90,19 @@ module.exports = ({ ok, bad, note, eq, tmp, root }) => {
     { jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'add_row', arguments: { plan, state: 'doing', title: 'T' } } },
     { jsonrpc: '2.0', id: 4, method: 'tools/call', params: { name: 'set_row', arguments: { plan, row: '1', state: 'waiting' } } },
     { jsonrpc: '2.0', id: 5, method: 'tools/call', params: { name: 'set_row', arguments: { plan: '/etc/x.json', row: '1' } } },
+    { jsonrpc: '2.0', id: 6, method: 'tools/call', params: { name: 'add_row', arguments: { plan: lookalike, state: 'doing', title: 'T' } } },
   ];
   const r = cp.spawnSync(py, [path.join(hooksDir, 'plan-mcp.py')], { input: msgs.map((m) => JSON.stringify(m)).join('\n') + '\n',
-    encoding: 'utf8', env: { ...process.env, PYTHONDONTWRITEBYTECODE: '1' } });
+    encoding: 'utf8', env: { ...process.env, PYTHONDONTWRITEBYTECODE: '1', CODEX_HOME: mcpHome } });
   const replies = r.stdout.trim().split('\n').filter(Boolean).map((l) => JSON.parse(l));
-  eq(replies.map((x) => x.id), [1, 2, 3, 4, 5], 'the MCP server answers every request and no notification');
+  eq(replies.map((x) => x.id), [1, 2, 3, 4, 5, 6], 'the MCP server answers every request and no notification');
   eq(replies[1].result.tools.map((t) => t.name), ['set_row', 'add_row'], 'it offers set_row and add_row');
   eq(replies[2].result.isError, false, 'add_row creates the plan');
   eq(JSON.parse(fs.readFileSync(plan, 'utf8')).nodes[0].state, 'doing', 'with the row in it');
   eq(replies[3].result.isError, true, 'a move to waiting without waiting_on is refused, as by the row command');
   eq(replies[4].result.isError, true, 'a path outside the plan directory is refused');
+  eq([replies[5].result.isError, fs.existsSync(lookalike)], [true, false],
+    'a directory with the plan directory\'s name outside this Codex home is refused, and nothing is written there');
 
   // The injection hook: a plan with an open row puts it in front of the model, with the tools to change it.
   const payload = { hook_event_name: 'UserPromptSubmit', session_id: path.basename(plan, '.json'), turn_id: 'turn-1',

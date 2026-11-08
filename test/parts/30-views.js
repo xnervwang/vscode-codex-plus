@@ -180,6 +180,12 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
       const future = readPlan(unread.id);
       eq([future.nodes[0].state, countOpen(future.nodes).doing, conversations.openCount(future.nodes)], ['reviewing', 1, 1],
         'a row state this build does not know is kept as written and not counted as open');
+      const realDir = tmp('real-workspace');
+      const viaLink = path.join(tmp('links'), 'workspace');
+      fs.symlinkSync(realDir, viaLink);
+      eq([conversations.inFolders(path.join(viaLink, 'sub'), [realDir]), conversations.inFolders(path.join(realDir, 'sub'), [viaLink]),
+        conversations.inFolders('/elsewhere', [realDir])], [true, true, false],
+      'a conversation started through a symbolic link to a workspace folder, or in a folder opened through one, still counts as inside it');
       const odd = conversations.build([{ ...listed[0], state: 'thinking', running: true, cwd: '/work/a' }], { folders: ['/work/a'], readPlan: () => null });
       eq(odd[0] && odd[0].state, 'idle', 'a conversation state this build does not know is shown as idle');
       const shown = conversations.build(listed.map((c) => ({ ...c, running: c.title !== 'Archived' })), {

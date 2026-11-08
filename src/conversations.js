@@ -42,10 +42,30 @@ function openCount(nodes) {
   return (nodes || []).reduce((n, x) => n + (OPEN_STATES.includes(x.state) ? 1 : 0) + openCount(x.children), 0);
 }
 
+/* So that /home/x and /local/home/x match when one is a symbolic link to the other; case folds where the file system
+   does. A folder that no longer exists, such as a deleted subfolder a stopped conversation ran in, is resolved through
+   its nearest existing parent. */
+function realPath(p) {
+  let head = path.resolve(p);
+  const rest = [];
+  for (;;) {
+    try { return path.join(fs.realpathSync.native(head), ...rest); } catch (_) { /* climb */ }
+    const up = path.dirname(head);
+    if (up === head) return path.resolve(p);
+    rest.unshift(path.basename(head));
+    head = up;
+  }
+}
+const caseOf = process.platform === 'win32' || process.platform === 'darwin' ? (s) => s.toLowerCase() : (s) => s;
+
 function inFolders(cwd, folders) {
   if (!cwd) return false;
   if (!folders.length) return true;
-  return folders.some((f) => cwd === f || cwd.startsWith(f.endsWith(path.sep) ? f : f + path.sep));
+  const c = caseOf(realPath(cwd));
+  return folders.some((folder) => {
+    const f = caseOf(realPath(folder));
+    return c === f || c.startsWith(f.endsWith(path.sep) ? f : f + path.sep);
+  });
 }
 
 /*

@@ -89,8 +89,10 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
   globalThis.__codexExtrasPanel(panel, thread, provider);
   eq(patching.canDeliver(thread), true, 'once its panel is handed over, that conversation can take an answer');
   const r = await patching.deliver(thread, 'My answer to row 1');
-  eq([r.delivered, sent[0] && sent[0].type, sent[0] && sent[0].path, sent[0] && sent[0].state.prefillPrompt, sent[0] && sent[0].state.prefillPromptOnlyIfEmpty],
-    [true, 'navigate-to-route', `/local/${thread}`, 'My answer to row 1', true], 'the answer goes to its panel as a draft, only into an empty box');
+  eq([r.delivered, r.reason, sent[0] && sent[0].type, sent[0] && sent[0].path, sent[0] && sent[0].state.prefillPrompt,
+    sent[0] && sent[0].state.prefillPromptOnlyIfEmpty],
+  [false, 'draft-unconfirmed', 'navigate-to-route', `/local/${thread}`, 'My answer to row 1', true],
+  'the answer goes to its panel as a draft, only into an empty box, and is not reported delivered since nothing confirms it');
   vscode.commands.executeCommand = async () => {};
   eq([await patching.openInSidebar(thread), navigated[0]], [true, `/local/${thread}`], 'opening in the sidebar navigates Codex\'s sidebar to it');
   globalThis.__codexExtrasBroadcast('thread-stream-following-changed', { conversationId: thread, following: true });
