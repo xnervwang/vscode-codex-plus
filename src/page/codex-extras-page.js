@@ -78,7 +78,7 @@
    * reader typed. Siblings one piece of code drew look alike here, so each such group keeps three samples and a count,
    * or a long conversation would answer with tens of thousands of nodes.
    */
-  var MAX_NODES = 400, MAX_DEPTH = 12, MAX_TWINS = 3, HEAD = 8, SURVEY_MAX = 6000;
+  var MAX_NODES = 1600, MAX_DEPTH = 24, MAX_TWINS = 3, HEAD = 8, SURVEY_MAX = 6000;
   var UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
   /* A route segment this long is not a route segment; whatever it is, it is not going into the sample. */
   var LONG = /[^/#?&=]{41,}/g;

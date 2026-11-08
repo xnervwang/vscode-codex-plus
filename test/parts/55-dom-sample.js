@@ -166,13 +166,19 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
     [SECRETS['message text'].length, 8, 'aaaaaaoa'],
     'a sentence gives its true length and eight letters of shape, which is the whole of what is said about it');
 
-  const deep = ask(deepPage(20)).sample;
+  // The limits are read from the sample rather than written here, so raising them does not have to be done twice. The
+  // depth has to clear a Codex turn: its conversation role and its sent time sit below the per-turn anchors.
+  const probe = ask(deepPage(4)).sample;
+  const { depth: MAX_DEPTH, nodes: MAX_NODES } = probe.limits;
+  if (MAX_DEPTH < 20) bad(`the depth limit is ${MAX_DEPTH}, too shallow for a Codex turn`);
+  const deep = ask(deepPage(MAX_DEPTH + 8)).sample;
   const depths = flatten(deep.tree).map((x) => x.depth);
-  eq([Math.max(...depths), deep.limits.depth], [12, 12], 'a chain deeper than the limit is cut at it');
-  const wide = ask(widePage(600)).sample;
+  eq(Math.max(...depths), MAX_DEPTH, 'a chain deeper than the limit is cut at it');
+  const extra = 200;
+  const wide = ask(widePage(MAX_NODES + extra)).sample;
   const count = flatten(wide.tree).length;
-  eq([count, wide.sampled, wide.limits.nodes], [400, 400, 400], 'more elements than the limit are cut at it');
-  eq(wide.tree.unsampled, { groups: 201, elements: 201 },
+  eq([count, wide.sampled], [MAX_NODES, MAX_NODES], 'more elements than the limit are cut at it');
+  eq(wide.tree.unsampled, { groups: extra + 1, elements: extra + 1 },
     'and what the budget ran out before reaching is counted, so the sample says how much it left out');
 
   /* ── where the file lands ── */
