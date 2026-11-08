@@ -37,6 +37,9 @@ function cfg() { return vscode.workspace.getConfiguration(CONFIG); }
 function settings() {
   const c = cfg();
   return {
+    patchCodex: c.get('patchCodex', 'ask'),
+    chime: c.get('chime', true),
+    figures: c.get('turnFigures', true),
     workPlan: c.get('workPlan', true),
     conversations: c.get('conversations', true),
     hideBackgroundSessions: c.get('hideBackgroundSessions', true),
@@ -85,6 +88,16 @@ async function activate(context) {
 
   const source = createCodexSource(vscode, { log: say });
   context.subscriptions.push(source);
+  /* Typing into a conversation needs the patch to Codex; until it is connected these refuse, as the interface wants. */
+  source.canDeliver = (id) => patching.canDeliver(id);
+  source.deliverAnswer = (id, text) => patching.deliver(id, text);
+  const timeZoneListeners = [];
+  const reportTimeZone = async (zone) => {
+    if (!zone || zone === context.globalState.get('codexExtras.clientTimeZone')) return;
+    await context.globalState.update('codexExtras.clientTimeZone', zone);
+    for (const fn of timeZoneListeners) fn(zone);
+    writeHookSettings(context);
+  };
 
   /* ── Codex session list: always drawn here; the shared views are not the only thing this extension adds. ── */
   const memory = new TabMemory(vscode, context.workspaceState, {
@@ -117,17 +130,13 @@ async function activate(context) {
       send: async (q, text) => {
         answerView.setState(q.key, { kind: 'waiting' });
         const r = await answers.deliver(vscode, source, q, text, { canType: patching.canType() });
+        if (r.kind === 'clipboard') say(`answer to ${q.sessionId} row ${q.row} copied to the clipboard`);
         answerView.setState(q.key, r);
       },
       open: (target) => source.reveal(target.sessionId),
       age: (ms) => ageSince(ms),
       clock,
-      onTimeZone: async (zone) => {
-        if (!zone || zone === context.globalState.get('codexExtras.clientTimeZone')) return;
-        await context.globalState.update('codexExtras.clientTimeZone', zone);
-        if (planProvider.setTimeZone(zone)) planProvider.refresh();
-        writeHookSettings(context);
-      },
+      onTimeZone: reportTimeZone,
     });
     answerView.setLanguage(language(vscode.env.language));
     ui.disposables.push(vscode.window.registerWebviewViewProvider('codexExtras.answer', answerView, { webviewOptions: { retainContextWhenHidden: true } }));
@@ -135,6 +144,7 @@ async function activate(context) {
     status.command = 'codexExtras.showConversations';
     const zone = context.globalState.get('codexExtras.clientTimeZone');
     if (zone) planProvider.setTimeZone(zone);
+    timeZoneListeners.push((z) => { if (planProvider.setTimeZone(z)) planProvider.refresh(); });
 
     const redrawPlan = () => {
       const cur = focus.current;
@@ -228,7 +238,10 @@ async function activate(context) {
       if (r.deleted) say(`removed ${r.deleted} plan file(s) of conversations that no longer exist`);
     } catch (e) { say(`plan cleanup: ${e.message}`); }
   }, 60000);
-  try { patching.activate(context, { vscode, log: say, codexProgram, source }); } catch (e) { say(`patching: ${e.message}`); }
+  try {
+    patching.activate(context, { vscode, log: say, codexProgram, source, context, settings, onTimeZone: reportTimeZone,
+      planQuestions: (id) => conversations.planQuestions((readPlan(id) || {}).nodes).length });
+  } catch (e) { say(`patching: ${e.message}`); }
 }
 
 /* Commands that only make sense while this extension draws the shared views itself. */
@@ -282,6 +295,22 @@ function registerCommands(context, { source, memory, sessionsProvider, say }) {
     ];
     log.appendLine(lines.join('\n'));
     log.show(true);
+  });
+  reg('applyPatch', async () => {
+    await context.globalState.update(`codexExtras.patchAsked:${(vscode.extensions.getExtension('openai.chatgpt') || { packageJSON: {} }).packageJSON.version}`, undefined);
+    await vscode.workspace.getConfiguration(CONFIG).update('patchCodex', 'on', vscode.ConfigurationTarget.Global);
+    vscode.window.showInformationMessage('Codex will be patched now; reload the window when asked.');
+    patching.activate(context, { vscode, log: say, codexProgram, source, context, settings: () => ({ ...settings(), patchCodex: 'on' }),
+      planQuestions: (id) => conversations.planQuestions((readPlan(id) || {}).nodes).length });
+  });
+  reg('removePatch', async () => {
+    const lines = patching.removePatch(vscode);
+    await vscode.workspace.getConfiguration(CONFIG).update('patchCodex', 'off', vscode.ConfigurationTarget.Global);
+    say(lines.join('\n'));
+    const reload = 'Reload Window';
+    if (await vscode.window.showInformationMessage('Codex\'s own files are back. Reload the window to run them.', reload) === reload) {
+      await vscode.commands.executeCommand('workbench.action.reloadWindow');
+    }
   });
   reg('openSettings', () => vscode.commands.executeCommand('workbench.action.openSettings', `@ext:xnervwang.codex-extras`));
   reg('installWorkPlanPlugin', () => installPlugin(context, say, { interactive: true }));

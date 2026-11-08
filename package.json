@@ -128,6 +128,14 @@
         "command": "codexExtras.sessionInfo",
         "title": "Codex Extras: Session Information",
         "icon": "$(info)"
+      },
+      {
+        "command": "codexExtras.applyPatch",
+        "title": "Codex Extras: Patch Codex (tab dots, sidebar opening, answers, chimes, turn figures)"
+      },
+      {
+        "command": "codexExtras.removePatch",
+        "title": "Codex Extras: Remove the Patch from Codex (restore original files)"
       }
     ],
     "viewsContainers": {
@@ -382,8 +390,36 @@
           "type": "string",
           "default": "",
           "markdownDescription": "A regular expression (Python syntax) tested on the latest reply. A match silences the reminders around a compaction, for conversations relaying another model's replies word for word."
+        },
+        "codexExtras.patchCodex": {
+          "type": "string",
+          "default": "ask",
+          "markdownDescription": "Whether to patch the Codex extension's own files for the additions that need it: status dots on Codex tabs, opening a given conversation in the sidebar, answers put into a conversation's message box, chimes and the line of turn figures. Codex's originals are kept beside them and put back by **Codex Extras: Remove the Patch from Codex** or on uninstall.",
+          "enum": [
+            "ask",
+            "on",
+            "off"
+          ],
+          "enumDescriptions": [
+            "Ask once per Codex version",
+            "Patch without asking",
+            "Leave Codex's files alone"
+          ]
+        },
+        "codexExtras.chime": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "With the patch: a short sound in a Codex tab when a turn there finishes or its work plan asks you something."
+        },
+        "codexExtras.turnFigures": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "With the patch: a line at the bottom right of a Codex tab with the last turn's duration, context use, model and effort, and the tool call running now."
         }
       }
     }
+  },
+  "scripts": {
+    "vscode:uninstall": "node ./uninstall.js"
   }
 }

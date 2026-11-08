@@ -9,7 +9,7 @@ const path = require('path');
 const vm = require('vm');
 
 function jsFiles(root) {
-  const out = ['extension.js'];
+  const out = ['extension.js', 'uninstall.js'];
   const walk = (rel) => {
     for (const e of fs.readdirSync(path.join(root, rel), { withFileTypes: true })) {
       const r = path.join(rel, e.name);

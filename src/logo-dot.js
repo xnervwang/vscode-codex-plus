@@ -42,16 +42,16 @@ function withDot(svg, color) {
  * Icon paths for every state, { [state]: { light, dark } } as file paths, written into `dir` once per logo version; null
  * when either logo is missing or cannot be wrapped.
  */
-function iconsFor(logo, dir, cache = new Map()) {
+function iconsFor(logo, dir, cache = new Map(), palette = DOT) {
   if (!logo || !logo.light || !logo.dark) return null;
   let light, dark;
   try { light = fs.readFileSync(logo.light, 'utf8'); dark = fs.readFileSync(logo.dark, 'utf8'); } catch (_) { return null; }
-  const key = crypto.createHash('sha1').update(light).update(dark).digest('hex').slice(0, 12);
+  const key = crypto.createHash('sha1').update(light).update(dark).update(JSON.stringify(palette)).digest('hex').slice(0, 12);
   if (cache.has(key)) return cache.get(key);
   const out = {};
   try {
     fs.mkdirSync(dir, { recursive: true });
-    for (const [state, color] of Object.entries(DOT)) {
+    for (const [state, color] of Object.entries(palette)) {
       const l = withDot(light, color), d = withDot(dark, color);
       if (!l || !d) { cache.set(key, null); return null; }
       const lp = path.join(dir, `logo-${key}-${state}-light.svg`), dp = path.join(dir, `logo-${key}-${state}-dark.svg`);

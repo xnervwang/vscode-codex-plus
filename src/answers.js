@@ -222,7 +222,8 @@ async function deliver(vscode, source, q, text, { canType = false } = {}) {
     const id = courier.send({ source: source.id, sessionId: q.sessionId, row: q.row, text: body }, { key: q.key });
     finished.set(id, async (outcome) => {
       if (outcome.kind !== 'sent') await vscode.env.clipboard.writeText(body);
-      resolve(outcome);
+      // Codex takes an answer as a draft in the message box; the reader still presses Enter there.
+      resolve(outcome.kind === 'sent' && source.id === 'codex' ? { kind: 'drafted' } : outcome);
     });
   });
 }

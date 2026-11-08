@@ -35,6 +35,7 @@ const TEXT = {
     answerState: (kind, time) => ({
       waiting: 'Sending...',
       clipboard: 'Copied to the clipboard and the conversation opened in a tab: paste it into its message box.',
+      drafted: `Put into the conversation's message box at ${time}: press Enter there to send it.`,
       sent: `Sent at ${time}.`,
       nobody: 'Not sent: no VS Code window has this conversation open. Copied to the clipboard.',
       draft: 'Not sent: the conversation\'s input already has text in it. Copied to the clipboard.',

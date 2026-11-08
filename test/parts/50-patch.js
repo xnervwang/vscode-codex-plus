@@ -1,0 +1,127 @@
+// BSD 3-Clause License
+// Copyright (c) 2026, Xnerv Wang
+// All rights reserved.
+
+'use strict';
+/*
+ * The patch to Codex: every edit matches exactly once on each pristine Codex build installed here, the results parse,
+ * applying and restoring on a copy leaves Codex's files byte for byte as they were, the hooks do what they say with a
+ * stand-in provider and panel, and the page script shares the page's API handle and draws only into a node of its own.
+ * Codex's installed files are only read; every write goes to a copy.
+ */
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const vm = require('vm');
+const fake = require('../fake-vscode');
+
+function codexInstalls() {
+  const out = [];
+  for (const root of [path.join(os.homedir(), '.vscode-server', 'extensions'), path.join(os.homedir(), '.vscode', 'extensions')]) {
+    let names = [];
+    try { names = fs.readdirSync(root); } catch (_) { continue; }
+    for (const n of names) if (/^openai\.chatgpt-/.test(n) && fs.existsSync(path.join(root, n, 'out', 'extension.js'))) out.push(path.join(root, n));
+  }
+  return out;
+}
+
+module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
+  const { vscode } = fake.create();
+  fake.install(vscode);
+  const host = require('../../src/host');
+  const page = require('../../src/webview-inject');
+
+  const installs = codexInstalls();
+  if (!installs.length) note('no Codex extension installed here: the edits were not checked against a real build');
+  for (const dir of installs) {
+    const name = path.basename(dir);
+    const file = host.targetFile(dir);
+    const backup = file + host.BACKUP_SUFFIX;
+    const pristine = fs.readFileSync(fs.existsSync(backup) ? backup : file, 'utf8');
+    const r = host.patchSource(pristine);
+    if (r.error) bad(`${name}: ${r.error}`);
+    else ok(`${name}: every host edit matches once (${r.chosen.map((c) => c.name).join(', ')}) and the result parses`);
+    const html = page.targetFile(dir);
+    const pbackup = html + page.BACKUP_SUFFIX;
+    const p = page.patchSource(fs.readFileSync(fs.existsSync(pbackup) ? pbackup : html, 'utf8'));
+    if (p.error) bad(`${name}: page: ${p.error}`);
+    else if (p.out.indexOf(`src="./${page.PAGE_FILE}"`) < p.out.search(/src="\.\/assets\/index-/)) ok(`${name}: the page script goes in ahead of Codex's entry script`);
+    else bad(`${name}: the page script is not ahead of Codex's entry script`);
+  }
+
+  /* Apply and restore on a copy, never on the installed files. */
+  if (installs.length) {
+    const copy = tmp('codex-copy');
+    fs.mkdirSync(path.join(copy, 'out'));
+    fs.mkdirSync(path.join(copy, 'webview'));
+    const src = installs[0];
+    const origHost = fs.readFileSync(fs.existsSync(host.targetFile(src) + host.BACKUP_SUFFIX) ? host.targetFile(src) + host.BACKUP_SUFFIX : host.targetFile(src));
+    const origPage = fs.readFileSync(fs.existsSync(page.targetFile(src) + page.BACKUP_SUFFIX) ? page.targetFile(src) + page.BACKUP_SUFFIX : page.targetFile(src));
+    fs.writeFileSync(host.targetFile(copy), origHost);
+    fs.writeFileSync(page.targetFile(copy), origPage);
+    const targets = require('../../src/adapters');
+    eq(targets.map((t) => t.apply(copy).current), [true, true], 'both targets apply to a copy');
+    eq(targets.map((t) => t.status(copy)), ['patched', 'patched'], 'and report themselves patched');
+    eq(targets.map((t) => t.apply(copy).changed), [false, false], 'a second apply changes nothing');
+    try { new vm.Script(fs.readFileSync(host.targetFile(copy), 'utf8')); ok('the patched copy parses'); } catch (e) { bad(`the patched copy does not parse: ${e.message}`); }
+    [...targets].reverse().forEach((t) => t.restore(copy));
+    eq([fs.readFileSync(host.targetFile(copy)).equals(origHost), fs.readFileSync(page.targetFile(copy)).equals(origPage),
+      fs.existsSync(path.join(copy, 'webview', page.PAGE_FILE))], [true, true, false], 'restoring leaves both files byte for byte as they were');
+  }
+
+  /* The hooks, with a stand-in provider and panel. */
+  const patching = require('../../src/patching');
+  const sent = [], navigated = [], focused = [];
+  const provider = {
+    sendMessageToPanel: (panel, msg) => sent.push(msg),
+    navigateToRoute: (p) => navigated.push(p),
+    postMessageToWebview: (w, msg) => sent.push(msg),
+  };
+  let disposed = null;
+  const panel = { webview: {}, reveal() {}, onDidDispose: (fn) => { disposed = fn; }, iconPath: null };
+  const thread = '01a1b8f2-fd2b-7e60-9ffc-16e5cb642e31';
+  patching.installHooks();
+  patching.activate({ subscriptions: [], globalStorageUri: vscode.Uri.file(tmp('gs')), globalState: fake.memento() }, {
+    vscode, log: () => {}, source: { onDidChangeConversations: () => ({ dispose() {} }), _focus: (id) => focused.push(id),
+      listConversations: async () => [], logo: null }, settings: () => ({ patchCodex: 'off', chime: true, figures: true }),
+    planQuestions: () => 0, context: { globalStorageUri: vscode.Uri.file(tmp('gs2')) } });
+  eq(patching.canDeliver(thread), false, 'before Codex hands over a panel, nothing can be typed');
+  globalThis.__codexExtrasPanel(panel, thread, provider);
+  eq(patching.canDeliver(thread), true, 'once its panel is handed over, that conversation can take an answer');
+  const r = await patching.deliver(thread, 'My answer to row 1');
+  eq([r.delivered, sent[0] && sent[0].type, sent[0] && sent[0].path, sent[0] && sent[0].state.prefillPrompt, sent[0] && sent[0].state.prefillPromptOnlyIfEmpty],
+    [true, 'navigate-to-route', `/local/${thread}`, 'My answer to row 1', true], 'the answer goes to its panel as a draft, only into an empty box');
+  vscode.commands.executeCommand = async () => {};
+  eq([await patching.openInSidebar(thread), navigated[0]], [true, `/local/${thread}`], 'opening in the sidebar navigates Codex\'s sidebar to it');
+  globalThis.__codexExtrasBroadcast('thread-stream-following-changed', { conversationId: thread, following: true });
+  eq(focused, [], 'following a thread that has a tab here is not the sidebar');
+  globalThis.__codexExtrasBroadcast('thread-stream-following-changed', { conversationId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee', following: true });
+  eq(focused, ['aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'], 'following one with no tab here puts it in front (the sidebar)');
+  disposed();
+  eq(patching.canDeliver(thread), false, 'a closed panel takes no more answers');
+  const f = patching.figuresOf({ state: 'working', lastTurnMs: 130000, context: { used: 85000, window: 258400 }, model: 'openai.gpt-6.1-sol', effort: 'ultra',
+    lastTool: { name: 'exec_command', startedMs: 5, endedMs: 0 } });
+  eq([f.text, f.tool, f.toolSince], ['2m10s · ctx 33% · gpt-6.1-sol ultra', 'exec_command', 5], 'the figures read like a reply\'s figures line');
+
+  /* The page script, in a stand-in page. */
+  const posted = [];
+  let handles = 0;
+  const listeners = {};
+  const body = { children: [], appendChild(c) { this.children.push(c); } };
+  const document = { body, createElement: () => ({ style: {}, setAttribute(k, v) { this[k] = v; }, textContent: '' }), addEventListener() {} };
+  const win = {
+    acquireVsCodeApi: () => { handles++; if (handles > 1) throw new Error('second handle'); return { postMessage: (m) => posted.push(m) }; },
+    addEventListener: (t, fn) => { listeners[t] = fn; }, Intl, setInterval: () => 1, clearInterval() {}, Date, Math, Object, String,
+  };
+  win.globalThis = win;
+  const sandbox = vm.createContext({ globalThis: win, document, Intl, Date, Math, Object, String, setInterval: () => 1, clearInterval() {} });
+  vm.runInContext(fs.readFileSync(path.join(root, 'src', 'page', page.PAGE_FILE), 'utf8'), sandbox);
+  const first = win.acquireVsCodeApi(), second = win.acquireVsCodeApi();
+  eq([first === second, handles], [true, 1], 'the page script and Codex share one API handle');
+  eq(posted[0] && [posted[0].type, posted[0].kind, typeof posted[0].timeZone], ['codex-extras', 'tz', 'string'], 'it reports the page\'s time zone');
+  listeners.message({ data: { type: 'codex-extras-figures', text: '12s · ctx 4%' } });
+  eq([body.children.length, body.children[0] && body.children[0].textContent, body.children[0] && body.children[0]['data-codex-extras']],
+    [1, '12s · ctx 4%', 'figures'], 'figures are drawn in one node of its own, appended to the body');
+  listeners.message({ data: { type: 'navigate-to-route', path: '/x' } });
+  eq(body.children.length, 1, 'Codex\'s own messages are left alone');
+};

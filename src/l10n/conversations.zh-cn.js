@@ -30,6 +30,7 @@ module.exports = {
   answerState: (kind, time) => ({
     waiting: '正在发送……',
     clipboard: '已复制到剪贴板，并在标签页里打开了那个对话：粘贴到它的输入框里。',
+    drafted: `${time} 已放进那个对话的输入框：到那里按回车发出。`,
     sent: `${time} 已发出。`,
     nobody: '没发：没有哪个 VS Code 窗口开着这个对话。已复制到剪贴板。',
     draft: '没发：那个对话的输入框里已经有字。已复制到剪贴板。',
