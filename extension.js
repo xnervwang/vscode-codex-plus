@@ -157,6 +157,21 @@ async function activate(context) {
   }, 8000);
 }
 
+/*
+ * A new Codex conversation in the editor group in front. Codex's own chatgpt.newCodexPanel asks for the group of the
+ * text file last focused, which puts the conversation in a split when that file is not where the reader is looking;
+ * opening its route here states the group instead. Codex's command is the fallback, in case it stops taking the route.
+ */
+async function newConversationInTab(say) {
+  try {
+    if (await tabs.openNewInTab(vscode)) return;
+    say('Codex did not open a conversation for its new-panel route; asking Codex itself');
+  } catch (e) {
+    say(`opening a new conversation: ${e.message}`);
+  }
+  await vscode.commands.executeCommand('chatgpt.newCodexPanel');
+}
+
 function registerCommands(context, { source, memory, sessionsProvider, say, link }) {
   const reg = (name, fn) => context.subscriptions.push(vscode.commands.registerCommand(`${CONFIG}.${name}`, fn));
   const threadArg = (arg) => (typeof arg === 'string' ? arg : arg && arg.thread ? arg.thread.id : arg && arg.sessionId) || '';
@@ -244,7 +259,7 @@ function registerCommands(context, { source, memory, sessionsProvider, say, link
     await vscode.workspace.getConfiguration(CONFIG).update('sessionsInWorkspaceOnly', false, vscode.ConfigurationTarget.Global);
     sessionsProvider.refresh();
   });
-  reg('newInTab', () => vscode.commands.executeCommand('chatgpt.newCodexPanel'));
+  reg('newInTab', () => newConversationInTab(say));
   reg('newInSidebar', async () => {
     await vscode.commands.executeCommand('chatgpt.openSidebar');
     try { await vscode.commands.executeCommand('chatgpt.newChat'); } catch (_) { /* the shortcut is not enabled in every build */ }
@@ -255,8 +270,8 @@ function registerCommands(context, { source, memory, sessionsProvider, say, link
    * only moved the focus read as doing nothing.
    */
   reg('openCodex', async () => {
-    const target = cfg().get('openButtonTarget', 'tab') === 'sidebar' ? 'chatgpt.openSidebar' : 'chatgpt.newCodexPanel';
-    await vscode.commands.executeCommand(target);
+    if (cfg().get('openButtonTarget', 'tab') === 'sidebar') { await vscode.commands.executeCommand('chatgpt.openSidebar'); return; }
+    await newConversationInTab(say);
   });
   reg('openThreadInTab', async (arg) => {
     const id = threadArg(arg);

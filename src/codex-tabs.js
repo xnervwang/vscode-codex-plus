@@ -19,6 +19,8 @@
 const VIEW_TYPE = 'chatgpt.conversationEditor';
 const SCHEME = 'openai-codex';
 const AUTHORITY = 'route';
+/* Codex's route for a conversation that has not started yet; its URI never names a conversation. */
+const NEW_PANEL_PATH = '/extension/panel/new';
 /* Codex accepts any non-empty second segment as the id and checks its shape nowhere, so neither does this: the id is
    looked up in the thread list afterwards, and rejecting one Codex would have accepted loses a real tab. */
 const ROUTE = /^\/?(local|remote)\/([^/?#]+)(?:[/?#]|$)/i;
@@ -87,6 +89,24 @@ function threadUri(vscode, thread) {
 }
 
 /*
+ * The route Codex opens a new conversation with. Codex's own createNewPanel() builds the same URI and hands it to
+ * vscode.openWith asking for `window.activeTextEditor?.viewColumn`, which is the group of whichever text file was last
+ * focused rather than the group in front, so a new conversation can land in a split the reader was not looking at.
+ * Opening it here instead lets the column be stated.
+ */
+function newPanelUri(vscode) {
+  return vscode.Uri.from({ scheme: SCHEME, authority: AUTHORITY, path: NEW_PANEL_PATH });
+}
+
+/* Open a new Codex conversation in the editor group in front. False when Codex did not take the route. */
+async function openNewInTab(vscode) {
+  await vscode.commands.executeCommand('vscode.openWith', newPanelUri(vscode), VIEW_TYPE,
+    { viewColumn: vscode.ViewColumn.Active, preserveFocus: false, preview: false });
+  const tab = vscode.window.tabGroups.activeTabGroup;
+  return !!(tab && tab.activeTab && isCodexTab(vscode, tab.activeTab));
+}
+
+/*
  * Bring a thread to the front in a tab: the tab that already shows it, or a new one. Resolves to true when a tab shows
  * it afterwards.
  */
@@ -98,5 +118,5 @@ async function openInTab(vscode, thread, { preserveFocus = false } = {}) {
   return codexTabs(vscode).some((t) => t.thread === thread);
 }
 
-module.exports = { VIEW_TYPE, SCHEME, AUTHORITY, isCodexViewType, isCodexTab, tabShape, threadOfUri, threadOfTab, codexTabs, activeThread,
-  threadUri, openInTab };
+module.exports = { VIEW_TYPE, SCHEME, AUTHORITY, NEW_PANEL_PATH, isCodexViewType, isCodexTab, tabShape, threadOfUri, threadOfTab, codexTabs,
+  activeThread, threadUri, newPanelUri, openInTab, openNewInTab };

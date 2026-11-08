@@ -13,11 +13,13 @@ const path = require('path');
 const fake = require('../fake-vscode');
 const fixture = require('../fixture');
 
-async function run(root, tmp, { core = 'accept', trusted = true, config = {} } = {}) {
+async function run(root, tmp, { core = 'accept', trusted = true, config = {}, takesRoute = false } = {}) {
   const { vscode, control } = fake.create();
   vscode.workspace.isTrusted = trusted;
   vscode.workspace.onDidGrantWorkspaceTrust = () => ({ dispose() {} });
   fake.install(vscode);
+  // Codex answers the new-conversation route by leaving a conversation tab in front; the stand-in does it on request.
+  if (takesRoute) control.state.openWith = (u, viewType) => control.setTabs([{ label: 'Codex', input: new vscode.TabInputCustom(u, viewType) }], 0);
   for (const k of Object.keys(require.cache)) if (k.startsWith(root + path.sep) && !k.includes(`${path.sep}test${path.sep}`)) delete require.cache[k];
   const home = tmp('home');
   fixture.codexHome(home, [{ title: 'One', cwd: home, turns: [{}] }]);
@@ -85,18 +87,34 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
   eq(menus.filter((c) => !byCommand.has(c)), [], 'every command a menu names is declared');
 
   /*
-   * The tab bar's button starts a conversation and never raises one that is open. Before this, it opened the one last
-   * in front, which with a single Codex tab already in front moved the focus and looked like nothing happened.
+   * The tab bar's button starts a conversation and never raises one that is open: before this it opened the one last in
+   * front, which with a single Codex tab already in front only moved the focus and looked like nothing happened. In a
+   * tab it opens Codex's new-conversation route itself, naming the group in front, because Codex's own command asks for
+   * the group of the text file last focused and so can put the conversation in a split.
    */
-  for (const [target, want] of [['tab', 'chatgpt.newCodexPanel'], ['sidebar', 'chatgpt.openSidebar']]) {
-    const w = await run(root, tmp, { config: { openButtonTarget: target } });
-    const handler = w.state.handlers['codexExtras.openCodex'];
-    if (!handler) { bad('the tab bar button has no handler'); break; }
+  {
+    const w = await run(root, tmp, { config: { openButtonTarget: 'tab' }, takesRoute: true });
     const before = w.state.commands.length;
-    await handler();
-    const after = w.state.commands.slice(before).map((c) => c[0]);
-    eq([after, after.includes('vscode.openWith')], [[want], false],
-      `with openButtonTarget ${target} the button runs ${want} and opens no conversation of its own`);
+    await w.state.handlers['codexExtras.openCodex']();
+    const ran = w.state.commands.slice(before);
+    const [cmd, uri, viewType, options] = ran[0] || [];
+    eq([ran.length, cmd, uri && uri.path, viewType, options && options.viewColumn, options && options.preview],
+      [1, 'vscode.openWith', '/extension/panel/new', 'chatgpt.conversationEditor', -1, false],
+      'in a tab it opens the new-conversation route itself, in the group in front, and asks Codex for nothing more');
+  }
+  {
+    const w = await run(root, tmp, { config: { openButtonTarget: 'tab' } });
+    const before = w.state.commands.length;
+    await w.state.handlers['codexExtras.openCodex']();
+    eq(w.state.commands.slice(before).map((c) => c[0]), ['vscode.openWith', 'chatgpt.newCodexPanel'],
+      'when the route leaves no conversation tab, Codex\'s own command is asked instead');
+  }
+  {
+    const w = await run(root, tmp, { config: { openButtonTarget: 'sidebar' } });
+    const before = w.state.commands.length;
+    await w.state.handlers['codexExtras.openCodex']();
+    eq(w.state.commands.slice(before).map((c) => c[0]), ['chatgpt.openSidebar'],
+      'set to the sidebar it opens Codex\'s sidebar and no tab');
   }
 
   /* The Codex commands this extension runs, against the Codex installed here: New in sidebar needs no patch, since
