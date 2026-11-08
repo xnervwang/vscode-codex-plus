@@ -26,7 +26,6 @@ const hostLink = require('./src/host-link');
 const { readPlan, planQuestions } = require('./src/workplan');
 const { TabMemory } = require('./src/tab-memory');
 const { SessionsProvider, COLORS, looksLikeId } = require('./src/sessions-view');
-const { folderTest } = require('./src/folders');
 const patching = require('./src/patching');
 const domSample = require('./src/dom-sample');
 
@@ -158,17 +157,6 @@ async function activate(context) {
   }, 8000);
 }
 
-/* The Codex conversation the tab bar's button opens: the one last in front, else the newest in this workspace. */
-function lastConversation(memory) {
-  const last = memory.lastUsed();
-  if (last && (!reader.threads() || reader.present(last))) return last;
-  const folders = (vscode.workspace.workspaceFolders || []).map((f) => f.uri.fsPath);
-  const test = folderTest(folders, new Map());
-  const inside = (cwd) => !folders.length || test(cwd);
-  const t = (reader.threads() || []).find((x) => x.kind === 'user' && !x.archived && inside(x.cwd));
-  return t ? t.id : '';
-}
-
 function registerCommands(context, { source, memory, sessionsProvider, say, link }) {
   const reg = (name, fn) => context.subscriptions.push(vscode.commands.registerCommand(`${CONFIG}.${name}`, fn));
   const threadArg = (arg) => (typeof arg === 'string' ? arg : arg && arg.thread ? arg.thread.id : arg && arg.sessionId) || '';
@@ -261,14 +249,14 @@ function registerCommands(context, { source, memory, sessionsProvider, say, link
     await vscode.commands.executeCommand('chatgpt.openSidebar');
     try { await vscode.commands.executeCommand('chatgpt.newChat'); } catch (_) { /* the shortcut is not enabled in every build */ }
   });
-  /* The tab bar's button: the last Codex conversation in a tab, or a new one; or Codex's sidebar, as the setting says. */
+  /*
+   * The tab bar's button: a new Codex conversation in a tab, or Codex's sidebar, as the setting says. It never raises a
+   * conversation that is already open: the session list is where an existing one is picked, and a button that sometimes
+   * only moved the focus read as doing nothing.
+   */
   reg('openCodex', async () => {
-    if (cfg().get('openButtonTarget', 'tab') === 'sidebar') { await vscode.commands.executeCommand('chatgpt.openSidebar'); return; }
-    const id = lastConversation(memory);
-    if (id) {
-      try { if (await tabs.openInTab(vscode, id)) return; } catch (e) { say(`opening ${id}: ${e.message}`); }
-    }
-    await vscode.commands.executeCommand('chatgpt.newCodexPanel');
+    const target = cfg().get('openButtonTarget', 'tab') === 'sidebar' ? 'chatgpt.openSidebar' : 'chatgpt.newCodexPanel';
+    await vscode.commands.executeCommand(target);
   });
   reg('openThreadInTab', async (arg) => {
     const id = threadArg(arg);
@@ -413,4 +401,4 @@ async function trustPlugin(say, { interactive }) {
 
 function deactivate() { files.closeAll(); }
 
-module.exports = { activate, deactivate, lastConversation };
+module.exports = { activate, deactivate };

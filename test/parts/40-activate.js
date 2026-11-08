@@ -13,7 +13,7 @@ const path = require('path');
 const fake = require('../fake-vscode');
 const fixture = require('../fixture');
 
-async function run(root, tmp, { core = 'accept', trusted = true } = {}) {
+async function run(root, tmp, { core = 'accept', trusted = true, config = {} } = {}) {
   const { vscode, control } = fake.create();
   vscode.workspace.isTrusted = trusted;
   vscode.workspace.onDidGrantWorkspaceTrust = () => ({ dispose() {} });
@@ -21,7 +21,7 @@ async function run(root, tmp, { core = 'accept', trusted = true } = {}) {
   for (const k of Object.keys(require.cache)) if (k.startsWith(root + path.sep) && !k.includes(`${path.sep}test${path.sep}`)) delete require.cache[k];
   const home = tmp('home');
   fixture.codexHome(home, [{ title: 'One', cwd: home, turns: [{}] }]);
-  control.state.config = { codexHome: home, installWorkPlanPlugin: 'never', reopenDroppedTabs: false, patchCodex: 'off' };
+  control.state.config = { codexHome: home, installWorkPlanPlugin: 'never', reopenDroppedTabs: false, patchCodex: 'off', ...config };
   const registered = [];
   if (core) {
     const registerSource = (s) => {
@@ -83,6 +83,21 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
     ['codexExtras.showAllFolders', 'codexExtras.openSettings'], 'the ... menu holds the two that are not everyday actions');
   const menus = [].concat(...Object.values(pkg.contributes.menus)).map((m) => m.command);
   eq(menus.filter((c) => !byCommand.has(c)), [], 'every command a menu names is declared');
+
+  /*
+   * The tab bar's button starts a conversation and never raises one that is open. Before this, it opened the one last
+   * in front, which with a single Codex tab already in front moved the focus and looked like nothing happened.
+   */
+  for (const [target, want] of [['tab', 'chatgpt.newCodexPanel'], ['sidebar', 'chatgpt.openSidebar']]) {
+    const w = await run(root, tmp, { config: { openButtonTarget: target } });
+    const handler = w.state.handlers['codexExtras.openCodex'];
+    if (!handler) { bad('the tab bar button has no handler'); break; }
+    const before = w.state.commands.length;
+    await handler();
+    const after = w.state.commands.slice(before).map((c) => c[0]);
+    eq([after, after.includes('vscode.openWith')], [[want], false],
+      `with openButtonTarget ${target} the button runs ${want} and opens no conversation of its own`);
+  }
 
   /* The Codex commands this extension runs, against the Codex installed here: New in sidebar needs no patch, since
      Codex contributes both commands it uses. */

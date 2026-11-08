@@ -16,7 +16,7 @@
 | Thread ID and group on hover; find by title or four hex characters of the ID | Codex sessions view | — |
 | Date span `11d · 09/05→09/16`; title colours; background threads left out | Codex sessions view | — |
 | Delete an archived conversation | Codex sessions view, right-click | — |
-| Codex button on the tab bar: the Codex conversation last in front, in a tab, or a new one | Editor title bar | `codexExtras.openButtonTarget`: `tab` (default) or `sidebar` |
+| Codex button on the tab bar: a new Codex conversation, in a tab or in the sidebar | Editor title bar | `codexExtras.openButtonTarget`: `tab` (default) or `sidebar` |
 | Tabs VS Code did not restore after a reconnect are opened again | Editor tabs | — |
 | Session information: thread ID, app-server PID, folder, rollout and size, context share, tokens the conversation used | Command | — |
 | Green / red dot on a Codex tab's logo while working / replied and unread | Editor tabs | Patch |

@@ -317,7 +317,7 @@
             "sidebar"
           ],
           "enumDescriptions": [
-            "The Codex conversation last in front, in a tab; a new one in a tab when there is none",
+            "A new Codex conversation in a tab",
             "Codex's sidebar"
           ],
           "default": "tab",
