@@ -47,14 +47,14 @@ function rows(id, { pid = appServerPid() } = {}) {
   const t = (files.listThreads() || []).find((x) => x.id === id) || { id, title: '', cwd: '', rollout: '' };
   const rollout = t.rollout || files.rolloutOf(id);
   let bytes = -1;
-  try { bytes = fs.statSync(rollout).size; } catch (_) { bytes = -1; }
+  try { bytes = fs.statSync(files.existingRollout(rollout) || rollout).size; } catch (_) { bytes = -1; }
   const st = rollout ? files.rolloutState(rollout) : null;
   const out = [
     { label: 'Thread id', value: id },
     { label: 'Title', value: t.title },
     { label: 'codex app-server pid (this window)', value: pid },
     { label: 'Starting directory', value: t.cwd },
-    { label: 'Rollout', value: rollout || '' },
+    { label: 'Rollout', value: files.existingRollout(rollout) || rollout || '' },
     { label: 'Rollout size', value: bytes >= 0 ? size(bytes) : '' },
   ];
   if (st && st.model) out.push({ label: 'Model and effort', value: [st.model, st.effort].filter(Boolean).join(' ') });

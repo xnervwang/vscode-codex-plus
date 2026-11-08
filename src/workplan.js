@@ -55,7 +55,7 @@ function liveSessions(home = files.codexHome()) {
   const threads = files.listThreads(home);
   if (!threads || !threads.length) return null;
   const live = new Set();
-  for (const t of threads) if (!t.rollout || fs.existsSync(t.rollout)) live.add(t.id);
+  for (const t of threads) if (!t.rollout || files.existingRollout(t.rollout)) live.add(t.id);
   return live.size ? live : null;
 }
 

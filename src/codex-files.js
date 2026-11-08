@@ -210,8 +210,35 @@ function unreadThreads(home = codexHome()) {
 const TAIL_START = 64 * 1024;
 const TAIL_MAX = 4 * 1024 * 1024;
 
+/*
+ * Codex compresses a rollout untouched for a week into <name>.jsonl.zst and removes the plain file, while the state
+ * database keeps naming the plain one. So a rollout exists if either does, and a compressed one is read whole through
+ * zstd when this Node has it (Node 22.15 and later; VS Code's is newer), up to COMPRESSED_MAX.
+ */
+const COMPRESSED_MAX = 64 << 20;
+function existingRollout(file) {
+  if (!file) return '';
+  if (fs.existsSync(file)) return file;
+  if (fs.existsSync(file + '.zst')) return file + '.zst';
+  return '';
+}
+function compressedLines(file, limit) {
+  const zlib = require('zlib');
+  if (typeof zlib.zstdDecompressSync !== 'function') return [];
+  try {
+    if (fs.statSync(file).size > COMPRESSED_MAX) return [];
+    const text = zlib.zstdDecompressSync(fs.readFileSync(file)).toString('utf8');
+    const cut = Math.max(0, text.length - limit);
+    const tail = cut ? text.slice(text.indexOf('\n', cut) + 1) : text;
+    return tail.split('\n').filter((l) => l.trim()).reverse();
+  } catch (_) { return []; }
+}
+
 /** The complete lines in the last `limit` bytes of `file`, newest first. A line that starts before that point is left out. */
 function tailLines(file, limit = TAIL_START) {
+  const real = existingRollout(file);
+  if (real && real.endsWith('.zst')) return compressedLines(real, limit);
+  if (real) file = real;
   let fd;
   try { fd = fs.openSync(file, 'r'); } catch (_) { return []; }
   try {
@@ -229,7 +256,7 @@ function tailLines(file, limit = TAIL_START) {
   } catch (_) { return []; } finally { try { fs.closeSync(fd); } catch (_) { /* closed */ } }
 }
 
-function fileSize(file) { try { return fs.statSync(file).size; } catch (_) { return 0; } }
+function fileSize(file) { try { return fs.statSync(existingRollout(file) || file).size; } catch (_) { return 0; } }
 
 /** The first line of a rollout: session_meta, with the thread's source, cwd and originator. */
 function sessionMeta(file) {
@@ -318,7 +345,7 @@ function rolloutOf(id, home = codexHome(), threads = null) {
   if (!THREAD_ID.test(String(id || ''))) return '';
   const list = threads || listThreads(home) || [];
   const t = list.find((x) => x.id === id);
-  if (t && t.rollout && fs.existsSync(t.rollout)) return t.rollout;
+  if (t && t.rollout && existingRollout(t.rollout)) return t.rollout;
   return findRollout(id, home);
 }
 
@@ -329,7 +356,7 @@ function findRollout(id, home) {
     try { names = fs.readdirSync(dir).sort().reverse(); } catch (_) { return ''; }
     for (const n of names) {
       const p = path.join(dir, n);
-      if (depth === 3) { if (n.endsWith(id + '.jsonl')) return p; continue; }
+      if (depth === 3) { if (n.endsWith(id + '.jsonl')) return p; if (n.endsWith(id + '.jsonl.zst')) return p.slice(0, -4); continue; }
       const hit = walk(p, depth + 1);
       if (hit) return hit;
     }
@@ -339,6 +366,6 @@ function findRollout(id, home) {
 }
 
 module.exports = {
-  THREAD_ID, codexHome, setCodexHome, stateDbPath, query, listThreads, sourceKind, sections, unreadThreads, tailLines,
+  existingRollout, THREAD_ID, codexHome, setCodexHome, stateDbPath, query, listThreads, sourceKind, sections, unreadThreads, tailLines,
   sessionMeta, rolloutState, rolloutOf, closeAll,
 };

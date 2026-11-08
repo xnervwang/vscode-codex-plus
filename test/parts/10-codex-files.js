@@ -48,6 +48,21 @@ module.exports = ({ ok, bad, eq, tmp }) => {
       payload: { type: 'function_call_output', output: 'x'.repeat(300 * 1024) } }) + '\n');
     eq(files.rolloutState(big).model, 'gpt-test', 'grows the tail window past a long line');
 
+    // A rollout Codex compressed after a week: the database still names the plain file.
+    const zlib = require('zlib');
+    const plain = made[2].rollout;
+    if (typeof zlib.zstdCompressSync === 'function') {
+      fs.writeFileSync(plain + '.zst', zlib.zstdCompressSync(fs.readFileSync(plain)));
+      fs.renameSync(plain, plain + '.moved');
+      eq([files.existingRollout(plain), files.rolloutOf(made[2].id), files.rolloutState(plain).durationMs], [plain + '.zst', plain, 5000],
+        'a compressed rollout still counts as there, and its end is read through zstd');
+      fs.renameSync(plain + '.moved', plain);
+    } else {
+      fs.renameSync(plain, plain + '.zst');
+      eq(files.existingRollout(plain), plain + '.zst', 'a compressed rollout still counts as there (no zstd in this Node to read it)');
+      fs.renameSync(plain + '.zst', plain);
+    }
+
     // Without the database, the index still gives ids and titles.
     const bare = tmp('bare');
     fs.writeFileSync(path.join(bare, 'session_index.jsonl'),
