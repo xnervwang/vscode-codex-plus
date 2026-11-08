@@ -35,8 +35,6 @@ const POLL_MS = 3000;
 /* The protocol major this source implements; package.json repeats it under "agentWorkPlan". */
 const PROTOCOL = 1;
 const EXTENSION_ID = 'xnervwang.codex-extras';
-/* Delivery ids already handled, so an answer handed over twice is typed once. */
-const REMEMBERED = 200;
 
 function logoOf(vscode, exists = require('fs').existsSync) {
   const ext = vscode.extensions.getExtension('openai.chatgpt');
@@ -85,7 +83,36 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
   const changed = new vscode.EventEmitter();
   const focused = new vscode.EventEmitter();
   let timer = null;
+  /* Delivery ids already handled, so an answer handed over twice is typed once. Never trimmed: an id that fell off the
+     end would be typed a second time, which is the one thing it is here to prevent. */
   const delivered = new Set();
+  const subs = [];
+  /*
+   * Whether the reader has gone somewhere else since Codex's sidebar last came to the front. The sidebar has no signal
+   * of its own for still being where they are looking: the broadcast behind it (src/patching.js,
+   * thread-stream-following-changed) says which conversation it started following and nothing after that, and VS Code
+   * tells an extension nothing about which view has keyboard focus. The active editor tab becoming a tab that is not
+   * Codex's is as close as it gets, and it is what Agent Work Plan's question a moment later turns on.
+   */
+  let leftSidebar = false;
+  let frontTab;
+  const activeTab = () => {
+    const groups = vscode.window.tabGroups;
+    const group = groups && groups.activeTabGroup;
+    return group ? group.activeTab : undefined;
+  };
+  const tabsChanged = () => {
+    const tab = activeTab();
+    if (tab === frontTab) return;
+    frontTab = tab;
+    if (tab && !tabs.isCodexTab(vscode, tab)) leftSidebar = true;
+  };
+  {
+    const groups = vscode.window.tabGroups;
+    for (const name of ['onDidChangeTabs', 'onDidChangeTabGroups']) {
+      if (groups && typeof groups[name] === 'function') { try { subs.push(groups[name](tabsChanged)); } catch (_) { /* no tab events here */ } }
+    }
+  }
 
   const openThreads = () => tabs.codexTabs(vscode).map((t) => t.thread);
   function poll() {
@@ -112,10 +139,15 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
       return tabs.isCodexTab(vscode, tab) ? '' : null;
     },
     onDidFocus: focused.event,
-    /* Whether `sessionId` is still in front: its tab is the active one, or Codex's sidebar follows it (the patch says). */
+    /*
+     * Whether `sessionId` is still in front: its own tab is the active one, or Codex's sidebar came to the front with
+     * it and the reader has not gone to a tab of something else since. Without that second condition the sidebar would
+     * answer for a conversation the reader left, and the work plan view would be pulled back to it.
+     */
     isFocused(sessionId) {
+      if (!sessionId) return false;
       if (tabs.activeThread(vscode) === sessionId) return true;
-      return !!(patching && patching.sidebarThread() === sessionId);
+      return !leftSidebar && !!(patching && patching.sidebarThread() === sessionId);
     },
     async listConversations() {
       const snap = await reader.ready(files.codexHome());
@@ -160,16 +192,26 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
       if (id && delivered.has(id)) return { outcome: 'uncertain' };
       if (!trusted() || !patching) return { outcome: 'notReceived', reason: 'this window cannot type into Codex' };
       const r = await patching.deliver(sessionId, text);
-      if (id && r.outcome !== 'notReceived') {
-        delivered.add(id);
-        if (delivered.size > REMEMBERED) delivered.delete(delivered.values().next().value);
-      }
+      if (id && r.outcome !== 'notReceived') delivered.add(id);
       return r;
     },
-    /* For the patch: a conversation came to the front outside an editor tab (Codex's sidebar). */
-    _focus(sessionId) { if (sessionId) focused.fire({ sessionId }); },
+    /* For the patch: a conversation came to the front outside an editor tab (Codex's sidebar). The reader acted in the
+       sidebar to make that happen, so this is where they are looking until a tab says otherwise. */
+    _focus(sessionId) {
+      if (!sessionId) return;
+      leftSidebar = false;
+      frontTab = activeTab();
+      focused.fire({ sessionId });
+    },
     _poll: poll,
-    dispose() { if (timer) clearInterval(timer); changed.dispose(); focused.dispose(); },
+    /* For tests: the tab listener this source installed, without an editor to fire it. */
+    _tabsChanged: tabsChanged,
+    dispose() {
+      if (timer) clearInterval(timer);
+      for (const d of subs.splice(0)) { try { d.dispose(); } catch (_) { /* already disposed */ } }
+      changed.dispose();
+      focused.dispose();
+    },
   };
   timer = setInterval(poll, POLL_MS);
   poll();

@@ -18,8 +18,9 @@
  *                         a chime when a turn there finishes or its plan asks a question; and a strip with the last
  *                         turn's figures and the tool call running now (src/page/codex-extras-page.js draws both)
  *   window broadcasts     a thread this window starts following in a view that is not one of its tabs is taken to be
- *                         in front in the sidebar (onDidFocus); Agent Work Plan checks that with sidebarThread()
- *                         before it takes the report
+ *                         in front in the sidebar (onDidFocus). sidebarThread() is the last such thread, and nothing
+ *                         is reported after it: whether the reader is still looking at the sidebar is the source's to
+ *                         work out from the active tab (src/codex-source.js isFocused)
  *   page messages         the reader's time zone, from the page
  */
 const path = require('path');
@@ -31,7 +32,8 @@ let state = { active: false, reason: 'not checked yet', provider: null };
 const panels = new Map();
 let deps = null;
 let last = new Map();
-/* The thread Codex's sidebar last started following, as the broadcast says, or ''. */
+/* The thread Codex's sidebar last started following, as the broadcast says, or ''. It is never cleared: the broadcast
+   only ever says a thread started being followed. */
 let sidebar = '';
 
 function codexPath(vscode) {

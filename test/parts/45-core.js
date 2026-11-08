@@ -56,7 +56,10 @@ module.exports = async ({ eq, note, tmp, root }) => {
   try {
     const exported = require(path.join(core, 'extension.js')).activate(coreContext);
     Object.assign(coreEntry, { isActive: true, exports: exported });
-    eq([control.state.context['agentWorkPlan.active'], exported.agentWorkPlan.protocol], [true, 1], 'Agent Work Plan sees Codex Extras depends on it, and speaks protocol 1');
+    /* The core hides its views by one key that reads the other way round: it is set only once the core has worked out
+       that nothing uses it. */
+    eq([control.state.context['agentWorkPlan.alone'], exported.agentWorkPlan.protocol], [false, 1],
+      'Agent Work Plan sees Codex Extras depends on it, and speaks protocol 1');
     await require(path.join(root, 'extension.js')).activate(selfContext);
     await wait(400);
     eq([control.state.context['codexExtras.registered'], control.state.log.some((l) => /conversation source registered: Codex \(codex\)/.test(l))],

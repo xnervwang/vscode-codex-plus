@@ -84,8 +84,23 @@ module.exports = async ({ ok, bad, eq, tmp }) => {
       eq(stale.state, 'idle', 'a turn silent for hours is no longer counted as working');
 
       control.setTabs([control.codexTab(idle.id)], 0);
-      eq([source.isFocused(idle.id), source.isFocused(unread.id), source.isFocused(working.id)], [true, true, false],
+      eq([source.isFocused(idle.id), source.isFocused(unread.id), source.isFocused(working.id), source.isFocused('')], [true, true, false, false],
         'isFocused: the active tab, or the thread Codex\'s sidebar follows');
+      /*
+       * Agent Work Plan asks a moment after each report, and by then the reader can be somewhere else. The sidebar says
+       * nothing about that, so the active tab becoming a tab that is not Codex's is what ends it: answering true then
+       * would pull the work plan view back to a conversation the reader has left.
+       */
+      source._focus(unread.id);
+      control.setTabs([control.fileTab('/w/elsewhere.js')], 0);
+      source._tabsChanged();
+      const afterLeaving = source.isFocused(unread.id);
+      control.setTabs([control.codexTab(idle.id)], 0);
+      source._tabsChanged();
+      const backOnACodexTab = source.isFocused(unread.id);
+      source._focus(unread.id);
+      eq([afterLeaving, backOnACodexTab, source.isFocused(unread.id)], [false, false, true],
+        'the sidebar stops answering for a conversation once the reader goes to a tab of something else, until it comes to the front again');
       eq([source.canDeliver(idle.id), source.canDeliver(working.id)], [true, false], 'an answer can go only to a conversation the patch can type into');
       const d1 = await source.deliverAnswer(idle.id, 'once', { deliveryId: 'd-1' });
       const d2 = await source.deliverAnswer(idle.id, 'once', { deliveryId: 'd-1' });
@@ -94,6 +109,18 @@ module.exports = async ({ ok, bad, eq, tmp }) => {
       trusted = true;
       eq([d1, d2, d3.outcome, source.canDeliver(idle.id), typed], [{ outcome: 'uncertain' }, { outcome: 'uncertain' }, 'notReceived', true, ['once']],
         'a draft Codex cannot confirm is uncertain; the same delivery id is typed once; Restricted Mode types nothing');
+      /* Every delivery id is kept for as long as this source is registered. One forgotten to make room would be typed a
+         second time, which is the one thing remembering it prevents. A notReceived is still not kept: nothing was typed,
+         and the sender may try again. */
+      for (let i = 0; i < 400; i++) await source.deliverAnswer(idle.id, 'bulk', { deliveryId: `bulk-${i}` });
+      const again = await source.deliverAnswer(idle.id, 'the very first one again', { deliveryId: 'd-1' });
+      trusted = false;
+      await source.deliverAnswer(idle.id, 'refused', { deliveryId: 'd-3' });
+      trusted = true;
+      const retried = await source.deliverAnswer(idle.id, 'retried', { deliveryId: 'd-3' });
+      eq([again, retried.outcome, typed.filter((t) => t === 'the very first one again').length, typed.filter((t) => t === 'retried').length],
+        [{ outcome: 'uncertain' }, 'uncertain', 0, 1],
+        'a delivery id from 400 answers ago is still recognised, and one that was not received can be sent again');
 
       control.state.openWith = (uri) => control.setTabs([control.codexTab(uri.path.split('/').pop())]);
       const here = await source.reveal(idle.id, { title: 'Idle here' });
