@@ -156,7 +156,7 @@
         {
           "id": "codexExtras.sessions",
           "name": "Codex sessions",
-          "when": "config.codexExtras.sessionList"
+          "when": "codexExtras.standalone && config.codexExtras.sessionList"
         }
       ],
       "codexExtrasConversations": [
@@ -170,6 +170,13 @@
           "id": "codexExtras.answer",
           "name": "Answer",
           "when": "codexExtras.standalone && config.codexExtras.workPlan && config.codexExtras.conversations"
+        }
+      ],
+      "claudeCodeExtras": [
+        {
+          "id": "codexExtras.sessionsHosted",
+          "name": "Codex sessions",
+          "when": "codexExtras.hosted && config.codexExtras.sessionList"
         }
       ]
     },
@@ -202,22 +209,22 @@
         },
         {
           "command": "codexExtras.newInTab",
-          "when": "view == codexExtras.sessions",
+          "when": "view =~ /^codexExtras\\.sessions(Hosted)?$/",
           "group": "navigation@0"
         },
         {
           "command": "codexExtras.newInSidebar",
-          "when": "view == codexExtras.sessions",
+          "when": "view =~ /^codexExtras\\.sessions(Hosted)?$/",
           "group": "navigation@1"
         },
         {
           "command": "codexExtras.findThread",
-          "when": "view == codexExtras.sessions",
+          "when": "view =~ /^codexExtras\\.sessions(Hosted)?$/",
           "group": "navigation@2"
         },
         {
           "command": "codexExtras.refreshSessions",
-          "when": "view == codexExtras.sessions",
+          "when": "view =~ /^codexExtras\\.sessions(Hosted)?$/",
           "group": "navigation@3"
         }
       ],
@@ -229,32 +236,32 @@
         },
         {
           "command": "codexExtras.openThreadInTab",
-          "when": "view == codexExtras.sessions && viewItem =~ /^codexExtrasThread/",
+          "when": "view =~ /^codexExtras\\.sessions(Hosted)?$/ && viewItem =~ /^codexExtrasThread/",
           "group": "1_open@1"
         },
         {
           "command": "codexExtras.openThreadInSidebar",
-          "when": "view == codexExtras.sessions && viewItem =~ /^codexExtrasThread/",
+          "when": "view =~ /^codexExtras\\.sessions(Hosted)?$/ && viewItem =~ /^codexExtrasThread/",
           "group": "1_open@2"
         },
         {
           "command": "codexExtras.copyThreadId",
-          "when": "view == codexExtras.sessions && viewItem =~ /^codexExtrasThread/",
+          "when": "view =~ /^codexExtras\\.sessions(Hosted)?$/ && viewItem =~ /^codexExtrasThread/",
           "group": "2_info@1"
         },
         {
           "command": "codexExtras.sessionInfo",
-          "when": "view == codexExtras.sessions && viewItem =~ /^codexExtrasThread/",
+          "when": "view =~ /^codexExtras\\.sessions(Hosted)?$/ && viewItem =~ /^codexExtrasThread/",
           "group": "2_info@2"
         },
         {
           "command": "codexExtras.setTitleColor",
-          "when": "view == codexExtras.sessions && viewItem =~ /^codexExtrasThread/",
+          "when": "view =~ /^codexExtras\\.sessions(Hosted)?$/ && viewItem =~ /^codexExtrasThread/",
           "group": "3_look@1"
         },
         {
           "command": "codexExtras.deleteArchivedThread",
-          "when": "view == codexExtras.sessions && viewItem == codexExtrasThreadArchived",
+          "when": "view =~ /^codexExtras\\.sessions(Hosted)?$/ && viewItem == codexExtrasThreadArchived",
           "group": "9_delete@1"
         }
       ],

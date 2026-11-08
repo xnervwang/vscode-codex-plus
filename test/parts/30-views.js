@@ -112,8 +112,20 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
       const shared = views.filter((v) => ['codexExtras.workPlan', 'codexExtras.conversations', 'codexExtras.answer'].includes(v.id));
       eq(shared.map((v) => /(^|&& )codexExtras\.standalone( |$)/.test(v.when)), [true, true, true],
         'the work plan, Conversations and Answer views show only when this extension draws them');
-      if (views.every((v) => !/codexExtras\.hosted/.test(v.when || ''))) ok('no view waits for a hosted key, which is unset before activation');
-      else bad('a view uses codexExtras.hosted');
+      eq(views.filter((v) => /codexExtras\.hosted/.test(v.when || '')).map((v) => v.id), ['codexExtras.sessionsHosted'],
+        'only the copy of the session list in the host\'s container waits for the hosted key');
+      const sessionViews = Object.entries(pkg.contributes.views).flatMap(([container, list]) => list
+        .filter((v) => /^codexExtras\.sessions/.test(v.id)).map((v) => [container, v.id, v.when]));
+      eq(sessionViews, [
+        ['codexExtras', 'codexExtras.sessions', 'codexExtras.standalone && config.codexExtras.sessionList'],
+        ['claudeCodeExtras', 'codexExtras.sessionsHosted', 'codexExtras.hosted && config.codexExtras.sessionList'],
+      ], 'the session list sits in this extension\'s container alone and in the host\'s container with a host, never both');
+      const holds = (when, ctx) => when.split(' && ').every((k) => (k.startsWith('config.') ? true : !!ctx[k]));
+      const visible = (ctx) => views.filter((v) => holds(v.when || '', ctx)).map((v) => v.id).sort();
+      eq(visible({}), [], 'before activation no view of this extension shows');
+      eq(visible({ 'codexExtras.hosted': true }), ['codexExtras.sessionsHosted'], 'with a host only the session list shows, in the host\'s container');
+      eq(visible({ 'codexExtras.standalone': true }), ['codexExtras.answer', 'codexExtras.conversations', 'codexExtras.sessions', 'codexExtras.workPlan'],
+        'alone, everything shows in this extension\'s containers');
       eq([pkg.contributes.viewsContainers.activitybar[0].icon, pkg.contributes.viewsContainers.panel[0].icon, pkg.icon],
         ['images/workplan.svg', 'images/workplan.svg', 'images/icon.png'], 'the containers use workplan.svg and the extension icon.png');
       if (['icon.png', 'icon.svg', 'workplan.svg'].every((f) => fs.existsSync(path.join(root, 'images', f)))) ok('the three images are in the repository');

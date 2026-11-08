@@ -51,9 +51,11 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
 
   const hosted = await run(root, tmp, true);
   eq([hosted.registered.length, hosted.registered[0] && hosted.registered[0].id], [1, 'codex'], 'with a host, the Codex source is registered with it');
-  eq(hosted.state.context['codexExtras.standalone'], false, 'and the standalone key is false');
+  eq([hosted.state.context['codexExtras.standalone'], hosted.state.context['codexExtras.hosted']], [false, true],
+    'and the standalone key is false, the hosted key true');
   eq(shared.filter((v) => hosted.state.views.includes(v)), [], 'and none of the shared views is drawn here');
   eq(hosted.state.status.filter((s) => s.shown).length, 0, 'and no status bar entry is made');
-  if (hosted.state.views.includes('codexExtras.sessions')) ok('the Codex session list, which no host draws, is still here');
-  else bad('the Codex session list is missing with a host');
+  if (hosted.state.views.includes('codexExtras.sessionsHosted')) ok('the Codex session list is registered for the host\'s container too');
+  else bad('the hosted session list view has no provider');
+  eq(alone.state.context['codexExtras.hosted'], false, 'alone, the hosted key is false');
 };

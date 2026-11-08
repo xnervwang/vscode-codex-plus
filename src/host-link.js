@@ -10,13 +10,18 @@
  * The host is xnervwang.claude-code-extras when it is installed, enabled, and its activate() returned a workPlanHost whose
  * `majors` include the source's `protocol`. Then the Codex source is registered with it and this extension draws none
  * of those views. Otherwise this extension sets codexExtras.standalone, which every one of its shared views is gated on,
- * and draws them itself. When claude-code-extras is there but cannot take this source - too old to have the API, or
+ * and draws them itself. The Codex session list, which no host draws, is contributed twice - into this extension's
+ * container under the standalone key and into the host's container under the hosted key - so it always sits in the
+ * one sidebar there is. When claude-code-extras is there but cannot take this source - too old to have the API, or
  * past this major - the user is told once that updating it puts both agents in one sidebar; until then there are two.
  * The key says "draw" rather than "hosted": before this extension activates it is unset, so a view gated on it stays
  * hidden in that moment instead of flashing up and away when there is a host.
  */
 const HOST_ID = 'xnervwang.claude-code-extras';
 const CONTEXT_KEY = 'codexExtras.standalone';
+/* Set once the source is registered: the Codex session list then shows in the host's own container, so the activity
+   bar never carries two icons. Like the standalone key it is unset before activation, so neither copy flashes up. */
+const HOSTED_KEY = 'codexExtras.hosted';
 const TOLD_KEY = 'codexExtras.toldHostTooOld';
 
 /*
@@ -54,9 +59,11 @@ async function link(vscode, source, { onHosted = () => {}, log = () => {}, memen
     try { state.registration = host.registerSource(source); } catch (e) { log(`workPlanHost.registerSource failed: ${e.message}`); return false; }
     state.hosted = true;
     await vscode.commands.executeCommand('setContext', CONTEXT_KEY, false);
+    await vscode.commands.executeCommand('setContext', HOSTED_KEY, true);
     return true;
   };
   if (await tryHost()) return state;
+  await vscode.commands.executeCommand('setContext', HOSTED_KEY, false);
   await vscode.commands.executeCommand('setContext', CONTEXT_KEY, true);
   if (state.incompatible && memento && !memento.get(TOLD_KEY)) {
     await memento.update(TOLD_KEY, true);
@@ -70,4 +77,4 @@ async function link(vscode, source, { onHosted = () => {}, log = () => {}, memen
   return state;
 }
 
-module.exports = { HOST_ID, CONTEXT_KEY, TOLD_KEY, probeHost, findHost, hostHas, link };
+module.exports = { HOST_ID, CONTEXT_KEY, HOSTED_KEY, TOLD_KEY, probeHost, findHost, hostHas, link };

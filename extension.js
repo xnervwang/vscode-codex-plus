@@ -95,7 +95,9 @@ async function activate(context) {
   let lastConversations = new Map();
   const sessionsProvider = new SessionsProvider(vscode, { memory, memento: context.globalState, settings,
     stateOf: (id) => lastConversations.get(id) });
+  /* One provider, two views: this extension's container when it draws alone, the host's container when it has one. */
   context.subscriptions.push(vscode.window.registerTreeDataProvider('codexExtras.sessions', sessionsProvider));
+  context.subscriptions.push(vscode.window.registerTreeDataProvider('codexExtras.sessionsHosted', sessionsProvider));
   context.subscriptions.push(vscode.window.registerFileDecorationProvider(sessionsProvider));
 
   /* ── The shared views: handed to claude-code-extras when it is the host, drawn here otherwise. ── */
