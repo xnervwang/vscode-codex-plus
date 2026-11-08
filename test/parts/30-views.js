@@ -97,6 +97,22 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
       control.state.extensions.set(hostLink.HOST_ID, { isActive: true, exports: {} });
       linked = await hostLink.link(vscode, source, { memento: fake.memento() });
       eq([linked.hosted, told.length], [false, 2], 'claude-code-extras without the API counts as too old, with the same one notice');
+      const asked = [];
+      vscode.window.showInformationMessage = async (m, ...buttons) => { asked.push([m, buttons]); return buttons[0]; };
+      control.state.commands.length = 0;
+      control.state.extensions.set(hostLink.HOST_ID, host([2]));
+      await hostLink.link(vscode, source, { memento: fake.memento() });
+      await new Promise((r) => setImmediate(r));
+      const installs = () => control.state.commands.filter((c) => c[0] === 'workbench.extensions.installExtension').map((c) => c[1]);
+      eq([/Update Claude Code Extras/.test(asked[0][0]), asked[0][1], installs()], [true, ['Update Claude Code Extras'], [hostLink.HOST_ID]],
+        'a host too old for major 3: the notice names claude-code-extras, and its button updates that extension');
+      control.state.commands.length = 0;
+      control.state.extensions.set(hostLink.HOST_ID, host([4]));
+      await hostLink.link(vscode, source, { memento: fake.memento() });
+      await new Promise((r) => setImmediate(r));
+      eq([/Update Codex Extras/.test(asked[1][0]), asked[1][1], installs()], [true, ['Update Codex Extras'], ['xnervwang.codex-extras']],
+        'a host past major 3: the notice names this extension instead, and its button updates this one');
+      vscode.window.showInformationMessage = async (m) => { told.push(m); };
       eq([hostLink.hostHas({ features: ['x'] }, 'x'), hostLink.hostHas({ features: [] }, 'x'), hostLink.hostHas({}, 'x')], [true, false, false],
         'an optional host capability is used only when the host lists it');
       control.state.extensions.delete(hostLink.HOST_ID);
