@@ -158,9 +158,32 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
     unreadable.add(shape);
     log(`a Codex tab does not name its conversation and the patch could not say which it is: ${shape}`);
   }
-  function poll() {
-    reader.refresh({ home: files.codexHome(), extra: openThreads() }).then((moved) => { if (moved) changed.fire(); })
-      .catch((e) => log(`codex source: ${(e && e.message) || e}`));
+  /*
+   * Conversations whose rollout state was asked for beyond the ones the reader reads by itself - the rows of a history
+   * group somebody expanded. They ride the poll that was due anyway, so no timer is added, and they stay in the set so
+   * the answer is kept rather than read again every pass.
+   */
+  const wanted = new Set();
+  function poll({ force = false } = {}) {
+    const extra = [...new Set([...openThreads(), ...wanted])];
+    return reader.refresh({ home: files.codexHome(), extra, force }).then((moved) => {
+      // An answered request is dropped: the reader holds that state, so asking again would read the rollout afresh
+      // every pass for a row that has not changed.
+      for (const id of [...wanted]) if (reader.state(id)) wanted.delete(id);
+      if (moved) changed.fire();
+    }).catch((e) => log(`codex source: ${(e && e.message) || e}`));
+  }
+  /*
+   * Ask for the rollout state of conversations the reader passes over, for rows now on screen. One pass is made at
+   * once, because the stamp has not moved and the next poll would answer "nothing changed" and read nothing; after
+   * that they ride the ordinary poll. No timer is added.
+   */
+  function wantState(ids) {
+    let added = false;
+    for (const id of ids || []) if (id && !wanted.has(id) && !reader.state(id)) { wanted.add(id); added = true; }
+    if (!added) return Promise.resolve(false);
+    const go = () => poll({ force: true });
+    return reader.busy ? Promise.resolve(reader.busy).then(go, go) : go();
   }
 
   const source = {
@@ -256,8 +279,10 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
       focused.fire({ sessionId });
     },
     _poll: poll,
+    wantState,
     /* For tests: the tab listener this source installed, without an editor to fire it. */
     _tabsChanged: tabsChanged,
+    _wanted: wanted,
     dispose() {
       if (timer) clearInterval(timer);
       for (const d of subs.splice(0)) { try { d.dispose(); } catch (_) { /* already disposed */ } }
@@ -265,7 +290,7 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
       focused.dispose();
     },
   };
-  timer = setInterval(poll, POLL_MS);
+  timer = setInterval(() => poll(), POLL_MS);
   poll();
   return source;
 }

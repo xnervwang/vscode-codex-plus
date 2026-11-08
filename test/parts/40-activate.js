@@ -43,7 +43,7 @@ async function run(root, tmp, { core = 'accept', trusted = true } = {}) {
   return out;
 }
 
-module.exports = async ({ ok, bad, eq, tmp, root }) => {
+module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
   const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
   const declared = pkg.contributes.commands.map((c) => c.command);
 
@@ -68,4 +68,38 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
   const restricted = await run(root, tmp, { trusted: false });
   if (restricted.registered.length === 1 && !restricted.wroteSettings) ok('in Restricted Mode it still registers, and writes nothing');
   else bad(`restricted: ${JSON.stringify([restricted.registered.length, restricted.wroteSettings])}`);
+
+  /* ── the session list's own title bar: what a reader sees on it, and what is a click further away ── */
+  const title = (pkg.contributes.menus['view/title'] || []).filter((m) => /codexExtras\.sessions/.test(m.when || ''));
+  const onBar = title.filter((m) => /^navigation/.test(m.group || ''));
+  const byCommand = new Map(pkg.contributes.commands.map((c) => [c.command, c]));
+  eq(onBar.length <= 4, true, `at most four buttons sit on the title bar, the rest in its ... menu (there are ${onBar.length})`);
+  eq(onBar.sort((a, b) => a.group.localeCompare(b.group)).map((m) => m.command),
+    ['codexExtras.newInTab', 'codexExtras.newInSidebar', 'codexExtras.findThread', 'codexExtras.refreshSessions'],
+    'the two for opening a conversation come first, then search and refresh');
+  eq(onBar.filter((m) => !byCommand.get(m.command) || !byCommand.get(m.command).icon).map((m) => m.command), [],
+    'each of them has an icon, or it would show as a word on the bar');
+  eq(title.filter((m) => !/^navigation/.test(m.group || '')).map((m) => m.command),
+    ['codexExtras.showAllFolders', 'codexExtras.openSettings'], 'the ... menu holds the two that are not everyday actions');
+  const menus = [].concat(...Object.values(pkg.contributes.menus)).map((m) => m.command);
+  eq(menus.filter((c) => !byCommand.has(c)), [], 'every command a menu names is declared');
+
+  /* The Codex commands this extension runs, against the Codex installed here: New in sidebar needs no patch, since
+     Codex contributes both commands it uses. */
+  const ours = fs.readFileSync(path.join(root, 'extension.js'), 'utf8');
+  const called = [...new Set((ours.match(/'chatgpt\.[A-Za-z]+'/g) || []).map((s) => s.slice(1, -1)))].sort();
+  eq(called, ['chatgpt.newChat', 'chatgpt.newCodexPanel', 'chatgpt.openSidebar'], 'it runs three commands of Codex\'s own');
+  const dirs = [];
+  for (const base of [path.join(require('os').homedir(), '.vscode-server', 'extensions'), path.join(require('os').homedir(), '.vscode', 'extensions')]) {
+    let names = [];
+    try { names = fs.readdirSync(base); } catch (_) { continue; }
+    for (const n of names) if (/^openai\.chatgpt-/.test(n)) dirs.push(path.join(base, n));
+  }
+  if (!dirs.length) note('no Codex extension installed here: the commands it contributes were not checked');
+  for (const dir of dirs) {
+    let codex;
+    try { codex = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8')); } catch (_) { continue; }
+    const has = new Set((codex.contributes.commands || []).map((c) => c.command));
+    eq(called.filter((c) => !has.has(c)), [], `${path.basename(dir)} contributes all three`);
+  }
 };

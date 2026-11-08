@@ -49,8 +49,16 @@ function rolloutLines({ id, cwd, source = 'vscode', turns = [], startMs }) {
       if (!t.toolRunning) out.push({ timestamp: iso(at + 3000), type: 'response_item', payload: {
         type: 'function_call_output', call_id: `call_${t.id}`, output: 'ok' } });
     }
+    /* Shaped as Codex 0.164 writes it: the turn's own usage, the thread's total, and a rate_limits record whose
+       quota fields are null, which is what every record on this machine holds. */
     out.push({ timestamp: iso(at + 4000), type: 'event_msg', payload: { type: 'token_count', info: {
-      last_token_usage: { input_tokens: t.context || 1000, output_tokens: 10 }, model_context_window: 258400 } } });
+      last_token_usage: { input_tokens: t.context || 1000, cached_input_tokens: 0, output_tokens: 10, reasoning_output_tokens: 4,
+        total_tokens: (t.context || 1000) + 10 },
+      total_token_usage: { input_tokens: t.total || 2000, cached_input_tokens: 7, output_tokens: 20, reasoning_output_tokens: 9,
+        total_tokens: (t.total || 2000) + 20 },
+      model_context_window: 258400 },
+    rate_limits: { limit_id: 'codex', limit_name: null, primary: null, secondary: null, credits: null, individual_limit: null,
+      spend_control_reached: null, plan_type: null, rate_limit_reached_type: null } } });
     if (!t.running) {
       out.push({ timestamp: iso(at + 5000), type: 'event_msg', payload: { type: t.aborted ? 'turn_aborted' : 'task_complete',
         turn_id: t.id, duration_ms: 5000, completed_at: Math.floor((at + 5000) / 1000), last_agent_message: t.reply || 'done' } });

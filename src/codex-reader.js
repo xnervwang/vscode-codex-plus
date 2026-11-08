@@ -14,6 +14,9 @@
 const path = require('path');
 
 const TIMEOUT_MS = 60000;
+/* How many states read on request to keep. One is a turn's figures, so this is kilobytes, and a list nobody could
+   scroll through in one sitting. */
+const HELD_MAX = 200;
 
 class CodexReader {
   constructor({ log = () => {}, inline = false, workerFile = path.join(__dirname, 'codex-worker.js') } = {}) {
@@ -27,6 +30,12 @@ class CodexReader {
     this.busy = null;
     this.closed = false;
     this.listeners = new Set();
+    /*
+     * Rollout states read because something asked for them, for threads too old for a snapshot to cover (the history
+     * group's rows). Kept against the thread's last-updated time, so one is used only while that thread has not moved,
+     * and the caller need not ask again on every pass.
+     */
+    this.held = new Map();
     if (!inline) this.start();
   }
 
@@ -92,15 +101,18 @@ class CodexReader {
    * Asks for a new snapshot of `home`, with the rollout states of `extra` threads too. Resolves to whether anything
    * changed. While one is in flight a second call shares it.
    */
-  refresh({ home, extra = [] } = {}) {
+  refresh({ home, extra = [], force = false } = {}) {
     if (this.busy) return this.busy;
-    const previous = this.snap && this.snap.home === home ? this.snap.stamp : '';
+    /* `force` is for a request for states the last stamp cannot have moved for: a snapshot asked to compare stamps
+       would answer "nothing changed" and read no rollout, and the rows that asked would stay blank. */
+    const previous = !force && this.snap && this.snap.home === home ? this.snap.stamp : '';
     this.busy = this.request('snapshot', { home, previous, extra }).then((r) => {
       if (!r || r.same) return false;
       this.snap = {
         home, stamp: r.stamp, readable: r.readable, threads: r.threads, byId: new Map(r.threads.map((t) => [t.id, t])),
         unread: new Map(r.unread), sections: new Map(r.sections), states: r.states || {}, plans: new Set(r.plans || []), at: Date.now(),
       };
+      this.hold(extra);
       for (const fn of [...this.listeners]) { try { fn(); } catch (_) { /* the others still hear it */ } }
       return true;
     }).catch((e) => { this.log(`codex reader: ${(e && e.message) || e}`); return false; })
@@ -116,11 +128,29 @@ class CodexReader {
 
   onDidChange(fn) { this.listeners.add(fn); return { dispose: () => this.listeners.delete(fn) }; }
 
+  /* Keep the states just read for the threads that were asked for, so the next pass need not read them again. */
+  hold(extra) {
+    for (const id of extra || []) {
+      const st = this.snap.states[id];
+      const t = this.snap.byId.get(id);
+      if (st && t) this.held.set(id, { at: t.updatedMs, state: st });
+    }
+    while (this.held.size > HELD_MAX) this.held.delete(this.held.keys().next().value);
+  }
+
   threads() { return this.snap ? this.snap.threads : null; }
   thread(id) { return (this.snap && this.snap.byId.get(id)) || null; }
   unread() { return this.snap ? this.snap.unread : new Map(); }
   sections() { return this.snap ? this.snap.sections : new Map(); }
-  state(id) { return (this.snap && this.snap.states[id]) || null; }
+  /* The snapshot's state, else one read on request while that thread has not moved since. */
+  state(id) {
+    const direct = this.snap && this.snap.states[id];
+    if (direct) return direct;
+    const h = this.held.get(id);
+    if (!h) return null;
+    const t = this.thread(id);
+    return t && t.updatedMs === h.at ? h.state : null;
+  }
   hasPlan(id) { return !!(this.snap && this.snap.plans.has(id)); }
   /* Whether the thread's rollout exists, as of the last snapshot; a thread the database does not know is not. */
   present(id) { const t = this.thread(id); return !!(t && t.present); }
@@ -131,7 +161,8 @@ class CodexReader {
     this.pending.clear();
     if (this.worker) { try { this.worker.terminate(); } catch (_) { /* gone */ } this.worker = null; }
     this.listeners.clear();
+    this.held.clear();
   }
 }
 
-module.exports = { CodexReader, TIMEOUT_MS };
+module.exports = { CodexReader, TIMEOUT_MS, HELD_MAX };

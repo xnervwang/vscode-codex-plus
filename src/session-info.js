@@ -61,6 +61,13 @@ function rows(id, { pid = appServerPid() } = {}) {
   if (st && st.context && st.context.window) {
     out.push({ label: 'Context in use', value: `${st.context.used} of ${st.context.window} (${Math.round(100 * st.context.used / st.context.window)}%)` });
   }
+  /* What this conversation has spent. Codex records no price and its rate-limit records carry no plan or quota here,
+     so there is no figure for a share of an allowance or for money - only tokens. */
+  if (st && st.tokens && st.tokens.total) {
+    const k = st.tokens;
+    out.push({ label: 'Tokens used by this conversation', value: `${k.total} (${k.input} in, ${k.output} out`
+      + `${k.cached ? `, ${k.cached} cached` : ''}${k.reasoning ? `, ${k.reasoning} reasoning` : ''})` });
+  }
   return out.filter((r) => r.value);
 }
 

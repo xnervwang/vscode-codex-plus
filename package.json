@@ -172,9 +172,24 @@
           "command": "codexExtras.refreshSessions",
           "when": "view == codexExtras.sessions",
           "group": "navigation@3"
+        },
+        {
+          "command": "codexExtras.showAllFolders",
+          "when": "view == codexExtras.sessions && config.codexExtras.sessionsInWorkspaceOnly",
+          "group": "1_list@1"
+        },
+        {
+          "command": "codexExtras.openSettings",
+          "when": "view == codexExtras.sessions",
+          "group": "9_settings@1"
         }
       ],
       "view/item/context": [
+        {
+          "command": "codexExtras.showAllFolders",
+          "when": "view == codexExtras.sessions && viewItem == codexExtrasGroup-other",
+          "group": "1_list@1"
+        },
         {
           "command": "codexExtras.openThreadInTab",
           "when": "view == codexExtras.sessions && viewItem =~ /^codexExtrasThread/",

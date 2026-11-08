@@ -286,6 +286,7 @@ function sessionMeta(file) {
  *   working        a task_started with no task_complete or turn_aborted after it
  *   turnId, startedMs, endedMs, durationMs
  *   context        { used, window } from the newest token_count
+ *   tokens         what the whole thread has spent, from the same record
  *   model, effort  from the newest turn_context
  *   lastTool       { name, startedMs, endedMs } of the newest tool call, for the working line
  *   error          the newest task_complete's error, if it failed
@@ -298,7 +299,7 @@ function rolloutState(file, lines = null) {
       if ((st.startedMs && st.model) || limit >= size || limit >= TAIL_MAX) return st;
     }
   }
-  const st = { working: false, turnId: '', startedMs: 0, endedMs: 0, durationMs: 0, context: null, model: '', effort: '',
+  const st = { working: false, turnId: '', startedMs: 0, endedMs: 0, durationMs: 0, context: null, tokens: null, model: '', effort: '',
     lastTool: null, error: '', lastActivityMs: 0, aborted: false };
   let sawEnd = false;
   for (const line of lines) {
@@ -316,6 +317,12 @@ function rolloutState(file, lines = null) {
         const last = p.info.last_token_usage || {};
         const used = +last.input_tokens || 0;
         if (used) st.context = { used, window: +p.info.model_context_window || 0 };
+        // The same record carries what the whole thread has spent, so it costs nothing more to keep.
+        const total = p.info.total_token_usage || {};
+        if (!st.tokens && +total.total_tokens) {
+          st.tokens = { total: +total.total_tokens || 0, input: +total.input_tokens || 0, output: +total.output_tokens || 0,
+            cached: +total.cached_input_tokens || 0, reasoning: +total.reasoning_output_tokens || 0 };
+        }
       } else if ((p.type === 'task_complete' || p.type === 'turn_aborted') && !sawEnd) {
         sawEnd = true;
         st.turnId = String(p.turn_id || '');

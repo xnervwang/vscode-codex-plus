@@ -56,6 +56,32 @@ module.exports = async ({ ok, bad, eq, tmp }) => {
     eq(await inWorker.refresh({ home }), false, 'a second snapshot with nothing moved says so and keeps the first');
     const rows = await inWorker.request('info', { home, id: idle.id });
     eq(rows.find((r) => r.label === 'Thread id').value, idle.id, 'Session Information is read in the worker too');
+    /* The one usage figure Codex records: tokens. Its rate-limit records carry no plan, quota or credit on this
+       machine, so there is no share-of-allowance or money figure to show (see the report). */
+    eq(rows.find((r) => r.label === 'Tokens used by this conversation').value, '2020 (2000 in, 20 out, 7 cached, 9 reasoning)',
+      'and it says what the conversation has spent, read from the token_count record already parsed for the context figure');
+
+    /*
+     * A conversation too old for a snapshot to cover, asked for on its own. Without `force` the stamp has not moved,
+     * so the snapshot answers "nothing changed" and reads no rollout - which is why asking has to force one pass.
+     */
+    await inWorker.refresh({ home });
+    const quiet = await inWorker.refresh({ home, extra: [old.id] });
+    const beforeAsk = inWorker.state(old.id);
+    const forced = await inWorker.refresh({ home, extra: [old.id], force: true });
+    const afterAsk = !!inWorker.state(old.id);
+    eq([quiet, beforeAsk, forced, afterAsk], [false, null, true, true],
+      'asking for an old conversation\'s state needs one forced pass; comparing stamps alone would read nothing and leave the row blank');
+    await inWorker.refresh({ home, force: true });
+    const stillKnown = !!inWorker.state(old.id);
+    inWorker.held.set(old.id, { at: 1, state: { working: true } });
+    const afterItMoved = inWorker.state(old.id);
+    eq([stillKnown, afterItMoved], [true, null],
+      'the answer is kept, so later passes need not read it again - but only while that conversation has not moved since');
+    const { HELD_MAX } = require('../../src/codex-reader');
+    for (let i = 0; i < HELD_MAX + 25; i++) inWorker.held.set(`spare-${i}`, { at: 0, state: {} });
+    inWorker.hold([]);
+    eq(inWorker.held.size, HELD_MAX, 'and what is kept is capped, oldest first');
     const broken = new CodexReader({ workerFile: path.join(tmp('nowhere'), 'missing.js'), log: () => {} });
     readers.push(broken);
     await broken.refresh({ home });
@@ -131,6 +157,16 @@ module.exports = async ({ ok, bad, eq, tmp }) => {
       const opened = control.state.commands.filter((c) => c[0] === 'vscode.openWith').map((c) => c[1].path.split('/').pop());
       eq([here, elsewhere, offered, opened], [true, false, true, [idle.id, unread.id]],
         'reveal: an open tab is brought forward; one running elsewhere is false; one not open is offered, and opened only on request');
+      /* A request for a state rides the poll the source already makes, and is dropped once answered, so the same old
+         rollout is not read again on every pass. */
+      inWorker.held.delete(old.id);
+      await inWorker.refresh({ home, force: true });
+      const wantedBefore = !!inWorker.state(old.id);
+      await source.wantState([old.id]);
+      eq([wantedBefore, !!inWorker.state(old.id), [...source._wanted]], [false, true, []],
+        'a conversation whose state was asked for is read once and then taken off the list');
+      eq(await source.wantState([idle.id]), false, 'one the reader already has is not asked for at all');
+
       eq(source.logo, null, 'no logo when the Codex extension has no logo files');
       const ext = tmp('ext');
       fs.mkdirSync(path.join(ext, 'resources'));

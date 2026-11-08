@@ -106,7 +106,7 @@ async function activate(context) {
   context.subscriptions.push(memory);
   let lastConversations = new Map();
   const sessionsProvider = new SessionsProvider(vscode, { memory, memento: context.globalState, settings, reader,
-    stateOf: (id) => lastConversations.get(id) });
+    stateOf: (id) => lastConversations.get(id), wantState: (ids) => source.wantState(ids) });
   context.subscriptions.push(vscode.window.registerTreeDataProvider('codexExtras.sessions', sessionsProvider));
   context.subscriptions.push(vscode.window.registerFileDecorationProvider(sessionsProvider));
   const redrawSessions = async () => {

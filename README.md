@@ -9,20 +9,29 @@
 | Reminder to bring `doing` rows up to date before an automatic compaction; pointer to the plan after one | Codex | Work plan plugin |
 | Your time zone told to Codex when it runs on another machine | Codex's context | Work plan plugin; the patch |
 | Answer a plan question from Agent Work Plan's Answer view, drafted into the conversation's message box | Codex tab | Patch; otherwise the answer stays in the Answer view |
-| Open in this window, recently closed, Codex's sections, archived | Codex sessions view, in the Codex Extras sidebar | — |
+| Open sessions, Recently closed, Pinned, Codex's sections, Ungrouped, Archived sessions, each with its count | Codex sessions view, in the Codex Extras sidebar | — |
+| Other folders: every conversation outside this workspace, by the folder it started in | Codex sessions view | — |
+| Open sessions covers tabs Codex opened with its own New button, which name no conversation in their URI | Codex sessions view | Patch |
 | New in tab / New in sidebar; Resume in tab / Resume in sidebar | Codex sessions view | Patch for Resume in sidebar |
 | Thread ID and group on hover; find by title or four hex characters of the ID | Codex sessions view | — |
 | Date span `11d · 09/05→09/16`; title colours; background threads left out | Codex sessions view | — |
 | Delete an archived conversation | Codex sessions view, right-click | — |
 | Codex button on the tab bar: the Codex conversation last in front, in a tab, or a new one | Editor title bar | `codexExtras.openButtonTarget`: `tab` (default) or `sidebar` |
 | Tabs VS Code did not restore after a reconnect are opened again | Editor tabs | — |
-| Session information: thread ID, app-server PID, folder, rollout and size | Command | — |
+| Session information: thread ID, app-server PID, folder, rollout and size, context share, tokens the conversation used | Command | — |
 | Green / red dot on a Codex tab's logo while working / replied and unread | Editor tabs | Patch |
 | Chime when a turn finishes or the plan asks a question | Codex tab | Patch |
 | Last turn's duration, context share, model and effort; the tool call running now | Codex tab, bottom right | Patch |
 
 - Codex's own button on the tab bar can be hidden: right-click it and choose Hide.
 - In Restricted Mode nothing is installed into Codex, Codex is not patched, and no file is written.
+
+## Not here
+
+| What Claude Code's session list has | Why Codex's does not |
+| --- | --- |
+| Account & usage | Codex records no plan, quota, credit or price anywhere this extension can read. Its rate-limit records hold only `limit_id`; every other field is null in all 1198 records of the 49 rollouts here, and there is no account file under `CODEX_HOME`. What it does record is tokens, which Session Information shows. |
+| Session manager | It is Claude Code's own collapsible section holding its session list. The Codex sessions view is that list, so there is no second thing to add. |
 
 ## Install
 
