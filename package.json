@@ -1,0 +1,56 @@
+{
+  "name": "codex-extras",
+  "displayName": "Codex Extras",
+  "description": "A work plan for OpenAI Codex conversations, a Conversations tab with their questions and running state, and a session list with the conversations open in this window.",
+  "version": "0.1.0",
+  "publisher": "xnervwang",
+  "license": "BSD-3-Clause",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/xnervwang/vscode-codex-extras"
+  },
+  "engines": {
+    "vscode": "^1.96.0"
+  },
+  "categories": [
+    "AI",
+    "Chat"
+  ],
+  "extensionDependencies": [
+    "openai.chatgpt"
+  ],
+  "keywords": [
+    "codex",
+    "openai",
+    "work-plan",
+    "plan",
+    "sessions",
+    "conversations"
+  ],
+  "extensionKind": [
+    "workspace"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "codexExtras.status",
+        "title": "Codex Extras: Show Status"
+      }
+    ],
+    "configuration": {
+      "title": "Codex Extras",
+      "properties": {
+        "codexExtras.codexHome": {
+          "type": "string",
+          "default": "",
+          "scope": "machine",
+          "markdownDescription": "The Codex home directory to read and to install into. Empty uses `CODEX_HOME` when it is set, otherwise `~/.codex`."
+        }
+      }
+    }
+  }
+}

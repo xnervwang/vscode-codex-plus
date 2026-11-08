@@ -1,0 +1,5 @@
+build/**
+test/**
+CONTRIBUTING.md
+**/__pycache__/**
+*.vsix
