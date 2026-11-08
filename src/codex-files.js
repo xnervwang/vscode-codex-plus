@@ -379,6 +379,6 @@ function findRollout(id, home) {
 }
 
 module.exports = {
-  existingRollout, THREAD_ID, COMPRESSED_MAX, DECOMPRESSED_MAX, codexHome, setCodexHome, stateDbPath, query, listThreads, sourceKind, sections, unreadThreads, tailLines,
+  existingRollout, THREAD_ID, THREAD_COLUMNS, COMPRESSED_MAX, DECOMPRESSED_MAX, codexHome, setCodexHome, stateDbPath, query, listThreads, sourceKind, sections, unreadThreads, tailLines,
   sessionMeta, rolloutState, rolloutOf, closeAll,
 };

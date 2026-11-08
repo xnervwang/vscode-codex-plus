@@ -38,12 +38,88 @@ function installedVersions(home) {
   try { return fs.readdirSync(cacheDir(home)).filter((v) => fs.existsSync(path.join(cacheDir(home), v, '.codex-plugin'))); } catch (_) { return []; }
 }
 
-/* Copy the marketplace to `stage`, replacing what an earlier version left there. */
-function stageMarketplace(stage, source = SOURCE) {
+/*
+ * Copy the marketplace to `stage`, replacing what an earlier version left there, and fit the copy to the Python found
+ * on this machine. `python` is what src/python-runtime.js findPython returned, or null when there is none.
+ */
+function stageMarketplace(stage, source = SOURCE, python = SHIPPED_PYTHON) {
   fs.mkdirSync(stage, { recursive: true });
   for (const name of fs.readdirSync(stage)) fs.rmSync(path.join(stage, name), { recursive: true, force: true });
   fs.cpSync(source, stage, { recursive: true, filter: (p) => !p.includes(`${path.sep}__pycache__`) });
+  fitHooks(stage, python);
   return path.join(stage, MANIFEST);
+}
+
+/* What the plugin ships as: the name in its own hooks and MCP server, which needs no fitting. */
+const SHIPPED = 'python3';
+const SHIPPED_PYTHON = { launcher: [SHIPPED], executable: SHIPPED, version: '' };
+/* A hook command as the plugin ships it; the program is replaced and the rest of the line is left exactly as it was. */
+const HOOK_COMMAND = /^python3 (".+")$/;
+/* Hook commands are a shell line, as the `$PLUGIN_ROOT` in them shows, so a program with a space in its path is
+   quoted the way the paths already in that line are. A Windows path cannot contain a double quote. */
+const quote = (w) => (/^[\w@%+=:,./\\-]+$/.test(w) ? w : `"${w.replace(/"/g, '')}"`);
+
+/**
+ * Fit a staged copy of the plugin to one Python, in place. Returns what was done, for the log.
+ *
+ * With `python3` nothing is written: that is what the plugin already says, and rewriting it to the same thing would
+ * change the plugin's file hashes, which is what Codex asks the reader to trust - so every install would ask again.
+ *
+ * With another Python, the three places that start it are pointed at the one that was found.
+ *
+ * A hook command is a shell line - the `$PLUGIN_ROOT` in it has to be expanded by something - so it gets the words a
+ * person would type (`py -3`, `python`) rather than the interpreter's path. A bare name needs no quoting and so runs
+ * whichever shell Codex uses, while a quoted path does not: PowerShell, which Codex uses on Windows, needs `&` in front
+ * of one, and there is no single spelling that runs in both it and a POSIX shell. The shipped command already resolves
+ * `python3` through PATH, so this keeps that property rather than taking on a new one. The only launcher with no name
+ * to use is a Python downloaded by this extension, which is a path and is quoted; plan_path.launcher_quoted marks that
+ * same case for the row command.
+ *
+ * The MCP server does get the full path, since Codex starts it as a program with its arguments rather than as a line
+ * for a shell, and hooks/launcher.json gets the launcher words, which is what the model is told to type
+ * (plan_path.py launcher, row_command).
+ *
+ * With no Python at all the copy keeps neither hooks, nor MCP server, nor skill. Hooks that cannot start would put an
+ * error in the conversation every turn, and the skill would have the model run a command that cannot start.
+ */
+function fitHooks(dir, python) {
+  const plugin = path.join(dir, PLUGIN);
+  const hooksFile = path.join(plugin, 'hooks', 'hooks.json');
+  const mcpFile = path.join(plugin, '.mcp.json');
+  if (!python) {
+    fs.writeFileSync(hooksFile, JSON.stringify({ hooks: {} }, null, 2) + '\n');
+    fs.writeFileSync(mcpFile, JSON.stringify({ mcpServers: {} }, null, 2) + '\n');
+    fs.rmSync(path.join(plugin, 'skills'), { recursive: true, force: true });
+    return { state: 'stripped', hooks: 0, launcher: [] };
+  }
+  if (python.launcher.length === 1 && python.launcher[0] === SHIPPED) {
+    return { state: 'shipped', hooks: hookKeys(dir).length, launcher: [SHIPPED] };
+  }
+  const program = python.launcher.map(quote).join(' ');
+  const config = JSON.parse(fs.readFileSync(hooksFile, 'utf8'));
+  let fitted = 0, strange = [];
+  for (const groups of Object.values(config.hooks || {})) {
+    for (const group of groups || []) {
+      for (const hook of group.hooks || []) {
+        const m = HOOK_COMMAND.exec(hook.command || '');
+        if (m) { hook.command = `${program} ${m[1]}`; fitted++; } else strange.push(hook.command || '(no command)');
+      }
+    }
+  }
+  // Loudly, because the alternative is a plugin installed with some hooks still naming a Python that is not there.
+  if (strange.length) throw new Error(`these hook commands are not in the form this extension knows how to fit to `
+    + `another Python: ${strange.join('; ')}`);
+  fs.writeFileSync(hooksFile, JSON.stringify(config, null, 2) + '\n');
+  const mcp = JSON.parse(fs.readFileSync(mcpFile, 'utf8'));
+  for (const server of Object.values(mcp.mcpServers || {})) {
+    if (server && server.command === SHIPPED) {
+      server.command = python.executable;
+      if (python.launcher.length > 1) server.args = python.launcher.slice(1).concat(server.args || []);
+    }
+  }
+  fs.writeFileSync(mcpFile, JSON.stringify(mcp, null, 2) + '\n');
+  fs.writeFileSync(path.join(plugin, 'hooks', 'launcher.json'), JSON.stringify({ row: python.launcher }) + '\n');
+  return { state: 'fitted', hooks: fitted, launcher: python.launcher };
 }
 
 /*
@@ -59,9 +135,9 @@ function writeHookSettings(home, values) {
   fs.renameSync(tmp, file);
 }
 
-/** Install or upgrade the plugin into `home`. Resolves to { version, marketplace }. */
-async function install({ binary, home, stage, source = SOURCE }) {
-  const manifest = stageMarketplace(stage, source);
+/** Install or upgrade the plugin into `home`. Resolves to { version, marketplace, python }. */
+async function install({ binary, home, stage, source = SOURCE, python = SHIPPED_PYTHON }) {
+  const manifest = stageMarketplace(stage, source, python);
   return withAppServer(binary, home, async (server) => {
     const added = await server.request('marketplace/add', { source: stage });
     if (added && added.installedRoot && path.resolve(added.installedRoot) !== path.resolve(fs.realpathSync(stage))
@@ -71,7 +147,7 @@ async function install({ binary, home, stage, source = SOURCE }) {
       await server.request('marketplace/add', { source: stage });
     }
     await server.request('plugin/install', { marketplacePath: manifest, pluginName: PLUGIN });
-    return { version: pluginVersion(), marketplace: stage };
+    return { version: pluginVersion(), marketplace: stage, python };
   });
 }
 
@@ -175,6 +251,7 @@ function sameHooks(a, b) {
 }
 
 module.exports = {
-  MARKETPLACE, PLUGIN, PLUGIN_ID, DATA_DIR, SOURCE, planDir, cacheDir, installedVersions, pluginVersion, stageMarketplace,
+  MARKETPLACE, PLUGIN, PLUGIN_ID, DATA_DIR, SOURCE, SHIPPED, SHIPPED_PYTHON, planDir, cacheDir, installedVersions,
+  pluginVersion, stageMarketplace, fitHooks,
   writeHookSettings, install, uninstall, savePlans, hookStatus, trustHooks, sameHooks, hookKeys,
 };

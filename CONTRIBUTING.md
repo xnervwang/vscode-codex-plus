@@ -28,6 +28,15 @@
 - `test/parts/45-core.js`: this extension and Agent Work Plan together; needs its checkout beside this one, or `AGENT_WORK_PLAN_DIR`.
 - `node test/against-core.js`: the protocol major against the newest Agent Work Plan on the marketplace.
 - `bash build/pack.sh`: runs the suite and builds the `.vsix`.
+- `node build/plan-health.js [--days N] [--home <CODEX_HOME>] [--json]`: how many work plan rows on this machine are stale or incomplete. A measuring tape for the nudges, not a check — run it before and after a change with the same `--days`. It stays in `build/`, which `pack.sh` does not copy, because it reads a person's plans.
+
+## Verified Codex builds
+
+`src/supported-versions.json` records which Codex builds a commit was checked against, the date, and what was checked. After checking a build, add it; the suite will not let an entry drift from the code.
+
+- `test/parts/70-supported.js` compares each entry's three lists against the places they are read from: the patch's own rule names, the columns `src/codex-files.js` queries, and the `data-*` attributes `src/page/codex-extras-page.js` looks for. Depending on a new column or attribute therefore fails until a build with it has been checked and recorded.
+- It also fails when the Codex installed here is not in the record, which is what asks for an entry after an upgrade.
+- Leave a build that is no longer installed out rather than carrying it forward. `git log -S<version> -- src/supported-versions.json` finds the commits that claimed it.
 
 ## Cost budget
 

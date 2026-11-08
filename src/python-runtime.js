@@ -1,0 +1,162 @@
+// BSD 3-Clause License
+// Copyright (c) 2026, Xnerv Wang
+// All rights reserved.
+
+'use strict';
+/*
+ * Which Python runs the work plan plugin's hooks, and getting one when there is none.
+ *
+ * The hooks and the plugin's MCP server are Python, and they ship as `python3 <script>`. That name is not on every
+ * machine: macOS and Linux have it, the python.org installer for Windows provides `python` and the `py` launcher but no
+ * `python3`, and a clean Windows has no Python at all. So the names are tried in turn (findPython), and for a machine
+ * with none, python.org's embeddable build is offered - a zip of a complete interpreter that needs no installer and no
+ * administrator, unpacked into this extension's own storage.
+ *
+ * The plugin is already written for this: plan_path.py reads hooks/launcher.json for the words that start Python, and
+ * falls back to python3 when that file is absent. Writing it is plugin-install.fitHooks' job; everything here is about
+ * finding or fetching the interpreter, not about telling the plugin which one won.
+ *
+ * NOTHING IS FETCHED WITHOUT THE READER SAYING SO. download() is reached from a command, never from activation: it is
+ * eleven megabytes from the public internet on a machine whose network this extension knows nothing about.
+ *
+ * The version and the three digests below are copied from claude-code-extras, which pins the same build for the same
+ * reason, and they are the only acceptable bytes: a digest that does not match is thrown away whole rather than
+ * unpacked, because an interpreter is the one download here that later runs as the reader.
+ */
+const cp = require('child_process');
+const crypto = require('crypto');
+const fs = require('fs');
+const https = require('https');
+const path = require('path');
+
+const VERSION = '3.12.7';
+/* By process.arch: python.org's build name, zip SHA-256, zip size. */
+const BUILDS = {
+  x64: ['amd64', '0d57bb6cb078b74d23dbfe91f77d6780d45bed328911609f1f7ee2ba1606bf44', 11062583],
+  arm64: ['arm64', 'f4217333d32cecf723d81c0cede4778ccff391f5b71b9404cfbb2d0788ef1c12', 10318404],
+  ia32: ['win32', '7f36ca8ebcb493b859be4c1ecde466eaffa4394a8b2487e645ee0e60b57ba5ca', 9899864],
+};
+
+/*
+ * Names to try, in order. `py -3` first on Windows: it is the launcher the python.org installer registers, and it
+ * finds a real interpreter even when `python` is the Microsoft Store's stand-in that only offers to install one.
+ */
+const PYTHONS = process.platform === 'win32' ? [['py', '-3'], ['python'], ['python3']] : [['python3'], ['python']];
+const PYTHON_MIN = [3, 7];
+const ASK_PYTHON = 'import sys; print(sys.version_info[0], sys.version_info[1]); print(sys.executable)';
+
+/**
+ * The first Python 3.7 or later that runs, as `{ launcher, executable, version }`, or null.
+ *
+ * Each candidate is asked for its version AND its own path, rather than just being run: that is what passes over a name
+ * that resolves to something which is not an interpreter, and the path is what ends up in the hooks, since a hook is
+ * started without a shell and cannot rely on PATH being the same one.
+ */
+async function findPython(run = cp.execFile, candidates = PYTHONS) {
+  for (const launcher of candidates) {
+    const said = await new Promise((resolve) => {
+      try {
+        run(launcher[0], launcher.slice(1).concat(['-c', ASK_PYTHON]), { timeout: 15000, windowsHide: true },
+          (err, stdout) => resolve(err ? '' : String(stdout || '')));
+      } catch (_) { resolve(''); }
+    });
+    const m = /^(\d+) (\d+)\s*\n\s*(\S.*?)\s*$/.exec(said.replace(/\r/g, '').trim());
+    if (!m) continue;
+    const major = Number(m[1]), minor = Number(m[2]);
+    if (major > PYTHON_MIN[0] || (major === PYTHON_MIN[0] && minor >= PYTHON_MIN[1])) {
+      return { launcher, executable: m[3], version: `${major}.${minor}` };
+    }
+  }
+  return null;
+}
+
+/** python.org's build for this machine, or null where there is no embeddable one - which is everywhere but Windows. */
+function build(platform = process.platform, arch = process.arch) {
+  const b = platform === 'win32' && BUILDS[arch];
+  if (!b) return null;
+  return { name: b[0], sha256: b[1], size: b[2],
+    url: `https://www.python.org/ftp/python/${VERSION}/python-${VERSION}-embed-${b[0]}.zip` };
+}
+
+/* Under the extension's own storage, named by version and processor, so an upgrade lands beside the old one. */
+const home = (storage, b = build()) => path.join(storage, 'python', `${VERSION}-${b ? b.name : 'none'}`);
+const executable = (storage, b = build()) => path.join(home(storage, b), 'python.exe');
+
+/**
+ * The names to try for this machine, with a Python downloaded here added last.
+ *
+ * Last, not first: somebody who has installed their own Python meant to use it, and an interpreter this extension
+ * fetched is the fallback rather than the preference.
+ */
+function pythons(storage) {
+  const b = build();
+  if (!b || !storage) return PYTHONS;
+  const exe = executable(storage, b);
+  return fs.existsSync(exe) ? PYTHONS.concat([[exe.replace(/\\/g, '/')]]) : PYTHONS;
+}
+
+function fetchTo(url, file, hops = 5) {
+  return new Promise((resolve, reject) => {
+    const req = https.get(url, { headers: { 'User-Agent': 'codex-extras' } }, (res) => {
+      if ([301, 302, 303, 307, 308].includes(res.statusCode) && res.headers.location && hops > 0) {
+        res.resume();
+        resolve(fetchTo(new URL(res.headers.location, url).toString(), file, hops - 1));
+        return;
+      }
+      if (res.statusCode !== 200) { res.resume(); reject(new Error(`${url} answered ${res.statusCode}`)); return; }
+      const hash = crypto.createHash('sha256');
+      const out = fs.createWriteStream(file);
+      res.on('data', (chunk) => hash.update(chunk));
+      res.pipe(out);
+      out.on('finish', () => resolve(hash.digest('hex')));
+      out.on('error', reject);
+      res.on('error', reject);
+    });
+    req.setTimeout(120000, () => req.destroy(new Error('the download stalled for two minutes')));
+    req.on('error', reject);
+  });
+}
+
+/* Windows 10 1803 and later have tar.exe; before that there is only Expand-Archive. */
+function unzip(zip, dir, run = cp.execFile) {
+  const tar = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'tar.exe');
+  const go = (bin, args) => new Promise((resolve) => run(bin, args, { timeout: 120000, windowsHide: true },
+    (err) => resolve(!err)));
+  return go(tar, ['-xf', zip, '-C', dir]).then((ok) => ok || go('powershell.exe', ['-NoProfile', '-NonInteractive',
+    '-Command', `Expand-Archive -LiteralPath '${zip.replace(/'/g, "''")}' -DestinationPath '${dir.replace(/'/g, "''")}' -Force`]));
+}
+
+/**
+ * Fetch, check and unpack the interpreter. Resolves to `{ ok, said }`; `said` is shown to the reader either way.
+ *
+ * It is built up beside the destination and moved into place only once there is a python.exe in it, so a failure at any
+ * step leaves nothing that findPython could pick up and try to run. The temporary names carry the process id because
+ * every window of the editor runs this code.
+ */
+async function download(storage, { fetch = fetchTo, extract = unzip } = {}) {
+  const b = build();
+  if (!b) return { ok: false, said: 'There is no embeddable Python for this machine.' };
+  const target = home(storage, b);
+  const part = `${target}.${process.pid}.part`;
+  const zip = `${target}.${process.pid}.zip`;
+  const clean = () => {
+    try { fs.rmSync(part, { recursive: true, force: true }); } catch (_) { /* gone */ }
+    try { fs.rmSync(zip, { force: true }); } catch (_) { /* gone */ }
+  };
+  try {
+    fs.mkdirSync(part, { recursive: true });
+    const sha = await fetch(b.url, zip);
+    if (sha !== b.sha256) { clean(); return { ok: false, said: `${b.url} did not match its recorded SHA-256, so it was not used.` }; }
+    if (!(await extract(zip, part))) { clean(); return { ok: false, said: `Unpacking ${path.basename(b.url)} failed.` }; }
+    if (!fs.existsSync(path.join(part, 'python.exe'))) { clean(); return { ok: false, said: 'The download had no python.exe in it.' }; }
+    fs.rmSync(target, { recursive: true, force: true });
+    fs.renameSync(part, target);
+    try { fs.rmSync(zip, { force: true }); } catch (_) { /* left for the next download to replace */ }
+    return { ok: true, said: `Python ${VERSION} is in ${target}.` };
+  } catch (e) {
+    clean();
+    return { ok: false, said: e && e.message ? e.message : String(e) };
+  }
+}
+
+module.exports = { VERSION, BUILDS, PYTHONS, PYTHON_MIN, build, home, executable, pythons, findPython, download, unzip, fetchTo };

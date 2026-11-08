@@ -1,0 +1,53 @@
+{
+  "comment": "Codex builds this extension has been verified against, and what was checked on each. Maintained by hand, one entry per build that somebody actually ran the checks against; see src/supported.js for what each field claims and test/parts/70-supported.js for what is enforced. For a build that is no longer listed, git log -S<version> -- src/supported-versions.json finds the commits that claimed it.",
+  "codex": {
+    "26.1021.22027": {
+      "checked": "2026-11-08",
+      "hostEdits": [
+        "provider instance",
+        "conversation panels",
+        "window broadcasts",
+        "page messages"
+      ],
+      "pagePatch": true,
+      "stateDb": "state_5.sqlite",
+      "threadColumns": [
+        "id",
+        "rollout_path",
+        "created_at",
+        "updated_at",
+        "created_at_ms",
+        "updated_at_ms",
+        "source",
+        "thread_source",
+        "cwd",
+        "title",
+        "name",
+        "preview",
+        "first_user_message",
+        "tokens_used",
+        "model",
+        "reasoning_effort",
+        "archived",
+        "archived_at",
+        "is_pinned",
+        "thread_section_id",
+        "git_branch",
+        "cli_version",
+        "originator"
+      ],
+      "pageAnchors": [
+        "data-app-action-timeline-scroll",
+        "data-assistant-message-sent-time",
+        "data-codex-composer",
+        "data-content-search-turn-key",
+        "data-conversation-role",
+        "data-local-conversation-final-assistant",
+        "data-local-conversation-user-anchor",
+        "data-response-annotation-target",
+        "data-turn-key",
+        "data-user-message-bubble"
+      ]
+    }
+  }
+}

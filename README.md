@@ -52,6 +52,25 @@ code --install-extension build/xnervwang.codex-extras-0.1.0.vsix
 - Optional: `Codex Extras: Patch Codex (…)`, then reload the window.
 - `Codex Extras: Show Status` shows what is installed, patched and registered.
 
+### Python
+
+The work plan's hooks and its MCP server are Python 3.7 or later. `py -3`, `python` and `python3` are tried in that order on Windows, `python3` then `python` elsewhere, and whichever answers first is written into the installed plugin.
+
+| | |
+| --- | --- |
+| With none | The plugin is installed without its hooks, MCP server or skill, so the work plan stays empty rather than putting a failed hook in every turn. `Codex Extras: Show Status` says which names were tried. |
+| On Windows with none | `Codex Extras: Download Python for the Work Plan Hooks` fetches python.org's embeddable build (11 MB) into this extension's own storage, checks it against a recorded SHA-256, and installs the plugin again. Nothing is installed system-wide and nothing is fetched until the command or its button is used. |
+| Elsewhere with none | Install Python 3 and run `Codex Extras: Install the Work Plan Plugin into Codex` again; python.org publishes an embeddable build for Windows only. |
+| A Python installed later | Found on the next install, which is why nothing is remembered between them. |
+
+## Verified Codex builds
+
+Everything this extension adds to Codex is fitted to one build's shape: the patch matches four places in Codex's own bundle, the page script hangs its marks on Codex's `data-*` attributes, and the conversation list reads columns out of Codex's state database. None of the three is an API, and Codex ships weekly.
+
+- The builds each release was checked against are recorded in `src/supported-versions.json`, with the date and what was checked on each.
+- `Codex Extras: Show Status` says whether the installed build is one of them. An unrecorded build also puts one line in the Codex Extras output channel, and never a dialog.
+- An unrecorded build is not a build known to be broken: the patch is all or nothing, so a rule that no longer fits leaves Codex untouched and says so in the status.
+
 ## Inside a Codex conversation
 
 These three are drawn into Codex's own page, so each needs the patch **and** a window reload after it: a page runs the script it was built with.

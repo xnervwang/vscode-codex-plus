@@ -28,6 +28,8 @@ const { TabMemory } = require('./src/tab-memory');
 const { SessionsProvider, COLORS, looksLikeId } = require('./src/sessions-view');
 const patching = require('./src/patching');
 const domSample = require('./src/dom-sample');
+const supported = require('./src/supported');
+const pythonRuntime = require('./src/python-runtime');
 
 const CONFIG = 'codexExtras';
 let log = null;
@@ -56,6 +58,12 @@ const trusted = () => vscode.workspace.isTrusted !== false;
 
 function applyCodexHome() {
   files.setCodexHome(String(cfg().get('codexHome') || '').trim());
+}
+
+/** The version of Codex's own extension, or '' when it is not installed. */
+function codexVersion() {
+  const ext = vscode.extensions.getExtension('openai.chatgpt');
+  return String(((ext && ext.packageJSON) || {}).version || '');
 }
 
 /* The codex program Codex's own extension runs, which is the one the plugin has to be installed with. */
@@ -87,6 +95,8 @@ async function activate(context) {
   context.subscriptions.push(log);
   applyCodexHome();
   const say = (m) => log.appendLine(`${new Date().toISOString()} ${m}`);
+  /* Said once, in the log only: an unrecorded Codex is a thing to know, not a thing to interrupt anyone about. */
+  { const line = supported.noticeLine(codexVersion()); if (line) say(line); }
 
   reader = new CodexReader({ log: say });
   context.subscriptions.push(reader);
@@ -202,6 +212,8 @@ function registerCommands(context, { source, memory, sessionsProvider, say, link
 
   reg('status', async () => {
     const home = files.codexHome();
+    const python = await findPython(context);
+    const tried = pythonRuntime.pythons(context.globalStorageUri.fsPath);
     const threads = reader.threads() || [];
     const counts = {};
     for (const t of threads) counts[t.kind] = (counts[t.kind] || 0) + 1;
@@ -210,11 +222,15 @@ function registerCommands(context, { source, memory, sessionsProvider, say, link
       `State database: ${files.stateDbPath(home) || '(not found)'}`,
       `Threads: ${threads.length} (${Object.entries(counts).map(([k, n]) => `${n} ${k}`).join(', ') || 'none'})`,
       `Work plan plugin: ${install.installedVersions(home).join(', ') || 'not installed'} (this extension ships ${install.pluginVersion()})`,
+      `Python for the hooks: ${python ? `${python.version} as ${python.launcher.join(' ')} (${python.executable})`
+        : `none found, tried ${tried.map((l) => l.join(' ')).join(', ')}`
+          + (pythonRuntime.build() ? '; "Codex Extras: Download Python for the Work Plan Hooks" fetches one' : '')}`,
       `Plans: ${install.planDir(home)}`,
       `codex program: ${codexProgram() || '(not found)'}`,
       `Agent Work Plan: ${link.registered ? 'the Codex source is registered' : `not registered (${link.code}: ${link.reason})`}`,
       `Workspace trusted: ${trusted() ? 'yes' : 'no (Restricted Mode: nothing is written)'}`,
       ...patching.statusLines(),
+      ...supported.statusLines(codexVersion()),
     ];
     log.appendLine(lines.join('\n'));
     log.show(true);
@@ -259,6 +275,10 @@ function registerCommands(context, { source, memory, sessionsProvider, say, link
   });
   reg('openSettings', () => vscode.commands.executeCommand('workbench.action.openSettings', '@ext:xnervwang.codex-extras'));
   reg('installWorkPlanPlugin', () => (restricted() ? undefined : installPlugin(context, say, { interactive: true })));
+  reg('downloadPython', async () => {
+    if (restricted()) return;
+    if (await downloadPython(context, say)) await installPlugin(context, say, { interactive: true });
+  });
   reg('trustWorkPlanHooks', () => (restricted() ? undefined : trustPlugin(say, { interactive: true })));
   reg('removeWorkPlanPlugin', async () => {
     if (restricted()) return;
@@ -382,12 +402,52 @@ async function offerPlugin(context, say) {
   await installPlugin(context, say, { interactive: mode === 'ask' });
 }
 
+/*
+ * The Python that runs the plugin's hooks, looked for every time the plugin is staged rather than remembered: the
+ * reader may have installed one, or removed one, since the last install.
+ */
+function findPython(context) {
+  return pythonRuntime.findPython(undefined, pythonRuntime.pythons(context.globalStorageUri.fsPath));
+}
+
+/* Eleven megabytes from python.org, and only ever from a command or a button the reader pressed. */
+async function downloadPython(context, say) {
+  const storage = context.globalStorageUri.fsPath;
+  if (!pythonRuntime.build()) {
+    vscode.window.showInformationMessage('Codex Extras: python.org publishes an embeddable Python for Windows only. '
+      + 'On this machine, install Python 3 and run "Codex Extras: Install the Work Plan Plugin into Codex".');
+    return null;
+  }
+  const r = await vscode.window.withProgress(
+    { location: vscode.ProgressLocation.Notification, title: `Downloading Python ${pythonRuntime.VERSION} from python.org` },
+    () => pythonRuntime.download(storage));
+  say(`python download: ${r.said}`);
+  if (!r.ok) { vscode.window.showErrorMessage(`Codex Extras: downloading Python failed. ${r.said}`); return null; }
+  return r;
+}
+
 async function installPlugin(context, say, { interactive }) {
   const binary = codexProgram();
   if (!binary) { if (interactive) vscode.window.showErrorMessage('The codex program of the Codex extension was not found.'); return; }
   try {
     const stage = path.join(context.globalStorageUri.fsPath, 'marketplace');
-    const r = await install.install({ binary, home: files.codexHome(), stage });
+    let python = await findPython(context);
+    /*
+     * With no Python the plugin still goes in, without its hooks, MCP server or skill (plugin-install fitHooks): the
+     * work plan then stays empty rather than putting a failed hook in every turn. Offering the download here rather
+     * than at activation keeps the fetch tied to something the reader asked for.
+     */
+    if (!python && interactive && pythonRuntime.build()) {
+      const go = 'Download Python';
+      const pick = await vscode.window.showInformationMessage('Work plans need Python 3, and none was found.',
+        { detail: `Download Python ${pythonRuntime.VERSION} from python.org (11 MB), saved in `
+          + `${pythonRuntime.home(context.globalStorageUri.fsPath)}? Nothing is installed system-wide.` }, go, 'Not now');
+      if (pick === go && await downloadPython(context, say)) python = await findPython(context);
+    }
+    say(python ? `work plan hooks will run with Python ${python.version} (${python.launcher.join(' ')})`
+      : `no Python 3.7 or later was found (tried ${pythonRuntime.pythons(context.globalStorageUri.fsPath).map((l) => l.join(' ')).join(', ')});`
+        + ' the plugin goes in without its hooks, MCP server and skill');
+    const r = await install.install({ binary, home: files.codexHome(), stage, python });
     say(`installed work plan plugin ${r.version} into ${files.codexHome()}`);
     writeHookSettings(context);
     await trustPlugin(say, { interactive: true });

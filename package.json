@@ -60,6 +60,10 @@
         "title": "Codex Extras: Install the Work Plan Plugin into Codex"
       },
       {
+        "command": "codexExtras.downloadPython",
+        "title": "Codex Extras: Download Python for the Work Plan Hooks"
+      },
+      {
         "command": "codexExtras.trustWorkPlanHooks",
         "title": "Codex Extras: Trust the Work Plan Hooks in Codex"
       },

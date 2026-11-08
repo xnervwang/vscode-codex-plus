@@ -19,6 +19,7 @@ const path = require('path');
 const { execFileSync } = require('child_process');
 const host = require('../src/host');
 const page = require('../src/webview-inject');
+const supported = require('../src/supported');
 
 const QUERY_URL = 'https://marketplace.visualstudio.com/_apis/public/gallery/extensionquery';
 const EXTENSION_ID = 'openai.chatgpt';
@@ -74,6 +75,14 @@ async function newest() {
     if (h.error) { failed++; console.log(`FAIL  host: ${h.error}`); } else console.log(`ok    host: every edit matches once (${h.chosen.map((c) => c.name).join(', ')}) and parses`);
     const p = page.patchSource(fs.readFileSync(page.targetFile(dir), 'utf8'));
     if (p.error) { failed++; console.log(`FAIL  page: ${p.error}`); } else console.log('ok    page: the script tag goes in ahead of the entry script');
+    /*
+     * Said rather than failed: the edits matching a build is not the whole of what "verified" claims, and only a
+     * machine with that Codex installed can establish the rest (src/supported.js). This is the notice that there is
+     * something to check, not the check.
+     */
+    console.log(supported.verified(version)
+      ? `ok    record: ${version} is in src/supported-versions.json`
+      : `note  record: ${version} is not in src/supported-versions.json (recorded: ${supported.versions().join(', ') || 'none'})`);
   } finally { fs.rmSync(work, { recursive: true, force: true }); }
   process.exit(failed ? 1 : 0);
 })().catch((e) => { console.error(`could not check the latest Codex: ${e.message}`); process.exit(2); });
