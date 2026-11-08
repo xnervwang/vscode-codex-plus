@@ -1,0 +1,45 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          { "type": "command", "command": "python3 \"$PLUGIN_ROOT/hooks/inject-work-plan.py\" \"$PLUGIN_DATA\"", "timeout": 30 },
+          { "type": "command", "command": "python3 \"$PLUGIN_ROOT/hooks/tell-time-zone.py\" \"$PLUGIN_DATA\"", "timeout": 30 }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "apply_patch|Bash",
+        "hooks": [
+          { "type": "command", "command": "python3 \"$PLUGIN_ROOT/hooks/guard-work-plan.py\" \"$PLUGIN_DATA\"", "timeout": 30 }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          { "type": "command", "command": "python3 \"$PLUGIN_ROOT/hooks/remind-work-plan.py\" \"$PLUGIN_DATA\"", "timeout": 30 },
+          { "type": "command", "command": "python3 \"$PLUGIN_ROOT/hooks/refresh-work-plan.py\" \"$PLUGIN_DATA\"", "timeout": 30 }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          { "type": "command", "command": "python3 \"$PLUGIN_ROOT/hooks/nudge-work-plan.py\" \"$PLUGIN_DATA\"", "timeout": 30 },
+          { "type": "command", "command": "python3 \"$PLUGIN_ROOT/hooks/refresh-work-plan.py\" \"$PLUGIN_DATA\"", "timeout": 30 }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "compact",
+        "hooks": [
+          { "type": "command", "command": "python3 \"$PLUGIN_ROOT/hooks/resume-work-plan.py\" \"$PLUGIN_DATA\"", "timeout": 30 },
+          { "type": "command", "command": "python3 \"$PLUGIN_ROOT/hooks/tell-time-zone.py\" \"$PLUGIN_DATA\"", "timeout": 30 }
+        ]
+      }
+    ]
+  }
+}

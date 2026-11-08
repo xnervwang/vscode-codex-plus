@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "work_plan": {
+      "command": "python3",
+      "args": ["./hooks/plan-mcp.py"],
+      "cwd": "."
+    }
+  }
+}

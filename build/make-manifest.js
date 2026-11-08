@@ -36,6 +36,7 @@ const vsix = `<?xml version="1.0" encoding="utf-8"?>
       <Property Id="Microsoft.VisualStudio.Services.GitHubFlavoredMarkdown" Value="true" />
       <Property Id="Microsoft.VisualStudio.Services.Content.Pricing" Value="Free" />
     </Properties>
+    <Icon>extension/images/icon.png</Icon>
   </Metadata>
   <Installation>
     <InstallationTarget Id="Microsoft.VisualStudio.Code" />
@@ -44,6 +45,7 @@ const vsix = `<?xml version="1.0" encoding="utf-8"?>
   <Assets>
     <Asset Type="Microsoft.VisualStudio.Code.Manifest" Path="extension/package.json" Addressable="true" />
     <Asset Type="Microsoft.VisualStudio.Services.Content.Details" Path="extension/README.md" Addressable="true" />
+    <Asset Type="Microsoft.VisualStudio.Services.Icons.Default" Path="extension/images/icon.png" Addressable="true" />
   </Assets>
 </PackageManifest>
 `;
@@ -57,6 +59,7 @@ const types = `<?xml version="1.0" encoding="utf-8"?>
   <Default Extension=".html" ContentType="text/html" />
   <Default Extension=".css" ContentType="text/css" />
   <Default Extension=".png" ContentType="image/png" />
+  <Default Extension=".svg" ContentType="image/svg+xml" />
   <Default Extension=".txt" ContentType="text/plain" />
   <Default Extension=".vsixmanifest" ContentType="text/xml" />
 </Types>

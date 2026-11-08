@@ -1,0 +1,8 @@
+{
+  "name": "codex-extras",
+  "description": "The work plan plugin shipped with the Codex Extras VS Code extension.",
+  "owner": { "name": "xnervwang" },
+  "plugins": [
+    { "name": "agent-work-plan", "source": "./agent-work-plan", "version": "1.0.0" }
+  ]
+}

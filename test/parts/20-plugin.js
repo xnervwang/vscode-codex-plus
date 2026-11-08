@@ -1,0 +1,120 @@
+// BSD 3-Clause License
+// Copyright (c) 2026, Xnerv Wang
+// All rights reserved.
+
+'use strict';
+/*
+ * The companion Codex plugin: its manifests agree with each other, every hook it names exists, the Python parts pass
+ * their own self-tests, the MCP server answers the protocol and writes only where it should, and the injected block
+ * puts a plan in front of the model.
+ */
+const cp = require('child_process');
+const fs = require('fs');
+const path = require('path');
+
+const python = () => {
+  for (const exe of ['python3', 'python']) {
+    const r = cp.spawnSync(exe, ['-c', 'import sys; print(sys.version_info[:2] >= (3, 7))'], { encoding: 'utf8' });
+    if (r.status === 0 && r.stdout.trim() === 'True') return exe;
+  }
+  return '';
+};
+
+module.exports = ({ ok, bad, note, eq, tmp, root }) => {
+  const plugin = path.join(root, 'codex-plugin', 'agent-work-plan');
+  const hooksDir = path.join(plugin, 'hooks');
+  const market = JSON.parse(fs.readFileSync(path.join(root, 'codex-plugin', '.agents', 'plugins', 'marketplace.json'), 'utf8'));
+  const manifest = JSON.parse(fs.readFileSync(path.join(plugin, '.codex-plugin', 'plugin.json'), 'utf8'));
+  const install = require('../../src/plugin-install');
+  eq([market.name, market.plugins[0].name, market.plugins[0].version], [install.MARKETPLACE, install.PLUGIN, manifest.version],
+    'marketplace, plugin manifest and installer name the same plugin and version');
+  eq(install.DATA_DIR, 'agent-work-plan-codex-extras', 'the data directory is <plugin>-<marketplace>, as Codex names it');
+  const planPath = fs.readFileSync(path.join(hooksDir, 'plan_path.py'), 'utf8');
+  if (planPath.includes(`PLUGIN_DIR_NAME = "${install.DATA_DIR}"`)) ok('the hooks fall back to the same data directory');
+  else bad('plan_path.py names a different data directory');
+
+  const hooks = JSON.parse(fs.readFileSync(path.join(hooksDir, 'hooks.json'), 'utf8')).hooks;
+  const KNOWN = ['UserPromptSubmit', 'PreToolUse', 'PermissionRequest', 'PostToolUse', 'PreCompact', 'PostCompact',
+    'SessionStart', 'SessionEnd', 'SubagentStart', 'SubagentStop', 'Stop'];
+  const unknown = Object.keys(hooks).filter((e) => !KNOWN.includes(e));
+  eq(unknown, [], 'every hook event is one Codex has (it has no PostToolBatch)');
+  const scripts = [];
+  for (const groups of Object.values(hooks)) for (const g of groups) for (const h of g.hooks) {
+    const m = /\$PLUGIN_ROOT\/hooks\/([\w-]+\.py)/.exec(h.command);
+    if (!m) bad(`hook command does not run a script of the plugin: ${h.command}`);
+    else scripts.push(m[1]);
+  }
+  const missing = scripts.filter((s) => !fs.existsSync(path.join(hooksDir, s)));
+  eq(missing, [], `every script hooks.json names exists (${new Set(scripts).size} scripts)`);
+  const mcp = JSON.parse(fs.readFileSync(path.join(plugin, '.mcp.json'), 'utf8')).mcpServers.work_plan;
+  eq([mcp.cwd, fs.existsSync(path.join(plugin, mcp.args[0]))], ['.', true],
+    'the MCP server runs from the plugin root (Codex starts it in CODEX_HOME otherwise)');
+  const skill = fs.readFileSync(path.join(plugin, 'skills', 'maintain', 'SKILL.md'), 'utf8');
+  if (/^---\nname: maintain\ndescription: .+\n/m.test(skill)) ok('the skill has the name and description Codex reads');
+  else bad('SKILL.md frontmatter lacks name or description');
+  if (/claude|CLAUDE_CODE/i.test(skill.replace(/CLAUDE_PLUGIN/g, ''))) bad('the skill still mentions Claude');
+  else ok('the skill says nothing that only holds for Claude Code');
+
+  // The states, waiting-on values and description limits agree between the Python side and the extension's reader.
+  const workplan = (() => { try { return require('../../src/workplan'); } catch (_) { return null; } })();
+  if (workplan) {
+    const list = (name) => JSON.parse('[' + new RegExp(`^${name} = \\(([^)]*)\\)`, 'm').exec(planPath)[1].replace(/,\s*$/, '') + ']');
+    eq(workplan.STATES, list('STATES'), 'states agree between plan_path.py and src/workplan.js');
+    eq(workplan.WAITING_ON, list('WAITING_ON'), 'waiting-on values agree');
+    eq([workplan.MAX_DETAIL_LINES, workplan.MAX_DETAIL_CHARS],
+      [+/^MAX_DETAIL_LINES = (\d+)/m.exec(planPath)[1], +/^MAX_DETAIL_CHARS = (\d+)/m.exec(planPath)[1]],
+      'description limits agree');
+  }
+
+  const py = python();
+  if (!py) { note('no Python 3.7+ here: the plugin\'s self-tests and MCP checks did not run'); return; }
+  for (const script of ['changes.py', 'guard-work-plan.py', 'refresh-work-plan.py', 'resume-work-plan.py', 'tell-time-zone.py']) {
+    const r = cp.spawnSync(py, [path.join(hooksDir, script), '--selftest'], { encoding: 'utf8', env: { ...process.env, PYTHONDONTWRITEBYTECODE: '1' } });
+    if (r.status === 0 && /all checks pass/.test(r.stdout)) ok(`${script} self-test`);
+    else bad(`${script} self-test failed:\n${(r.stdout + r.stderr).split('\n').filter((l) => /FAIL|Error/.test(l)).join('\n')}`);
+  }
+
+  // The MCP server over stdio: initialize, list, add a row, refuse a write outside the plan directory.
+  const data = path.join(tmp('mcp'), install.DATA_DIR);
+  const plan = path.join(data, '01a1b8e8-f7e2-7251-95a9-a95b65992849.json');
+  const msgs = [
+    { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18' } },
+    { jsonrpc: '2.0', method: 'notifications/initialized' },
+    { jsonrpc: '2.0', id: 2, method: 'tools/list' },
+    { jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'add_row', arguments: { plan, state: 'doing', title: 'T' } } },
+    { jsonrpc: '2.0', id: 4, method: 'tools/call', params: { name: 'set_row', arguments: { plan, row: '1', state: 'waiting' } } },
+    { jsonrpc: '2.0', id: 5, method: 'tools/call', params: { name: 'set_row', arguments: { plan: '/etc/x.json', row: '1' } } },
+  ];
+  const r = cp.spawnSync(py, [path.join(hooksDir, 'plan-mcp.py')], { input: msgs.map((m) => JSON.stringify(m)).join('\n') + '\n',
+    encoding: 'utf8', env: { ...process.env, PYTHONDONTWRITEBYTECODE: '1' } });
+  const replies = r.stdout.trim().split('\n').filter(Boolean).map((l) => JSON.parse(l));
+  eq(replies.map((x) => x.id), [1, 2, 3, 4, 5], 'the MCP server answers every request and no notification');
+  eq(replies[1].result.tools.map((t) => t.name), ['set_row', 'add_row'], 'it offers set_row and add_row');
+  eq(replies[2].result.isError, false, 'add_row creates the plan');
+  eq(JSON.parse(fs.readFileSync(plan, 'utf8')).nodes[0].state, 'doing', 'with the row in it');
+  eq(replies[3].result.isError, true, 'a move to waiting without waiting_on is refused, as by the row command');
+  eq(replies[4].result.isError, true, 'a path outside the plan directory is refused');
+
+  // The injection hook: a plan with an open row puts it in front of the model, with the tools to change it.
+  const payload = { hook_event_name: 'UserPromptSubmit', session_id: path.basename(plan, '.json'), turn_id: 'turn-1',
+    transcript_path: null, cwd: data, model: 'm', permission_mode: 'default', prompt: 'p' };
+  const inj = cp.spawnSync(py, [path.join(hooksDir, 'inject-work-plan.py'), data], { input: JSON.stringify(payload), encoding: 'utf8' });
+  let ctx = '';
+  try { ctx = JSON.parse(inj.stdout).hookSpecificOutput.additionalContext; } catch (_) { /* empty */ }
+  if (/> 1\. T {3}\[doing/.test(ctx) && /set_row/.test(ctx) && ctx.includes(plan)) ok('the injected block lists the open row and names the tools');
+  else bad(`the injected block is wrong: ${inj.stdout.slice(0, 300)} ${inj.stderr.slice(0, 300)}`);
+  eq(JSON.parse(fs.readFileSync(plan.replace(/\.json$/, '.turn'), 'utf8')).prompt, 'turn-1', 'it marks the turn by Codex\'s turn_id');
+
+  // The end-of-turn hook keeps the turn going with a reason, once, and never on its own continuation.
+  const stop = { ...payload, hook_event_name: 'Stop', stop_hook_active: false, last_assistant_message: 'done' };
+  const rollout = path.join(data, '..', 'rollout.jsonl');
+  fs.writeFileSync(rollout, JSON.stringify({ timestamp: new Date().toISOString(), type: 'event_msg', payload: { type: 'user_message', message: 'x' } }) + '\n');
+  stop.transcript_path = rollout;
+  const run = (p) => cp.spawnSync(py, [path.join(hooksDir, 'nudge-work-plan.py'), data], { input: JSON.stringify(p), encoding: 'utf8' }).stdout.trim();
+  const first = run(stop);
+  let parsed = {};
+  try { parsed = JSON.parse(first); } catch (_) { /* empty */ }
+  eq([parsed.decision, /still `doing`/.test(parsed.reason || '')], ['block', true], 'a turn ending with a doing row is kept going, with the reason');
+  eq(run(stop), '', 'and not asked again about the same rows');
+  eq(run({ ...stop, stop_hook_active: true }), '', 'and nothing is said on the continuation it caused');
+};
