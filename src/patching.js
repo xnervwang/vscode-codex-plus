@@ -21,10 +21,11 @@
  *                         in front in the sidebar (onDidFocus). sidebarThread() is the last such thread, and nothing
  *                         is reported after it: whether the reader is still looking at the sidebar is the source's to
  *                         work out from the active tab (src/codex-source.js isFocused)
- *   page messages         the reader's time zone, from the page
+ *   page messages         the reader's time zone, and a sample of the conversation layout when one was asked for
  */
 const path = require('path');
 const targets = require('./adapters');
+const { activeThread } = require('./codex-tabs');
 const { iconsFor } = require('./logo-dot');
 
 const TAB_DOTS = { working: '#22c55e', unread: '#ef4444' };
@@ -105,6 +106,61 @@ async function openInSidebar(thread) {
   } catch (_) { return false; }
 }
 
+/*
+ * A sample of the conversation layout, for writing selectors against what Codex draws at run time: the page in front is
+ * asked for one and answers once (src/page/codex-extras-page.js). The reply carries structure and nothing the
+ * conversation says. One request at a time, identified by a nonce so a late answer to an abandoned request is dropped,
+ * and the one timer involved is the timeout, cleared as soon as either side finishes.
+ */
+const SAMPLE_MS = 5000;
+let pendingSample = null;
+
+/*
+ * The conversation panel the reader is looking at: the one reporting itself active, or else the one holding the
+ * conversation the active tab names, which is how a tab whose webview is not focused is still found.
+ */
+function activePanel() {
+  for (const set of panels.values()) {
+    for (const panel of set) { try { if (panel.active) return panel; } catch (_) { /* disposed */ } }
+  }
+  const thread = deps ? activeThread(deps.vscode) : '';
+  const set = thread && panels.get(thread);
+  return set && set.size ? [...set][0] : null;
+}
+
+/* A page runs the script as it was when the page was built, so a page carrying an older one answers nothing at all.
+   Said here rather than left to the timeout, since this is what a page looks like right after the script changed. */
+function pagePatchState() {
+  const dir = deps ? codexPath(deps.vscode) : '';
+  const page = targets.find((t) => t.name === 'Codex page');
+  return dir && page ? page.status(dir) : '';
+}
+
+/** { sample } or { error } - the error is a sentence for the reader, saying what to do about it. */
+async function sampleLayout({ timeoutMs = SAMPLE_MS } = {}) {
+  if (!state.active) {
+    return { error: 'the patch to Codex is not in effect, so its page cannot be asked. Run "Codex Extras: Patch Codex" '
+      + 'and reload the window.' };
+  }
+  const pageState = pagePatchState();
+  if (pageState && pageState !== 'patched') {
+    return { error: `Codex's page carries ${pageState === 'outdated' ? 'an older version of' : 'none of'} this extension's `
+      + 'page script, so it does not know how to take a sample. Run "Codex Extras: Patch Codex" and reload the window.' };
+  }
+  const panel = activePanel();
+  if (!panel) return { error: 'bring a Codex conversation tab to the front first: the sample is of the page in front.' };
+  if (pendingSample) return { error: 'a sample is already being taken' };
+  const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const reply = new Promise((resolve) => { pendingSample = { id, resolve }; });
+  const settle = (r) => { if (pendingSample && pendingSample.id === id) { const p = pendingSample; pendingSample = null; p.resolve(r); } };
+  const timer = setTimeout(() => settle({ error: 'Codex\'s page did not answer. It runs the script as it was when the '
+    + 'page was built, so reload the window after a patch and try again.' }), timeoutMs);
+  postTo(panel, { type: 'codex-extras-sample', id });
+  const r = await reply;
+  clearTimeout(timer);
+  return r;
+}
+
 function figuresOf(c) {
   if (!c) return null;
   const parts = [];
@@ -158,6 +214,11 @@ function installHooks() {
     if (provider) state.provider = provider;
     state.active = true;
     if (msg && msg.kind === 'tz' && typeof msg.timeZone === 'string' && deps && deps.onTimeZone) deps.onTimeZone(msg.timeZone);
+    if (msg && msg.kind === 'sample' && pendingSample && msg.id === pendingSample.id) {
+      const p = pendingSample;
+      pendingSample = null;
+      p.resolve(msg.error ? { error: `Codex's page could not take a sample: ${msg.error}` } : { sample: msg.sample });
+    }
   };
   globalThis.__codexExtrasBroadcast = (method, params) => {
     if (!deps || method !== 'thread-stream-following-changed' || !params || !params.following) return;
@@ -221,4 +282,4 @@ function activate(context, opts) {
 }
 
 module.exports = { activate, statusLines, openInSidebar, canType, canDeliver, deliver, sidebarThread, panelThreads, revealPanel, removePatch,
-  figuresOf, installHooks, refreshPanels, _state: () => state, _panels: panels, TAB_DOTS };
+  figuresOf, sampleLayout, installHooks, refreshPanels, _state: () => state, _panels: panels, TAB_DOTS, SAMPLE_MS };

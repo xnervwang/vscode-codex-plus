@@ -22,6 +22,7 @@
 | Green / red dot on a Codex tab's logo while working / replied and unread | Editor tabs | Patch |
 | Chime when a turn finishes or the plan asks a question | Codex tab | Patch |
 | Last turn's duration, context share, model and effort; the tool call running now | Codex tab, bottom right | Patch |
+| Sample of the layout of the conversation in front, written to a file, for working out which elements a later addition can hang on | Command | Patch, and the window reloaded since it was applied |
 
 - Codex's own button on the tab bar can be hidden: right-click it and choose Hide.
 - In Restricted Mode nothing is installed into Codex, Codex is not patched, and no file is written.
@@ -47,3 +48,18 @@ code --install-extension build/xnervwang.codex-extras-0.1.0.vsix
 - Then run `Codex Extras: Install the Work Plan Plugin into Codex` and trust its hooks when asked (or in Codex: Settings > Hooks).
 - Optional: `Codex Extras: Patch Codex (…)`, then reload the window.
 - `Codex Extras: Show Status` shows what is installed, patched and registered.
+
+## Sampling a conversation's layout
+
+- `Codex Extras: Sample the Conversation Layout` is for the additions that have to attach to what Codex draws at run time, such as a time tick on each message.
+- A troubleshooting tool, so it is in the command palette and on no title bar.
+
+| | |
+| --- | --- |
+| What it sends | Tag names, class names, attribute **names**, depth, child counts, rounded sizes, and for each text node its length with the shape of its first eight characters (`d` digit, `a` letter, `o` other) |
+| What it never sends | Any text of the conversation; the value of any attribute, `title`, `aria-label`, `alt`, `href`, `src`, `value` and `data-*` included; the page's query string; anything thread-id-shaped in an `id` |
+| Needs | The patch (`Codex Extras: Patch Codex`) **and** a window reload after it, since a page runs the script as it was when the page was built |
+| Where it writes | `conversation-layout-<YYYYMMDD-HHMMSS>.json` in this extension's own global storage; the absolute path is shown with a **Copy Path** button and written to the Codex Extras output channel |
+
+- Bring the Codex conversation tab to the front first: the sample is of the page in front, and the command says so rather than sampling the wrong page.
+- Nothing is sampled until the command is run, and nothing is left watching the page afterwards.

@@ -131,6 +131,10 @@
       {
         "command": "codexExtras.removePatch",
         "title": "Codex Extras: Remove the Patch from Codex (restore original files)"
+      },
+      {
+        "command": "codexExtras.sampleConversationDom",
+        "title": "Codex Extras: Sample the Conversation Layout"
       }
     ],
     "viewsContainers": {

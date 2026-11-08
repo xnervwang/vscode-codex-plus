@@ -16,7 +16,8 @@
 - `src/plugin-install.js`: installing, trusting and removing the companion plugin through app-server.
 - `codex-plugin/`: the companion Codex plugin (marketplace `codex-extras`, plugin `agent-work-plan`): hooks, skill, MCP server.
 - `src/edits.js`, `src/host.js`, `src/webview-inject.js`, `src/adapters.js`, `src/patching.js`, `uninstall.js`: the patch to Codex and its use.
-- `src/page/codex-extras-page.js`: the script added to Codex's page.
+- `src/page/codex-extras-page.js`: the script added to Codex's page; it also takes the layout sample, since the page is where Codex's run-time structure exists at all.
+- `src/dom-sample.js`: where a layout sample is written and under what name.
 - `images/codex-light.svg`, `images/codex-dark.svg`: the tab bar button, the Codex mark from `images/icon.svg`.
 
 ## Checks
@@ -54,6 +55,7 @@ Rules a change has to keep:
 - Grouping, sorting and filtering are arithmetic over the snapshot. `listThreads` already returns every thread in one query, so grouping by folder costs no I/O.
 - The poll keeps its cadence and its short circuit: the worker builds the stamp first and returns `same` without parsing a rollout when nothing moved.
 - No new timer and no file watcher. Work that needs repeating rides the existing poll; a one-off read forces a single pass (`refresh({ force: true })`) rather than scheduling one.
+- Sampling the conversation layout runs only when the command asks for it. The page script adds no timer and no `MutationObserver` for it, walks the page once per request within `MAX_NODES` and `MAX_DEPTH`, and leaves nothing behind; the host's only timer is the one timeout on that request, cleared as soon as either side finishes.
 
 ## Rules
 

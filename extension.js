@@ -28,6 +28,7 @@ const { TabMemory } = require('./src/tab-memory');
 const { SessionsProvider, COLORS, looksLikeId } = require('./src/sessions-view');
 const { folderTest } = require('./src/folders');
 const patching = require('./src/patching');
+const domSample = require('./src/dom-sample');
 
 const CONFIG = 'codexExtras';
 let log = null;
@@ -213,6 +214,26 @@ function registerCommands(context, { source, memory, sessionsProvider, say, link
     if (await vscode.window.showInformationMessage('Codex\'s own files are back. Reload the window to run them.', reload) === reload) {
       await vscode.commands.executeCommand('workbench.action.reloadWindow');
     }
+  });
+  /*
+   * A sample of the Codex conversation in front, for working out which elements to hang a time tick, in-conversation
+   * navigation or a colour on: those are drawn at run time and no class name of theirs can be read off Codex's files.
+   * Shape only - the sample carries nothing the conversation says, and the file holds whatever the page sent and no more.
+   */
+  reg('sampleConversationDom', async () => {
+    if (restricted()) return;
+    const r = await patching.sampleLayout();
+    if (r.error) { vscode.window.showWarningMessage(`Codex Extras: ${r.error}`); return; }
+    const codex = vscode.extensions.getExtension('openai.chatgpt');
+    let file;
+    try {
+      file = domSample.save({ dir: context.globalStorageUri.fsPath, sample: r.sample,
+        codexVersion: ((codex && codex.packageJSON) || {}).version || '' });
+    } catch (e) { vscode.window.showErrorMessage(`Codex Extras: the sample could not be written: ${e.message}`); return; }
+    say(`conversation layout sample written to ${file}`);
+    const copy = 'Copy Path';
+    const pick = await vscode.window.showInformationMessage(`Codex Extras: the conversation layout sample is at ${file}`, copy);
+    if (pick === copy) await vscode.env.clipboard.writeText(file);
   });
   reg('openSettings', () => vscode.commands.executeCommand('workbench.action.openSettings', '@ext:xnervwang.codex-extras'));
   reg('installWorkPlanPlugin', () => (restricted() ? undefined : installPlugin(context, say, { interactive: true })));
