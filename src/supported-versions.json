@@ -7,7 +7,9 @@
         "provider instance",
         "conversation panels",
         "window broadcasts",
-        "page messages"
+        "page messages",
+        "app-server requests",
+        "app-server answers"
       ],
       "pagePatch": true,
       "stateDb": "state_5.sqlite",

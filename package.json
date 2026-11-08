@@ -139,6 +139,10 @@
       {
         "command": "codexExtras.sampleConversationDom",
         "title": "Codex Extras: Sample the Conversation Layout"
+      },
+      {
+        "command": "codexExtras.goToWaiting",
+        "title": "Codex Extras: Go to the Conversation Waiting for You"
       }
     ],
     "viewsContainers": {
@@ -380,7 +384,12 @@
         "codexExtras.chime": {
           "type": "boolean",
           "default": true,
-          "markdownDescription": "With the patch: a short sound in a Codex tab when a turn there finishes or its work plan asks you something."
+          "markdownDescription": "With the patch: a short sound in a Codex tab when a turn there finishes, when its work plan asks you something, or when it stops for your permission. Three notes is the permission one. A conversation with no tab open in this window cannot make a sound, since the sound is made in the tab's page."
+        },
+        "codexExtras.waitingInStatusBar": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "With the patch: a count in the status bar while Codex is stopped waiting for your permission, in any conversation of **this window**. Clicking it goes to that conversation. Hidden when there is none."
         },
         "codexExtras.turnFigures": {
           "type": "boolean",

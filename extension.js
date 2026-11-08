@@ -52,6 +52,7 @@ function settings() {
     conversationNavigation: c.get('conversationNavigation', true),
     userMessageColor: c.get('userMessageColor', ''),
     userMessageEdge: c.get('userMessageEdge', true),
+    waitingInStatusBar: c.get('waitingInStatusBar', true),
   };
 }
 const trusted = () => vscode.workspace.isTrusted !== false;
@@ -129,6 +130,27 @@ async function activate(context) {
   };
   context.subscriptions.push(source.onDidChangeConversations(redrawSessions), memory.onDidChange(() => sessionsProvider.refresh()));
 
+  /*
+   * How many conversations are stopped waiting for an answer, in the status bar: shown only while there is one, since
+   * the point of it is the moment the reader is away from the Codex tab. Only this window's conversations are counted -
+   * its Codex app-server is its own (README, "What it cannot see").
+   */
+  const waitingItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
+  waitingItem.command = `${CONFIG}.goToWaiting`;
+  context.subscriptions.push(waitingItem);
+  const drawWaiting = () => {
+    let n = 0, threads = [];
+    try { n = patching.decideCount(); threads = patching.waitingThreads(); } catch (_) { n = 0; }
+    if (!n || !settings().waitingInStatusBar) { waitingItem.hide(); return; }
+    waitingItem.text = `$(bell-dot) ${n} to decide`;
+    const named = threads.filter((t) => patching.approvalsOf(t).decide)
+      .map((t) => `- ${(reader.thread(t) || {}).title || t}`);
+    waitingItem.tooltip = `Codex is waiting for you in:\n${named.join('\n')}`;
+    waitingItem.show();
+  };
+  context.subscriptions.push(patching.onApprovalsChanged(drawWaiting), source.onDidChangeConversations(drawWaiting));
+  drawWaiting();
+
   /* ── Agent Work Plan draws the rest ── */
   const link = await hostLink.link(vscode, source, { log: say, memento: context.globalState });
   if (link.registered) {
@@ -139,7 +161,7 @@ async function activate(context) {
 
   context.subscriptions.push(vscode.workspace.onDidChangeConfiguration((e) => {
     if (e.affectsConfiguration(`${CONFIG}.codexHome`)) { applyCodexHome(); source._poll(); }
-    if (e.affectsConfiguration(CONFIG)) { writeHookSettings(context); sessionsProvider.refresh(); }
+    if (e.affectsConfiguration(CONFIG)) { writeHookSettings(context); sessionsProvider.refresh(); drawWaiting(); }
     /* The time stamps, the message list and the colours live in Codex's page, and this is how a change to one of them
        gets there: the same redraw the figures use, rather than a watcher of its own. */
     if (e.affectsConfiguration(`${CONFIG}.timestamps`) || e.affectsConfiguration(`${CONFIG}.conversationNavigation`)
@@ -272,6 +294,23 @@ function registerCommands(context, { source, memory, sessionsProvider, say, link
     const copy = 'Copy Path';
     const pick = await vscode.window.showInformationMessage(`Codex Extras: the conversation layout sample is at ${file}`, copy);
     if (pick === copy) await vscode.env.clipboard.writeText(file);
+  });
+  /*
+   * The conversation Codex is waiting on, from the status bar. With more than one it asks which, so that the count in
+   * the status bar and what this opens can never disagree about which one it meant.
+   */
+  reg('goToWaiting', async () => {
+    const waiting = patching.waitingThreads().filter((t) => patching.approvalsOf(t).decide);
+    if (!waiting.length) { vscode.window.showInformationMessage('Codex Extras: no Codex conversation in this window is waiting for you.'); return; }
+    let id = waiting[0];
+    if (waiting.length > 1) {
+      const pick = await vscode.window.showQuickPick(waiting.map((t) => ({ label: (reader.thread(t) || {}).title || t, description: t, id: t })),
+        { placeHolder: 'Which conversation Codex is waiting on' });
+      if (!pick) return;
+      id = pick.id;
+    }
+    if (!tabs.codexTabs(vscode).some((t) => t.thread === id) && patching.revealPanel(id)) return;
+    await source.reveal(id, null);
   });
   reg('openSettings', () => vscode.commands.executeCommand('workbench.action.openSettings', '@ext:xnervwang.codex-extras'));
   reg('installWorkPlanPlugin', () => (restricted() ? undefined : installPlugin(context, say, { interactive: true })));

@@ -32,10 +32,13 @@
   var MARK = 'data-codex-extras';
 
   var audio = null;
+  /* Rising for a question, falling for a finished turn, and three notes for a request that cannot go on without an
+     answer, so the three are told apart without looking. */
+  var NOTES = { question: [660, 880], approval: [880, 660, 880], done: [880, 660] };
   function chime(kind) {
     try {
       audio = audio || new (globalThis.AudioContext || globalThis.webkitAudioContext)();
-      var notes = kind === 'question' ? [660, 880] : [880, 660];
+      var notes = NOTES[kind] || NOTES.done;
       notes.forEach(function (f, i) {
         var o = audio.createOscillator(), g = audio.createGain();
         o.frequency.value = f;

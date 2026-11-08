@@ -17,6 +17,11 @@
  *   window broadcasts       what this window tells Codex's other windows, among it which threads it is streaming
  *   page messages           messages of type "codex-extras" from the script this extension adds to Codex's page
  *                           (src/webview-inject.js), which Codex's own switch would otherwise drop as unknown
+ *   app-server traffic      the requests Codex's app-server makes of its client, and the answers going back: this is
+ *                           the one place an approval request can be read, since it stops and waits for the reader and
+ *                           is written to no file (src/approvals.js). Three places, all unconditional - the two
+ *                           coordinators Codex hands these to are each behind a feature switch, so hooking those
+ *                           would report nothing whenever a switch is off
  *
  * Same discipline as claude-code-extras: every edit must match exactly once on a pristine bundle, all or nothing, the
  * result must parse, the untouched original is kept beside the file, the replacement is atomic, and the marker carries
@@ -56,6 +61,24 @@ const EDITS = [
     name: 'page messages',
     re: /async handleMessage\(([\w$]+),([\w$]+)\)\{switch\(\2\.type\)\{case"ready":break;/g,
     to: (m, webview, msg) => `async handleMessage(${webview},${msg}){switch(${msg}.type){case"codex-extras":{${call('__codexExtrasMessage', `${webview},${msg},this`)};break}case"ready":break;`,
+  },
+  /*
+   * Incoming app-server messages, where the request branch and the notification branch sit next to each other, so one
+   * match carries both: a request that may be waiting for the reader, and the notification saying one was answered
+   * (serverRequest/resolved). Anchored on the two branch tests rather than on the method that holds them, which is a
+   * name the build is free to change.
+   */
+  {
+    name: 'app-server requests',
+    re: /if\(this\.isMcpRequestMessage\(([\w$]+)\)\)\{([\s\S]{0,400}?)(return\{routeKind:"request",method:\1\.method\}\}if\(this\.isMcpNotificationMessage\(\1\)\)\{)/g,
+    to: (m, msg, body, between) => `if(this.isMcpRequestMessage(${msg})){${call('__codexExtrasAppServer', `"request",${msg}`)};`
+      + `${body}${between}${call('__codexExtrasAppServer', `"notification",${msg}`)};`,
+  },
+  /* The answer this window sends, which is also how Codex's own countdown answers one for the reader. */
+  {
+    name: 'app-server answers',
+    re: /sendResponse\(([\w$]+),([\w$]+)\)\{/g,
+    to: (m, id, result) => `sendResponse(${id},${result}){${call('__codexExtrasAppServer', `"answer",{id:${id}}`)};`,
   },
 ];
 

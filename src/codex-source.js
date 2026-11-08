@@ -16,8 +16,9 @@
  *   canDeliver, deliverAnswer      typing an answer into one, through the patch to Codex (src/patching.js)
  *
  * What a conversation's state can be told from files alone: `working` while its rollout has a task_started with no
- * task_complete after it, `unread` while Codex's read receipts say so, `idle` otherwise. `prompt` (waiting on an
- * approval) is never reported: Codex does not write an approval request to any file.
+ * task_complete after it, `unread` while Codex's read receipts say so, `idle` otherwise. `prompt` cannot: Codex writes
+ * an approval request to no file, so it comes from the patch instead (src/approvals.js), and only for the conversations
+ * of this window - one running in another window, or started by `codex exec`, never reports it.
  *
  * Nothing here reads a file of Codex's: src/codex-reader.js has the snapshot its worker thread made.
  */
@@ -47,14 +48,20 @@ function logoOf(vscode, exists = require('fs').existsSync) {
 /*
  * What Codex's files say about one thread, in the protocol's terms. `state` is the rollout state the reader has for it,
  * or null for a thread not touched lately; `now` and `openHere` are passed in so the same answer can be computed in a
- * test.
+ * test. `waiting` is what the patch knows about requests stopped on the reader, which no file says.
+ *
+ * `prompt` wins over `working`, because a turn stopped on an approval is still a turn its rollout calls running, and
+ * what the reader needs to see is that it is their move.
  */
-function conversationOf(thread, { unread, openHere, now = Date.now(), state = null, hasPlan = false }) {
+function conversationOf(thread, { unread, openHere, now = Date.now(), state = null, hasPlan = false, waiting = null }) {
   const st = state;
   const last = Math.max(thread.updatedMs || 0, (st && st.lastActivityMs) || 0);
   const working = !!(st && st.working && now - last < STALE_WORKING_MS);
+  const decide = (waiting && waiting.decide) || 0;
+  const soon = (waiting && waiting.soon) || 0;
   let word = 'idle';
-  if (working) word = 'working';
+  if (decide || soon) word = 'prompt';
+  else if (working) word = 'working';
   else if (unread.has(thread.id)) word = 'unread';
   return {
     sessionId: thread.id,
@@ -65,6 +72,11 @@ function conversationOf(thread, { unread, openHere, now = Date.now(), state = nu
     lastActiveAt: last,
     hasPlan,
     // Beyond the protocol: what this extension's own parts draw (the tab figures).
+    /* The rollout's own answer, which `state` no longer carries once `prompt` wins it: what decides whether a request
+       stopped on the reader is still live (src/approvals.js prune) has to not be derived from those requests. */
+    working,
+    decide,
+    soon,
     model: (st && st.model) || thread.model,
     effort: (st && st.effort) || thread.effort,
     context: st && st.context,
@@ -150,6 +162,11 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
     }
     return out;
   };
+  /* What the patch knows about requests this conversation is stopped on, or null without the patch. */
+  const waitingOn = (id) => {
+    if (!patching || typeof patching.approvalsOf !== 'function') return null;
+    try { return patching.approvalsOf(id); } catch (_) { return null; }
+  };
   /* Shapes of Codex tabs whose thread could not be read, already said once. */
   const unreadable = new Set();
   function noteUnreadableTab(tab) {
@@ -224,7 +241,8 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
       const threads = ((snap && snap.threads) || []).filter((t) => t.kind === 'user');
       const unread = reader.unread();
       const openHere = new Set(openThreads());
-      const out = threads.map((t) => conversationOf(t, { unread, openHere, state: reader.state(t.id), hasPlan: enabled() && reader.hasPlan(t.id) }));
+      const out = threads.map((t) => conversationOf(t, { unread, openHere, state: reader.state(t.id),
+        hasPlan: enabled() && reader.hasPlan(t.id), waiting: waitingOn(t.id) }));
       if (snap && !snap.readable) out.problem = 'Codex\'s list of conversations could not be read from ' + files.codexHome();
       return out;
     },

@@ -16,7 +16,7 @@
  * looked plausible. Each field is a separate claim, because the three failure modes are independent and they fail
  * differently:
  *
- *   hostEdits      the four edits of the host patch, by name, each matching exactly once on a pristine bundle. This one
+ *   hostEdits      the edits of the host patch, by name, each matching exactly once on a pristine bundle. This one
  *                  fails loudly: the patch is all or nothing, so a rule that stops matching leaves Codex untouched.
  *   pagePatch      the script tag goes into Codex's page ahead of its entry script.
  *   stateDb        the state database file name. A new one is a new file, so the old one is simply not there.

@@ -24,14 +24,19 @@
  *                         in front in the sidebar (onDidFocus). sidebarThread() is the last such thread, and nothing
  *                         is reported after it: whether the reader is still looking at the sidebar is the source's to
  *                         work out from the active tab (src/codex-source.js isFocused)
- *   page messages         the reader's time zone, and a sample of the conversation layout when one was asked for
+ *   page messages         the reader's time zone, whether an approval card is on a page's screen, and a sample of the
+ *                         conversation layout when one was asked for
+ *   app-server traffic    which conversations are stopped waiting for the reader, and how many of those owe an answer
+ *                         (src/approvals.js): the tab dot, the state the Conversations view shows, the count in the
+ *                         status bar and a chime, none of which need a tab to be open on the conversation
  */
 const path = require('path');
 const targets = require('./adapters');
 const { activeThread } = require('./codex-tabs');
 const { iconsFor } = require('./logo-dot');
+const { createApprovals } = require('./approvals');
 
-const TAB_DOTS = { working: '#22c55e', unread: '#ef4444' };
+const TAB_DOTS = { working: '#22c55e', unread: '#ef4444', prompt: '#f59e0b' };
 let state = { active: false, reason: 'not checked yet', provider: null };
 const panels = new Map();
 let deps = null;
@@ -39,6 +44,11 @@ let last = new Map();
 /* The thread Codex's sidebar last started following, as the broadcast says, or ''. It is never cleared: the broadcast
    only ever says a thread started being followed. */
 let sidebar = '';
+const approvals = createApprovals();
+/* How many answers the reader owed at the last redraw, per conversation, so a chime rings on a new one rather than on
+   every pass while the same request is still waiting. */
+const owed = new Map();
+const onApprovals = new Set();
 
 function codexPath(vscode) {
   const ext = vscode.extensions.getExtension('openai.chatgpt');
@@ -51,7 +61,31 @@ function statusLines() {
     const dir = codexPath(deps.vscode);
     for (const t of targets) lines.push(`  ${t.name}: ${dir ? t.status(dir) : 'Codex not found'}`);
   }
+  const waiting = approvals.threads();
+  lines.push(`Waiting for you: ${waiting.length ? waiting.map((t) => {
+    const n = approvals.of(t);
+    return `${t} (${n.decide} to decide${n.soon ? `, ${n.soon} Codex will answer itself` : ''})`;
+  }).join(', ') : 'nothing'}`);
   return lines;
+}
+
+/*
+ * How many answers one conversation owes the reader, and how many requests Codex will answer by itself once its
+ * countdown runs out. Only conversations of this window: its app-server is its own, so a conversation running in
+ * another window or started by `codex exec` is not here (README says so).
+ */
+function approvalsOf(thread) { return approvals.of(thread); }
+/** How many answers the reader owes across this window, for the status bar. */
+function decideCount() { return approvals.decideCount(); }
+/** Conversations with anything outstanding, whether the reader has to answer it or not. */
+function waitingThreads() { return approvals.threads(); }
+/** Told whenever the outstanding set changed, so the views redraw without waiting for the next poll. */
+function onApprovalsChanged(fn) {
+  onApprovals.add(fn);
+  return { dispose: () => onApprovals.delete(fn) };
+}
+function approvalsChanged() {
+  for (const fn of [...onApprovals]) { try { fn(); } catch (e) { if (deps && deps.log) deps.log(`approvals: ${e.message}`); } }
 }
 
 function canType() { return !!(state.active && state.provider); }
@@ -64,6 +98,16 @@ function canDeliver(thread) { return canType() && (panels.get(thread) || new Set
  * ends up in it (src/codex-tabs.js). Empty without the patch, and then the tab URIs are all there is.
  */
 function panelThreads() { return [...panels.keys()]; }
+
+/* Which conversation a page belongs to, for a message that came from one: Codex hands over the panel, and a page's
+   webview is that panel's. '' for the sidebar and its other views, which have no panel. */
+function threadOfWebview(webview) {
+  if (!webview) return '';
+  for (const [thread, set] of panels) {
+    for (const panel of set) { try { if (panel.webview === webview) return thread; } catch (_) { /* disposed */ } }
+  }
+  return '';
+}
 
 /*
  * Bring the panel showing `thread` to the front, for a conversation whose tab does not name it in its URI: opening it
@@ -197,11 +241,25 @@ function figuresOf(c) {
  * figures was not already doing.
  */
 async function refreshPanels() {
-  if (!deps || !state.active || !panels.size) return;
+  if (!deps || !state.active) return;
   const { vscode, source, context, planQuestions } = deps;
   let list = [];
   try { list = await source.listConversations(); } catch (_) { return; }
   const now = new Map(list.map((c) => [c.sessionId, c]));
+  /* The net under the two signals that end a request. It is weighed against the rollout's own answer rather than
+     against `state`, which `prompt` has already won by the time it gets here. */
+  if (approvals.prune((t) => { const c = now.get(t); return !!(c && c.working); }).length) approvalsChanged();
+  /* A chime for a conversation that now owes the reader an answer, whether a tab here shows it or not - but the sound
+     can only be made in a page, so one with no tab in this window goes unheard (README says so). */
+  if (deps.settings().chime) {
+    for (const thread of approvals.threads()) {
+      const n = approvals.of(thread).decide;
+      if (n > (owed.get(thread) || 0)) for (const panel of panels.get(thread) || []) postTo(panel, { type: 'codex-extras-chime', kind: 'approval' });
+    }
+  }
+  owed.clear();
+  for (const thread of approvals.threads()) owed.set(thread, approvals.of(thread).decide);
+  if (!panels.size) return;
   const view = viewOf(deps.settings());
   /* Only while the stamps are on, and only for the conversations a panel here shows. */
   const whens = new Map();
@@ -224,15 +282,17 @@ async function refreshPanels() {
       try {
         panel.iconPath = pair ? { light: vscode.Uri.file(pair.light), dark: vscode.Uri.file(pair.dark) } : (logo || panel.iconPath);
       } catch (_) { /* disposed */ }
+      /* Against the rollout's own answer, not against `state`: a turn that stopped on an approval has not finished, and
+         `state` reads `prompt` for it, which would otherwise ring the finished-turn chime. */
       if (deps.settings().chime && was) {
-        if (was.state === 'working' && c && c.state !== 'working') postTo(panel, { type: 'codex-extras-chime', kind: 'done' });
+        if (was.working && c && !c.working) postTo(panel, { type: 'codex-extras-chime', kind: 'done' });
         else if (planQuestions(thread) > (was.questions || 0)) postTo(panel, { type: 'codex-extras-chime', kind: 'question' });
       }
       if (deps.settings().figures) postTo(panel, figuresOf(c) || { type: 'codex-extras-figures', text: '' });
       postTo(panel, view);
       if (whens.has(thread)) postTo(panel, { type: 'codex-extras-user-times', times: whens.get(thread) });
     }
-    if (c) last.set(thread, { state: c.state, questions: planQuestions(thread) });
+    if (c) last.set(thread, { state: c.state, working: !!c.working, questions: planQuestions(thread) });
   }
 }
 
@@ -244,7 +304,17 @@ function installHooks() {
     panels.get(thread).add(panel);
     state.active = true;
     state.reason = 'Codex handed over its panels';
-    panel.onDidDispose(() => { const s = panels.get(thread); if (s) { s.delete(panel); if (!s.size) panels.delete(thread); } });
+    /* A page that is gone cannot say its card went with it, so what the last page of this conversation said is
+       dropped here. The requests of this window are left alone: they do not depend on a tab being open. */
+    panel.onDidDispose(() => {
+      const s = panels.get(thread);
+      if (!s) return;
+      s.delete(panel);
+      if (s.size) return;
+      panels.delete(thread);
+      approvals.forgetPage(thread);
+      approvalsChanged();
+    });
     setTimeout(refreshPanels, 500);
   };
   globalThis.__codexExtrasMessage = (webview, msg, provider) => {
@@ -258,11 +328,38 @@ function installHooks() {
         + `${msg.first === 'digit' || msg.first === 'letter' ? msg.first : 'character that is neither'}`
         + `, ${msg.digits ? 'all digits' : 'not all digits'}. No time is shown on replies.`);
     }
+    /* Whether an approval card is on this page's screen. A tab's page says it for the conversation that tab holds; the
+       sidebar's page says it for the conversation the sidebar last went to, which is the only one it can be showing. */
+    if (msg && msg.kind === 'approval') {
+      const thread = threadOfWebview(webview) || sidebar;
+      if (thread) {
+        approvals.pageSays(thread, msg.on === true);
+        approvalsChanged();
+        refreshPanels().catch(() => { /* the next poll draws it */ });
+      }
+    }
     if (msg && msg.kind === 'sample' && pendingSample && msg.id === pendingSample.id) {
       const p = pendingSample;
       pendingSample = null;
       p.resolve(msg.error ? { error: `Codex's page could not take a sample: ${msg.error}` } : { sample: msg.sample });
     }
+  };
+  /*
+   * Codex's app-server traffic: a request that may be waiting for the reader, the notification that one was answered
+   * somewhere, and the answer this window sent. The last covers Codex answering one itself when its countdown runs
+   * out, which it does by sending a response like any other.
+   */
+  globalThis.__codexExtrasAppServer = (kind, msg) => {
+    state.active = true;
+    let moved = false;
+    if (kind === 'request') moved = !!approvals.request(msg);
+    else if (kind === 'answer') moved = !!approvals.resolve(msg && msg.id);
+    else if (kind === 'notification' && msg && msg.method === 'serverRequest/resolved') {
+      moved = !!approvals.resolve(msg.params && msg.params.requestId);
+    }
+    if (!moved) return;
+    approvalsChanged();
+    refreshPanels().catch(() => { /* the next poll draws it */ });
   };
   globalThis.__codexExtrasBroadcast = (method, params) => {
     if (!deps || method !== 'thread-stream-following-changed' || !params || !params.following) return;
@@ -325,11 +422,14 @@ function activate(context, opts) {
   installHooks();
   context.subscriptions.push(opts.source.onDidChangeConversations(() => refreshPanels()));
   context.subscriptions.push({ dispose: () => {
-    for (const k of ['__codexExtrasPanel', '__codexExtrasMessage', '__codexExtrasBroadcast']) delete globalThis[k];
+    for (const k of ['__codexExtrasPanel', '__codexExtrasMessage', '__codexExtrasBroadcast', '__codexExtrasAppServer']) delete globalThis[k];
+    approvals.clear();
+    onApprovals.clear();
   } });
   setTimeout(() => ensurePatched(opts.vscode, context, opts.log, opts.settings().patchCodex).catch((e) => opts.log(`patch: ${e.message}`)), 5000);
   return state;
 }
 
 module.exports = { activate, statusLines, openInSidebar, canType, canDeliver, deliver, sidebarThread, panelThreads, revealPanel, removePatch,
-  figuresOf, safeColor, viewOf, sampleLayout, installHooks, refreshPanels, _state: () => state, _panels: panels, TAB_DOTS, SAMPLE_MS };
+  figuresOf, safeColor, viewOf, sampleLayout, installHooks, refreshPanels, approvalsOf, decideCount, waitingThreads,
+  onApprovalsChanged, _state: () => state, _panels: panels, _approvals: approvals, TAB_DOTS, SAMPLE_MS };

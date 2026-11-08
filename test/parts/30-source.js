@@ -109,6 +109,22 @@ module.exports = async ({ ok, bad, eq, tmp }) => {
         { unread: new Map(), openHere: new Set(), state: { working: true, lastActivityMs: Date.now() - 5 * 3600e3 } });
       eq(stale.state, 'idle', 'a turn silent for hours is no longer counted as working');
 
+      /*
+       * `prompt` cannot come from a file: Codex writes an approval request to none, so it comes from the patch. It wins
+       * over `working`, because a turn stopped on an approval is still a running turn in its rollout, and what the
+       * reader needs to see is that it is their move.
+       */
+      const running = { id: 'w', title: 't', cwd: '/', updatedMs: Date.now() };
+      const live = { working: true, lastActivityMs: Date.now() };
+      const asked = (waiting) => conversationOf(running, { unread: new Map(), openHere: new Set(), state: live, waiting });
+      eq([asked({ decide: 1, soon: 0 }).state, asked({ decide: 0, soon: 1 }).state, asked({ decide: 0, soon: 0 }).state, asked(null).state],
+        ['prompt', 'prompt', 'working', 'working'],
+        'a conversation the patch says is stopped on a request reads prompt, whichever kind of request it is');
+      eq([asked({ decide: 2, soon: 1 }).decide, asked({ decide: 2, soon: 1 }).soon, asked({ decide: 1, soon: 0 }).working,
+        asked({ decide: 1, soon: 0 }).running],
+      [2, 1, true, true],
+      'and carries the counts of each kind beside the rollout\'s own answer, which is what says the wait is still live');
+
       control.setTabs([control.codexTab(idle.id)], 0);
       eq([source.isFocused(idle.id), source.isFocused(unread.id), source.isFocused(working.id), source.isFocused('')], [true, true, false, false],
         'isFocused: the active tab, or the thread Codex\'s sidebar follows');
