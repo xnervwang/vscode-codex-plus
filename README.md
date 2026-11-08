@@ -9,7 +9,7 @@
 | Reminder to bring `doing` rows up to date before an automatic compaction; pointer to the plan after one | Codex | Work plan plugin |
 | Your time zone told to Codex when it runs on another machine | Codex's context | Work plan plugin; the patch |
 | Answer a plan question from Agent Work Plan's Answer view, drafted into the conversation's message box | Codex tab | Patch; otherwise the answer stays in the Answer view |
-| Open in this window, recently closed, Codex's sections, archived | Codex sessions view, in Agent Work Plan's sidebar | — |
+| Open in this window, recently closed, Codex's sections, archived | Codex sessions view, in the Codex Extras sidebar | — |
 | New in tab / New in sidebar; Resume in tab / Resume in sidebar | Codex sessions view | Patch for Resume in sidebar |
 | Thread ID and group on hover; find by title or four hex characters of the ID | Codex sessions view | — |
 | Date span `11d · 09/05→09/16`; title colours; background threads left out | Codex sessions view | — |

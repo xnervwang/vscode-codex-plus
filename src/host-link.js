@@ -9,7 +9,8 @@
  *
  * Agent Work Plan is in extensionDependencies, so VS Code activates it before this extension and its exports are there
  * at once. The registration result says whether the source was taken: only then does codexExtras.registered turn on,
- * which shows the Codex session list in Agent Work Plan's container. When the protocol majors do not match, Agent Work
+ * which the views Agent Work Plan draws for this source depend on. The session list has its own container and does not
+ * wait for it. When the protocol majors do not match, Agent Work
  * Plan itself tells the user which extension to update (it knows its own versions and the gallery's); this extension
  * says something only when there is no interface to register with at all.
  */

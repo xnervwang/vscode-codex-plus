@@ -16,7 +16,8 @@
  * unless codexExtras.hideBackgroundSessions is off, when they are listed under Background. Clicking a conversation opens
  * it in a tab. The hover gives its thread id and which group it sits in, and the title can be given a colour.
  *
- * It is drawn in Agent Work Plan's activity bar container, once the Codex source is registered there. The threads come
+ * It is drawn in this extension's own activity bar container, so it does not sit in the work plan sidebar while another
+ * agent's conversation is in front. The threads come
  * from the reader's latest snapshot (src/codex-reader.js), so drawing it reads no file.
  */
 const path = require('path');

@@ -37,9 +37,11 @@ module.exports = ({ ok, bad, eq, root }) => {
   eq(pkg.agentWorkPlan, { protocol: require(path.join(root, 'src', 'codex-source.js')).PROTOCOL }, 'the manifest states the protocol the source implements');
   eq(pkg.capabilities && pkg.capabilities.untrustedWorkspaces && pkg.capabilities.untrustedWorkspaces.supported, 'limited', 'it runs, limited, in Restricted Mode');
   const c = pkg.contributes;
-  eq([c.viewsContainers, Object.keys(c.views), c.views.agentWorkPlan], [undefined, ['agentWorkPlan'],
-    [{ id: 'codexExtras.sessions', name: 'Codex sessions', when: 'codexExtras.registered && config.codexExtras.sessionList' }]],
-  'no container of its own: the session list sits in Agent Work Plan\'s, shown once the source is registered');
+  eq([c.viewsContainers.activitybar, Object.keys(c.views), c.views.codexExtras],
+    [[{ id: 'codexExtras', title: 'Codex Extras', icon: 'images/sidebar.svg' }], ['codexExtras'],
+      [{ id: 'codexExtras.sessions', name: 'Codex sessions', when: 'config.codexExtras.sessionList' }]],
+  'the session list has its own activity bar container, so it does not sit in the work plan sidebar of whichever agent is in front');
+  eq(fs.existsSync(path.join(root, 'images', 'sidebar.svg')), true, 'that container icon is in the repository');
   const commands = c.commands.map((x) => x.command);
   const gone = ['refreshWorkPlan', 'openWorkPlanFile', 'showWorkPlanDetail', 'showConversations', 'answerQuestion', 'openConversation',
     'restoreWebviewRequestLimit'].map((n) => 'codexExtras.' + n);

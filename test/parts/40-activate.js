@@ -59,7 +59,7 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
 
   const refused = await run(root, tmp, { core: 'refuse' });
   eq([refused.state.context['codexExtras.registered'], refused.state.said.length], [false, 0],
-    'a refused registration hides the session list; Agent Work Plan, not this extension, says which one to update');
+    'a refused registration leaves the key off, and Agent Work Plan, not this extension, says which one to update');
 
   const bare = await run(root, tmp, { core: 'bare' });
   eq([bare.state.context['codexExtras.registered'], bare.state.said.map((s) => /Agent Work Plan has no agentWorkPlan interface/.test(s.message))],

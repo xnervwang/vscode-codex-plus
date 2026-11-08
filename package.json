@@ -129,12 +129,21 @@
         "title": "Codex Extras: Remove the Patch from Codex (restore original files)"
       }
     ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "codexExtras",
+          "title": "Codex Extras",
+          "icon": "images/sidebar.svg"
+        }
+      ]
+    },
     "views": {
-      "agentWorkPlan": [
+      "codexExtras": [
         {
           "id": "codexExtras.sessions",
           "name": "Codex sessions",
-          "when": "codexExtras.registered && config.codexExtras.sessionList"
+          "when": "config.codexExtras.sessionList"
         }
       ]
     },
@@ -254,7 +263,7 @@
         "codexExtras.sessionList": {
           "type": "boolean",
           "default": true,
-          "markdownDescription": "Show the **Codex sessions** view in Agent Work Plan's sidebar: the conversations open in this window, recently closed ones, and the rest by Codex's own sections."
+          "markdownDescription": "Show the **Codex sessions** view in the Codex Extras sidebar: the conversations open in this window, recently closed ones, and the rest by Codex's own sections."
         },
         "codexExtras.sessionsInWorkspaceOnly": {
           "type": "boolean",
