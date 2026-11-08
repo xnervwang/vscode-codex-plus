@@ -78,19 +78,12 @@ async function install({ binary, home, stage, source = SOURCE }) {
 /*
  * Remove the plugin and its marketplace from `home`. The plans are copied first to
  * <home>/agent-work-plan-plans-<timestamp>/, because removing a plugin may remove its data directory with it. Resolves
- * to the folder they were copied to, or '' when there were none.
+ * to the folder they were copied to, or '' when there were none. When they cannot be copied (the folder cannot be read
+ * for any reason but not existing, or a copy fails) it throws before anything is removed, and the plans stay where they
+ * are.
  */
 async function uninstall({ binary, home }) {
-  let kept = '';
-  const dir = planDir(home);
-  try {
-    const plans = fs.readdirSync(dir).filter((n) => n.endsWith('.json') && n !== 'config.json');
-    if (plans.length) {
-      kept = path.join(home, `agent-work-plan-plans-${new Date().toISOString().replace(/[:.]/g, '-')}`);
-      fs.mkdirSync(kept, { recursive: true });
-      for (const n of plans) fs.copyFileSync(path.join(dir, n), path.join(kept, n));
-    }
-  } catch (_) { /* no plans */ }
+  const kept = savePlans(home);
   await withAppServer(binary, home, async (server) => {
     try { await server.request('plugin/uninstall', { pluginId: PLUGIN_ID }); } catch (_) { /* not installed */ }
     try { await server.request('marketplace/remove', { marketplaceName: MARKETPLACE }); } catch (_) { /* not added */ }
@@ -98,6 +91,27 @@ async function uninstall({ binary, home }) {
     const edits = hookKeys().map((key) => ({ keyPath: `hooks.state.${JSON.stringify(key)}`, value: null, mergeStrategy: 'replace' }));
     try { await server.request('config/batchWrite', { edits, filePath: null, expectedVersion: null, reloadUserConfig: true }); } catch (_) { /* none kept */ }
   });
+  return kept;
+}
+
+/* Copies the plans out of `home` before an uninstall. '' when there are none; throws when they could not all be copied. */
+function savePlans(home, stamp = new Date().toISOString().replace(/[:.]/g, '-')) {
+  const dir = planDir(home);
+  let names;
+  try { names = fs.readdirSync(dir); } catch (e) {
+    if (e && e.code === 'ENOENT') return '';
+    throw new Error(`The plans in ${dir} could not be read (${(e && e.code) || e}), so the plugin was not removed and they are where they were.`);
+  }
+  const plans = names.filter((n) => n.endsWith('.json') && n !== 'config.json');
+  if (!plans.length) return '';
+  const kept = path.join(home, `agent-work-plan-plans-${stamp}`);
+  try {
+    fs.mkdirSync(kept, { recursive: true });
+    for (const n of plans) fs.copyFileSync(path.join(dir, n), path.join(kept, n));
+  } catch (e) {
+    throw new Error(`The plans in ${dir} could not all be copied to ${kept} (${(e && e.code) || e}), so the plugin was not removed `
+      + 'and they are where they were.');
+  }
   return kept;
 }
 
@@ -136,21 +150,31 @@ async function hookStatus({ binary, home, cwds }) {
 
 /*
  * Trust the plugin's hooks that need review, exactly as Codex's Settings > Hooks page does on Trust: the current hash
- * written to hooks.state."<key>".trusted_hash in the user's config.toml. Only for a caller that has the user's yes.
+ * written to hooks.state."<key>".trusted_hash in the user's config.toml. Only for a caller that has the user's yes, and
+ * only for what the user was shown: `shown` is that list of { key, currentHash }. When the hooks needing review are no
+ * longer exactly those (the plugin was updated, another window trusted some, the Codex home changed) nothing is written
+ * and the new list comes back to be shown again. Resolves to { trusted, changed, review }.
  */
-async function trustHooks({ binary, home, cwds }) {
+async function trustHooks({ binary, home, cwds, shown }) {
   return withAppServer(binary, home, async (server) => {
     const review = (await listOurHooks(server, cwds)).filter((h) => NEEDS_REVIEW.has(h.trustStatus));
-    if (!review.length) return 0;
+    if (!sameHooks(review, shown)) return { trusted: 0, changed: true, review };
+    if (!review.length) return { trusted: 0, changed: false, review };
     const edits = review.map((h) => ({ keyPath: `hooks.state.${JSON.stringify(h.key)}.trusted_hash`, value: h.currentHash,
       mergeStrategy: 'upsert' }));
     const r = await server.request('config/batchWrite', { edits, filePath: null, expectedVersion: null, reloadUserConfig: true });
     if (r && r.status === 'okOverridden') throw new Error('Another config layer overrides these hook settings.');
-    return review.length;
+    return { trusted: review.length, changed: false, review };
   });
+}
+
+/* Whether two lists of hooks name the same keys with the same hashes, in any order. */
+function sameHooks(a, b) {
+  const sig = (list) => (Array.isArray(list) ? list : []).map((h) => `${h && h.key}\u0000${h && h.currentHash}`).sort().join('\n');
+  return Array.isArray(b) && sig(a) === sig(b);
 }
 
 module.exports = {
   MARKETPLACE, PLUGIN, PLUGIN_ID, DATA_DIR, SOURCE, planDir, cacheDir, installedVersions, pluginVersion, stageMarketplace,
-  writeHookSettings, install, uninstall, hookStatus, trustHooks, hookKeys,
+  writeHookSettings, install, uninstall, savePlans, hookStatus, trustHooks, sameHooks, hookKeys,
 };

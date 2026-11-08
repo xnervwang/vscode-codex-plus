@@ -14,6 +14,9 @@
  * The thread list lives in a SQLite file Codex keeps open. It is opened read-only, through node:sqlite when the Node
  * running the extension has it, through the sqlite3 command when it does not, and as a last resort the list is rebuilt
  * from session_index.jsonl, which has ids and titles but no rollout paths or sources.
+ *
+ * Every function here blocks. In the extension they run in a worker thread (src/codex-worker.js) and the extension host
+ * reads what src/codex-reader.js keeps of their results; only tests and the worker call them directly.
  */
 const cp = require('child_process');
 const fs = require('fs');
@@ -216,6 +219,9 @@ const TAIL_MAX = 4 * 1024 * 1024;
  * zstd when this Node has it (Node 22.15 and later; VS Code's is newer), up to COMPRESSED_MAX.
  */
 const COMPRESSED_MAX = 64 << 20;
+/* What one compressed rollout may grow to when read. zstd compresses these files tenfold or more, so the input limit
+   alone does not bound the memory a read takes. */
+const DECOMPRESSED_MAX = 256 << 20;
 function existingRollout(file) {
   if (!file) return '';
   if (fs.existsSync(file)) return file;
@@ -227,7 +233,7 @@ function compressedLines(file, limit) {
   if (typeof zlib.zstdDecompressSync !== 'function') return [];
   try {
     if (fs.statSync(file).size > COMPRESSED_MAX) return [];
-    const text = zlib.zstdDecompressSync(fs.readFileSync(file)).toString('utf8');
+    const text = zlib.zstdDecompressSync(fs.readFileSync(file), { maxOutputLength: DECOMPRESSED_MAX }).toString('utf8');
     const cut = Math.max(0, text.length - limit);
     const tail = cut ? text.slice(text.indexOf('\n', cut) + 1) : text;
     return tail.split('\n').filter((l) => l.trim()).reverse();
@@ -366,6 +372,6 @@ function findRollout(id, home) {
 }
 
 module.exports = {
-  existingRollout, THREAD_ID, codexHome, setCodexHome, stateDbPath, query, listThreads, sourceKind, sections, unreadThreads, tailLines,
+  existingRollout, THREAD_ID, COMPRESSED_MAX, DECOMPRESSED_MAX, codexHome, setCodexHome, stateDbPath, query, listThreads, sourceKind, sections, unreadThreads, tailLines,
   sessionMeta, rolloutState, rolloutOf, closeAll,
 };

@@ -20,7 +20,7 @@ const python = () => {
   return '';
 };
 
-module.exports = ({ ok, bad, note, eq, tmp, root }) => {
+module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
   const plugin = path.join(root, 'codex-plugin', 'agent-work-plan');
   const hooksDir = path.join(plugin, 'hooks');
   const market = JSON.parse(fs.readFileSync(path.join(root, 'codex-plugin', '.agents', 'plugins', 'marketplace.json'), 'utf8'));
@@ -29,6 +29,34 @@ module.exports = ({ ok, bad, note, eq, tmp, root }) => {
   eq([market.name, market.plugins[0].name, market.plugins[0].version], [install.MARKETPLACE, install.PLUGIN, manifest.version],
     'marketplace, plugin manifest and installer name the same plugin and version');
   eq(install.DATA_DIR, 'agent-work-plan-codex-extras', 'the data directory is <plugin>-<marketplace>, as Codex names it');
+
+  // Before an uninstall the plans are copied out; when that fails, nothing is removed.
+  const noPlans = tmp('no-plans');
+  eq(install.savePlans(noPlans), '', 'no plan folder means nothing to save');
+  const withPlans = tmp('with-plans');
+  fs.mkdirSync(install.planDir(withPlans), { recursive: true });
+  fs.writeFileSync(path.join(install.planDir(withPlans), '01a1b8e8-f7e2-7251-95a9-a95b65992849.json'), '{}');
+  fs.writeFileSync(path.join(install.planDir(withPlans), 'config.json'), '{}');
+  const saved = install.savePlans(withPlans, 'T');
+  eq([path.basename(saved), fs.readdirSync(saved)], ['agent-work-plan-plans-T', ['01a1b8e8-f7e2-7251-95a9-a95b65992849.json']], 'the plans are copied, without the settings');
+  fs.writeFileSync(path.join(withPlans, 'agent-work-plan-plans-U'), 'a file where the copy would go');
+  let threw = '';
+  try { install.savePlans(withPlans, 'U'); } catch (e) { threw = e.message; }
+  eq(/could not all be copied .* so the plugin was not removed/.test(threw), true, 'a copy that fails stops the uninstall, saying why');
+  if (process.getuid && process.getuid() !== 0) {
+    const shut = tmp('shut');
+    fs.mkdirSync(install.planDir(shut), { recursive: true });
+    fs.chmodSync(install.planDir(shut), 0);
+    let why = '';
+    try { install.savePlans(shut); } catch (e) { why = e.message; }
+    fs.chmodSync(install.planDir(shut), 0o700);
+    eq(/could not be read \(EACCES\)/.test(why), true, 'a plan folder that cannot be read is not taken for an empty one');
+  }
+  // Trusting hooks binds to the list the user was shown.
+  const shown = [{ key: 'a', currentHash: '1' }, { key: 'b', currentHash: '2' }];
+  eq([install.sameHooks([shown[1], shown[0]], shown), install.sameHooks([{ key: 'a', currentHash: '9' }, shown[1]], shown),
+    install.sameHooks(shown.slice(1), shown), install.sameHooks(shown, undefined)], [true, false, false, false],
+  'a hook whose hash changed, or a hook less or more, is not the list that was shown');
   const planPath = fs.readFileSync(path.join(hooksDir, 'plan_path.py'), 'utf8');
   if (planPath.includes(`PLUGIN_DIR_NAME = "${install.DATA_DIR}"`)) ok('the hooks fall back to the same data directory');
   else bad('plan_path.py names a different data directory');
@@ -126,4 +154,24 @@ module.exports = ({ ok, bad, note, eq, tmp, root }) => {
   eq([parsed.decision, /still `doing`/.test(parsed.reason || '')], ['block', true], 'a turn ending with a doing row is kept going, with the reason');
   eq(run(stop), '', 'and not asked again about the same rows');
   eq(run({ ...stop, stop_hook_active: true }), '', 'and nothing is said on the continuation it caused');
+
+  // The row command does not write while another writer holds the plan's lock: it waits out a dead holder's lock
+  // (LOCK_STALE) and then refuses, with nothing changed.
+  const locked = path.join(tmp('locked'), '01a1b8e8-f7e2-7251-95a9-a95b65992850.json');
+  fs.writeFileSync(locked, JSON.stringify({ nodes: [{ title: 'A', state: 'todo' }] }));
+  const lock = locked + '.lock';
+  fs.mkdirSync(lock);
+  const keepFresh = setInterval(() => { try { const t = new Date(); fs.utimesSync(lock, t, t); } catch (_) { /* gone */ } }, 500);
+  const refused = await new Promise((resolve) => {
+    const child = cp.spawn(py, [path.join(hooksDir, 'plan-row.py'), locked, 'set', '1', 'doing'], { env: { ...process.env, PYTHONDONTWRITEBYTECODE: '1' } });
+    let err = '';
+    child.stderr.on('data', (d) => { err += d; });
+    child.on('close', (code) => resolve({ code, err }));
+  });
+  clearInterval(keepFresh);
+  eq([refused.code, /Nothing was written, because the plan's lock could not be taken/.test(refused.err), JSON.parse(fs.readFileSync(locked, 'utf8')).nodes[0].state],
+    [1, true, 'todo'], 'with the plan\'s lock held by a live writer, the row command refuses and writes nothing');
+  fs.rmdirSync(lock);
+  const freed = cp.spawnSync(py, [path.join(hooksDir, 'plan-row.py'), locked, 'set', '1', 'doing'], { encoding: 'utf8', env: { ...process.env, PYTHONDONTWRITEBYTECODE: '1' } });
+  eq([freed.status, JSON.parse(fs.readFileSync(locked, 'utf8')).nodes[0].state], [0, 'doing'], 'and writes once the lock is free');
 };

@@ -4,9 +4,14 @@
 
 'use strict';
 /*
- * Activation: reads the settings, points the Codex file readers at the right CODEX_HOME, builds the Codex source, and
- * either hands it to claude-code-extras (which then draws the shared work plan and Conversations views) or draws them
- * here. Each part lives in its own module under src/; this file only wires them together and owns the commands.
+ * Activation: reads the settings, points the Codex file readers at the right CODEX_HOME, builds the Codex source and
+ * registers it with Agent Work Plan (xnervwang.agent-work-plan), which draws the work plan, Conversations and Answer
+ * views. What stays here is what only Codex has: the Codex session list, the companion plugin, the patch to Codex and
+ * the tab bar's open button. Each part lives in its own module under src/; this file wires them together and owns the
+ * commands.
+ *
+ * In Restricted Mode nothing is written: the hook settings, the plugin, the patch and the plan cleanup wait until the
+ * workspace is trusted.
  */
 const fs = require('fs');
 const path = require('path');
@@ -16,23 +21,16 @@ const tabs = require('./src/codex-tabs');
 const install = require('./src/plugin-install');
 const { codexBinary } = require('./src/appserver');
 const { createCodexSource } = require('./src/codex-source');
+const { CodexReader } = require('./src/codex-reader');
 const hostLink = require('./src/host-link');
-const { FocusTracker } = require('./src/focus');
-const { WorkPlanProvider, ageSince } = require('./src/workplan-view');
-const { language } = require('./src/conversations-text');
-const { readPlan, countOpen, sweepOrphans } = require('./src/workplan');
+const { readPlan, planQuestions } = require('./src/workplan');
 const { TabMemory } = require('./src/tab-memory');
 const { SessionsProvider, COLORS, looksLikeId } = require('./src/sessions-view');
-const conversations = require('./src/conversations');
-const { ConversationsProvider } = require('./src/conversations-view');
-const { AnswerView } = require('./src/answer-view');
-const answers = require('./src/answers');
-const sessionInfo = require('./src/session-info');
 const patching = require('./src/patching');
-const requestLimit = require('./src/request-limit');
 
 const CONFIG = 'codexExtras';
 let log = null;
+let reader = null;
 
 function cfg() { return vscode.workspace.getConfiguration(CONFIG); }
 function settings() {
@@ -42,7 +40,6 @@ function settings() {
     chime: c.get('chime', true),
     figures: c.get('turnFigures', true),
     workPlan: c.get('workPlan', true),
-    conversations: c.get('conversations', true),
     hideBackgroundSessions: c.get('hideBackgroundSessions', true),
     sessionsInWorkspaceOnly: c.get('sessionsInWorkspaceOnly', true),
     recentClosedSessions: c.get('recentClosedSessions', 10),
@@ -50,6 +47,7 @@ function settings() {
     installPlugin: c.get('installWorkPlanPlugin', 'ask'),
   };
 }
+const trusted = () => vscode.workspace.isTrusted !== false;
 
 function applyCodexHome() {
   files.setCodexHome(String(cfg().get('codexHome') || '').trim());
@@ -64,6 +62,7 @@ function codexProgram() {
 
 /* What the plugin's hooks read: the few settings that change their behaviour, and the reader's time zone. */
 function writeHookSettings(context) {
+  if (!trusted()) return;
   const c = cfg();
   try {
     install.writeHookSettings(files.codexHome(), {
@@ -78,213 +77,105 @@ function writeHookSettings(context) {
   } catch (e) { log.appendLine(`could not write the hooks' settings: ${e.message}`); }
 }
 
-/* Parts that need disposing, and status lines for Show Status. */
-const parts = [];
-
 async function activate(context) {
   log = vscode.window.createOutputChannel('Codex Extras');
   context.subscriptions.push(log);
   applyCodexHome();
   const say = (m) => log.appendLine(`${new Date().toISOString()} ${m}`);
 
-  const source = createCodexSource(vscode, { log: say });
+  reader = new CodexReader({ log: say });
+  context.subscriptions.push(reader);
+  const source = createCodexSource(vscode, { log: say, reader, patching, trusted, enabled: () => cfg().get('workPlan', true) });
   context.subscriptions.push(source);
-  /* Typing into a conversation needs the patch to Codex; until it is connected these refuse, as the interface wants. */
-  source.canDeliver = (id) => patching.canDeliver(id);
-  source.deliverAnswer = (id, text) => patching.deliver(id, text);
-  const timeZoneListeners = [];
+  /* The reader's time zone, as Codex's page reported it through the patch. */
+  source.timeZone = () => context.globalState.get('codexExtras.clientTimeZone') || '';
   const reportTimeZone = async (zone) => {
     if (!zone || zone === context.globalState.get('codexExtras.clientTimeZone')) return;
     await context.globalState.update('codexExtras.clientTimeZone', zone);
-    for (const fn of timeZoneListeners) fn(zone);
     writeHookSettings(context);
   };
 
-  /* ── Codex session list: always drawn here; the shared views are not the only thing this extension adds. ── */
+  /* ── The Codex session list, in Agent Work Plan's container ── */
   const memory = new TabMemory(vscode, context.workspaceState, {
-    titleOf: (id) => ((files.listThreads() || []).find((t) => t.id === id) || {}).title || '',
-    exists: (id) => !!files.rolloutOf(id),
+    titleOf: (id) => (reader.thread(id) || {}).title || '',
+    exists: (id) => reader.present(id),
   });
   context.subscriptions.push(memory);
   let lastConversations = new Map();
-  const sessionsProvider = new SessionsProvider(vscode, { memory, memento: context.globalState, settings,
+  const sessionsProvider = new SessionsProvider(vscode, { memory, memento: context.globalState, settings, reader,
     stateOf: (id) => lastConversations.get(id) });
-  /* One provider, two views: this extension's container when it draws alone, the host's container when it has one. */
   context.subscriptions.push(vscode.window.registerTreeDataProvider('codexExtras.sessions', sessionsProvider));
-  context.subscriptions.push(vscode.window.registerTreeDataProvider('codexExtras.sessionsHosted', sessionsProvider));
   context.subscriptions.push(vscode.window.registerFileDecorationProvider(sessionsProvider));
-
-  /* ── The shared views: handed to claude-code-extras when it is the host, drawn here otherwise. ── */
-  let standalone = null;
-  const startStandalone = () => {
-    const ui = { disposables: [] };
-    const focus = new FocusTracker(vscode, [source]);
-    const planProvider = new WorkPlanProvider();
-    const planView = vscode.window.createTreeView('codexExtras.workPlan', { treeDataProvider: planProvider });
-    const convProvider = new ConversationsProvider(vscode, { context, logoOf: () => source.logo });
-    const convView = vscode.window.createTreeView('codexExtras.conversations', { treeDataProvider: convProvider });
-    const clock = (ms) => {
-      const zone = context.globalState.get('codexExtras.clientTimeZone') || undefined;
-      try { return new Date(ms).toLocaleTimeString('en-GB', { timeZone: zone, hour: '2-digit', minute: '2-digit' }); } catch (_) { return new Date(ms).toLocaleTimeString(); }
-    };
-    const answerView = new AnswerView({
-      send: async (q, text) => {
-        answerView.setState(q.key, { kind: 'waiting' });
-        const r = await answers.deliver(vscode, source, q, text, { canType: patching.canType() });
-        if (r.kind === 'clipboard') say(`answer to ${q.sessionId} row ${q.row} copied to the clipboard`);
-        answerView.setState(q.key, r);
-      },
-      open: (target) => source.reveal(target.sessionId),
-      age: (ms) => ageSince(ms),
-      clock,
-      onTimeZone: reportTimeZone,
-    });
-    answerView.setLanguage(language(vscode.env.language));
-    ui.disposables.push(vscode.window.registerWebviewViewProvider('codexExtras.answer', answerView, { webviewOptions: { retainContextWhenHidden: true } }));
-    const status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 50);
-    status.command = 'codexExtras.showConversations';
-    const zone = context.globalState.get('codexExtras.clientTimeZone');
-    if (zone) planProvider.setTimeZone(zone);
-    timeZoneListeners.push((z) => { if (planProvider.setTimeZone(z)) planProvider.refresh(); });
-
-    const redrawPlan = () => {
-      const cur = focus.current;
-      planProvider.setFocus(cur && cur.sessionId);
-      planProvider.refresh();
-      const plan = planProvider.shown();
-      const c = plan ? countOpen(plan.nodes) : null;
-      const open = c ? c.discussing + c.todo : 0;
-      planView.badge = open ? { value: open, tooltip: `${open} row${open === 1 ? '' : 's'} to agree or start` } : undefined;
-      const conv = cur && lastConversations.get(cur.sessionId);
-      planView.description = cur ? `${source.label}${conv ? ' · ' + conv.title : ''}` : '';
-    };
-    const redrawConversations = async () => {
-      const list = await source.listConversations();
-      lastConversations = new Map(list.map((c) => [c.sessionId, c]));
-      const folders = (vscode.workspace.workspaceFolders || []).map((f) => f.uri.fsPath);
-      const shown = conversations.build(list, { folders, readPlan: (id) => readPlan(id), planFile: (id) => source.planPath(id), now: Date.now() });
-      convProvider.set(shown, source);
-      const toDecide = shown.reduce((n, c) => n + c.questions.length, 0);
-      if (settings().conversations) {
-        status.text = toDecide ? `$(question) ${toDecide} to decide` : `$(comment-discussion) Conversations ${shown.filter((c) => c.running).length}`;
-        status.backgroundColor = toDecide ? new vscode.ThemeColor('statusBarItem.warningBackground') : undefined;
-        status.tooltip = 'Codex conversations in this workspace';
-        status.show();
-      } else status.hide();
-      convView.badge = toDecide ? { value: toDecide, tooltip: `${toDecide} question${toDecide === 1 ? '' : 's'} to decide` } : undefined;
-      sessionsProvider.refresh();
-      redrawPlan();
-    };
-    ui.redrawConversations = redrawConversations;
-    const planWatch = (() => {
-      try {
-        fs.mkdirSync(source.planDir(), { recursive: true });
-        const w = fs.watch(source.planDir(), () => { redrawPlan(); redrawConversations(); });
-        return { dispose: () => w.close() };
-      } catch (_) { return { dispose() {} }; }
-    })();
-    ui.disposables.push(planView, convView, status, focus, planWatch,
-      focus.onDidChange(redrawPlan),
-      source.onDidChangeConversations(redrawConversations),
-      vscode.workspace.onDidChangeWorkspaceFolders(redrawConversations),
-      answers.receive(vscode, source, { storage: context.globalStorageUri.fsPath, log: say }),
-      ...registerSharedCommands({ source, focus, planProvider, answerView, redrawConversations }));
-    const tick = setInterval(() => { planProvider.refresh(); }, 60000);
-    ui.disposables.push({ dispose: () => clearInterval(tick) });
-    redrawConversations();
-    ui.dispose = () => { for (const d of ui.disposables) { try { d.dispose(); } catch (_) { /* gone */ } } };
-    return ui;
-  };
-
-  const link = await hostLink.link(vscode, source, {
-    log: say,
-    memento: context.globalState,
-    onHosted: (registration) => {
-      if (standalone) { standalone.dispose(); standalone = null; }
-      context.subscriptions.push(registration);
-    },
-  });
-  if (link.hosted) {
-    say('claude-code-extras draws the work plan and Conversations views; the Codex source is registered with it');
-    if (link.registration) context.subscriptions.push(link.registration);
-  } else {
-    standalone = startStandalone();
-    if (link.watcher) context.subscriptions.push(link.watcher);
-  }
-  context.subscriptions.push({ dispose: () => { if (standalone) standalone.dispose(); } });
-
-  /* Session list refreshes with the conversations; in hosted mode nothing else drives it. */
-  context.subscriptions.push(source.onDidChangeConversations(async () => {
-    if (standalone) return;
-    lastConversations = new Map((await source.listConversations()).map((c) => [c.sessionId, c]));
+  const redrawSessions = async () => {
+    try { lastConversations = new Map((await source.listConversations()).map((c) => [c.sessionId, c])); } catch (_) { /* the last one stays */ }
     sessionsProvider.refresh();
-  }), memory.onDidChange(() => sessionsProvider.refresh()));
-  sessionsProvider.refresh();
+  };
+  context.subscriptions.push(source.onDidChangeConversations(redrawSessions), memory.onDidChange(() => sessionsProvider.refresh()));
+
+  /* ── Agent Work Plan draws the rest ── */
+  const link = await hostLink.link(vscode, source, { log: say, memento: context.globalState });
+  if (link.registered) {
+    say('the Codex source is registered with Agent Work Plan');
+    context.subscriptions.push(link.registration);
+  }
+  redrawSessions();
 
   context.subscriptions.push(vscode.workspace.onDidChangeConfiguration((e) => {
-    if (e.affectsConfiguration(`${CONFIG}.codexHome`)) applyCodexHome();
-    if (e.affectsConfiguration(CONFIG)) { writeHookSettings(context); sessionsProvider.refresh(); if (standalone) standalone.redrawConversations(); }
+    if (e.affectsConfiguration(`${CONFIG}.codexHome`)) { applyCodexHome(); source._poll(); }
+    if (e.affectsConfiguration(CONFIG)) { writeHookSettings(context); sessionsProvider.refresh(); }
   }));
+  registerCommands(context, { source, memory, sessionsProvider, say, link });
 
-  const limit = requestLimit.create(vscode, context, { cfg, log: say });
-  context.subscriptions.push(vscode.commands.registerCommand(`${CONFIG}.restoreWebviewRequestLimit`, () => limit.putBack()));
-  setTimeout(() => limit.check().catch((e) => say(`webview request limit: ${e.message}`)), 8000);
-  registerCommands(context, { source, memory, sessionsProvider, say });
-  writeHookSettings(context);
-  setTimeout(() => offerPlugin(context, say), 3000);
+  /* Everything that writes waits for a trusted workspace. */
+  let wrote = false;
+  const whenTrusted = () => {
+    if (wrote || !trusted()) return;
+    wrote = true;
+    writeHookSettings(context);
+    setTimeout(() => offerPlugin(context, say), 3000);
+    setTimeout(() => {
+      reader.request('sweep', { home: files.codexHome() }).then((r) => {
+        if (r.deleted) say(`removed ${r.deleted} plan file(s) of conversations that no longer exist`);
+        else if (r.why) say(`plan cleanup: ${r.why}`);
+      }).catch((e) => say(`plan cleanup: ${e.message}`));
+    }, 60000);
+    try {
+      patching.activate(context, { vscode, log: say, codexProgram, source, context, settings, onTimeZone: reportTimeZone,
+        planQuestions: (id) => planQuestions((readPlan(id) || {}).nodes).length });
+    } catch (e) { say(`patching: ${e.message}`); }
+  };
+  whenTrusted();
+  if (!wrote && typeof vscode.workspace.onDidGrantWorkspaceTrust === 'function') {
+    context.subscriptions.push(vscode.workspace.onDidGrantWorkspaceTrust(whenTrusted));
+  }
   setTimeout(async () => {
     const reopened = await memory.reopenDropped({ enabled: settings().reopenDroppedTabs });
     if (reopened.length) say(`reopened ${reopened.length} Codex tab(s) VS Code did not restore`);
   }, 8000);
-  setTimeout(() => {
-    try {
-      const r = sweepOrphans();
-      if (r.deleted) say(`removed ${r.deleted} plan file(s) of conversations that no longer exist`);
-    } catch (e) { say(`plan cleanup: ${e.message}`); }
-  }, 60000);
-  try {
-    patching.activate(context, { vscode, log: say, codexProgram, source, context, settings, onTimeZone: reportTimeZone,
-      planQuestions: (id) => conversations.planQuestions((readPlan(id) || {}).nodes).length });
-  } catch (e) { say(`patching: ${e.message}`); }
 }
 
-/* Commands that only make sense while this extension draws the shared views itself. */
-function registerSharedCommands({ source, focus, planProvider, answerView, redrawConversations }) {
-  const reg = (name, fn) => vscode.commands.registerCommand(`${CONFIG}.${name}`, fn);
-  return [
-    reg('refreshWorkPlan', () => { planProvider.signature = ''; planProvider.refresh(); redrawConversations(); }),
-    reg('openWorkPlanFile', async () => {
-      const cur = focus.current;
-      const file = cur && source.planPath(cur.sessionId);
-      if (!file || !fs.existsSync(file)) { vscode.window.showInformationMessage('This conversation has no work plan yet.'); return; }
-      await vscode.window.showTextDocument(vscode.Uri.file(file));
-    }),
-    reg('showWorkPlanDetail', async (row) => {
-      if (!row) return;
-      const head = [[row.state, row.note].filter(Boolean).join(' · ')];
-      if (row.question) head.push('Question: ' + row.question);
-      if (row.times) head.push(row.times);
-      if (row.path && row.path.length) head.push('in: ' + row.path.join(' › '));
-      if (row.children) head.push(row.children + ' of its own to finish first');
-      await vscode.window.showInformationMessage(row.title, { modal: true,
-        detail: head.concat(['', row.detail || 'No description was written for this one.']).join('\n') });
-    }),
-    reg('showConversations', () => vscode.commands.executeCommand('codexExtras.conversations.focus')),
-    reg('answerQuestion', async (q) => { if (!q) return; answerView.show(q); await vscode.commands.executeCommand('codexExtras.answer.focus'); }),
-    reg('openConversation', async (target) => {
-      if (!target || !target.sessionId) return;
-      if (!(await source.reveal(target.sessionId))) vscode.window.showWarningMessage('Codex could not open that conversation in a tab.');
-    }),
-  ];
+/* The Codex conversation the tab bar's button opens: the one last in front, else the newest in this workspace. */
+function lastConversation(memory) {
+  const last = memory.lastUsed();
+  if (last && (!reader.threads() || reader.present(last))) return last;
+  const folders = (vscode.workspace.workspaceFolders || []).map((f) => f.uri.fsPath);
+  const inside = (cwd) => !folders.length || folders.some((f) => cwd === f || String(cwd).startsWith(f + path.sep));
+  const t = (reader.threads() || []).find((x) => x.kind === 'user' && !x.archived && inside(x.cwd));
+  return t ? t.id : '';
 }
 
-function registerCommands(context, { source, memory, sessionsProvider, say }) {
+function registerCommands(context, { source, memory, sessionsProvider, say, link }) {
   const reg = (name, fn) => context.subscriptions.push(vscode.commands.registerCommand(`${CONFIG}.${name}`, fn));
   const threadArg = (arg) => (typeof arg === 'string' ? arg : arg && arg.thread ? arg.thread.id : arg && arg.sessionId) || '';
+  const restricted = () => {
+    if (trusted()) return false;
+    vscode.window.showInformationMessage('Codex Extras: in Restricted Mode nothing is installed or changed. Trust the workspace first.');
+    return true;
+  };
 
   reg('status', async () => {
     const home = files.codexHome();
-    const threads = files.listThreads(home) || [];
+    const threads = reader.threads() || [];
     const counts = {};
     for (const t of threads) counts[t.kind] = (counts[t.kind] || 0) + 1;
     const lines = [
@@ -294,20 +185,23 @@ function registerCommands(context, { source, memory, sessionsProvider, say }) {
       `Work plan plugin: ${install.installedVersions(home).join(', ') || 'not installed'} (this extension ships ${install.pluginVersion()})`,
       `Plans: ${install.planDir(home)}`,
       `codex program: ${codexProgram() || '(not found)'}`,
-      `Shared views drawn by: ${(await hostLink.findHost(vscode)) ? 'claude-code-extras' : 'this extension'}`,
+      `Agent Work Plan: ${link.registered ? 'the Codex source is registered' : `not registered (${link.code}: ${link.reason})`}`,
+      `Workspace trusted: ${trusted() ? 'yes' : 'no (Restricted Mode: nothing is written)'}`,
       ...patching.statusLines(),
     ];
     log.appendLine(lines.join('\n'));
     log.show(true);
   });
   reg('applyPatch', async () => {
+    if (restricted()) return;
     await context.globalState.update(`codexExtras.patchAsked:${(vscode.extensions.getExtension('openai.chatgpt') || { packageJSON: {} }).packageJSON.version}`, undefined);
     await vscode.workspace.getConfiguration(CONFIG).update('patchCodex', 'on', vscode.ConfigurationTarget.Global);
     vscode.window.showInformationMessage('Codex will be patched now; reload the window when asked.');
     patching.activate(context, { vscode, log: say, codexProgram, source, context, settings: () => ({ ...settings(), patchCodex: 'on' }),
-      planQuestions: (id) => conversations.planQuestions((readPlan(id) || {}).nodes).length });
+      planQuestions: (id) => planQuestions((readPlan(id) || {}).nodes).length });
   });
   reg('removePatch', async () => {
+    if (restricted()) return;
     const lines = patching.removePatch(vscode);
     await vscode.workspace.getConfiguration(CONFIG).update('patchCodex', 'off', vscode.ConfigurationTarget.Global);
     say(lines.join('\n'));
@@ -316,10 +210,11 @@ function registerCommands(context, { source, memory, sessionsProvider, say }) {
       await vscode.commands.executeCommand('workbench.action.reloadWindow');
     }
   });
-  reg('openSettings', () => vscode.commands.executeCommand('workbench.action.openSettings', `@ext:xnervwang.codex-extras`));
-  reg('installWorkPlanPlugin', () => installPlugin(context, say, { interactive: true }));
-  reg('trustWorkPlanHooks', () => trustPlugin(say, { interactive: true }));
+  reg('openSettings', () => vscode.commands.executeCommand('workbench.action.openSettings', '@ext:xnervwang.codex-extras'));
+  reg('installWorkPlanPlugin', () => (restricted() ? undefined : installPlugin(context, say, { interactive: true })));
+  reg('trustWorkPlanHooks', () => (restricted() ? undefined : trustPlugin(say, { interactive: true })));
   reg('removeWorkPlanPlugin', async () => {
+    if (restricted()) return;
     const binary = codexProgram();
     if (!binary) { vscode.window.showErrorMessage('The codex program of the Codex extension was not found.'); return; }
     const go = 'Remove';
@@ -336,6 +231,15 @@ function registerCommands(context, { source, memory, sessionsProvider, say }) {
   reg('newInSidebar', async () => {
     await vscode.commands.executeCommand('chatgpt.openSidebar');
     try { await vscode.commands.executeCommand('chatgpt.newChat'); } catch (_) { /* the shortcut is not enabled in every build */ }
+  });
+  /* The tab bar's button: the last Codex conversation in a tab, or a new one; or Codex's sidebar, as the setting says. */
+  reg('openCodex', async () => {
+    if (cfg().get('openButtonTarget', 'tab') === 'sidebar') { await vscode.commands.executeCommand('chatgpt.openSidebar'); return; }
+    const id = lastConversation(memory);
+    if (id) {
+      try { if (await tabs.openInTab(vscode, id)) return; } catch (e) { say(`opening ${id}: ${e.message}`); }
+    }
+    await vscode.commands.executeCommand('chatgpt.newCodexPanel');
   });
   reg('openThreadInTab', async (arg) => {
     const id = threadArg(arg);
@@ -360,7 +264,7 @@ function registerCommands(context, { source, memory, sessionsProvider, say }) {
     if (pick) await sessionsProvider.setColor(id, pick.label === 'none' ? '' : pick.label);
   });
   reg('findThread', async () => {
-    const threads = (files.listThreads() || []).filter((t) => t.kind === 'user' || !settings().hideBackgroundSessions);
+    const threads = (reader.threads() || []).filter((t) => t.kind === 'user' || !settings().hideBackgroundSessions);
     const qp = vscode.window.createQuickPick();
     qp.placeholder = 'Search titles, or four or more characters of a thread id';
     qp.matchOnDescription = true;
@@ -372,8 +276,9 @@ function registerCommands(context, { source, memory, sessionsProvider, say }) {
     qp.show();
   });
   reg('deleteArchivedThread', async (arg) => {
+    if (restricted()) return;
     const id = threadArg(arg);
-    const t = (files.listThreads() || []).find((x) => x.id === id);
+    const t = reader.thread(id);
     if (!t || !t.archived) return;
     if (tabs.codexTabs(vscode).some((x) => x.thread === id)) { vscode.window.showWarningMessage('Close its tab first.'); return; }
     const go = 'Delete';
@@ -386,13 +291,14 @@ function registerCommands(context, { source, memory, sessionsProvider, say }) {
       for (const ext of ['.json', '.turn', '.nudged', '.settled', '.offered', '.watermark', '.tz']) {
         try { fs.unlinkSync(path.join(install.planDir(files.codexHome()), id + ext)); } catch (_) { /* none */ }
       }
-      sessionsProvider.refresh();
+      source._poll();
     } catch (e) { vscode.window.showErrorMessage(`Codex could not delete it: ${e.message}`); }
   });
   reg('sessionInfo', async (arg) => {
     const id = threadArg(arg) || tabs.activeThread(vscode);
     if (!id) { vscode.window.showInformationMessage('Bring a Codex conversation tab to the front first.'); return; }
-    const rows = sessionInfo.rows(id);
+    let rows = [];
+    try { rows = await reader.request('info', { home: files.codexHome(), id }); } catch (e) { vscode.window.showErrorMessage(`Could not read it: ${e.message}`); return; }
     const pick = await vscode.window.showQuickPick(rows.map((r) => ({ label: r.label, description: r.value, value: r.value })),
       { placeHolder: 'Click a value to copy it' });
     if (pick && pick.value) { await vscode.env.clipboard.writeText(pick.value); vscode.window.setStatusBarMessage(`Copied ${pick.label}`, 3000); }
@@ -401,7 +307,7 @@ function registerCommands(context, { source, memory, sessionsProvider, say }) {
 
 /* The plugin is offered once per Codex home; after that it is the user's commands that install or remove it. */
 async function offerPlugin(context, say) {
-  if (!cfg().get('workPlan', true)) return;
+  if (!trusted() || !cfg().get('workPlan', true)) return;
   const home = files.codexHome();
   const have = install.installedVersions(home);
   const want = install.pluginVersion();
@@ -439,29 +345,39 @@ async function installPlugin(context, say, { interactive }) {
 /*
  * Codex runs the plugin's hooks only once they are trusted, and every new version of the plugin needs trusting again.
  * The user decides: this lists what needs review and, only on their yes, writes the same trust Codex's own Settings >
- * Hooks page writes. Declining leaves them for Codex's page.
+ * Hooks page writes. What is trusted is exactly what was listed: if the hooks needing review, or the Codex home, changed
+ * while the dialog was open, nothing is written and the new list is shown instead.
  */
+const TRUST_ROUNDS = 3;
 async function trustPlugin(say, { interactive }) {
+  if (!trusted()) return;
   const binary = codexProgram();
   if (!binary) return;
-  const folders = (vscode.workspace.workspaceFolders || []).map((f) => f.uri.fsPath);
-  const cwds = folders.length ? folders : [files.codexHome()];
-  let st;
-  try { st = await install.hookStatus({ binary, home: files.codexHome(), cwds }); } catch (e) { say(`listing hooks failed: ${e.message}`); return; }
-  if (!st.review.length) { if (interactive) vscode.window.setStatusBarMessage('The work plan hooks are trusted.', 4000); return; }
-  const go = 'Trust them';
-  const detail = `Codex runs hooks outside its sandbox and only after you trust them. These ${st.review.length} come from the work plan plugin:\n\n`
-    + st.review.map((h) => `${h.eventName}: ${h.command}`).join('\n')
-    + '\n\nYou can also trust them in Codex: Settings > Hooks.';
-  const pick = await vscode.window.showWarningMessage('Trust the work plan hooks in Codex?', { modal: interactive, detail }, go, 'Open Codex settings');
-  if (pick === 'Open Codex settings') { try { await vscode.commands.executeCommand('chatgpt.openSidebar'); } catch (_) { /* gone */ } return; }
-  if (pick !== go) return;
-  try {
-    const n = await install.trustHooks({ binary, home: files.codexHome(), cwds });
-    say(`trusted ${n} work plan hook(s) in ${files.codexHome()}`);
-  } catch (e) { vscode.window.showErrorMessage(`Could not trust the hooks: ${e.message}`); }
+  for (let round = 0; round < TRUST_ROUNDS; round++) {
+    const home = files.codexHome();
+    const folders = (vscode.workspace.workspaceFolders || []).map((f) => f.uri.fsPath);
+    const cwds = folders.length ? folders : [home];
+    let st;
+    try { st = await install.hookStatus({ binary, home, cwds }); } catch (e) { say(`listing hooks failed: ${e.message}`); return; }
+    if (!st.review.length) { if (interactive) vscode.window.setStatusBarMessage('The work plan hooks are trusted.', 4000); return; }
+    const go = 'Trust them';
+    const detail = `Codex runs hooks outside its sandbox and only after you trust them. These ${st.review.length} come from the work plan plugin`
+      + ` in ${home}:\n\n` + st.review.map((h) => `${h.eventName}: ${h.command}`).join('\n')
+      + '\n\nYou can also trust them in Codex: Settings > Hooks.';
+    const pick = await vscode.window.showWarningMessage('Trust the work plan hooks in Codex?', { modal: interactive || round > 0, detail }, go, 'Open Codex settings');
+    if (pick === 'Open Codex settings') { try { await vscode.commands.executeCommand('chatgpt.openSidebar'); } catch (_) { /* gone */ } return; }
+    if (pick !== go) return;
+    if (files.codexHome() !== home) { say('the Codex home changed while the trust dialog was open; listing the hooks again'); continue; }
+    try {
+      const r = await install.trustHooks({ binary, home, cwds, shown: st.review.map((h) => ({ key: h.key, currentHash: h.currentHash })) });
+      if (r.changed) { say('the hooks needing trust changed while the dialog was open; listing them again'); continue; }
+      say(`trusted ${r.trusted} work plan hook(s) in ${home}`);
+      return;
+    } catch (e) { vscode.window.showErrorMessage(`Could not trust the hooks: ${e.message}`); return; }
+  }
+  vscode.window.showWarningMessage('The work plan hooks kept changing while you were asked, so none was trusted. Try again.');
 }
 
 function deactivate() { files.closeAll(); }
 
-module.exports = { activate, deactivate };
+module.exports = { activate, deactivate, lastConversation };

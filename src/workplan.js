@@ -240,6 +240,18 @@ function sweepOrphans(opts = {}) {
   return { deleted, kept, live, why: '' };
 }
 
+/** The rows of a plan that wait on the user, each with the number shown in front of it. For the chime (src/patching.js). */
+function planQuestions(nodes, prefix = '', out = []) {
+  (nodes || []).forEach((n, i) => {
+    const num = (prefix ? prefix + '.' : '') + (i + 1);
+    if (n.waitingOn === 'user' && (n.state === 'waiting' || n.state === 'discussing')) {
+      out.push({ row: num, title: n.title, question: n.question || n.title, since: n.asked || n.since || 0, state: n.state });
+    }
+    planQuestions(n.children, num, out);
+  });
+  return out;
+}
+
 /** The states that mean a row still needs something done to it. */
 const OPEN_STATES = ['discussing', 'todo', 'doing', 'waiting', 'parked'];
 
@@ -277,7 +289,7 @@ function countOpen(nodes, acc = { discussing: 0, todo: 0, doing: 0, waiting: 0, 
 }
 
 module.exports = {
-  readPlan, countOpen, planDir, liveSessions, sweepOrphans, openFirst,
+  readPlan, countOpen, planDir, liveSessions, sweepOrphans, openFirst, planQuestions,
   DATA_ROOT, PLAN_DIR, PLAN_FILE, SIDE_SUFFIXES, SETTLED_MS, LOCK_STALE_MS, OPEN_STATES,
   STATES, MAX_DEPTH, MAX_NODES, MAX_DETAIL_LINES, MAX_DETAIL_CHARS, WAITING_ON, MAX_QUESTION_CHARS,
 };

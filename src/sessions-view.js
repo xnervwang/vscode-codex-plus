@@ -15,10 +15,11 @@
  * Threads Codex started by itself - sub-agents, the reviews of approval requests - and `codex exec` runs are left out
  * unless codexExtras.hideBackgroundSessions is off, when they are listed under Background. Clicking a conversation opens
  * it in a tab. The hover gives its thread id and which group it sits in, and the title can be given a colour.
+ *
+ * It is drawn in Agent Work Plan's activity bar container, once the Codex source is registered there. The threads come
+ * from the reader's latest snapshot (src/codex-reader.js), so drawing it reads no file.
  */
 const path = require('path');
-const files = require('./codex-files');
-const tabs = require('./codex-tabs');
 
 /* The colours a title can be given: the eight Claude Code's /color offers, as theme colours. */
 const COLORS = {
@@ -86,8 +87,9 @@ function placeOf(t, sections) {
 }
 
 class SessionsProvider {
-  constructor(vscode, { memory, memento, settings, stateOf }) {
+  constructor(vscode, { memory, memento, settings, stateOf, reader }) {
     this.vscode = vscode;
+    this.reader = reader;
     this.memory = memory;
     this.memento = memento;
     this.settings = settings;
@@ -117,8 +119,8 @@ class SessionsProvider {
   }
 
   refresh() {
-    this.threads = files.listThreads() || [];
-    this.sections = files.sections();
+    this.threads = this.reader.threads() || [];
+    this.sections = this.reader.sections();
     const folders = (this.vscode.workspace.workspaceFolders || []).map((f) => f.uri.fsPath);
     const cwdFilter = this.settings().sessionsInWorkspaceOnly && folders.length
       ? (cwd) => folders.some((f) => cwd === f || cwd.startsWith(f + path.sep)) : null;

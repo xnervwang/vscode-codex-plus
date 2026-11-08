@@ -46,7 +46,15 @@ function create() {
   const groupsChanged = new EventEmitter();
   const extChanged = new EventEmitter();
   const groups = [{ viewColumn: 1, tabs: [], activeTab: null, isActive: true }];
-  const state = { commands: [], context: {}, extensions: new Map(), clipboard: '', views: [], status: [], log: [], registered: [] };
+  const state = { commands: [], context: {}, extensions: new Map(), clipboard: '', views: [], status: [], log: [], registered: [],
+    said: [], answers: [], handlers: {} };
+  /* A notification is answered with the button the test set for text it contains (control.answer), else dismissed. */
+  const answer = async (message, ...rest) => {
+    const buttons = rest.filter((b) => typeof b === 'string');
+    state.said.push({ message, buttons });
+    for (const [match, pick] of state.answers) if (String(message).includes(match)) return typeof pick === 'function' ? pick(message, buttons) : pick;
+    return undefined;
+  };
   const vscode = {
     EventEmitter, Uri, TabInputCustom, TabInputText, ThemeIcon, ThemeColor, TreeItem, MarkdownString, FileDecoration,
     TreeItemCollapsibleState: { None: 0, Collapsed: 1, Expanded: 2 },
@@ -64,9 +72,9 @@ function create() {
       registerFileDecorationProvider: () => ({ dispose() {} }),
       createStatusBarItem: () => { const item = { text: '', show() { item.shown = true; state.status.push(item); }, hide() { item.shown = false; }, dispose() {} }; return item; },
       createOutputChannel: () => ({ appendLine: (l) => state.log.push(l), show() {}, dispose() {} }),
-      showInformationMessage: async () => undefined,
-      showWarningMessage: async () => undefined,
-      showErrorMessage: async () => undefined,
+      showInformationMessage: answer,
+      showWarningMessage: answer,
+      showErrorMessage: answer,
       setStatusBarMessage: () => ({ dispose() {} }),
     },
     commands: {
@@ -74,8 +82,10 @@ function create() {
         state.commands.push([cmd, ...args]);
         if (cmd === 'setContext') state.context[args[0]] = args[1];
         if (cmd === 'vscode.openWith' && state.openWith) state.openWith(...args);
+        if (state.handlers[cmd]) return state.handlers[cmd](...args);
+        return undefined;
       },
-      registerCommand: (id) => { state.registered.push(id); return { dispose() {} }; },
+      registerCommand: (id, fn) => { state.registered.push(id); state.handlers[id] = fn; return { dispose() {} }; },
     },
     extensions: {
       getExtension: (id) => state.extensions.get(id),
@@ -96,6 +106,7 @@ function create() {
     },
     fireTabs(e = {}) { tabsChanged.fire({ opened: [], closed: [], changed: [], ...e }); },
     fireExtensions() { extChanged.fire(); },
+    answer(match, pick) { state.answers.push([match, pick]); },
     codexTab(thread) { return { label: 't', input: new TabInputCustom(Uri.from({ scheme: 'openai-codex', authority: 'route', path: `/local/${thread}` }), 'chatgpt.conversationEditor') }; },
     fileTab(p) { return { label: path.basename(p), input: new TabInputText(Uri.file(p)) }; },
   };

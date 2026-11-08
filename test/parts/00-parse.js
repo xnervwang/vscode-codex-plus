@@ -33,7 +33,26 @@ module.exports = ({ ok, bad, eq, root }) => {
   const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
   eq([pkg.publisher, pkg.name, pkg.displayName], ['xnervwang', 'codex-extras', 'Codex Extras'], 'extension identity');
   eq(pkg.version, '0.1.0', 'version stays 0.1.0');
-  eq(pkg.extensionDependencies, ['openai.chatgpt'], 'depends on the Codex extension');
+  eq(pkg.extensionDependencies, ['openai.chatgpt', 'xnervwang.agent-work-plan'], 'depends on the Codex extension and on Agent Work Plan');
+  eq(pkg.agentWorkPlan, { protocol: require(path.join(root, 'src', 'codex-source.js')).PROTOCOL }, 'the manifest states the protocol the source implements');
+  eq(pkg.capabilities && pkg.capabilities.untrustedWorkspaces && pkg.capabilities.untrustedWorkspaces.supported, 'limited', 'it runs, limited, in Restricted Mode');
+  const c = pkg.contributes;
+  eq([c.viewsContainers, Object.keys(c.views), c.views.agentWorkPlan], [undefined, ['agentWorkPlan'],
+    [{ id: 'codexExtras.sessions', name: 'Codex sessions', when: 'codexExtras.registered && config.codexExtras.sessionList' }]],
+  'no container of its own: the session list sits in Agent Work Plan\'s, shown once the source is registered');
+  const commands = c.commands.map((x) => x.command);
+  const gone = ['refreshWorkPlan', 'openWorkPlanFile', 'showWorkPlanDetail', 'showConversations', 'answerQuestion', 'openConversation',
+    'restoreWebviewRequestLimit'].map((n) => 'codexExtras.' + n);
+  eq(gone.filter((g) => commands.includes(g) || JSON.stringify(c).includes(`"${g}"`)), [], 'the commands of the views Agent Work Plan draws are gone');
+  eq(['codexExtras.conversations', 'codexExtras.webviewRequestLimit'].filter((k) => k in c.configuration.properties), [], 'and so are their settings');
+  eq(/claudeCodeExtras|codexExtras\.(standalone|hosted|answer"|sessionsHosted|conversations")/.test(JSON.stringify(c)), false, 'nothing names the old host or the standalone views');
+  const open = c.commands.find((x) => x.command === 'codexExtras.openCodex');
+  eq([c.menus['editor/title'], open && open.icon, ['codex-light.svg', 'codex-dark.svg'].every((f) => fs.existsSync(path.join(root, 'images', f)))],
+    [[{ command: 'codexExtras.openCodex', group: 'navigation' }], { light: 'images/codex-light.svg', dark: 'images/codex-dark.svg' }, true],
+    'the tab bar has the Codex button, with its icons');
+  const target = c.configuration.properties['codexExtras.openButtonTarget'];
+  eq([target.enum, target.default], [['tab', 'sidebar'], 'tab'], 'the button opens a tab unless set to the sidebar');
+  eq(['icon.png', 'icon.svg'].every((f) => fs.existsSync(path.join(root, 'images', f))) && pkg.icon === 'images/icon.png', true, 'the marketplace icon is there');
   const header = /^(\/\/|#) BSD 3-Clause License\n\1 Copyright \(c\) 2026, Xnerv Wang\n\1 All rights reserved\./;
   const missing = [];
   const walk = (rel) => {

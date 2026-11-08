@@ -37,6 +37,12 @@ function threadOfTab(vscode, tab) {
   return '';
 }
 
+/** Whether a tab is one of Codex's own, with a conversation in it or not (a new conversation has none yet). */
+function isCodexTab(vscode, tab) {
+  const input = tab && tab.input;
+  return !!input && input instanceof vscode.TabInputCustom && isCodexViewType(input.viewType);
+}
+
 /** Every Codex conversation tab in this window: [{ thread, tab, group }], in tab-group order. */
 function codexTabs(vscode) {
   const out = [];
@@ -71,4 +77,5 @@ async function openInTab(vscode, thread, { preserveFocus = false } = {}) {
   return codexTabs(vscode).some((t) => t.thread === thread);
 }
 
-module.exports = { VIEW_TYPE, SCHEME, AUTHORITY, isCodexViewType, threadOfUri, threadOfTab, codexTabs, activeThread, threadUri, openInTab };
+module.exports = { VIEW_TYPE, SCHEME, AUTHORITY, isCodexViewType, isCodexTab, threadOfUri, threadOfTab, codexTabs, activeThread, threadUri,
+  openInTab };

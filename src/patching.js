@@ -18,7 +18,8 @@
  *                         a chime when a turn there finishes or its plan asks a question; and a strip with the last
  *                         turn's figures and the tool call running now (src/page/codex-extras-page.js draws both)
  *   window broadcasts     a thread this window starts following in a view that is not one of its tabs is taken to be
- *                         in front in the sidebar (onDidFocus)
+ *                         in front in the sidebar (onDidFocus); Agent Work Plan checks that with sidebarThread()
+ *                         before it takes the report
  *   page messages         the reader's time zone, from the page
  */
 const path = require('path');
@@ -30,6 +31,8 @@ let state = { active: false, reason: 'not checked yet', provider: null };
 const panels = new Map();
 let deps = null;
 let last = new Map();
+/* The thread Codex's sidebar last started following, as the broadcast says, or ''. */
+let sidebar = '';
 
 function codexPath(vscode) {
   const ext = vscode.extensions.getExtension('openai.chatgpt');
@@ -46,6 +49,7 @@ function statusLines() {
 }
 
 function canType() { return !!(state.active && state.provider); }
+function sidebarThread() { return sidebar; }
 function canDeliver(thread) { return canType() && (panels.get(thread) || new Set()).size > 0; }
 
 function postTo(panel, msg) {
@@ -58,18 +62,17 @@ function postTo(panel, msg) {
 
 /* Put `text` into the conversation's message box as a draft. Codex's composer takes a draft from the route state it is
    navigated with, and leaves a box that already has text alone, and nothing reports back which of the two happened.
-   So the result is never "delivered": the sender keeps the answer and copies it to the clipboard, and a box that was
-   empty also shows it as a draft. */
+   So the outcome is uncertain (the protocol's word for it): the sender keeps the answer and tells the reader to look. */
 async function deliver(thread, text) {
   const set = panels.get(thread);
   const panel = set && [...set][0];
-  if (!canType() || !panel) return { delivered: false, reason: 'not-shown' };
+  if (!canType() || !panel) return { outcome: 'notReceived', reason: 'no Codex tab in this window shows the conversation' };
   try {
     state.provider.sendMessageToPanel(panel, { type: 'navigate-to-route', path: `/local/${thread}`,
       state: { prefillPrompt: text, prefillPromptOnlyIfEmpty: true } });
-    panel.reveal(undefined, false);
-    return { delivered: false, reason: 'draft-unconfirmed' };
-  } catch (e) { return { delivered: false, reason: String(e && e.message || e) }; }
+  } catch (e) { return { outcome: 'notReceived', reason: String((e && e.message) || e).slice(0, 200) }; }
+  try { panel.reveal(undefined, false); } catch (_) { /* typed, just not brought forward */ }
+  return { outcome: 'uncertain' };
 }
 
 async function openInSidebar(thread) {
@@ -139,7 +142,7 @@ function installHooks() {
   globalThis.__codexExtrasBroadcast = (method, params) => {
     if (!deps || method !== 'thread-stream-following-changed' || !params || !params.following) return;
     const thread = String(params.conversationId || '');
-    if (thread && !panels.has(thread)) deps.source._focus(thread);
+    if (thread && !panels.has(thread)) { sidebar = thread; deps.source._focus(thread); }
   };
   if (globalThis.__codexExtrasProvider) { state.provider = globalThis.__codexExtrasProvider; state.active = true; state.reason = 'connected'; }
 }
@@ -197,5 +200,5 @@ function activate(context, opts) {
   return state;
 }
 
-module.exports = { activate, statusLines, openInSidebar, canType, canDeliver, deliver, removePatch, figuresOf, installHooks,
+module.exports = { activate, statusLines, openInSidebar, canType, canDeliver, deliver, sidebarThread, removePatch, figuresOf, installHooks,
   refreshPanels, _state: () => state, _panels: panels, TAB_DOTS };

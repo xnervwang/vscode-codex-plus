@@ -4,58 +4,68 @@
 
 'use strict';
 /*
- * activate() itself, against a stand-in VS Code: alone it draws the shared views and the status bar; with
- * claude-code-extras' workPlanHost of version 2 it registers the Codex source and draws none of them. Every command the
- * manifest names is registered.
+ * activate() itself, against a stand-in VS Code and a stand-in Agent Work Plan: the Codex source is registered with it,
+ * the session list shows only once that registration was accepted, every command the manifest names is registered, and
+ * Restricted Mode writes nothing.
  */
 const fs = require('fs');
 const path = require('path');
 const fake = require('../fake-vscode');
 const fixture = require('../fixture');
 
-async function run(root, tmp, withHost) {
+async function run(root, tmp, { core = 'accept', trusted = true } = {}) {
   const { vscode, control } = fake.create();
+  vscode.workspace.isTrusted = trusted;
+  vscode.workspace.onDidGrantWorkspaceTrust = () => ({ dispose() {} });
   fake.install(vscode);
   for (const k of Object.keys(require.cache)) if (k.startsWith(root + path.sep) && !k.includes(`${path.sep}test${path.sep}`)) delete require.cache[k];
   const home = tmp('home');
   fixture.codexHome(home, [{ title: 'One', cwd: home, turns: [{}] }]);
-  control.state.config = { codexHome: home, installWorkPlanPlugin: 'never', reopenDroppedTabs: false };
+  control.state.config = { codexHome: home, installWorkPlanPlugin: 'never', reopenDroppedTabs: false, patchCodex: 'off' };
   const registered = [];
-  if (withHost) {
-    control.state.extensions.set('xnervwang.claude-code-extras', { isActive: true,
-      exports: { workPlanHost: { version: 3, majors: [3], features: [], registerSource: (s) => { registered.push(s); return { dispose() {} }; } } } });
+  if (core) {
+    const registerSource = (s) => {
+      registered.push(s);
+      return core === 'accept' ? { accepted: true, code: '', reason: '', registration: { dispose() {} } }
+        : { accepted: false, code: 'core-too-old', reason: 'protocol 1 is not one this host accepts (2)', registration: null };
+    };
+    control.state.extensions.set('xnervwang.agent-work-plan', { isActive: true, exports: core === 'bare' ? {} : { agentWorkPlan: { protocol: 1, accepts: [1], features: [], registerSource } } });
   }
   const ext = require(path.join(root, 'extension.js'));
   const subs = [];
-  const context = { subscriptions: subs, workspaceState: fake.memento(), globalState: fake.memento(),
-    globalStorageUri: vscode.Uri.file(tmp('gs')), extensionPath: root };
+  const globalState = fake.memento();
+  const context = { subscriptions: subs, workspaceState: fake.memento(), globalState, globalStorageUri: vscode.Uri.file(tmp('gs')), extensionPath: root };
   await ext.activate(context);
-  await new Promise((r) => setTimeout(r, 50));
-  const out = { state: control.state, registered };
+  await new Promise((r) => setTimeout(r, 300));
+  const out = { state: control.state, registered, home, wroteSettings: fs.existsSync(path.join(home, 'plugins', 'data', 'agent-work-plan-codex-extras', 'config.json')) };
   for (const d of subs) { try { d.dispose(); } catch (_) { /* gone */ } }
   ext.deactivate();
   return out;
 }
 
 module.exports = async ({ ok, bad, eq, tmp, root }) => {
-  const alone = await run(root, tmp, false);
-  eq(alone.state.context['codexExtras.standalone'], true, 'alone, it marks itself as drawing the shared views');
-  const shared = ['codexExtras.workPlan', 'codexExtras.conversations', 'codexExtras.answer'];
-  eq(shared.map((v) => alone.state.views.includes(v)), [true, true, true], 'and draws the work plan, Conversations and Answer views');
-  if (alone.state.status.some((s) => /Conversations|to decide/.test(s.text))) ok('with its status bar entry');
-  else bad('no status bar entry while standalone');
   const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
   const declared = pkg.contributes.commands.map((c) => c.command);
-  const missing = declared.filter((c) => !alone.state.registered.includes(c));
-  eq(missing, [], 'every command in the manifest is registered');
 
-  const hosted = await run(root, tmp, true);
-  eq([hosted.registered.length, hosted.registered[0] && hosted.registered[0].id], [1, 'codex'], 'with a host, the Codex source is registered with it');
-  eq([hosted.state.context['codexExtras.standalone'], hosted.state.context['codexExtras.hosted']], [false, true],
-    'and the standalone key is false, the hosted key true');
-  eq(shared.filter((v) => hosted.state.views.includes(v)), [], 'and none of the shared views is drawn here');
-  eq(hosted.state.status.filter((s) => s.shown).length, 0, 'and no status bar entry is made');
-  if (hosted.state.views.includes('codexExtras.sessionsHosted')) ok('the Codex session list is registered for the host\'s container too');
-  else bad('the hosted session list view has no provider');
-  eq(alone.state.context['codexExtras.hosted'], false, 'alone, the hosted key is false');
+  const hosted = await run(root, tmp);
+  eq([hosted.registered.length, hosted.registered[0] && hosted.registered[0].id, hosted.registered[0] && hosted.registered[0].protocol],
+    [1, 'codex', 1], 'the Codex source is registered with Agent Work Plan, at protocol 1');
+  eq(hosted.state.context['codexExtras.registered'], true, 'an accepted registration shows the session list');
+  eq(hosted.state.views, ['codexExtras.sessions'], 'the session list is the only view this extension provides');
+  eq(hosted.state.status.filter((s) => s.shown).length, 0, 'and it makes no status bar entry');
+  eq(declared.filter((c) => !hosted.state.registered.includes(c)), [], 'every command in the manifest is registered');
+  eq(hosted.wroteSettings, true, 'in a trusted window the hooks\' settings are written');
+  eq(hosted.state.said.length, 0, 'nothing is said when it is taken');
+
+  const refused = await run(root, tmp, { core: 'refuse' });
+  eq([refused.state.context['codexExtras.registered'], refused.state.said.length], [false, 0],
+    'a refused registration hides the session list; Agent Work Plan, not this extension, says which one to update');
+
+  const bare = await run(root, tmp, { core: 'bare' });
+  eq([bare.state.context['codexExtras.registered'], bare.state.said.map((s) => /Agent Work Plan has no agentWorkPlan interface/.test(s.message))],
+    [false, [true]], 'with no interface to register with, it says so once');
+
+  const restricted = await run(root, tmp, { trusted: false });
+  if (restricted.registered.length === 1 && !restricted.wroteSettings) ok('in Restricted Mode it still registers, and writes nothing');
+  else bad(`restricted: ${JSON.stringify([restricted.registered.length, restricted.wroteSettings])}`);
 };

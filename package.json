@@ -1,7 +1,7 @@
 {
   "name": "codex-extras",
   "displayName": "Codex Extras",
-  "description": "A work plan for OpenAI Codex conversations, a Conversations tab with their questions and running state, and a session list with the conversations open in this window.",
+  "description": "Codex conversations in Agent Work Plan's work plan and Conversations views, a Codex session list, and a Codex button on the tab bar.",
   "version": "0.1.0",
   "publisher": "xnervwang",
   "license": "BSD-3-Clause",
@@ -18,7 +18,8 @@
     "Chat"
   ],
   "extensionDependencies": [
-    "openai.chatgpt"
+    "openai.chatgpt",
+    "xnervwang.agent-work-plan"
   ],
   "keywords": [
     "codex",
@@ -31,10 +32,19 @@
   "extensionKind": [
     "workspace"
   ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "In Restricted Mode nothing is installed into Codex, Codex is not patched and no file is written."
+    }
+  },
   "activationEvents": [
     "onStartupFinished"
   ],
   "main": "./extension.js",
+  "agentWorkPlan": {
+    "protocol": 1
+  },
   "contributes": {
     "commands": [
       {
@@ -58,33 +68,6 @@
         "title": "Codex Extras: Remove the Work Plan Plugin from Codex"
       },
       {
-        "command": "codexExtras.refreshWorkPlan",
-        "title": "Codex Extras: Refresh Work Plan",
-        "icon": "$(refresh)"
-      },
-      {
-        "command": "codexExtras.openWorkPlanFile",
-        "title": "Codex Extras: Open the Work Plan File",
-        "icon": "$(go-to-file)"
-      },
-      {
-        "command": "codexExtras.showWorkPlanDetail",
-        "title": "Codex Extras: Show a Row of the Work Plan"
-      },
-      {
-        "command": "codexExtras.showConversations",
-        "title": "Codex Extras: Show Conversations",
-        "icon": "$(list-tree)"
-      },
-      {
-        "command": "codexExtras.answerQuestion",
-        "title": "Codex Extras: Answer a Question"
-      },
-      {
-        "command": "codexExtras.openConversation",
-        "title": "Codex Extras: Go to a Conversation"
-      },
-      {
         "command": "codexExtras.refreshSessions",
         "title": "Codex Extras: Refresh Codex Sessions",
         "icon": "$(refresh)"
@@ -98,6 +81,14 @@
         "command": "codexExtras.newInSidebar",
         "title": "Codex Extras: New Codex Conversation in the Sidebar",
         "icon": "$(layout-sidebar-right)"
+      },
+      {
+        "command": "codexExtras.openCodex",
+        "title": "Codex Extras: Open Codex",
+        "icon": {
+          "light": "images/codex-light.svg",
+          "dark": "images/codex-dark.svg"
+        }
       },
       {
         "command": "codexExtras.openThreadInTab",
@@ -136,161 +127,74 @@
       {
         "command": "codexExtras.removePatch",
         "title": "Codex Extras: Remove the Patch from Codex (restore original files)"
-      },
-      {
-        "command": "codexExtras.restoreWebviewRequestLimit",
-        "title": "Codex Extras: Put Back VS Code's Request Limit"
       }
     ],
-    "viewsContainers": {
-      "activitybar": [
-        {
-          "id": "codexExtras",
-          "title": "Codex Extras",
-          "icon": "images/workplan.svg"
-        }
-      ],
-      "panel": [
-        {
-          "id": "codexExtrasConversations",
-          "title": "Conversations",
-          "icon": "images/workplan.svg"
-        }
-      ]
-    },
     "views": {
-      "codexExtras": [
-        {
-          "id": "codexExtras.workPlan",
-          "name": "Work plan",
-          "when": "codexExtras.standalone && config.codexExtras.workPlan"
-        },
+      "agentWorkPlan": [
         {
           "id": "codexExtras.sessions",
           "name": "Codex sessions",
-          "when": "codexExtras.standalone && config.codexExtras.sessionList"
-        }
-      ],
-      "codexExtrasConversations": [
-        {
-          "id": "codexExtras.conversations",
-          "name": "Conversations",
-          "when": "codexExtras.standalone && config.codexExtras.workPlan && config.codexExtras.conversations"
-        },
-        {
-          "type": "webview",
-          "id": "codexExtras.answer",
-          "name": "Answer",
-          "when": "codexExtras.standalone && config.codexExtras.workPlan && config.codexExtras.conversations"
-        }
-      ],
-      "claudeCodeExtras": [
-        {
-          "id": "codexExtras.sessionsHosted",
-          "name": "Codex sessions",
-          "when": "codexExtras.hosted && config.codexExtras.sessionList"
+          "when": "codexExtras.registered && config.codexExtras.sessionList"
         }
       ]
     },
-    "viewsWelcome": [
-      {
-        "view": "codexExtras.workPlan",
-        "contents": "No work plan for the Codex conversation in front yet.\n[Install the work plan plugin](command:codexExtras.installWorkPlanPlugin)"
-      },
-      {
-        "view": "codexExtras.conversations",
-        "contents": "No Codex conversation of this workspace is running or has open rows."
-      }
-    ],
     "menus": {
       "view/title": [
         {
-          "command": "codexExtras.showConversations",
-          "when": "view == codexExtras.workPlan",
-          "group": "navigation@0"
-        },
-        {
-          "command": "codexExtras.openWorkPlanFile",
-          "when": "view == codexExtras.workPlan",
-          "group": "navigation@1"
-        },
-        {
-          "command": "codexExtras.refreshWorkPlan",
-          "when": "view == codexExtras.workPlan",
-          "group": "navigation@2"
-        },
-        {
           "command": "codexExtras.newInTab",
-          "when": "view =~ /^codexExtras\\.sessions(Hosted)?$/",
+          "when": "view == codexExtras.sessions",
           "group": "navigation@0"
         },
         {
           "command": "codexExtras.newInSidebar",
-          "when": "view =~ /^codexExtras\\.sessions(Hosted)?$/",
+          "when": "view == codexExtras.sessions",
           "group": "navigation@1"
         },
         {
           "command": "codexExtras.findThread",
-          "when": "view =~ /^codexExtras\\.sessions(Hosted)?$/",
+          "when": "view == codexExtras.sessions",
           "group": "navigation@2"
         },
         {
           "command": "codexExtras.refreshSessions",
-          "when": "view =~ /^codexExtras\\.sessions(Hosted)?$/",
+          "when": "view == codexExtras.sessions",
           "group": "navigation@3"
         }
       ],
       "view/item/context": [
         {
-          "command": "codexExtras.openWorkPlanFile",
-          "when": "view == codexExtras.workPlan",
-          "group": "navigation"
-        },
-        {
           "command": "codexExtras.openThreadInTab",
-          "when": "view =~ /^codexExtras\\.sessions(Hosted)?$/ && viewItem =~ /^codexExtrasThread/",
+          "when": "view == codexExtras.sessions && viewItem =~ /^codexExtrasThread/",
           "group": "1_open@1"
         },
         {
           "command": "codexExtras.openThreadInSidebar",
-          "when": "view =~ /^codexExtras\\.sessions(Hosted)?$/ && viewItem =~ /^codexExtrasThread/",
+          "when": "view == codexExtras.sessions && viewItem =~ /^codexExtrasThread/",
           "group": "1_open@2"
         },
         {
           "command": "codexExtras.copyThreadId",
-          "when": "view =~ /^codexExtras\\.sessions(Hosted)?$/ && viewItem =~ /^codexExtrasThread/",
+          "when": "view == codexExtras.sessions && viewItem =~ /^codexExtrasThread/",
           "group": "2_info@1"
         },
         {
           "command": "codexExtras.sessionInfo",
-          "when": "view =~ /^codexExtras\\.sessions(Hosted)?$/ && viewItem =~ /^codexExtrasThread/",
+          "when": "view == codexExtras.sessions && viewItem =~ /^codexExtrasThread/",
           "group": "2_info@2"
         },
         {
           "command": "codexExtras.setTitleColor",
-          "when": "view =~ /^codexExtras\\.sessions(Hosted)?$/ && viewItem =~ /^codexExtrasThread/",
+          "when": "view == codexExtras.sessions && viewItem =~ /^codexExtrasThread/",
           "group": "3_look@1"
         },
         {
           "command": "codexExtras.deleteArchivedThread",
-          "when": "view =~ /^codexExtras\\.sessions(Hosted)?$/ && viewItem == codexExtrasThreadArchived",
+          "when": "view == codexExtras.sessions && viewItem == codexExtrasThreadArchived",
           "group": "9_delete@1"
         }
       ],
       "commandPalette": [
         {
-          "command": "codexExtras.showWorkPlanDetail",
-          "when": "false"
-        },
-        {
-          "command": "codexExtras.answerQuestion",
-          "when": "false"
-        },
-        {
-          "command": "codexExtras.openConversation",
-          "when": "false"
-        },
-        {
           "command": "codexExtras.openThreadInTab",
           "when": "false"
         },
@@ -309,6 +213,12 @@
         {
           "command": "codexExtras.deleteArchivedThread",
           "when": "false"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "codexExtras.openCodex",
+          "group": "navigation"
         }
       ]
     },
@@ -324,7 +234,7 @@
         "codexExtras.workPlan": {
           "type": "boolean",
           "default": true,
-          "markdownDescription": "Keep a work plan for each Codex conversation: the view beside the code, the open rows put in front of the model every turn, and the reminders at the end of one. Off hides the view, and the hooks say nothing and refuse to change a plan."
+          "markdownDescription": "Keep a work plan for each Codex conversation: the open rows put in front of the model every turn, and the reminders at the end of one. Agent Work Plan draws the plans. Off makes the hooks say nothing and refuse to change a plan, and no Codex plan is shown."
         },
         "codexExtras.installWorkPlanPlugin": {
           "type": "string",
@@ -341,15 +251,10 @@
             "Never install it; use the command"
           ]
         },
-        "codexExtras.conversations": {
-          "type": "boolean",
-          "default": true,
-          "markdownDescription": "Show the **Conversations** tab in the panel and its status bar entry."
-        },
         "codexExtras.sessionList": {
           "type": "boolean",
           "default": true,
-          "markdownDescription": "Show the **Codex sessions** view: the conversations open in this window, recently closed ones, and the rest by Codex's own sections."
+          "markdownDescription": "Show the **Codex sessions** view in Agent Work Plan's sidebar: the conversations open in this window, recently closed ones, and the rest by Codex's own sections."
         },
         "codexExtras.sessionsInWorkspaceOnly": {
           "type": "boolean",
@@ -373,10 +278,23 @@
           "default": true,
           "markdownDescription": "Reopen the Codex tabs that were open when the window closed but that VS Code did not restore, as can happen after the window lost its remote connection. Tabs you closed while connected stay closed."
         },
+        "codexExtras.openButtonTarget": {
+          "type": "string",
+          "enum": [
+            "tab",
+            "sidebar"
+          ],
+          "enumDescriptions": [
+            "The Codex conversation last in front, in a tab; a new one in a tab when there is none",
+            "Codex's sidebar"
+          ],
+          "default": "tab",
+          "markdownDescription": "What the Codex button on the tab bar opens."
+        },
         "codexExtras.tellCodexYourTimeZone": {
           "type": "boolean",
           "default": true,
-          "markdownDescription": "Tell Codex the time zone you read in, when it differs from the machine Codex runs on, so it gives you times in your zone. The zone is the one the Answer view runs in."
+          "markdownDescription": "Tell Codex the time zone you read in, when it differs from the machine Codex runs on, so it gives you times in your zone. The zone is the one Codex's page runs in."
         },
         "codexExtras.workPlanOfferMinTurns": {
           "type": "number",
@@ -419,21 +337,6 @@
           "type": "boolean",
           "default": true,
           "markdownDescription": "With the patch: a line at the bottom right of a Codex tab with the last turn's duration, context use, model and effort, and the tool call running now."
-        },
-        "codexExtras.webviewRequestLimit": {
-          "type": "string",
-          "enum": [
-            "ask",
-            "raise",
-            "leave"
-          ],
-          "enumDescriptions": [
-            "Ask once per VS Code version",
-            "Raise it without asking, again after each update. On Linux it still asks",
-            "Do not change it"
-          ],
-          "default": "ask",
-          "markdownDescription": "VS Code lets webview tabs, Codex's among them, have only 32 requests in flight at once, across all windows, and a tab can stay blank waiting for one. The extension can raise the limit to 1000000 in VS Code's `service-worker.js`. It takes effect after a restart, and VS Code updates reset it. To return to 32, run `Codex Extras: Put Back VS Code's Request Limit`."
         }
       }
     }

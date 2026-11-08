@@ -89,16 +89,18 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
   globalThis.__codexExtrasPanel(panel, thread, provider);
   eq(patching.canDeliver(thread), true, 'once its panel is handed over, that conversation can take an answer');
   const r = await patching.deliver(thread, 'My answer to row 1');
-  eq([r.delivered, r.reason, sent[0] && sent[0].type, sent[0] && sent[0].path, sent[0] && sent[0].state.prefillPrompt,
+  eq([r.outcome, sent[0] && sent[0].type, sent[0] && sent[0].path, sent[0] && sent[0].state.prefillPrompt,
     sent[0] && sent[0].state.prefillPromptOnlyIfEmpty],
-  [false, 'draft-unconfirmed', 'navigate-to-route', `/local/${thread}`, 'My answer to row 1', true],
-  'the answer goes to its panel as a draft, only into an empty box, and is not reported delivered since nothing confirms it');
+  ['uncertain', 'navigate-to-route', `/local/${thread}`, 'My answer to row 1', true],
+  'the answer goes to its panel as a draft, only into an empty box, and is reported uncertain since nothing confirms it');
+  eq((await patching.deliver('aaaaaaaa-0000-0000-0000-000000000000', 'x')).outcome, 'notReceived', 'a conversation with no panel here does not receive it');
   vscode.commands.executeCommand = async () => {};
   eq([await patching.openInSidebar(thread), navigated[0]], [true, `/local/${thread}`], 'opening in the sidebar navigates Codex\'s sidebar to it');
   globalThis.__codexExtrasBroadcast('thread-stream-following-changed', { conversationId: thread, following: true });
   eq(focused, [], 'following a thread that has a tab here is not the sidebar');
   globalThis.__codexExtrasBroadcast('thread-stream-following-changed', { conversationId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee', following: true });
-  eq(focused, ['aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'], 'following one with no tab here puts it in front (the sidebar)');
+  eq([focused, patching.sidebarThread()], [['aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'], 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'],
+    'following one with no tab here puts it in front (the sidebar), and is remembered for isFocused()');
   disposed();
   eq(patching.canDeliver(thread), false, 'a closed panel takes no more answers');
   const f = patching.figuresOf({ state: 'working', lastTurnMs: 130000, context: { used: 85000, window: 258400 }, model: 'openai.gpt-6.1-sol', effort: 'ultra',

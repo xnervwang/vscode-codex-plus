@@ -21,6 +21,8 @@ const tabs = require('./codex-tabs');
 
 const OPEN_KEY = 'codexExtras.openTabs';
 const CLOSED_KEY = 'codexExtras.recentlyClosed';
+/* The conversation last in front in this workspace, kept across reloads, for the tab bar's open button. */
+const LAST_KEY = 'codexExtras.lastInFront';
 const KEEP_CLOSED = 50;
 /* More than this many to reopen at once is more likely a record gone wrong than tabs a person had open. */
 const REOPEN_LIMIT = 20;
@@ -44,7 +46,21 @@ class TabMemory {
 
   noteFront() {
     const t = tabs.activeThread(this.vscode);
-    if (t) this.lastFront.set(t, Date.now());
+    if (!t) return;
+    this.lastFront.set(t, Date.now());
+    const kept = this.memento.get(LAST_KEY);
+    if (!kept || kept.thread !== t) Promise.resolve(this.memento.update(LAST_KEY, { thread: t, at: Date.now() })).catch(() => {});
+  }
+
+  /** The conversation most recently in front here: in this window, else as recorded, else the one closed last. '' if none. */
+  lastUsed() {
+    let best = '', at = 0;
+    for (const [t, ms] of this.lastFront) if (ms > at) { best = t; at = ms; }
+    if (best) return best;
+    const kept = this.memento.get(LAST_KEY);
+    if (kept && typeof kept.thread === 'string' && kept.thread) return kept.thread;
+    const closed = (this.memento.get(CLOSED_KEY) || [])[0];
+    return closed && typeof closed.thread === 'string' ? closed.thread : '';
   }
 
   onTabs(e) {
@@ -100,4 +116,4 @@ class TabMemory {
   dispose() { for (const d of this.subs) d.dispose(); this.emitter.dispose(); }
 }
 
-module.exports = { TabMemory, OPEN_KEY, CLOSED_KEY, REOPEN_LIMIT };
+module.exports = { TabMemory, OPEN_KEY, CLOSED_KEY, LAST_KEY, REOPEN_LIMIT };
