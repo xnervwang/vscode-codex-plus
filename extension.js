@@ -158,13 +158,14 @@ async function activate(context) {
 }
 
 /*
- * A new Codex conversation in the editor group in front. Codex's own chatgpt.newCodexPanel asks for the group of the
- * text file last focused, which puts the conversation in a split when that file is not where the reader is looking;
- * opening its route here states the group instead. Codex's command is the fallback, in case it stops taking the route.
+ * A new Codex conversation in a tab. Codex's own chatgpt.newCodexPanel asks for the group of the text file last
+ * focused, which puts the conversation in a split when that file is not where the reader is looking; opening its route
+ * here states the group instead, the first one unless the setting says the group in front. Codex's command is the
+ * fallback, in case it stops taking the route.
  */
 async function newConversationInTab(say) {
   try {
-    if (await tabs.openNewInTab(vscode)) return;
+    if (await tabs.openNewInTab(vscode, { group: cfg().get('newConversationGroup', 'main') })) return;
     say('Codex did not open a conversation for its new-panel route; asking Codex itself');
   } catch (e) {
     say(`opening a new conversation: ${e.message}`);

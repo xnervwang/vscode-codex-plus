@@ -310,6 +310,19 @@
           "default": true,
           "markdownDescription": "Reopen the Codex tabs that were open when the window closed but that VS Code did not restore, as can happen after the window lost its remote connection. Tabs you closed while connected stay closed."
         },
+        "codexExtras.newConversationGroup": {
+          "type": "string",
+          "enum": [
+            "main",
+            "active"
+          ],
+          "enumDescriptions": [
+            "The first editor group, the one a split is made from",
+            "The editor group in front, which with a split open is the half the button was pressed in"
+          ],
+          "default": "main",
+          "markdownDescription": "Which editor group a new Codex conversation opens in."
+        },
         "codexExtras.openButtonTarget": {
           "type": "string",
           "enum": [

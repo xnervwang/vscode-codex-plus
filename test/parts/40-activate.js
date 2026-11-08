@@ -99,8 +99,16 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
     const ran = w.state.commands.slice(before);
     const [cmd, uri, viewType, options] = ran[0] || [];
     eq([ran.length, cmd, uri && uri.path, viewType, options && options.viewColumn, options && options.preview],
-      [1, 'vscode.openWith', '/extension/panel/new', 'chatgpt.conversationEditor', -1, false],
-      'in a tab it opens the new-conversation route itself, in the group in front, and asks Codex for nothing more');
+      [1, 'vscode.openWith', '/extension/panel/new', 'chatgpt.conversationEditor', 1, false],
+      'in a tab it opens the new-conversation route itself, in the first editor group, and asks Codex for nothing more');
+  }
+  {
+    // A split's narrow half is the group in front when its title bar button is pressed, so the group is a setting.
+    const w = await run(root, tmp, { config: { openButtonTarget: 'tab', newConversationGroup: 'active' }, takesRoute: true });
+    const before = w.state.commands.length;
+    await w.state.handlers['codexExtras.openCodex']();
+    const options = (w.state.commands.slice(before)[0] || [])[3];
+    eq(options && options.viewColumn, -1, 'set to the group in front, it names that group instead of the first');
   }
   {
     const w = await run(root, tmp, { config: { openButtonTarget: 'tab' } });

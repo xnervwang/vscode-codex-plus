@@ -98,10 +98,16 @@ function newPanelUri(vscode) {
   return vscode.Uri.from({ scheme: SCHEME, authority: AUTHORITY, path: NEW_PANEL_PATH });
 }
 
-/* Open a new Codex conversation in the editor group in front. False when Codex did not take the route. */
-async function openNewInTab(vscode) {
+/*
+ * Open a new Codex conversation in a tab. `group` is 'main' for the first editor group, the wide one a split is made
+ * from, or 'active' for the group in front. The group in front is the one the title bar button was pressed in, which
+ * with a split open is the narrow half; naming the first group keeps a conversation out of it. False when Codex did
+ * not take the route.
+ */
+async function openNewInTab(vscode, { group = 'main' } = {}) {
+  const viewColumn = group === 'active' ? vscode.ViewColumn.Active : vscode.ViewColumn.One;
   await vscode.commands.executeCommand('vscode.openWith', newPanelUri(vscode), VIEW_TYPE,
-    { viewColumn: vscode.ViewColumn.Active, preserveFocus: false, preview: false });
+    { viewColumn, preserveFocus: false, preview: false });
   const tab = vscode.window.tabGroups.activeTabGroup;
   return !!(tab && tab.activeTab && isCodexTab(vscode, tab.activeTab));
 }
