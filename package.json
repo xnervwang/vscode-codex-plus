@@ -40,16 +40,341 @@
       {
         "command": "codexExtras.status",
         "title": "Codex Extras: Show Status"
+      },
+      {
+        "command": "codexExtras.openSettings",
+        "title": "Codex Extras: Settings"
+      },
+      {
+        "command": "codexExtras.installWorkPlanPlugin",
+        "title": "Codex Extras: Install the Work Plan Plugin into Codex"
+      },
+      {
+        "command": "codexExtras.trustWorkPlanHooks",
+        "title": "Codex Extras: Trust the Work Plan Hooks in Codex"
+      },
+      {
+        "command": "codexExtras.removeWorkPlanPlugin",
+        "title": "Codex Extras: Remove the Work Plan Plugin from Codex"
+      },
+      {
+        "command": "codexExtras.refreshWorkPlan",
+        "title": "Codex Extras: Refresh Work Plan",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "codexExtras.openWorkPlanFile",
+        "title": "Codex Extras: Open the Work Plan File",
+        "icon": "$(go-to-file)"
+      },
+      {
+        "command": "codexExtras.showWorkPlanDetail",
+        "title": "Codex Extras: Show a Row of the Work Plan"
+      },
+      {
+        "command": "codexExtras.showConversations",
+        "title": "Codex Extras: Show Conversations",
+        "icon": "$(list-tree)"
+      },
+      {
+        "command": "codexExtras.answerQuestion",
+        "title": "Codex Extras: Answer a Question"
+      },
+      {
+        "command": "codexExtras.openConversation",
+        "title": "Codex Extras: Go to a Conversation"
+      },
+      {
+        "command": "codexExtras.refreshSessions",
+        "title": "Codex Extras: Refresh Codex Sessions",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "codexExtras.newInTab",
+        "title": "Codex Extras: New Codex Conversation in a Tab",
+        "icon": "$(add)"
+      },
+      {
+        "command": "codexExtras.newInSidebar",
+        "title": "Codex Extras: New Codex Conversation in the Sidebar",
+        "icon": "$(layout-sidebar-right)"
+      },
+      {
+        "command": "codexExtras.openThreadInTab",
+        "title": "Codex Extras: Resume in Tab"
+      },
+      {
+        "command": "codexExtras.openThreadInSidebar",
+        "title": "Codex Extras: Resume in Sidebar"
+      },
+      {
+        "command": "codexExtras.copyThreadId",
+        "title": "Codex Extras: Copy Thread ID"
+      },
+      {
+        "command": "codexExtras.setTitleColor",
+        "title": "Codex Extras: Text Color..."
+      },
+      {
+        "command": "codexExtras.findThread",
+        "title": "Codex Extras: Find a Codex Conversation by Title or ID",
+        "icon": "$(search)"
+      },
+      {
+        "command": "codexExtras.deleteArchivedThread",
+        "title": "Codex Extras: Delete Conversation..."
+      },
+      {
+        "command": "codexExtras.sessionInfo",
+        "title": "Codex Extras: Session Information",
+        "icon": "$(info)"
       }
     ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "codexExtras",
+          "title": "Codex Extras",
+          "icon": "images/workplan.svg"
+        }
+      ],
+      "panel": [
+        {
+          "id": "codexExtrasConversations",
+          "title": "Conversations",
+          "icon": "images/workplan.svg"
+        }
+      ]
+    },
+    "views": {
+      "codexExtras": [
+        {
+          "id": "codexExtras.workPlan",
+          "name": "Work plan",
+          "when": "codexExtras.standalone && config.codexExtras.workPlan"
+        },
+        {
+          "id": "codexExtras.sessions",
+          "name": "Codex sessions",
+          "when": "config.codexExtras.sessionList"
+        }
+      ],
+      "codexExtrasConversations": [
+        {
+          "id": "codexExtras.conversations",
+          "name": "Conversations",
+          "when": "codexExtras.standalone && config.codexExtras.workPlan && config.codexExtras.conversations"
+        },
+        {
+          "type": "webview",
+          "id": "codexExtras.answer",
+          "name": "Answer",
+          "when": "codexExtras.standalone && config.codexExtras.workPlan && config.codexExtras.conversations"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "codexExtras.workPlan",
+        "contents": "No work plan for the Codex conversation in front yet.\n[Install the work plan plugin](command:codexExtras.installWorkPlanPlugin)"
+      },
+      {
+        "view": "codexExtras.conversations",
+        "contents": "No Codex conversation of this workspace is running or has open rows."
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "codexExtras.showConversations",
+          "when": "view == codexExtras.workPlan",
+          "group": "navigation@0"
+        },
+        {
+          "command": "codexExtras.openWorkPlanFile",
+          "when": "view == codexExtras.workPlan",
+          "group": "navigation@1"
+        },
+        {
+          "command": "codexExtras.refreshWorkPlan",
+          "when": "view == codexExtras.workPlan",
+          "group": "navigation@2"
+        },
+        {
+          "command": "codexExtras.newInTab",
+          "when": "view == codexExtras.sessions",
+          "group": "navigation@0"
+        },
+        {
+          "command": "codexExtras.newInSidebar",
+          "when": "view == codexExtras.sessions",
+          "group": "navigation@1"
+        },
+        {
+          "command": "codexExtras.findThread",
+          "when": "view == codexExtras.sessions",
+          "group": "navigation@2"
+        },
+        {
+          "command": "codexExtras.refreshSessions",
+          "when": "view == codexExtras.sessions",
+          "group": "navigation@3"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "codexExtras.openWorkPlanFile",
+          "when": "view == codexExtras.workPlan",
+          "group": "navigation"
+        },
+        {
+          "command": "codexExtras.openThreadInTab",
+          "when": "view == codexExtras.sessions && viewItem =~ /^codexExtrasThread/",
+          "group": "1_open@1"
+        },
+        {
+          "command": "codexExtras.openThreadInSidebar",
+          "when": "view == codexExtras.sessions && viewItem =~ /^codexExtrasThread/",
+          "group": "1_open@2"
+        },
+        {
+          "command": "codexExtras.copyThreadId",
+          "when": "view == codexExtras.sessions && viewItem =~ /^codexExtrasThread/",
+          "group": "2_info@1"
+        },
+        {
+          "command": "codexExtras.sessionInfo",
+          "when": "view == codexExtras.sessions && viewItem =~ /^codexExtrasThread/",
+          "group": "2_info@2"
+        },
+        {
+          "command": "codexExtras.setTitleColor",
+          "when": "view == codexExtras.sessions && viewItem =~ /^codexExtrasThread/",
+          "group": "3_look@1"
+        },
+        {
+          "command": "codexExtras.deleteArchivedThread",
+          "when": "view == codexExtras.sessions && viewItem == codexExtrasThreadArchived",
+          "group": "9_delete@1"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "codexExtras.showWorkPlanDetail",
+          "when": "false"
+        },
+        {
+          "command": "codexExtras.answerQuestion",
+          "when": "false"
+        },
+        {
+          "command": "codexExtras.openConversation",
+          "when": "false"
+        },
+        {
+          "command": "codexExtras.openThreadInTab",
+          "when": "false"
+        },
+        {
+          "command": "codexExtras.openThreadInSidebar",
+          "when": "false"
+        },
+        {
+          "command": "codexExtras.copyThreadId",
+          "when": "false"
+        },
+        {
+          "command": "codexExtras.setTitleColor",
+          "when": "false"
+        },
+        {
+          "command": "codexExtras.deleteArchivedThread",
+          "when": "false"
+        }
+      ]
+    },
     "configuration": {
       "title": "Codex Extras",
       "properties": {
         "codexExtras.codexHome": {
           "type": "string",
           "default": "",
-          "scope": "machine",
-          "markdownDescription": "The Codex home directory to read and to install into. Empty uses `CODEX_HOME` when it is set, otherwise `~/.codex`."
+          "markdownDescription": "The Codex home directory to read and to install the work plan plugin into. Empty uses `CODEX_HOME` when it is set, otherwise `~/.codex`.",
+          "scope": "machine"
+        },
+        "codexExtras.workPlan": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Keep a work plan for each Codex conversation: the view beside the code, the open rows put in front of the model every turn, and the reminders at the end of one. Off hides the view, and the hooks say nothing and refuse to change a plan."
+        },
+        "codexExtras.installWorkPlanPlugin": {
+          "type": "string",
+          "default": "ask",
+          "markdownDescription": "Whether to install the work plan plugin into Codex when it is missing or older than the one this extension ships.",
+          "enum": [
+            "ask",
+            "auto",
+            "never"
+          ],
+          "enumDescriptions": [
+            "Ask once per Codex home and plugin version",
+            "Install without asking; Codex still asks you to trust its hooks",
+            "Never install it; use the command"
+          ]
+        },
+        "codexExtras.conversations": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Show the **Conversations** tab in the panel and its status bar entry."
+        },
+        "codexExtras.sessionList": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Show the **Codex sessions** view: the conversations open in this window, recently closed ones, and the rest by Codex's own sections."
+        },
+        "codexExtras.sessionsInWorkspaceOnly": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "List only conversations started in this window's workspace folders, or folders under them, in Codex sessions (open and recently closed ones are always listed)."
+        },
+        "codexExtras.hideBackgroundSessions": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Leave out the threads Codex starts by itself - sub-agents and the reviews of approval requests - and `codex exec` runs."
+        },
+        "codexExtras.recentClosedSessions": {
+          "type": "integer",
+          "default": 10,
+          "markdownDescription": "How many conversations **Recently closed** lists. 0 hides it.",
+          "minimum": 0,
+          "maximum": 50
+        },
+        "codexExtras.reopenDroppedTabs": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Reopen the Codex tabs that were open when the window closed but that VS Code did not restore, as can happen after the window lost its remote connection. Tabs you closed while connected stay closed."
+        },
+        "codexExtras.tellCodexYourTimeZone": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Tell Codex the time zone you read in, when it differs from the machine Codex runs on, so it gives you times in your zone. The zone is the one the Answer view runs in."
+        },
+        "codexExtras.workPlanOfferMinTurns": {
+          "type": "number",
+          "default": 3,
+          "markdownDescription": "How many messages you must have sent before a conversation without a plan is offered one.",
+          "minimum": 1
+        },
+        "codexExtras.workPlanOfferMinToolCalls": {
+          "type": "number",
+          "default": 25,
+          "markdownDescription": "How many tool calls one turn must make before that offer.",
+          "minimum": 1
+        },
+        "codexExtras.workPlanQuietWhenReplyMatches": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "A regular expression (Python syntax) tested on the latest reply. A match silences the reminders around a compaction, for conversations relaying another model's replies word for word."
         }
       }
     }
