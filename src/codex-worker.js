@@ -81,6 +81,12 @@ const ops = {
   rolloutExists({ home: h, id }) {
     return !!files.rolloutOf(id, at(h));
   },
+  /* When the user's own messages of one conversation were sent, for the stamps its page draws on them. A whole rollout
+     is read the first time and only its new bytes after that (src/user-times.js), which is why this is in here. */
+  userTimes({ home: h, id }) {
+    const rollout = files.rolloutOf(id, at(h));
+    return { times: rollout ? require('./user-times').userTimes(rollout) : null };
+  },
   /* Plans of conversations that are gone (src/workplan.js). */
   sweep({ home: h }) {
     const dir = at(h);

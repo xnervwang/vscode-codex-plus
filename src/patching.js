@@ -15,8 +15,11 @@
  *   each panel + thread   a dot on that tab's logo: green while a turn runs, red when one finished and is not read;
  *                         an answer from the Conversations tab put into that conversation's message box as a draft
  *                         (route state prefillPrompt, only if the box is empty), which the reader sends with Enter;
- *                         a chime when a turn there finishes or its plan asks a question; and a strip with the last
- *                         turn's figures and the tool call running now (src/page/codex-extras-page.js draws both)
+ *                         a chime when a turn there finishes or its plan asks a question; a strip with the last turn's
+ *                         figures and the tool call running now; and the settings the page draws its time stamps, its
+ *                         list of the reader's own messages and their colouring from, with the times its rollout gives
+ *                         for those messages (src/page/codex-extras-page.js draws all of it, src/user-times.js reads
+ *                         the rollout)
  *   window broadcasts     a thread this window starts following in a view that is not one of its tabs is taken to be
  *                         in front in the sidebar (onDidFocus). sidebarThread() is the last such thread, and nothing
  *                         is reported after it: whether the reader is still looking at the sidebar is the source's to
@@ -161,6 +164,20 @@ async function sampleLayout({ timeoutMs = SAMPLE_MS } = {}) {
   return r;
 }
 
+/** A CSS colour the reader typed, or '' for anything else: nothing but a colour may reach the page's stylesheet. */
+function safeColor(value) {
+  const v = String(value || '').trim();
+  if (/^#[0-9a-fA-F]{3,8}$/.test(v) || /^[a-zA-Z]{3,30}$/.test(v) || /^(rgb|rgba|hsl|hsla)\([0-9.,%\s/deg]+\)$/.test(v)) return v;
+  return '';
+}
+
+/* The three settings the page draws from, as the message that carries them. The page has the same defaults, so a page
+   the host has not spoken to yet shows what the settings say rather than nothing. */
+function viewOf(s = {}) {
+  return { type: 'codex-extras-view', timestamps: s.timestamps !== false, navigation: s.conversationNavigation !== false,
+    userColor: safeColor(s.userMessageColor), userEdge: s.userMessageEdge !== false };
+}
+
 function figuresOf(c) {
   if (!c) return null;
   const parts = [];
@@ -171,13 +188,31 @@ function figuresOf(c) {
   return { type: 'codex-extras-figures', text: parts.join(' · '), tool: running ? c.lastTool.name : '', toolSince: running ? c.lastTool.startedMs : 0 };
 }
 
-/* Redraw what the panels show after the conversations changed: tab dots, figures, and a chime on a finished turn. */
+/*
+ * Redraw what the panels show after the conversations changed: tab dots, figures, a chime on a finished turn, and the
+ * settings and message times the page draws its stamps, its list and its colours from.
+ *
+ * This is also the one place those settings reach a page, so a change to one of them calls this rather than adding a
+ * watcher of its own: it runs on a conversation change and when a panel appears, and does no reading a draw of the
+ * figures was not already doing.
+ */
 async function refreshPanels() {
   if (!deps || !state.active || !panels.size) return;
   const { vscode, source, context, planQuestions } = deps;
   let list = [];
   try { list = await source.listConversations(); } catch (_) { return; }
   const now = new Map(list.map((c) => [c.sessionId, c]));
+  const view = viewOf(deps.settings());
+  /* Only while the stamps are on, and only for the conversations a panel here shows. */
+  const whens = new Map();
+  if (view.timestamps && typeof deps.userTimes === 'function') {
+    for (const thread of panels.keys()) {
+      try {
+        const r = await deps.userTimes(thread);
+        if (r && Array.isArray(r.times)) whens.set(thread, r.times);
+      } catch (_) { /* the page falls back to what Codex itself rendered */ }
+    }
+  }
   const logo = source.logo;
   const icons = logo ? iconsFor({ light: logo.light.fsPath, dark: logo.dark.fsPath }, path.join(context.globalStorageUri.fsPath, 'tab-icons'),
     undefined, TAB_DOTS) : null;
@@ -194,6 +229,8 @@ async function refreshPanels() {
         else if (planQuestions(thread) > (was.questions || 0)) postTo(panel, { type: 'codex-extras-chime', kind: 'question' });
       }
       if (deps.settings().figures) postTo(panel, figuresOf(c) || { type: 'codex-extras-figures', text: '' });
+      postTo(panel, view);
+      if (whens.has(thread)) postTo(panel, { type: 'codex-extras-user-times', times: whens.get(thread) });
     }
     if (c) last.set(thread, { state: c.state, questions: planQuestions(thread) });
   }
@@ -214,6 +251,13 @@ function installHooks() {
     if (provider) state.provider = provider;
     state.active = true;
     if (msg && msg.kind === 'tz' && typeof msg.timeZone === 'string' && deps && deps.onTimeZone) deps.onTimeZone(msg.timeZone);
+    /* A sent time in a form the page's parser does not know. The page sends its shape and never its value, so this is
+       the whole of what can be said about it - and it is what writing the next parser needs. */
+    if (msg && msg.kind === 'stampShape' && deps && deps.log) {
+      deps.log(`Codex's sent time is in a form this extension cannot read: ${+msg.len || 0} characters, the first a `
+        + `${msg.first === 'digit' || msg.first === 'letter' ? msg.first : 'character that is neither'}`
+        + `, ${msg.digits ? 'all digits' : 'not all digits'}. No time is shown on replies.`);
+    }
     if (msg && msg.kind === 'sample' && pendingSample && msg.id === pendingSample.id) {
       const p = pendingSample;
       pendingSample = null;
@@ -242,8 +286,9 @@ async function ensurePatched(vscode, context, log, mode) {
     const go = 'Patch Codex';
     const pick = await vscode.window.showInformationMessage(`Patch the Codex extension ${version}?`, {
       detail: 'It adds status dots to Codex tabs, opening a conversation in the sidebar, answers into a conversation\'s '
-        + 'message box, chimes, and a line with each conversation\'s last turn figures. Codex\'s files are kept and put '
-        + 'back by "Codex Extras: Remove the Patch from Codex" or on uninstall. A window reload applies it.' }, go, 'Not now');
+        + 'message box, chimes, a line with each conversation\'s last turn figures, a time on every message and reply, '
+        + 'a list of your own messages on the right edge, and your own messages marked out. Codex\'s files are kept and '
+        + 'put back by "Codex Extras: Remove the Patch from Codex" or on uninstall. A window reload applies it.' }, go, 'Not now');
     if (pick !== go) { state.reason = 'not patched: declined for this Codex version'; return; }
   }
   const results = [];
@@ -267,6 +312,11 @@ async function ensurePatched(vscode, context, log, mode) {
 function removePatch(vscode) {
   const dir = codexPath(vscode);
   if (!dir) return [];
+  /* Restoring the files leaves the pages already built still running this extension's script, until the window is
+     reloaded. Told that everything is off, each of them takes its own stamps, list and classes back off Codex's tree,
+     so a reader who does not reload at once is not left with marks nothing maintains. */
+  const off = { type: 'codex-extras-view', timestamps: false, navigation: false, userColor: '', userEdge: false };
+  for (const set of panels.values()) for (const panel of set) postTo(panel, off);
   return [...targets].reverse().map((t) => { try { return `${t.name}: ${t.restore(dir).message}`; } catch (e) { return `${t.name}: ${e.message}`; } });
 }
 
@@ -282,4 +332,4 @@ function activate(context, opts) {
 }
 
 module.exports = { activate, statusLines, openInSidebar, canType, canDeliver, deliver, sidebarThread, panelThreads, revealPanel, removePatch,
-  figuresOf, sampleLayout, installHooks, refreshPanels, _state: () => state, _panels: panels, TAB_DOTS, SAMPLE_MS };
+  figuresOf, safeColor, viewOf, sampleLayout, installHooks, refreshPanels, _state: () => state, _panels: panels, TAB_DOTS, SAMPLE_MS };

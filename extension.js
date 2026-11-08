@@ -46,6 +46,10 @@ function settings() {
     recentClosedSessions: c.get('recentClosedSessions', 10),
     reopenDroppedTabs: c.get('reopenDroppedTabs', true),
     installPlugin: c.get('installWorkPlanPlugin', 'ask'),
+    timestamps: c.get('timestamps', true),
+    conversationNavigation: c.get('conversationNavigation', true),
+    userMessageColor: c.get('userMessageColor', ''),
+    userMessageEdge: c.get('userMessageEdge', true),
   };
 }
 const trusted = () => vscode.workspace.isTrusted !== false;
@@ -126,8 +130,22 @@ async function activate(context) {
   context.subscriptions.push(vscode.workspace.onDidChangeConfiguration((e) => {
     if (e.affectsConfiguration(`${CONFIG}.codexHome`)) { applyCodexHome(); source._poll(); }
     if (e.affectsConfiguration(CONFIG)) { writeHookSettings(context); sessionsProvider.refresh(); }
+    /* The time stamps, the message list and the colours live in Codex's page, and this is how a change to one of them
+       gets there: the same redraw the figures use, rather than a watcher of its own. */
+    if (e.affectsConfiguration(`${CONFIG}.timestamps`) || e.affectsConfiguration(`${CONFIG}.conversationNavigation`)
+      || e.affectsConfiguration(`${CONFIG}.userMessageColor`) || e.affectsConfiguration(`${CONFIG}.userMessageEdge`)) {
+      const typed = String(cfg().get('userMessageColor', '') || '').trim();
+      if (typed && !patching.safeColor(typed)) {
+        vscode.window.showWarningMessage(`Codex Extras: "${typed}" is not a CSS colour (use for example #90EE90, `
+          + 'lightgreen or rgb(144,238,144)); the colour of your own messages is left as Codex draws it.');
+      }
+      patching.refreshPanels().catch((err) => say(`redrawing the Codex pages: ${err.message}`));
+    }
   }));
-  registerCommands(context, { source, memory, sessionsProvider, say, link });
+  /* When the user's own messages were sent, for the stamps Codex's page draws on them: read in the worker thread, since
+     the first read of a conversation goes through its whole rollout (src/user-times.js). */
+  const userTimes = (id) => reader.request('userTimes', { home: files.codexHome(), id });
+  registerCommands(context, { source, memory, sessionsProvider, say, link, userTimes });
 
   /* Everything that writes waits for a trusted workspace. */
   let wrote = false;
@@ -144,7 +162,7 @@ async function activate(context) {
     }, 60000);
     try {
       patching.activate(context, { vscode, log: say, codexProgram, source, context, settings, onTimeZone: reportTimeZone,
-        planQuestions: (id) => planQuestions((readPlan(id) || {}).nodes).length });
+        userTimes, planQuestions: (id) => planQuestions((readPlan(id) || {}).nodes).length });
     } catch (e) { say(`patching: ${e.message}`); }
   };
   whenTrusted();
@@ -173,7 +191,7 @@ async function newConversationInTab(say) {
   await vscode.commands.executeCommand('chatgpt.newCodexPanel');
 }
 
-function registerCommands(context, { source, memory, sessionsProvider, say, link }) {
+function registerCommands(context, { source, memory, sessionsProvider, say, link, userTimes }) {
   const reg = (name, fn) => context.subscriptions.push(vscode.commands.registerCommand(`${CONFIG}.${name}`, fn));
   const threadArg = (arg) => (typeof arg === 'string' ? arg : arg && arg.thread ? arg.thread.id : arg && arg.sessionId) || '';
   const restricted = () => {
@@ -207,7 +225,7 @@ function registerCommands(context, { source, memory, sessionsProvider, say, link
     await vscode.workspace.getConfiguration(CONFIG).update('patchCodex', 'on', vscode.ConfigurationTarget.Global);
     vscode.window.showInformationMessage('Codex will be patched now; reload the window when asked.');
     patching.activate(context, { vscode, log: say, codexProgram, source, context, settings: () => ({ ...settings(), patchCodex: 'on' }),
-      planQuestions: (id) => planQuestions((readPlan(id) || {}).nodes).length });
+      userTimes, planQuestions: (id) => planQuestions((readPlan(id) || {}).nodes).length });
   });
   reg('removePatch', async () => {
     if (restricted()) return;

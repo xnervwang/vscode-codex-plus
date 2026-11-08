@@ -1,0 +1,124 @@
+// BSD 3-Clause License
+// Copyright (c) 2026, Xnerv Wang
+// All rights reserved.
+
+'use strict';
+/*
+ * When the user's own messages of one conversation were sent, read from its rollout.
+ *
+ * Why the host reads this at all: Codex's page carries a sent time for a reply on an attribute of its own, and for one
+ * of the user's own messages it carries one only as rendered text in a hover row that no stable name reaches. So the
+ * page tries that text first and asks for these as its second source (src/page/codex-extras-page.js).
+ *
+ * These times are positions in a list, not times of named messages: the page uses them only when it shows exactly as
+ * many user messages as there are times here, and shows none otherwise. Nothing of what a message says is read.
+ *
+ * A rollout is append-only, so a conversation is read once and then only its new bytes: the cache keeps the size the
+ * file had, the offset of the first incomplete line and the times found so far. A file that shrank, or one whose first
+ * read would be larger than MAX_BYTES, is read from the start or not at all.
+ */
+const fs = require('fs');
+const files = require('./codex-files');
+
+/* A rollout larger than this is not read: these times are a convenience, and the reader's thread is shared. */
+const MAX_BYTES = 64 << 20;
+/* Past this many the list would be larger than the message carrying it is worth, and no reader scrolls that list. */
+const MAX_TIMES = 20000;
+const CHUNK = 1 << 20;
+/* How many conversations' reads are remembered. */
+const KEEP = 16;
+
+/*
+ * A user-role message Codex wrote itself rather than one the reader typed: its whole text is one XML-ish block, as in
+ * <environment_context>. Every one of the 40 rollouts read while this was written held exactly one such message and no
+ * other, while whether the row carries a `metadata` key does not tell the two apart. A message the reader really did
+ * begin with such a tag is counted out here, the counts then differ, and the page shows no times rather than wrong ones.
+ */
+const INJECTED = /^\s*<[a-z][a-z0-9_]*>/;
+
+const cache = new Map();
+
+function textOf(payload) {
+  const c = payload && payload.content;
+  if (typeof c === 'string') return c;
+  if (!Array.isArray(c)) return '';
+  let out = '';
+  for (const part of c) if (part && typeof part.text === 'string') out += part.text;
+  return out;
+}
+
+/** The complete lines of `text`, and the byte length of the part that was whole lines. */
+function wholeLines(text) {
+  const nl = text.lastIndexOf('\n');
+  if (nl < 0) return { lines: [], bytes: 0 };
+  const head = text.slice(0, nl + 1);
+  return { lines: head.split('\n').filter((l) => l.trim()), bytes: Buffer.byteLength(head, 'utf8') };
+}
+
+/**
+ * The times of the reader's own messages among `lines`, appended to `into`. `broken` means a message of theirs carried
+ * no readable time, which makes the list one short of what the page would count and so unusable as a whole.
+ */
+function timesIn(lines, into = []) {
+  let broken = false;
+  for (const line of lines) {
+    /* Nearly every line of a rollout is a tool call or a token count; this spares those a JSON parse. */
+    if (!line.includes('"user"')) continue;
+    let row;
+    try { row = JSON.parse(line); } catch (_) { continue; }
+    const p = row && row.payload;
+    if (!row || row.type !== 'response_item' || !p || p.type !== 'message' || p.role !== 'user') continue;
+    if (INJECTED.test(textOf(p))) continue;
+    const at = Date.parse(row.timestamp);
+    if (Number.isFinite(at)) into.push(at); else broken = true;
+  }
+  return { times: into, broken };
+}
+
+function readRange(file, start, end) {
+  if (end <= start) return '';
+  let fd;
+  try { fd = fs.openSync(file, 'r'); } catch (_) { return null; }
+  try {
+    const want = end - start;
+    const buf = Buffer.alloc(want);
+    let got = 0;
+    while (got < want) {
+      const n = fs.readSync(fd, buf, got, Math.min(CHUNK, want - got), start + got);
+      if (!n) break;
+      got += n;
+    }
+    return buf.slice(0, got).toString('utf8');
+  } catch (_) { return null; } finally { try { fs.closeSync(fd); } catch (_) { /* closed */ } }
+}
+
+/**
+ * The times, oldest first, or null when this rollout cannot stand behind them: it is gone, compressed, too large, one
+ * of the messages carried no readable time, or there are more than any list would show.
+ */
+function userTimes(rollout) {
+  const file = files.existingRollout(rollout);
+  /* A conversation untouched for a week: Codex has compressed it, and nobody is stamping its page right now. */
+  if (!file || file.endsWith('.zst')) return null;
+  let size;
+  try { size = fs.statSync(file).size; } catch (_) { return null; }
+  let have = cache.get(file);
+  if (have && have.size === size) return have.broken ? null : have.times;
+  /* A file smaller than it was is not the same file appended to. */
+  if (!have || size < have.size) have = { size: 0, offset: 0, times: [], broken: false };
+  if (!have.offset && size > MAX_BYTES) return null;
+  const text = readRange(file, have.offset, size);
+  if (text === null) return null;
+  const { lines, bytes } = wholeLines(text);
+  const found = timesIn(lines, have.times);
+  const entry = { size, offset: have.offset + bytes, times: found.times,
+    broken: have.broken || found.broken || found.times.length > MAX_TIMES };
+  cache.delete(file);
+  cache.set(file, entry);
+  while (cache.size > KEEP) cache.delete(cache.keys().next().value);
+  return entry.broken ? null : entry.times;
+}
+
+function forget() { cache.clear(); }
+
+module.exports = { MAX_BYTES, MAX_TIMES, INJECTED, textOf, wholeLines, timesIn, userTimes, forget };
