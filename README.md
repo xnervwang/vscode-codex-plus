@@ -14,7 +14,7 @@
 | Open sessions covers tabs Codex opened with its own New button, whose URI names no conversation | Codex sessions view | Patch |
 | New in tab / New in sidebar; Resume in tab / Resume in sidebar | Codex sessions view | Patch for Resume in sidebar |
 | Thread ID and group on hover; find by title or four hex characters of the ID | Codex sessions view | — |
-| Date span `11d · 09/05→09/16`; title colours; background threads left out | Codex sessions view | — |
+| How long since it was last used and the first and last day it was, as `11d · 09/05→09/16`; title colours; conversations started by `codex exec` left out | Codex sessions view | `codexExtras.hideBackgroundSessions` |
 | Delete an archived conversation | Codex sessions view, right-click | — |
 | Codex button on the tab bar: a new Codex conversation, in a tab or in the sidebar | Editor title bar | `codexExtras.openButtonTarget`: `tab` (default) or `sidebar`; `codexExtras.newConversationGroup`: `main` (default, the first editor group) or `active` (the group the button was pressed in) |
 | Tabs VS Code did not restore after a reconnect are opened again | Editor tabs | — |
