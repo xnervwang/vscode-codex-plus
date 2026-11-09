@@ -39,6 +39,19 @@ function withDot(svg, color) {
     + `<circle cx="${cx}" cy="${cy}" r="${R}" fill="${color}"/></svg>`;
 }
 
+/* Written under another name and moved into place: a file is named by its content and never rewritten once it is
+   there, so one cut off half way would stay broken for as long as that name is asked for. */
+function writeWhole(file, text) {
+  const tmp = `${file}.${process.pid}.${crypto.randomBytes(4).toString('hex')}`;
+  try {
+    fs.writeFileSync(tmp, text);
+    fs.renameSync(tmp, file);
+  } catch (e) {
+    try { fs.unlinkSync(tmp); } catch (_) { /* never written */ }
+    throw e;
+  }
+}
+
 /*
  * Icon paths for every state, { [state]: { light, dark } } as file paths, written into `dir` once per logo version; null
  * when either logo is missing or cannot be wrapped.
@@ -56,8 +69,8 @@ function iconsFor(logo, dir, cache = new Map(), palette = DOT) {
       const l = withDot(light, color), d = withDot(dark, color);
       if (!l || !d) { cache.set(key, null); return null; }
       const lp = path.join(dir, `logo-${key}-${state}-light.svg`), dp = path.join(dir, `logo-${key}-${state}-dark.svg`);
-      if (!fs.existsSync(lp)) fs.writeFileSync(lp, l);
-      if (!fs.existsSync(dp)) fs.writeFileSync(dp, d);
+      if (!fs.existsSync(lp)) writeWhole(lp, l);
+      if (!fs.existsSync(dp)) writeWhole(dp, d);
       out[state] = { light: lp, dark: dp };
     }
   } catch (_) { cache.set(key, null); return null; }

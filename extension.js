@@ -332,11 +332,12 @@ function registerCommands(context, { source, memory, sessionsProvider, say, link
       await vscode.workspace.getConfiguration(CONFIG).update('enabled', true, vscode.ConfigurationTarget.Global);
       say('the additions were off; turned back on, since the patch is only of use to them');
     }
-    await context.globalState.update(`codexExtras.patchAsked:${(vscode.extensions.getExtension('openai.chatgpt') || { packageJSON: {} }).packageJSON.version}`, undefined);
+    await context.globalState.update(`codexExtras.patchAsked:${(vscode.extensions.getExtension('openai.chatgpt') || { packageJSON: {} }).packageJSON.version}`, 'yes');
     await vscode.workspace.getConfiguration(CONFIG).update('patchCodex', 'on', vscode.ConfigurationTarget.Global);
     vscode.window.showInformationMessage('Codex will be patched now; reload the window when asked.');
-    patching.activate(context, { vscode, log: say, codexProgram, source, context, settings: () => ({ ...settings(), patchCodex: 'on' }),
-      userTimes, planQuestions: (id) => planQuestions((readPlan(id) || {}).nodes).length });
+    /* Only the patching itself: activation already wired the hooks and the listeners, and wiring them again would
+       redraw every panel once more on each change for every time this command has run. */
+    patching.ensurePatched(vscode, context, say, 'on').catch((e) => say(`patch: ${e.message}`));
   });
   reg('removePatch', async () => {
     if (restricted()) return;

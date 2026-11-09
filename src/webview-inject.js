@@ -54,8 +54,13 @@ function status(codexExtensionPath) {
 
 function writeAtomic(file, text) {
   const tmp = `${file}.codex-extras.${process.pid}.${crypto.randomBytes(4).toString('hex')}`;
-  fs.writeFileSync(tmp, text);
-  fs.renameSync(tmp, file);
+  try {
+    fs.writeFileSync(tmp, text);
+    fs.renameSync(tmp, file);
+  } catch (e) {
+    try { fs.unlinkSync(tmp); } catch (_) { /* never written */ }
+    throw e;
+  }
 }
 
 function apply(codexExtensionPath) {

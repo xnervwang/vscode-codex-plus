@@ -479,16 +479,20 @@ async function ensurePatched(vscode, context, log, mode) {
    * command, or a Codex update into a fresh directory) is a fresh decision and goes through the question below.
    */
   const refresh = states.every((s) => s === 'patched' || s === 'outdated');
-  if (mode === 'ask' && !refresh) {
-    const key = `codexExtras.patchAsked:${version}`;
-    if (context.globalState.get(key)) { state.reason = 'not patched: declined for this Codex version'; return; }
-    await context.globalState.update(key, true);
+  /* The answer given for this Codex version: 'yes' goes ahead without asking again, even after the patch was taken off
+     by something other than the user (a failed refresh puts every target back), and 'no' stays a no. Anything else,
+     including what an older build stored without saying which answer it was, is asked again. */
+  const key = `codexExtras.patchAsked:${version}`;
+  const answered = context.globalState.get(key);
+  if (mode === 'ask' && !refresh && answered === 'no') { state.reason = 'not patched: declined for this Codex version'; return; }
+  if (mode === 'ask' && !refresh && answered !== 'yes') {
     const go = 'Patch Codex';
     const pick = await vscode.window.showInformationMessage(`Patch the Codex extension ${version}?`, {
       detail: 'It adds status dots to Codex tabs, opening a conversation in the sidebar, answers into a conversation\'s '
         + 'message box, chimes, a line with each conversation\'s last turn figures, a time on every message and reply, '
         + 'a list of your own messages on the right edge, and your own messages marked out. Codex\'s files are kept and '
         + 'put back by "Codex Extras: Remove the Patch from Codex" or on uninstall. A window reload applies it.' }, go, 'Not now');
+    await context.globalState.update(key, pick === go ? 'yes' : 'no');
     if (pick !== go) { state.reason = 'not patched: declined for this Codex version'; return; }
   }
   const results = [];

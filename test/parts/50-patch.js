@@ -92,8 +92,9 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
 
     const codexVersion = '26.1021.22027';
     control.state.extensions.set('openai.chatgpt', { extensionPath: stale, packageJSON: { version: codexVersion } });
+    const key = `codexExtras.patchAsked:${codexVersion}`;
     const asked = fake.memento();
-    await asked.update(`codexExtras.patchAsked:${codexVersion}`, true);
+    await asked.update(key, 'no');
     control.state.said.length = 0;
     await patching.ensurePatched(vscode, { globalState: asked }, () => {}, 'ask');
     const refreshed = control.state.said.map((s) => s.message).join('\n');
@@ -101,11 +102,47 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
       [['patched', 'patched'], false, true],
       'so it is brought up to this build with no question put, and only a reload is asked for');
 
-    [...targets].reverse().forEach((t) => t.restore(stale));
-    control.state.said.length = 0;
-    await patching.ensurePatched(vscode, { globalState: asked }, () => {}, 'ask');
-    eq([targets.map((t) => t.status(stale)), control.state.said.length], [['clean', 'clean'], 0],
-      'while a Codex with the patch taken off is left alone, since that answer was already given too');
+    /* Back to clean, which is also what a failed refresh leaves: the answer given for this Codex version decides. */
+    const fromClean = async (answer, reply) => {
+      [...targets].reverse().forEach((t) => t.restore(stale));
+      await asked.update(key, answer);
+      control.state.said.length = 0;
+      control.state.answers = reply ? [['Patch the Codex extension', reply]] : [];
+      await patching.ensurePatched(vscode, { globalState: asked }, () => {}, 'ask');
+      const said = control.state.said.map((m) => m.message);
+      return { status: targets.map((t) => t.status(stale)), asked: said.some((m) => m.includes('Patch the Codex extension')), stored: asked.get(key) };
+    };
+    eq(await fromClean('yes'), { status: ['patched', 'patched'], asked: false, stored: 'yes' },
+      'a yes given for this version patches it again without asking');
+    eq(await fromClean('no'), { status: ['clean', 'clean'], asked: false, stored: 'no' }, 'a no stays a no');
+    eq(await fromClean(true, 'Patch Codex'), { status: ['patched', 'patched'], asked: true, stored: 'yes' },
+      'what an older build stored, which says only that it asked, is asked again, and the answer is the one kept');
+    eq((await fromClean(undefined, 'Not now')).stored, 'no', 'and declining is kept as a no');
+    control.state.answers = [];
+
+    /*
+     * The uninstall hook puts back only the Codex beside the copy of this extension being uninstalled. Another editor on
+     * the machine has its own copy, or none, and its Codex is that copy's to patch and to put back.
+     */
+    const editor = (name) => {
+      const ext = tmp(name);
+      const codex = path.join(ext, 'openai.chatgpt-26.1021.22027-linux-x64');
+      fs.mkdirSync(path.join(codex, 'out'), { recursive: true });
+      fs.mkdirSync(path.join(codex, 'webview'), { recursive: true });
+      fs.writeFileSync(host.targetFile(codex), origHost);
+      fs.writeFileSync(page.targetFile(codex), origPage);
+      targets.forEach((t) => t.apply(codex));
+      return { ext, codex };
+    };
+    const mine = editor('editor-uninstalling'), other = editor('editor-other');
+    const self = path.join(mine.ext, 'xnervwang.codex-extras-0.1.0');
+    fs.mkdirSync(self);
+    fs.copyFileSync(path.join(root, 'uninstall.js'), path.join(self, 'uninstall.js'));
+    fs.cpSync(path.join(root, 'src'), path.join(self, 'src'), { recursive: true });
+    require('child_process').execFileSync(process.execPath, [path.join(self, 'uninstall.js')], { stdio: 'pipe' });
+    eq([targets.map((t) => t.status(mine.codex)), targets.map((t) => t.status(other.codex))],
+      [['clean', 'clean'], ['patched', 'patched']],
+      'uninstalling puts back the Codex in its own extensions folder and leaves another editor\'s alone');
   }
 
   /* The hooks, with a stand-in provider and panel. */
