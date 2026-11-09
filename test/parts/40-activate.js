@@ -69,6 +69,20 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
   eq(hosted.hookSettings.compactTokenLimit, 0, 'with no compaction limit in config.toml the hooks are handed none');
   const limited = await run(root, tmp, { configToml: 'model_provider = "amazon-bedrock"\nmodel_auto_compact_token_limit = 150000\n' });
   eq(limited.hookSettings.compactTokenLimit, 150000, 'and with one set there, the hooks are handed it, since Codex compacts at it');
+
+  /* Which account Codex uses: the model provider and its region in config.toml, in Show Status and Session Information. */
+  {
+    const w = await run(root, tmp, { configToml: 'model_provider = "amazon-bedrock"\n\n[model_providers.amazon-bedrock.aws]\nregion = "us-west-2"\n',
+      probe: async ({ control, home }) => {
+        const mark = control.state.log.length;
+        await control.state.handlers['codexExtras.status']();
+        const id = /([0-9a-f-]{36})\.jsonl$/.exec(fs.readdirSync(path.join(home, 'sessions'), { recursive: true }).map(String).find((f) => f.endsWith('.jsonl')).replace(/\\/g, '/'))[1];
+        await control.state.handlers['codexExtras.sessionInfo'](id);
+        return { status: control.state.log.slice(mark).join('\n'), info: (control.state.picks[control.state.picks.length - 1] || []).map((p) => `${p.label}=${p.value}`) };
+      } });
+    eq([/^Account: Amazon Bedrock · us-west-2 /m.test(w.probed.status), w.probed.info.includes('Account=Amazon Bedrock · us-west-2')], [true, true],
+      'Show Status and Session Information name the account as the provider and region Codex is set to use');
+  }
   eq(hosted.state.said.length, 0, 'nothing is said when it is taken');
 
   /*

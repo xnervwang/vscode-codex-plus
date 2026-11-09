@@ -59,7 +59,7 @@ Codex asks its client for an approval as a request, and records it in no file of
 
 | What Claude Code's session list has | Why Codex's does not |
 | --- | --- |
-| Account & usage | Nothing this extension can read holds a plan, a quota, a credit balance or a price. Codex's rate-limit records carry a `limit_id` and nothing else: every other field is null in all 1198 such records across the 49 conversation logs on this machine, and Codex's data directory (`CODEX_HOME`) holds no account file. Tokens are recorded, and Session Information shows those. |
+| Account & usage | The account is the model provider Codex is set to use and its region, read from `config.toml`, as `Amazon Bedrock · <region>`: in `Show Status` and Session Information. Usage is not here: nothing this extension can read holds a plan, a quota, a credit balance or a price for an Amazon Bedrock account. Codex's rate-limit records carry a `limit_id` and nothing else (every other field is null in all 1199 such records across the 49 conversation logs on this machine), and Codex's own `account/rateLimits/read` answers that it needs a Codex account. Tokens are recorded, and Session Information shows those. |
 | Session manager | That is Claude Code's own collapsible section holding its session list. The Codex sessions view is already that list. |
 
 ## Install

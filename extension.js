@@ -272,6 +272,7 @@ function registerCommands(context, { source, memory, sessionsProvider, say, link
     for (const t of threads) counts[t.kind] = (counts[t.kind] || 0) + 1;
     const lines = [
       `CODEX_HOME: ${home}`,
+      `Account: ${codexConfig.accountLine(home)} (the model provider in config.toml)`,
       `State database: ${files.stateDbPath(home) || '(not found)'}`,
       `Threads: ${threads.length} (${Object.entries(counts).map(([k, n]) => `${n} ${k}`).join(', ') || 'none'})`,
       /* Installed and loaded are two states, not one: Codex can hold the plugin and be set not to load it, and then
@@ -525,6 +526,7 @@ function registerCommands(context, { source, memory, sessionsProvider, say, link
     if (!id) { vscode.window.showInformationMessage('Bring a Codex conversation tab to the front first.'); return; }
     let rows = [];
     try { rows = await reader.request('info', { home: files.codexHome(), id }); } catch (e) { vscode.window.showErrorMessage(`Could not read it: ${e.message}`); return; }
+    rows = [...rows, { label: 'Account', value: codexConfig.accountLine(files.codexHome()) }];
     const pick = await vscode.window.showQuickPick(rows.map((r) => ({ label: r.label, description: r.value, value: r.value })),
       { placeHolder: 'Click a value to copy it' });
     if (pick && pick.value) { await vscode.env.clipboard.writeText(pick.value); vscode.window.setStatusBarMessage(`Copied ${pick.label}`, 3000); }

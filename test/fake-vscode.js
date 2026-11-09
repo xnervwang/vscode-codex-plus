@@ -51,7 +51,7 @@ function create() {
   const extChanged = new EventEmitter();
   const groups = [{ viewColumn: 1, tabs: [], activeTab: null, isActive: true }];
   const state = { commands: [], context: {}, extensions: new Map(), clipboard: '', views: [], status: [], log: [], registered: [],
-    said: [], answers: [], handlers: {}, external: [], externalAnswer: true };
+    said: [], answers: [], handlers: {}, external: [], externalAnswer: true, picks: [] };
   /* A notification is answered with the button the test set for text it contains (control.answer), else dismissed. */
   const answer = async (message, ...rest) => {
     const buttons = rest.filter((b) => typeof b === 'string');
@@ -82,6 +82,7 @@ function create() {
       showWarningMessage: answer,
       showErrorMessage: answer,
       setStatusBarMessage: () => ({ dispose() {} }),
+      showQuickPick: async (items) => { state.picks.push(items); return undefined; },
     },
     commands: {
       executeCommand: async (cmd, ...args) => {
