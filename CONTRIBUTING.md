@@ -5,7 +5,7 @@
 - `extension.js`: activation, settings, commands; wires the parts below together.
 - `src/codex-files.js`: CODEX_HOME, the state database (read-only), rollouts (plain or `.jsonl.zst`), read receipts. Blocking; runs in the worker.
 - `src/codex-worker.js`, `src/codex-reader.js`: the worker thread that reads Codex's files, and the snapshot the extension host reads instead.
-- `src/codex-tabs.js`: Codex conversation tabs (`chatgpt.conversationEditor`, `openai-codex://route/local/<id>`), opening one in a tab. A tab Codex opened with its own New button stays at `/extension/panel/new` and names no conversation; the patch supplies the missing conversation ids (`patching.panelThreads`).
+- `src/codex-tabs.js`: Codex conversation tabs (`chatgpt.conversationEditor`, `openai-codex://route/local/<id>`), opening one in a tab. A tab Codex opened with its own New button stays at `/extension/panel/new` and names no conversation; the patch supplies the missing conversation ids (`patching.panelThreads`), from the thread start of the tab's own page.
 - `src/folders.js`: whether a conversation's folder is in this window's workspace, by real path.
 - `src/codex-source.js`: Codex as a source of Agent Work Plan, protocol 1, defined in Agent Work Plan's `docs/protocol.md`.
 - `src/host-link.js`: finding Agent Work Plan's `agentWorkPlan` interface, registering, the `codexExtras.registered` key.

@@ -89,11 +89,18 @@ function conversationOf(thread, { unread, openHere, now = Date.now(), state = nu
   };
 }
 
+/* The conversation a tab whose URI names `thread` shows now, which the patch knows when its panel started another one
+   in the same tab (src/patching.js nowShowing). */
+function namedNow(patching, thread) {
+  if (!thread || !patching || typeof patching.nowShowing !== 'function') return thread;
+  try { return patching.nowShowing(thread) || thread; } catch (_) { return thread; }
+}
+
 /*
- * The conversation of a Codex tab whose URI does not name one, in the one case where it is unambiguous: exactly one
- * such tab in this window, and exactly one conversation the patch reports a panel for that no other tab already
- * claims. With two of either it stays '', since which tab holds which conversation is not knowable from outside
- * Codex, and a guess would hang one conversation's work plan on another.
+ * The conversation of a Codex tab whose URI does not name one, found by elimination in the one case where it is
+ * unambiguous: exactly one such tab in this window, and exactly one conversation the patch reports a panel for that no
+ * other tab already shows. With two of either it stays '': which tab holds which conversation is then known only for
+ * a tab in front (threadOfCodexTab), and a guess would hang one conversation's work plan on another.
  */
 function unnamedTabThread(vscode, patching) {
   if (!patching || typeof patching.panelThreads !== 'function') return '';
@@ -104,13 +111,30 @@ function unnamedTabThread(vscode, patching) {
     for (const tab of group.tabs || []) {
       if (!tabs.isCodexTab(vscode, tab)) continue;
       const id = tabs.threadOfTab(vscode, tab);
-      if (id) claimed.add(id); else unnamed++;
+      if (id) claimed.add(namedNow(patching, id)); else unnamed++;
     }
   }
   if (unnamed !== 1) return '';
   let free = [];
   try { free = patching.panelThreads().filter((t) => t && !claimed.has(t)); } catch (_) { return ''; }
   return free.length === 1 ? free[0] : '';
+}
+
+/*
+ * The conversation a Codex tab shows, '' when that is not known (a conversation not started yet, or no way to tell).
+ * A tab in front of its group is matched to the one panel visible in that column; any other goes by its URI, as the
+ * patch has it now, and a tab whose URI names nothing by elimination.
+ */
+function threadOfCodexTab(vscode, patching, tab) {
+  if (tab && tab.isActive && patching && typeof patching.shownIn === 'function') {
+    const group = ((vscode.window.tabGroups && vscode.window.tabGroups.all) || []).find((g) => g.activeTab === tab);
+    let shown = null;
+    try { shown = group ? patching.shownIn(group.viewColumn) : null; } catch (_) { shown = null; }
+    if (shown) return shown.thread;
+  }
+  const named = tabs.threadOfTab(vscode, tab);
+  if (named) return namedNow(patching, named);
+  return tabs.isCodexTab(vscode, tab) ? unnamedTabThread(vscode, patching) : '';
 }
 
 /*
@@ -164,7 +188,7 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
     const out = [];
     const tab = activeTab();
     if (tab) {
-      const id = tabs.threadOfTab(vscode, tab) || (tabs.isCodexTab(vscode, tab) ? unnamedTabThread(vscode, patching) : '');
+      const id = threadOfCodexTab(vscode, patching, tab);
       if (id) out.push(id);
     }
     if (!leftSidebar && patching && typeof patching.sidebarThread === 'function') {
@@ -187,7 +211,8 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
   /*
    * The conversations open in this window: the ones named by their tab's URI, and the ones only the patch can name.
    * A tab Codex opened with its New button keeps the URI /extension/panel/new whatever conversation goes into it, so
-   * the URIs alone miss every conversation the user started that way (src/codex-tabs.js).
+   * the URIs alone miss every conversation the user started that way (src/codex-tabs.js); the patch learns those from
+   * the thread start of the tab's own page.
    */
   const openThreads = () => {
     const out = tabs.codexTabs(vscode).map((t) => t.thread);
@@ -251,11 +276,9 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
     planDir() { return install.planDir(files.codexHome()); },
     /* A thread id for a conversation tab, '' for a Codex tab with no conversation yet (a new one), null otherwise. */
     sessionForTab(tab) {
-      const id = tabs.threadOfTab(vscode, tab);
+      if (!tabs.threadOfTab(vscode, tab) && !tabs.isCodexTab(vscode, tab)) return null;
+      const id = threadOfCodexTab(vscode, patching, tab);
       if (id) return id;
-      if (!tabs.isCodexTab(vscode, tab)) return null;
-      const only = unnamedTabThread(vscode, patching);
-      if (only) return only;
       noteUnreadableTab(tab);
       return '';
     },
@@ -267,7 +290,8 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
      */
     isFocused(sessionId) {
       if (!sessionId) return false;
-      if (tabs.activeThread(vscode) === sessionId) return true;
+      const tab = activeTab();
+      if (tab && threadOfCodexTab(vscode, patching, tab) === sessionId) return true;
       return !leftSidebar && !!(patching && patching.sidebarThread() === sessionId);
     },
     async listConversations() {
@@ -350,4 +374,4 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
   return source;
 }
 
-module.exports = { createCodexSource, conversationOf, logoOf, unnamedTabThread, PROTOCOL, EXTENSION_ID, STALE_WORKING_MS, RECENT_MS };
+module.exports = { createCodexSource, conversationOf, logoOf, unnamedTabThread, threadOfCodexTab, PROTOCOL, EXTENSION_ID, STALE_WORKING_MS, RECENT_MS };

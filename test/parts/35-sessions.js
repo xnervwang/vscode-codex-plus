@@ -111,6 +111,8 @@ module.exports = async ({ ok, bad, eq, tmp }) => {
     'the log line gives the input class, the view type and the scheme and path, and never the query Codex puts route state in');
 
   /* ── which conversation an unnamed tab holds, from the patch ── */
+  /* The elimination rule alone, given what the patch reports. How the patch comes to know a New tab's conversation,
+     from a panel Codex hands over with no thread, is test/parts/37-new-tab.js. */
   const patch = (list) => ({ panelThreads: () => list, revealPanel: () => false, sidebarThread: () => '', canDeliver: () => false });
   control.setTabs([newPanel], 0);
   eq(unnamedTabThread(vscode, patch([ID(1)])), ID(1), 'one unnamed Codex tab and one conversation the patch has a panel for can only be each other');

@@ -12,8 +12,16 @@
  *
  *   provider instance       Codex's webview provider, which can navigate its sidebar to a conversation
  *                           (navigateToRoute) and post a message to any of its panels (sendMessageToPanel)
- *   conversation panels     each conversation tab's WebviewPanel with its thread id, as Codex opens it: for the dot on
+ *   conversation panels     each conversation tab's WebviewPanel as Codex opens it, with the thread id its URI names
+ *                           (none for a tab opened on /extension/panel/new) and the route it opened on: for the dot on
  *                           the tab's logo and for putting text in that conversation's message box
+ *   other panels            the panels Codex opens without a conversation URI (its diff, plan and settings panels, and
+ *                           the one it makes when it has no sidebar), so that every page outside the sidebar is known
+ *   page requests           a page's request to the app-server, with the webview that sent it, at the moment it is
+ *                           sent; a prewarmed thread start is its own message type and is handed over as one
+ *   page responses          the app-server's answer, as Codex hands it back to the page that asked. The answer to a
+ *                           page's thread start carries the id of the conversation that page goes on to show, and the
+ *                           webview it goes back to is what ties that id to one tab (src/patching.js)
  *   window broadcasts       what this window tells Codex's other windows, among it which threads it is streaming
  *   page messages           messages of type "codex-extras" from the script this extension adds to Codex's page
  *                           (src/webview-inject.js), which Codex's own switch would otherwise drop as unknown
@@ -49,8 +57,29 @@ const EDITS = [
   },
   {
     name: 'conversation panels',
-    re: /(let\{conversationId:([\w$]+)\}=[\w$]+,[\s\S]{0,1500}?)(this\.editorPanels\.set\(([\w$]+),\{ready:!1,pendingMessages:\[\],initialRoute:)/g,
-    to: (m, before, conv, set, panel) => `${before}${call('__codexExtrasPanel', `${panel},${conv},this`)},${set}`,
+    re: /(let\{conversationId:([\w$]+)\}=([\w$]+),[\s\S]{0,1500}?)(this\.editorPanels\.set\(([\w$]+),\{ready:!1,pendingMessages:\[\],initialRoute:)/g,
+    to: (m, before, conv, route, set, panel) => `${before}${call('__codexExtrasPanel', `${panel},${conv},this,${route}.path`)},${set}`,
+  },
+  {
+    name: 'other panels',
+    re: /this\.editorPanels\.set\(([\w$]+),\{ready:!1,pendingMessages:\[\],initialRoute:([\w$]+)\?\.initialRoute\}\)/g,
+    to: (m, panel, opts) => `${m},${call('__codexExtrasPanel', `${panel},null,this,${opts}?.initialRoute`)}`,
+  },
+  /*
+   * The two message types a page sends a request to the app-server with sit next to each other, so one match carries
+   * both. The call goes in just ahead of the line that records which page asked, so a request Codex refuses on the
+   * spot (it answers the page itself and sends nothing) is never handed over.
+   */
+  {
+    name: 'page requests',
+    re: /(case"mcp-request":\{if\([\w$]+\(([\w$]+)\.request\)\)[\s\S]{0,600}?)(this\.pendingMcpRequests\.set\(String\([\w$]+\),([\w$]+)\),this\.codexMcpConnection\.sendRequest\([^;]{0,120}\);break\}case"thread-prewarm-start":\{[\s\S]{0,80}?)(this\.pendingMcpRequests\.set\(String\([\w$]+\),\4\),this\.codexMcpConnection\.prewarmThreadStart\()/g,
+    to: (m, before, msg, between, webview, prewarm) => `${before}${call('__codexExtrasPageRequest', `${webview},${msg}.request,"request"`)},`
+      + `${between}${call('__codexExtrasPageRequest', `${webview},${msg}.request,"prewarm"`)},${prewarm}`,
+  },
+  {
+    name: 'page responses',
+    re: /deliverMcpResponseToOrigin\(([\w$]+)\)\{let ([\w$]+)=String\(\1\.id\),([\w$]+)=this\.pendingMcpRequests\.get\(\2\);/g,
+    to: (m, response, id, webview) => `${m}${call('__codexExtrasPageResponse', `${webview},${response}`)};`,
   },
   {
     name: 'window broadcasts',

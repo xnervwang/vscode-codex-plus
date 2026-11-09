@@ -22,6 +22,11 @@
  *                         list of the user's own messages and their colouring from, with the times its rollout gives
  *                         for those messages (src/page/codex-extras-page.js draws all of it, src/user-times.js reads
  *                         the rollout)
+ *   page requests and     which conversation a panel shows when its tab does not say: the one its own page started.
+ *   responses             A page asks the app-server to start a thread (or to prewarm one), and the answer that comes
+ *                         back to that page's webview carries the new thread's id. Such a thread counts once it is in
+ *                         Codex's list of conversations, which is when its first message has been sent: a prewarmed
+ *                         thread nobody typed into never gets there, and neither does a side chat, which is ephemeral
  *   window broadcasts     a thread this window starts following in a view that is not one of its tabs is taken to be
  *                         in front in the sidebar (onDidFocus). sidebarThread() is the last such thread, and nothing
  *                         is reported after it; whether the user is still looking at the sidebar is worked out by the
@@ -40,7 +45,20 @@ const { createApprovals } = require('./approvals');
 
 const TAB_DOTS = { working: '#22c55e', unread: '#ef4444', prompt: '#f59e0b' };
 let state = { active: false, reason: 'not checked yet', provider: null };
-const panels = new Map();
+/*
+ * Every panel Codex handed over, whether or not its conversation is known: panel -> {
+ *   thread    the conversation it shows now, or ''
+ *   opened    the conversation its tab's URI named when Codex opened it, or ''
+ *   route     the route Codex opened it on
+ *   starts    ids of thread starts its page sent that have had no answer yet
+ *   started   threads its page started that are not in Codex's list yet, oldest first
+ * }
+ * A page outside this map is one of the sidebar's: Codex opens every editor panel through one of the two places the
+ * patch hands panels over from.
+ */
+const registry = new Map();
+/* How many of either list a page keeps. A prewarmed thread that is never typed into stays in `started` for good. */
+const PAGE_KEEP = 8;
 let deps = null;
 let last = new Map();
 /* The thread Codex's sidebar last started following, as the broadcast says, or ''. It is never cleared: the broadcast
@@ -92,23 +110,63 @@ function approvalsChanged() {
 
 function canType() { return !!(state.active && state.provider); }
 function sidebarThread() { return sidebar; }
-function canDeliver(thread) { return canType() && (panels.get(thread) || new Set()).size > 0; }
+/** The panels showing `thread` now. */
+function panelsOf(thread) {
+  const out = [];
+  if (thread) for (const [panel, rec] of registry) if (rec.thread === thread) out.push(panel);
+  return out;
+}
+/** Conversation -> the panels showing it, for every panel whose conversation is known. */
+function byThread() {
+  const out = new Map();
+  for (const [panel, rec] of registry) {
+    if (!rec.thread) continue;
+    if (!out.has(rec.thread)) out.set(rec.thread, []);
+    out.get(rec.thread).push(panel);
+  }
+  return out;
+}
+function canDeliver(thread) { return canType() && panelsOf(thread).length > 0; }
 
 /*
- * The threads shown by Codex's own panels in this window, as Codex handed each panel over. This is the only way to learn the
- * thread of a tab Codex opened with its New button: that tab's URI stays /extension/panel/new whatever conversation
- * ends up in it (src/codex-tabs.js). Empty without the patch, and then the tab URIs are all there is.
+ * The threads shown by Codex's own panels in this window. For a tab Codex opened with its New button this is the only
+ * source: that tab's URI stays /extension/panel/new whatever conversation ends up in it (src/codex-tabs.js), and its
+ * panel's conversation is the one its page started (installHooks). Empty without the patch, and then the tab URIs are
+ * all there is.
  */
-function panelThreads() { return [...panels.keys()]; }
+function panelThreads() { return [...byThread().keys()]; }
 
-/* Which conversation a page belongs to, for a message that came from one: Codex hands over the panel, and a page's
-   webview is that panel's. '' for the sidebar and its other views, which have no panel. */
-function threadOfWebview(webview) {
-  if (!webview) return '';
-  for (const [thread, set] of panels) {
-    for (const panel of set) { try { if (panel.webview === webview) return thread; } catch (_) { /* disposed */ } }
+/* The panel record a page belongs to, for a message that came from one; null for the sidebar's views, which are the
+   only Codex pages without a panel. */
+function recordOfWebview(webview) {
+  if (!webview) return null;
+  for (const [panel, rec] of registry) { try { if (panel.webview === webview) return rec; } catch (_) { /* disposed */ } }
+  return null;
+}
+
+/*
+ * The conversation shown in front in an editor column: a webview panel is visible only while it is its group's active
+ * tab, so exactly one handed-over panel visible in `viewColumn` is that tab's. { thread } with '' for a panel whose
+ * conversation is not known, or null when no single handed-over panel is visible there.
+ */
+function shownIn(viewColumn) {
+  let found = null, n = 0;
+  for (const [panel, rec] of registry) {
+    let here = false;
+    try { here = !!panel.visible && panel.viewColumn === viewColumn; } catch (_) { /* disposed */ }
+    if (here) { found = rec; n++; }
   }
-  return '';
+  return n === 1 ? { thread: found.thread } : null;
+}
+
+/*
+ * The conversation a tab whose URI names `thread` shows now: another one when every panel opened on that URI has since
+ * started a conversation of its own in the same tab, which leaves the URI as it was.
+ */
+function nowShowing(thread) {
+  const now = new Set();
+  for (const rec of registry.values()) if (rec.opened === thread) now.add(rec.thread);
+  return now.size === 1 ? [...now][0] : thread;
 }
 
 /*
@@ -116,8 +174,7 @@ function threadOfWebview(webview) {
  * by URI would leave a second tab on the same conversation. False when no panel here has it.
  */
 function revealPanel(thread) {
-  const set = panels.get(thread);
-  const panel = set && [...set][0];
+  const panel = panelsOf(thread)[0];
   if (!panel) return false;
   try { panel.reveal(undefined, false); return true; } catch (_) { return false; }
 }
@@ -134,8 +191,7 @@ function postTo(panel, msg) {
    navigated with, and leaves a box that already has text alone, and nothing reports back which of the two happened.
    So the outcome is uncertain (the protocol's word for it): the sender keeps the answer and tells the user to look. */
 async function deliver(thread, text) {
-  const set = panels.get(thread);
-  const panel = set && [...set][0];
+  const panel = panelsOf(thread)[0];
   if (!canType() || !panel) return { outcome: 'notReceived', reason: 'no Codex tab in this window shows the conversation' };
   try {
     state.provider.sendMessageToPanel(panel, { type: 'navigate-to-route', path: `/local/${thread}`,
@@ -169,17 +225,24 @@ async function openInSidebar(thread) {
 const ASK_MS = 5000;
 const pending = new Map();
 
+/* A panel on a conversation's route or on the route of one not started yet, as against Codex's diff, plan and settings
+   panels. */
+const CONVERSATION_ROUTE = /^\/(local\/|extension\/panel\/new(?:[/?#]|$))/;
+const isConversationPanel = (rec) => !!rec.thread || CONVERSATION_ROUTE.test(rec.route);
+
 /*
- * The conversation panel the user is looking at: the one reporting itself active, or else the one holding the
+ * The conversation panel the user is looking at: the one reporting itself active, or else the one opened on the
  * conversation the active tab names, which is how a tab whose webview is not focused is still found.
  */
 function activePanel() {
-  for (const set of panels.values()) {
-    for (const panel of set) { try { if (panel.active) return panel; } catch (_) { /* disposed */ } }
+  for (const [panel, rec] of registry) {
+    if (!isConversationPanel(rec)) continue;
+    try { if (panel.active) return panel; } catch (_) { /* disposed */ }
   }
   const thread = deps ? activeThread(deps.vscode) : '';
-  const set = thread && panels.get(thread);
-  return set && set.size ? [...set][0] : null;
+  if (!thread) return null;
+  for (const [panel, rec] of registry) if (rec.opened === thread) return panel;
+  return panelsOf(thread)[0] || null;
 }
 
 /* A page runs the script as it was when the page was built, so a page carrying an older one answers nothing at all.
@@ -321,6 +384,38 @@ function figuresOf(c) {
 }
 
 /*
+ * A panel stops showing a conversation: the page that said whether that conversation's card was up no longer shows it,
+ * so what it said is dropped once no other panel here shows it. The requests of this window are left alone: they do
+ * not depend on a tab being open.
+ */
+function leave(thread) {
+  if (!thread || panelsOf(thread).length) return;
+  approvals.forgetPage(thread);
+  approvalsChanged();
+}
+
+/*
+ * Each page's newest started thread that has reached Codex's list (`now`, by id) becomes what its panel shows, and the
+ * older ones it supersedes are dropped. One not in the list yet waits, and so does every thread of a page that started
+ * none: a page is never matched to a conversation by anything but its own thread start.
+ */
+function settle(now) {
+  for (const rec of registry.values()) {
+    for (let i = rec.started.length - 1; i >= 0; i--) {
+      const id = rec.started[i];
+      if (!now.has(id)) continue;
+      rec.started = rec.started.slice(i + 1);
+      if (id !== rec.thread) {
+        const was = rec.thread;
+        rec.thread = id;
+        leave(was);
+      }
+      break;
+    }
+  }
+}
+
+/*
  * Redraw what the panels show after the conversations changed: tab dots, figures, a chime on a finished turn, and the
  * settings and message times that the page uses for its stamps, its list and its colours.
  *
@@ -334,6 +429,8 @@ async function refreshPanels() {
   let list = [];
   try { list = await source.listConversations(); } catch (_) { return; }
   const now = new Map(list.map((c) => [c.sessionId, c]));
+  settle(now);
+  const panels = byThread();
   /* The net under the two signals that end a request. It is weighed against the rollout's own answer rather than
      against `state`, which `prompt` has already won by the time it gets here. */
   if (approvals.prune((t) => { const c = now.get(t); return !!(c && c.working); }).length) approvalsChanged();
@@ -347,8 +444,10 @@ async function refreshPanels() {
   }
   owed.clear();
   for (const thread of approvals.threads()) owed.set(thread, approvals.of(thread).decide);
-  if (!panels.size) return;
+  if (!registry.size) return;
   const view = viewOf(deps.settings());
+  /* The settings reach a page whose conversation is not known yet as well: it draws from them as soon as one starts. */
+  for (const [panel, rec] of registry) if (!rec.thread && isConversationPanel(rec)) postTo(panel, view);
   /* Only while the stamps or the list are on, and only for the conversations a panel here shows: the stamps use the
      times, the list places the compaction points by them. */
   const whens = new Map();
@@ -389,25 +488,43 @@ async function refreshPanels() {
 }
 
 function installHooks() {
-  globalThis.__codexExtrasPanel = (panel, thread, provider) => {
+  /* `thread` is the one the tab's URI names, null for any other panel; `route` is the route Codex opened it on. */
+  globalThis.__codexExtrasPanel = (panel, thread, provider, route) => {
     if (provider) state.provider = provider;
-    if (!thread || !panel) return;
-    if (!panels.has(thread)) panels.set(thread, new Set());
-    panels.get(thread).add(panel);
+    if (!panel || registry.has(panel)) return;
+    const id = thread ? String(thread) : '';
+    registry.set(panel, { thread: id, opened: id, route: typeof route === 'string' ? route : '', starts: new Set(), started: [] });
     state.active = true;
     state.reason = 'Codex handed over its panels';
-    /* A page that is gone cannot say its card went with it, so what the last page of this conversation said is
-       dropped here. The requests of this window are left alone: they do not depend on a tab being open. */
+    /* A page that is gone cannot say its card went with it (leave). */
     panel.onDidDispose(() => {
-      const s = panels.get(thread);
-      if (!s) return;
-      s.delete(panel);
-      if (s.size) return;
-      panels.delete(thread);
-      approvals.forgetPage(thread);
-      approvalsChanged();
+      const rec = registry.get(panel);
+      if (!rec) return;
+      registry.delete(panel);
+      leave(rec.thread);
     });
     setTimeout(refreshPanels, 500);
+  };
+  /*
+   * A page starting a thread, and the answer that names it. Only a panel's own page is followed: the sidebar's pages
+   * are not in the registry, and a page's request is tied to its answer by the request id Codex itself routes the
+   * answer back by. A thread the answer marks ephemeral is a side chat drawn beside the conversation, never the
+   * conversation the tab shows.
+   */
+  globalThis.__codexExtrasPageRequest = (webview, request, kind) => {
+    const rec = recordOfWebview(webview);
+    if (!rec || !request || request.id === undefined || request.id === null) return;
+    if (kind !== 'prewarm' && request.method !== 'thread/start') return;
+    rec.starts.add(String(request.id));
+    while (rec.starts.size > PAGE_KEEP) rec.starts.delete(rec.starts.values().next().value);
+  };
+  globalThis.__codexExtrasPageResponse = (webview, response) => {
+    const rec = recordOfWebview(webview);
+    if (!rec || !response || !rec.starts.delete(String(response.id))) return;
+    const t = response.result && response.result.thread;
+    if (!t || typeof t.id !== 'string' || !t.id || t.ephemeral === true) return;
+    rec.started = rec.started.filter((id) => id !== t.id).concat(t.id).slice(-PAGE_KEEP);
+    refreshPanels().catch(() => { /* the next poll settles it */ });
   };
   globalThis.__codexExtrasMessage = (webview, msg, provider) => {
     if (provider) state.provider = provider;
@@ -420,10 +537,12 @@ function installHooks() {
         + `${msg.first === 'digit' || msg.first === 'letter' ? msg.first : 'character that is neither'}`
         + `, ${msg.digits ? 'all digits' : 'not all digits'}. No time is shown on replies.`);
     }
-    /* Whether an approval card is on this page's screen. A tab's page says it for the conversation that tab holds; the
-       sidebar's page says it for the conversation the sidebar last went to, which is the only one it can be showing. */
+    /* Whether an approval card is on this page's screen. A tab's page says it for the conversation that tab holds, and
+       says nothing while that is not known; the sidebar's page says it for the conversation the sidebar last went to,
+       which is the only one it can be showing. */
     if (msg && msg.kind === 'approval') {
-      const thread = threadOfWebview(webview) || sidebar;
+      const rec = recordOfWebview(webview);
+      const thread = rec ? rec.thread : sidebar;
       if (thread) {
         approvals.pageSays(thread, msg.on === true);
         approvalsChanged();
@@ -460,7 +579,7 @@ function installHooks() {
   globalThis.__codexExtrasBroadcast = (method, params) => {
     if (!deps || method !== 'thread-stream-following-changed' || !params || !params.following) return;
     const thread = String(params.conversationId || '');
-    if (thread && !panels.has(thread)) { sidebar = thread; deps.source._focus(thread); }
+    if (thread && !panelsOf(thread).length) { sidebar = thread; deps.source._focus(thread); }
   };
   if (globalThis.__codexExtrasProvider) { state.provider = globalThis.__codexExtrasProvider; state.active = true; state.reason = 'connected'; }
 }
@@ -524,7 +643,7 @@ function removePatch(vscode) {
      reloaded. Told that everything is off, each of them takes its own stamps, list and classes back off Codex's tree,
      so a reader who does not reload at once is not left with marks nothing maintains. */
   const off = { type: 'codex-extras-view', timestamps: false, navigation: false, userColor: '', userEdge: false };
-  for (const set of panels.values()) for (const panel of set) postTo(panel, off);
+  for (const panel of registry.keys()) postTo(panel, off);
   return [...targets].reverse().map((t) => { try { return `${t.name}: ${t.restore(dir).message}`; } catch (e) { return `${t.name}: ${e.message}`; } });
 }
 
@@ -533,7 +652,8 @@ function activate(context, opts) {
   installHooks();
   context.subscriptions.push(opts.source.onDidChangeConversations(() => refreshPanels()));
   context.subscriptions.push({ dispose: () => {
-    for (const k of ['__codexExtrasPanel', '__codexExtrasMessage', '__codexExtrasBroadcast', '__codexExtrasAppServer']) delete globalThis[k];
+    for (const k of ['__codexExtrasPanel', '__codexExtrasPageRequest', '__codexExtrasPageResponse', '__codexExtrasMessage', '__codexExtrasBroadcast',
+      '__codexExtrasAppServer']) delete globalThis[k];
     approvals.clear();
     onApprovals.clear();
   } });
@@ -543,7 +663,8 @@ function activate(context, opts) {
   return state;
 }
 
-module.exports = { activate, ensurePatched, statusLines, openInSidebar, canType, canDeliver, deliver, sidebarThread, panelThreads, revealPanel, removePatch,
+module.exports = { activate, ensurePatched, statusLines, openInSidebar, canType, canDeliver, deliver, sidebarThread, panelThreads, shownIn,
+  nowShowing, revealPanel, removePatch,
   figuresOf, safeColor, viewOf, sampleLayout, selfCheckPage, selfCheckLines, installHooks, refreshPanels, approvalsOf,
-  decideCount, waitingThreads, onApprovalsChanged, _state: () => state, _panels: panels, _approvals: approvals,
+  decideCount, waitingThreads, onApprovalsChanged, _state: () => state, _registry: registry, _approvals: approvals,
   TAB_DOTS, ASK_MS };
