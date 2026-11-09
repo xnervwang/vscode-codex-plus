@@ -77,6 +77,9 @@ function apply(codexExtensionPath) {
   if (state === 'clean') writeAtomic(backup, original);
   writeAtomic(path.join(path.dirname(file), PAGE_FILE), pageScript());
   writeAtomic(file, r.out);
+  /* A restore in another window can have moved the backup over the page since it was read; the page is patched now,
+     so its backup is put back from the copy just patched from. */
+  if (!fs.existsSync(backup)) writeAtomic(backup, original);
   return { changed: true, current: true, message: 'patched' };
 }
 

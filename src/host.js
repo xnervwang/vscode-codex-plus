@@ -171,6 +171,9 @@ function apply(codexExtensionPath) {
   /* Written as the patched file is: a backup cut short would be put back over Codex's file by the next restore. */
   if (state === 'clean') writeAtomic(backup, original);
   writeAtomic(file, r.out);
+  /* A restore in another window can have moved the backup over the file since it was read; the file is patched now, so
+     its backup is put back from the copy just patched from. */
+  if (!fs.existsSync(backup)) writeAtomic(backup, original);
   return { changed: true, current: true, message: 'patched' };
 }
 
