@@ -85,7 +85,8 @@ const ops = {
      is read the first time and only its new bytes after that (src/user-times.js), which is why this is in here. */
   userTimes({ home: h, id }) {
     const rollout = files.rolloutOf(id, at(h));
-    return { times: rollout ? require('./user-times').userTimes(rollout) : null };
+    const r = rollout ? require('./user-times').rolloutMarks(rollout) : null;
+    return { times: r ? r.times : null, compactions: r ? r.compactions : [] };
   },
   /* Plans of conversations that are gone (src/workplan.js). */
   sweep({ home: h }) {

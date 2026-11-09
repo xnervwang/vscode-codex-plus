@@ -14,6 +14,9 @@
  * only when it shows exactly as many user messages as there are times here, and shows none otherwise. No message text
  * is read.
  *
+ * The same pass notes where Codex compacted the conversation's context, as the number of the user's messages that came
+ * before each compaction, which places it in the page's list of those messages under the same condition.
+ *
  * A rollout is append-only, so a conversation is read once and then only its new bytes: the cache keeps the size the
  * file had, the offset of the first incomplete line and the times found so far. A file that shrank, or one whose first
  * read would be larger than MAX_BYTES, is read from the start or not at all.
@@ -60,20 +63,26 @@ function wholeLines(text) {
  * The times of the user's own messages among `lines`, appended to `into`. `broken` means a message of theirs carried
  * no readable time, which makes the list one short of what the page would count and so unusable as a whole.
  */
-function timesIn(lines, into = []) {
+function timesIn(lines, into = [], compactions = []) {
   let broken = false;
   for (const line of lines) {
     /* Nearly every line of a rollout is a tool call or a token count; this spares those a JSON parse. */
-    if (!line.includes('"user"')) continue;
+    const compacted = line.includes('"compacted"');
+    if (!compacted && !line.includes('"user"')) continue;
     let row;
     try { row = JSON.parse(line); } catch (_) { continue; }
+    if (row && row.type === 'compacted') {
+      const at = Date.parse(row.timestamp);
+      compactions.push({ after: into.length, at: Number.isFinite(at) ? at : 0 });
+      continue;
+    }
     const p = row && row.payload;
     if (!row || row.type !== 'response_item' || !p || p.type !== 'message' || p.role !== 'user') continue;
     if (INJECTED.test(textOf(p))) continue;
     const at = Date.parse(row.timestamp);
     if (Number.isFinite(at)) into.push(at); else broken = true;
   }
-  return { times: into, broken };
+  return { times: into, compactions, broken };
 }
 
 function readRange(file, start, end) {
@@ -94,32 +103,39 @@ function readRange(file, start, end) {
 }
 
 /**
- * The times, oldest first, or null when the rollout cannot supply a complete list: it is gone, compressed, too large,
- * one of the messages carried no readable time, or there are more than any list would show.
+ * `{ times, compactions }` with the times oldest first, or null when the rollout cannot supply a complete list: it is
+ * gone, compressed, too large, one of the messages carried no readable time, or there are more than any list would show.
  */
-function userTimes(rollout) {
+function rolloutMarks(rollout) {
   const file = files.existingRollout(rollout);
   /* A conversation untouched for a week: Codex has compressed it, and nobody is stamping its page right now. */
   if (!file || file.endsWith('.zst')) return null;
   let size;
   try { size = fs.statSync(file).size; } catch (_) { return null; }
   let have = cache.get(file);
-  if (have && have.size === size) return have.broken ? null : have.times;
+  const out = (e) => (e.broken ? null : { times: e.times, compactions: e.compactions });
+  if (have && have.size === size) return out(have);
   /* A file smaller than it was is not the same file appended to. */
-  if (!have || size < have.size) have = { size: 0, offset: 0, times: [], broken: false };
+  if (!have || size < have.size) have = { size: 0, offset: 0, times: [], compactions: [], broken: false };
   if (!have.offset && size > MAX_BYTES) return null;
   const text = readRange(file, have.offset, size);
   if (text === null) return null;
   const { lines, bytes } = wholeLines(text);
-  const found = timesIn(lines, have.times);
-  const entry = { size, offset: have.offset + bytes, times: found.times,
+  const found = timesIn(lines, have.times, have.compactions);
+  const entry = { size, offset: have.offset + bytes, times: found.times, compactions: found.compactions,
     broken: have.broken || found.broken || found.times.length > MAX_TIMES };
   cache.delete(file);
   cache.set(file, entry);
   while (cache.size > KEEP) cache.delete(cache.keys().next().value);
-  return entry.broken ? null : entry.times;
+  return out(entry);
+}
+
+/** Just the times of rolloutMarks(), or null. */
+function userTimes(rollout) {
+  const r = rolloutMarks(rollout);
+  return r ? r.times : null;
 }
 
 function forget() { cache.clear(); }
 
-module.exports = { MAX_BYTES, MAX_TIMES, INJECTED, textOf, wholeLines, timesIn, userTimes, forget };
+module.exports = { MAX_BYTES, MAX_TIMES, INJECTED, textOf, wholeLines, timesIn, userTimes, rolloutMarks, forget };

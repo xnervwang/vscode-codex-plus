@@ -24,7 +24,7 @@
 | Chime when a turn finishes, the plan asks a question, or Codex stops for your permission | Codex tab | Patch |
 | Last turn's duration, context share, model and effort; the tool call running now | Codex tab, bottom right | Patch |
 | The time above every message and every reply block, in your own time zone | Codex conversation | Patch; `codexExtras.timestamps` |
-| Your own messages by time and opening words; click to scroll, step with the arrows or `,` and `.`, filter, or jump to the top or bottom | Right edge of a Codex conversation | Patch; `codexExtras.conversationNavigation` |
+| Your own messages by time and opening words, and where Codex compacted the context; click to scroll, step with the arrows or `,` and `.`, filter, or jump to the top or bottom | Right edge of a Codex conversation | Patch; `codexExtras.conversationNavigation` |
 | Your own messages picked out by their text colour and a bar down their leading edge, in the theme's focus colour | Codex conversation | Patch; `codexExtras.userMessageColor`, `codexExtras.userMessageEdge` |
 | The layout of the conversation in front, written to a file, to find the elements a later addition can attach to | Command | Patch, and the window reloaded since it was applied |
 
@@ -136,6 +136,7 @@ Timestamps, the navigation strip and the colouring of your own messages are all 
 
 - Which of Codex's attributes these select by is checked against a real sample of a Codex conversation (`test/fixtures/`), so a Codex release that drops one fails a check rather than quietly showing nothing.
 - The opening words on a navigation row are read in the page and shown there, and are not sent anywhere.
+- A compaction point is placed by how many of your messages came before it in the conversation's rollout, so it is shown only while the page shows exactly as many messages of yours as the rollout holds.
 
 ## Sampling a conversation's layout
 

@@ -277,6 +277,7 @@ function selfCheckLines(answer) {
     : '    the host has sent no times for this conversation');
   lines.push(`    forms of a sent time it could not read: ${t.unreadableForms || 0}`);
   lines.push(`  Navigation: ${count(nav.railButtons || 0, 'rail button')}, ${count(nav.rows || 0, 'row')}, `
+    + `${count(nav.compactions || 0, 'compaction point')} drawn of ${nav.compactionsFromHost || 0} in the rollout, `
     + `list ${nav.listOpen ? 'open' : 'shut'}, scrolls ${(nav.scrolls || {}).selector || '?'}`);
   lines.push(`  Your messages marked: ${col.inked || 0} coloured, ${col.edged || 0} given a bar; `
     + `colour accepted: ${yesNo(col.colourAccepted)}; stylesheet in place: ${yesNo(col.styleSheet)}`);
@@ -348,13 +349,14 @@ async function refreshPanels() {
   for (const thread of approvals.threads()) owed.set(thread, approvals.of(thread).decide);
   if (!panels.size) return;
   const view = viewOf(deps.settings());
-  /* Only while the stamps are on, and only for the conversations a panel here shows. */
+  /* Only while the stamps or the list are on, and only for the conversations a panel here shows: the stamps use the
+     times, the list places the compaction points by them. */
   const whens = new Map();
-  if (view.timestamps && typeof deps.userTimes === 'function') {
+  if ((view.timestamps || view.navigation) && typeof deps.userTimes === 'function') {
     for (const thread of panels.keys()) {
       try {
         const r = await deps.userTimes(thread);
-        if (r && Array.isArray(r.times)) whens.set(thread, r.times);
+        if (r && Array.isArray(r.times)) whens.set(thread, { times: r.times, compactions: Array.isArray(r.compactions) ? r.compactions : [] });
       } catch (_) { /* the page falls back to what Codex itself rendered */ }
     }
   }
@@ -380,7 +382,7 @@ async function refreshPanels() {
       }
       if (deps.settings().figures) postTo(panel, figuresOf(c) || { type: 'codex-extras-figures', text: '' });
       postTo(panel, view);
-      if (whens.has(thread)) postTo(panel, { type: 'codex-extras-user-times', times: whens.get(thread) });
+      if (whens.has(thread)) postTo(panel, { type: 'codex-extras-user-times', ...whens.get(thread) });
     }
     if (c) last.set(thread, { state: c.state, working: !!c.working, questions: planQuestions(thread) });
   }

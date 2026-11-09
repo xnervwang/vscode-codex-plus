@@ -329,6 +329,9 @@
   /* One time per user message of this conversation, in the order the rollout has them, as the host read them there.
      Used only when there are exactly as many as the page shows - see stampAll. */
   var hostWhen = null;
+  /* Where Codex compacted this conversation's context: { after, at }, `after` being how many of the user's messages
+     came before it in the rollout. Placed in the list only under the same condition as hostWhen. */
+  var hostCompactions = [];
 
   /*
    * Which source the last pass took each user-side time from. This is the one thing the self-check cannot read back off
@@ -646,14 +649,17 @@
     if (css !== sheetText) { sheet.textContent = css; sheetText = css; }
   }
 
+  /* Sized as Claude Code Extras sizes its own rail, so the two read as one control. Codex's stylesheet makes every
+     element border-box and Claude Code's page does not, so the buttons say content-box: otherwise each comes out a
+     pixel narrower and two shorter here, the border taken out of the size instead of added to it. */
   var NAV_CSS = '.codex-extras-rail{position:fixed;right:0;top:50%;transform:translateY(-50%);z-index:' + Z_RAIL + ';'
     + 'display:flex;flex-direction:column;align-items:flex-end;}'
-    + '.codex-extras-rail-btn{width:' + RAIL_W + 'px;height:24px;display:flex;align-items:center;justify-content:center;'
-    + 'cursor:pointer;user-select:none;font-size:13px;border-radius:3px 0 0 3px;'
+    + '.codex-extras-rail-btn{box-sizing:content-box;width:' + RAIL_W + 'px;height:24px;display:flex;align-items:center;'
+    + 'justify-content:center;cursor:pointer;user-select:none;font-size:13px;border-radius:3px 0 0 3px;'
     + 'background:var(--vscode-editorWidget-background,rgba(40,40,40,.92));'
     + 'border:1px solid var(--vscode-widget-border,rgba(255,255,255,.14));border-right:none;'
     + 'color:var(--vscode-textLink-activeForeground,var(--vscode-focusBorder,#4493f8));}'
-    + '.codex-extras-rail-handle{height:56px;font-size:18px;border-radius:4px 0 0 4px;}'
+    + '.codex-extras-rail-handle{height:60px;font-size:18px;border-radius:4px 0 0 4px;}'
     + '.codex-extras-rail-btn:hover{background:var(--vscode-toolbar-hoverBackground,rgba(255,255,255,.12));}'
     /* Codex's sidebar loads this script too, and there the window is a few hundred pixels wide: the list is as wide as
        it fits rather than as wide as it would like, or in the sidebar it would reach past both edges. */
@@ -671,11 +677,14 @@
     + '.codex-extras-row{padding:4px 10px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'
     + 'color:var(--vscode-foreground,#ccc);}'
     + '.codex-extras-row:hover{background:var(--vscode-list-hoverBackground,rgba(255,255,255,.08));}'
-    + '.codex-extras-row-when{opacity:.7;margin-inline-end:6px;}';
+    + '.codex-extras-row-when{opacity:.7;margin-inline-end:6px;}'
+    + '.codex-extras-rule{display:flex;align-items:center;gap:6px;padding:4px 10px;opacity:.6;cursor:pointer;font-size:10px;}'
+    + '.codex-extras-rule:hover{opacity:.9;}'
+    + '.codex-extras-rule-line{flex:1 1 auto;height:1px;background:var(--vscode-widget-border,rgba(255,255,255,.22));}';
 
   /* ── the list of your own messages, and stepping between them ── */
   var nav = null, railBox = null, panel = null, rowsBox = null, filter = null, chevron = null;
-  var rows = [], navNodes = [], sigNodes = [], sigTexts = [];
+  var rows = [], navNodes = [], sigNodes = [], sigTexts = [], sigRules = '';
   var stepIdx = -1, stepAt = 0, keysWired = false, outsideWired = false;
 
   var SHUT = String.fromCharCode(8249), OPEN = String.fromCharCode(8250);
@@ -803,7 +812,7 @@
   function dropNav() {
     if (nav) { try { nav.remove(); } catch (e) { /* gone */ } }
     nav = railBox = panel = rowsBox = filter = chevron = null;
-    rows = []; navNodes = []; sigNodes = []; sigTexts = [];
+    rows = []; navNodes = []; sigNodes = []; sigTexts = []; sigRules = '';
     stepIdx = -1; stepAt = 0;
   }
 
@@ -870,23 +879,46 @@
     return true;
   }
 
+  /*
+   * The compaction points to draw, each with the row it goes before: they are counted in the rollout's messages, so
+   * they are drawn only when the page shows exactly as many messages of the user's as the rollout holds, which is the
+   * same test the rollout's times have to pass. Otherwise none, rather than one in the wrong place.
+   */
+  function rulesFor(users, order) {
+    if (!hostCompactions.length || !hostWhen || hostWhen.length !== users.length) return [];
+    var out = [];
+    for (var c = 0; c < hostCompactions.length; c++) {
+      var after = hostCompactions[c].after, before = order.length;
+      for (var k = 0; k < order.length; k++) if (order[k] >= after) { before = k; break; }
+      out.push({ before: before, at: hostCompactions[c].at, target: after < users.length ? users[after].node : null });
+    }
+    return out;
+  }
+
   function buildNav(users) {
-    var nodes = [], texts = [], whens = [];
+    var nodes = [], texts = [], whens = [], order = [];
     for (var i = 0; i < users.length; i++) {
       var text = bodyWords(users[i].node, i === users.length - 1);
       if (!text) continue;
-      nodes.push(users[i].node); texts.push(text); whens.push(users[i].when || '');
+      nodes.push(users[i].node); texts.push(text); whens.push(users[i].when || ''); order.push(i);
     }
     if (!nodes.length) { dropNav(); return; }
     ensureNav();
     navNodes = nodes;
     var marks = texts.map(function (t, k) { return whens[k] + '\u0000' + t; });
-    if (sameRows(nodes, marks)) return;
+    var rules = rulesFor(users, order);
+    var ruleSig = rules.map(function (r) { return r.before + '@' + r.at; }).join(',');
+    if (sameRows(nodes, marks) && ruleSig === sigRules) return;
     sigNodes = nodes.slice();
     sigTexts = marks;
+    sigRules = ruleSig;
     rowsBox.textContent = '';
     rows = [];
+    var placeRules = function (upto) {
+      for (var r = 0; r < rules.length; r++) if (rules[r].before === upto) addRule(rules[r]);
+    };
     for (var j = 0; j < nodes.length; j++) {
+      placeRules(j);
       (function (node, text, when) {
         var row = document.createElement('div');
         row.setAttribute('class', 'codex-extras-row');
@@ -910,7 +942,29 @@
         rows.push({ row: row, hay: (when + ' ' + text).toLowerCase() });
       })(nodes[j], texts[j], whens[j]);
     }
+    placeRules(nodes.length);
     applyFilter();
+  }
+
+  /* A compaction point, as a rule across the list. Clicking it goes to the first message after it, or to the end of the
+     conversation when there is none yet. */
+  function addRule(rule) {
+    var label = 'Context compacted' + (rule.at ? ' ' + clockOf({ ms: rule.at, secs: false }) : '');
+    var d = document.createElement('div');
+    d.setAttribute('class', 'codex-extras-rule');
+    d.setAttribute(MARK, 'nav-rule');
+    d.setAttribute('title', label);
+    var line = function () { var l = document.createElement('div'); l.setAttribute('class', 'codex-extras-rule-line'); return l; };
+    var t = document.createElement('span');
+    t.textContent = label;
+    d.appendChild(line()); d.appendChild(t); d.appendChild(line());
+    d.addEventListener('click', function (ev) {
+      try { ev.stopPropagation(); } catch (e) { /* none */ }
+      stepIdx = -1; stepAt = 0;
+      if (rule.target) landOn(rule.target); else toEdge(true);
+    });
+    rowsBox.appendChild(d);
+    rows.push({ row: d, hay: label.toLowerCase() });
   }
 
   /*
@@ -1030,6 +1084,8 @@
       navigation: {
         railButtons: all(document, '[' + MARK + '="nav-button"]').length,
         rows: all(document, '[' + MARK + '="nav-row"]').length,
+        compactions: all(document, '[' + MARK + '="nav-rule"]').length,
+        compactionsFromHost: hostCompactions.length,
         listOpen: panelOpen(),
         scrolls: { selector: SEL.scroller, found: !!scrollerEl() },
       },
@@ -1111,6 +1167,10 @@
       hostWhen = Array.isArray(m.times)
         ? m.times.filter(function (n) { return typeof n === 'number' && isFinite(n); })
         : null;
+      hostCompactions = Array.isArray(m.compactions)
+        ? m.compactions.filter(function (c) { return c && typeof c.after === 'number' && c.after >= 0; })
+          .map(function (c) { return { after: Math.floor(c.after), at: typeof c.at === 'number' && isFinite(c.at) ? c.at : 0 }; })
+        : [];
       ready();
     }
   });

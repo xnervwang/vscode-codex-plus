@@ -228,6 +228,31 @@ module.exports = async ({ ok, bad, eq, note, tmp, root }) => {
   eq(one.user.scrolledIntoView + two.user.scrolledIntoView + three.user.scrolledIntoView, 2,
     'and the down arrow steps to a message rather than to an edge');
 
+  /*
+   * Compaction points from the rollout, as rules across the list. They are placed by the count of the user's messages
+   * before each, so they are drawn only while the rollout and the page agree on how many there are.
+   */
+  const lined = [t(22, 35, 10), t(22, 39, 2), t(22, 44, 30)];
+  page.send({ type: 'codex-extras-user-times', times: lined, compactions: [{ after: 2, at: t(22, 40, 0) }] });
+  const listBox = dom.document.root.querySelectorAll('[data-codex-extras="nav-row"]')[0].parentElement;
+  const order = listBox.children.map((k) => k.getAttribute('data-codex-extras'));
+  const rule = listBox.children.find((k) => k.getAttribute('data-codex-extras') === 'nav-rule');
+  eq([order, rule && rule.textContent], [['nav-row', 'nav-row', 'nav-rule', 'nav-row'], 'Context compacted 22:40'],
+    'a compaction goes between the messages it came between, with the time it happened');
+  const landedBefore = three.user.scrolledIntoView;
+  rule.dispatch('click', { stopPropagation() {} });
+  eq(three.user.scrolledIntoView, landedBefore + 1, 'and clicking it goes to the first message after it');
+  page.send({ type: 'codex-extras-user-times', times: lined.slice(0, 2), compactions: [{ after: 2, at: t(22, 40, 0) }] });
+  eq(dom.document.root.querySelectorAll('[data-codex-extras="nav-rule"]').length, 0,
+    'with the rollout holding fewer messages than the page shows, no compaction is drawn rather than one in the wrong place');
+  page.send({ type: 'codex-extras-user-times', times: lined, compactions: [{ after: 3, at: t(22, 50, 0) }] });
+  const last = dom.document.root.querySelectorAll('[data-codex-extras="nav-row"]')[0].parentElement.children;
+  eq(last[last.length - 1].getAttribute('data-codex-extras'), 'nav-rule', 'one after the last message ends the list');
+  const jumps = made.scroller.scrolledTo.length;
+  last[last.length - 1].dispatch('click', { stopPropagation() {} });
+  eq(made.scroller.scrolledTo.length, jumps + 1, 'and goes to the end of the conversation, there being no message after it yet');
+  page.send({ type: 'codex-extras-user-times', times: lined, compactions: [] });
+
   /* The colouring: class names on Codex's elements, and the meaning of them in this script's own stylesheet. */
   eq([one.user.className.includes('codex-extras-user-ink'), one.bubble.className.includes('codex-extras-user-edge')],
     [false, true], 'with no colour set only the bar is marked, and on the bubble rather than the full-width message');
@@ -312,7 +337,17 @@ module.exports = async ({ ok, bad, eq, note, tmp, root }) => {
   eq(times.timesIn([line('2026-11-08T22:50:00.000Z', 'user', 'go on'), 'not json at all', ''], []).times.length, 1,
     'a line that is not JSON is passed over rather than throwing');
   eq(times.timesIn([JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ text: 'go on' }] } })], []),
-    { times: [], broken: true }, 'a message of theirs with no readable time makes the whole list unusable, since it would be one short');
+    { times: [], compactions: [], broken: true }, 'a message of theirs with no readable time makes the whole list unusable, since it would be one short');
+
+  /* Where Codex compacted the context: counted in the user's messages before it, read in the same pass. */
+  const compacted = (ts) => JSON.stringify({ timestamp: ts, type: 'compacted',
+    payload: { message: SECRETS['a reply'], replacement_history: [{ type: 'message', role: 'user', content: [{ text: 'old' }] }] } });
+  fs.appendFileSync(roll, compacted('2026-11-08T22:46:00.000Z') + '\n' + line('2026-11-08T22:47:00.000Z', 'user', 'after it') + '\n');
+  eq(times.rolloutMarks(roll), { times: [Date.parse('2026-11-08T22:35:10.000Z'), Date.parse('2026-11-08T22:39:02.000Z'),
+    Date.parse('2026-11-08T22:44:30.000Z'), Date.parse('2026-11-08T22:47:00.000Z')],
+  compactions: [{ after: 3, at: Date.parse('2026-11-08T22:46:00.000Z') }] },
+  'a compaction is noted after the messages before it, and the user message its summary carries is not counted as one of theirs');
+  eq(times.userTimes(roll).length, 4, 'and the times alone are what they were');
   eq(times.userTimes(path.join(rolls, 'not-there.jsonl')), null, 'a rollout that is not there answers with no times rather than an empty list');
   fs.writeFileSync(path.join(rolls, 'gone.jsonl.zst'), 'not really zstd');
   eq(times.userTimes(path.join(rolls, 'gone.jsonl')), null, 'and a rollout Codex has compressed is left alone');
