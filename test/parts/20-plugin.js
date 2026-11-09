@@ -11,6 +11,7 @@
 const cp = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const fixture = require('../fixture');
 
 const python = () => {
   for (const exe of ['python3', 'python']) {
@@ -145,7 +146,8 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
   // The end-of-turn hook keeps the turn going with a reason, once, and never on its own continuation.
   const stop = { ...payload, hook_event_name: 'Stop', stop_hook_active: false, last_assistant_message: 'done' };
   const rollout = path.join(data, '..', 'rollout.jsonl');
-  fs.writeFileSync(rollout, JSON.stringify({ timestamp: new Date().toISOString(), type: 'event_msg', payload: { type: 'user_message', message: 'x' } }) + '\n');
+  const asRows = (rows) => rows.map((r) => JSON.stringify(r)).join('\n') + '\n';
+  fs.writeFileSync(rollout, asRows(fixture.userMessageRows({ at: Date.now(), threadId: payload.session_id, turnId: 'turn-1', text: 'x' })));
   stop.transcript_path = rollout;
   const run = (p) => cp.spawnSync(py, [path.join(hooksDir, 'nudge-work-plan.py'), data], { input: JSON.stringify(p), encoding: 'utf8' }).stdout.trim();
   const first = run(stop);
@@ -154,6 +156,30 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
   eq([parsed.decision, /still `doing`/.test(parsed.reason || '')], ['block', true], 'a turn ending with a doing row is kept going, with the reason');
   eq(run(stop), '', 'and not asked again about the same rows');
   eq(run({ ...stop, stop_hook_active: true }), '', 'and nothing is said on the continuation it caused');
+
+  /* With no plan yet, a conversation the user has spoken in three times, whose last turn used 25 tools, is offered one
+     once. The user's messages are written as Codex 0.164 writes them in VS Code (fixture.userMessageRows), which is what
+     the hook has to find to know where the turn began and how often the user spoke. */
+  const lone = '01a1b8e8-f7e2-7251-95a9-a95b65992852';
+  const loneRollout = path.join(data, '..', 'rollout-no-plan.jsonl');
+  const lines = [];
+  const t0 = Date.now() - 600e3;
+  for (let turn = 0; turn < 3; turn++) {
+    const at = t0 + turn * 60e3;
+    lines.push({ timestamp: new Date(at).toISOString(), type: 'event_msg', payload: { type: 'task_started', turn_id: `t${turn}` } });
+    lines.push(...fixture.userMessageRows({ at: at + 1, threadId: lone, turnId: `t${turn}`, text: 'go', item: lines.length }));
+    for (let k = 0; k < (turn === 2 ? 25 : 2); k++) {
+      lines.push({ timestamp: new Date(at + 10 + k).toISOString(), type: 'response_item', payload: { type: 'function_call',
+        name: 'exec_command', arguments: JSON.stringify({ cmd: 'ls' }), call_id: `c${turn}-${k}` } });
+    }
+  }
+  fs.writeFileSync(loneRollout, asRows(lines));
+  const lonePayload = { ...stop, session_id: lone, transcript_path: loneRollout, last_assistant_message: 'Finished.' };
+  let offer = {};
+  try { offer = JSON.parse(run(lonePayload)); } catch (_) { /* empty */ }
+  eq([offer.decision, /You have spoken 3 times and this turn used 25 tools/.test(offer.reason || '')], ['block', true],
+    'with no plan, three user messages and a turn of 25 tool calls get the offer of one');
+  eq(run(lonePayload), '', 'and the offer is made only once');
 
   // The row command does not write while another writer holds the plan's lock: it waits out a dead holder's lock
   // (LOCK_STALE) and then refuses, with nothing changed.

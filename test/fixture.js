@@ -32,6 +32,22 @@ function threadId() {
 
 function iso(ms) { return new Date(ms).toISOString(); }
 
+/*
+ * The two rows Codex 0.164 in VS Code writes for one message the user sent: the response_item that carries it to the
+ * model, then an item_completed event whose item is a UserMessage. Shaped after the 120 user messages in the 49
+ * rollouts of a real home (keys and value kinds only); none of those rollouts held the older user_message event, which
+ * Codex writes only for a thread in its legacy history mode.
+ */
+function userMessageRows({ at, threadId: thread, turnId, text = 'hi', item = 1 }) {
+  return [
+    { timestamp: iso(at), type: 'response_item', payload: { type: 'message', role: 'user',
+      id: `msg_${turnId}`, content: [{ type: 'input_text', text }] } },
+    { timestamp: iso(at), type: 'event_msg', ordinal: item, payload: { type: 'item_completed', thread_id: thread,
+      turn_id: turnId, item: { type: 'UserMessage', id: `item-${item}`, content: [{ type: 'text', text, text_elements: [] }] },
+      completed_at_ms: at } },
+  ];
+}
+
 /** Rollout lines for one thread: a session_meta and then each turn given. */
 function rolloutLines({ id, cwd, source = 'vscode', turns = [], startMs }) {
   const out = [{ timestamp: iso(startMs), type: 'session_meta', payload: { id, session_id: id, cwd, source,
@@ -42,7 +58,7 @@ function rolloutLines({ id, cwd, source = 'vscode', turns = [], startMs }) {
       started_at: Math.floor(at / 1000), model_context_window: 258400 } });
     out.push({ timestamp: iso(at), type: 'turn_context', payload: { turn_id: t.id, model: t.model || 'gpt-test',
       effort: t.effort || 'low', cwd } });
-    out.push({ timestamp: iso(at + 1), type: 'event_msg', payload: { type: 'user_message', message: t.prompt || 'hi' } });
+    out.push(...userMessageRows({ at: at + 1, threadId: id, turnId: t.id, text: t.prompt || 'hi', item: out.length }));
     if (t.tool) {
       out.push({ timestamp: iso(at + 1000), type: 'response_item', payload: { type: 'function_call', name: t.tool,
         call_id: `call_${t.id}`, arguments: '{}' } });
@@ -102,4 +118,4 @@ function codexHome(dir, threads) {
   return out;
 }
 
-module.exports = { codexHome, threadId, rolloutLines };
+module.exports = { codexHome, threadId, rolloutLines, userMessageRows };

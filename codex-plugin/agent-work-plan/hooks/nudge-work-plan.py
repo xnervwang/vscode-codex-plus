@@ -82,9 +82,20 @@ def tool_call(row):
 
 
 def spoke(row):
-    """True for a row that is the user speaking: Codex records each message the user sent as a user_message event."""
+    """True for a row that is the user speaking.
+
+    Codex records each message the user sent as an item_completed event whose item is a UserMessage. The older
+    user_message event is written only for a thread in its legacy history mode: none of 49 rollouts written by Codex
+    0.159 and 0.164 held one, against 120 UserMessage items. The response_item rows with role "user" are no use here,
+    since Codex also sends its own context to the model that way.
+    """
     payload = row.get("payload")
-    return row.get("type") == "event_msg" and isinstance(payload, dict) and payload.get("type") == "user_message"
+    if row.get("type") != "event_msg" or not isinstance(payload, dict):
+        return False
+    if payload.get("type") == "item_completed":
+        item = payload.get("item")
+        return isinstance(item, dict) and item.get("type") == "UserMessage"
+    return payload.get("type") == "user_message"
 
 
 def spellings(path):
@@ -109,7 +120,7 @@ def turn_shape(tail, plan="", began=None):
     in_turn = True
     for line in tail.lines(TURN_TAIL):
         maybe_call = '"function_call"' in line or '"custom_tool_call"' in line
-        if not maybe_call and '"user_message"' not in line:
+        if not maybe_call and '"UserMessage"' not in line and '"user_message"' not in line:
             continue
         try:
             row = json.loads(line)
