@@ -785,12 +785,8 @@ function installHooks() {
   globalThis.__codexExtrasBroadcast = (method, params) => {
     if (!deps || method !== 'thread-stream-following-changed' || !params || !params.following) return;
     const thread = String(params.conversationId || '');
-    if (thread && !panelsOf(thread).length) {
-      sidebar = thread;
-      deps.source._focus(thread);
-      sidebarChanged();
-      refreshPanels().catch(() => { /* the next poll draws it */ });
-    }
+    /* sidebarChanged redraws the pages too (activate), which sends the sidebar's page its conversation's times. */
+    if (thread && !panelsOf(thread).length) { sidebar = thread; deps.source._focus(thread); sidebarChanged(); }
   };
   if (globalThis.__codexExtrasProvider) {
     state.provider = globalThis.__codexExtrasProvider;
