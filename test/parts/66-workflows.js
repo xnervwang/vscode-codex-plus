@@ -54,6 +54,19 @@ module.exports = ({ ok, bad, eq, tmp, root }) => {
   /* Both Nodes, because node:sqlite is behind a flag in one of them and not in the other, and check.js re-execs
      itself with the flag only when it has to - so one version alone never exercises that. */
   eq(/node:\s*\['22',\s*'24'\]/.test(check), true, 'on the two Node versions the extension is meant to read Codex\'s database under');
+  /* Agent Plus beside this repository, where test/parts/45-core.js looks for it, so the checks of the two together run on
+     a runner too; and the suite run from this repository's own folder, which is no longer the workspace's root. */
+  eq([/repository:\s*xnervwang\/vscode-agent-plus\s*\n\s*path:\s*vscode-agent-plus\b/.test(check),
+    /^\s+path:\s*vscode-codex-plus\s*$/m.test(check), /working-directory:\s*vscode-codex-plus\b/.test(check)], [true, true, true],
+  'Agent Plus is checked out beside this repository, as ../vscode-agent-plus, and the suite runs in this one');
+  eq(/^\s+push:\s*\n\s+branches:\s*\[main\]/m.test(check), true, 'a push runs it on main only');
+  const daily = /cron:\s*'([^']+)'/.exec(check);
+  eq(!!daily && daily[1].split(/\s+/).slice(2).join(' ') === '* * *' && daily[1].split(/\s+/)[0] !== '0', true,
+    'and it runs once a day, not on the hour, so a change to Agent Plus\'s main that breaks this one shows within a day');
+  for (const [name, text] of [['check.yml', check], ['against-latest.yml', latest]]) {
+    const uses = text.match(/uses:\s*actions\/(?:checkout|setup-node)@\S+/g) || [];
+    eq(uses.length > 0 && uses.every((u) => /@v7$/.test(u)), true, `${name} uses checkout and setup-node at v7, as Claude Code Plus's workflow does`);
+  }
 
   /* ── the daily one against the Codex being shipped ── */
   const cron = /cron:\s*'([^']+)'/.exec(latest);

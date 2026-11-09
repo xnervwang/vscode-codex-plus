@@ -1,16 +1,25 @@
-# The whole suite, on every push and every pull request.
+# The whole suite, on every push to main, every pull request, and once a day.
 #
 # Two Node versions because the extension reads Codex's state database through node:sqlite, which Node 22 has only
 # behind a flag and Node 24 has without one. test/check.js re-execs itself with the flag when it has to, so running
 # both is what checks that it does.
 #
-# A runner has no Codex extension installed, so the three checks that read a real Codex build report themselves as not
-# run rather than passing silently, and the suite's last line counts them separately.
+# Agent Plus is checked out beside this repository, where test/parts/45-core.js looks for it, so the checks of the two
+# extensions together run here too. Nothing in this repository changes when Agent Plus's main does, so the daily run
+# is what brings a change there that breaks this one to light within a day.
+#
+# A runner has no Codex extension installed, so the checks that read a real Codex build report themselves as not run
+# rather than passing silently, and the suite's last line counts them separately.
 name: check
 
 on:
   push:
+    branches: [main]
   pull_request:
+  workflow_dispatch:
+  schedule:
+    # 05:41 UTC. Not on the hour, which is when the scheduler is busiest and runs are likeliest to be dropped.
+    - cron: '41 5 * * *'
 
 permissions:
   contents: read
@@ -23,9 +32,16 @@ jobs:
       matrix:
         node: ['22', '24']
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+        with:
+          path: vscode-codex-plus
+      - uses: actions/checkout@v7
+        with:
+          repository: xnervwang/vscode-agent-plus
+          path: vscode-agent-plus
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ matrix.node }}
       - name: node test/check.js
+        working-directory: vscode-codex-plus
         run: node test/check.js
