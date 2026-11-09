@@ -124,5 +124,18 @@ async function openInTab(vscode, thread, { preserveFocus = false } = {}) {
   return codexTabs(vscode).some((t) => t.thread === thread);
 }
 
-module.exports = { VIEW_TYPE, SCHEME, AUTHORITY, NEW_PANEL_PATH, isCodexViewType, isCodexTab, tabShape, threadOfUri, threadOfTab, codexTabs,
+/*
+ * Codex's own URI handler, `<scheme>://openai.chatgpt/<route>`: it focuses Codex's sidebar and navigates it to the route
+ * (its handleUri), so a conversation opens in the sidebar with no patch. `/local/<id>` is a conversation and `/` is a
+ * new one. The scheme is this editor's own (vscode, vscode-insiders, cursor, ...).
+ */
+function sidebarRouteUri(vscode, route) {
+  return vscode.Uri.parse(`${(vscode.env && vscode.env.uriScheme) || 'vscode'}://openai.chatgpt${route}`);
+}
+async function openRouteInSidebar(vscode, route) {
+  try { return (await vscode.env.openExternal(sidebarRouteUri(vscode, route))) !== false; } catch (_) { return false; }
+}
+const threadRoute = (id) => `/local/${encodeURIComponent(String(id))}`;
+
+module.exports = { sidebarRouteUri, openRouteInSidebar, threadRoute, VIEW_TYPE, SCHEME, AUTHORITY, NEW_PANEL_PATH, isCodexViewType, isCodexTab, tabShape, threadOfUri, threadOfTab, codexTabs,
   activeThread, threadUri, newPanelUri, openInTab, openNewInTab };

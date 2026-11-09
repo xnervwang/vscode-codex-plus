@@ -170,6 +170,32 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
       'set to the sidebar it opens Codex\'s sidebar and no tab');
   }
 
+  /*
+   * Resume in Sidebar and New in Sidebar go through Codex's own URI handler, which focuses its sidebar and navigates it,
+   * so neither needs the patch. The link uses this editor's own scheme. When Codex does not take it, a conversation
+   * opens in a tab instead and a new one through Codex's own commands.
+   */
+  {
+    const id = '01a1b8f2-fd2b-7e60-9ffc-16e5cb642e31';
+    const w = await run(root, tmp, { probe: async ({ vscode, control }) => {
+      vscode.env.uriScheme = 'vscode-insiders';
+      const mark = control.state.commands.length;
+      await control.state.handlers['codexExtras.openThreadInSidebar'](id);
+      await control.state.handlers['codexExtras.newInSidebar']();
+      const ran = control.state.commands.slice(mark).map((c) => c[0]);
+      control.state.externalAnswer = false;
+      const mark2 = control.state.commands.length;
+      await control.state.handlers['codexExtras.openThreadInSidebar'](id);
+      await control.state.handlers['codexExtras.newInSidebar']();
+      return { external: control.state.external.slice(), ran, refused: control.state.commands.slice(mark2).map((c) => c[0]) };
+    } });
+    eq([w.probed.external.slice(0, 2), w.probed.ran],
+      [[`vscode-insiders://openai.chatgpt/local/${id}`, 'vscode-insiders://openai.chatgpt/'], []],
+      'Resume in Sidebar and New in Sidebar open Codex\'s own link for the route, in this editor\'s scheme, and run nothing else');
+    eq(w.probed.refused, ['vscode.openWith', 'chatgpt.openSidebar', 'chatgpt.newChat'],
+      'when Codex does not take the link, the conversation opens in a tab and a new one through Codex\'s own commands');
+  }
+
   /* The Codex commands this extension runs, against the Codex installed here: New in sidebar needs no patch, since
      Codex contributes both commands it uses. */
   const ours = fs.readFileSync(path.join(root, 'extension.js'), 'utf8');
@@ -187,5 +213,6 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
     try { codex = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8')); } catch (_) { continue; }
     const has = new Set((codex.contributes.commands || []).map((c) => c.command));
     eq(called.filter((c) => !has.has(c)), [], `${path.basename(dir)} contributes all three`);
+    eq((codex.activationEvents || []).includes('onUri'), true, `${path.basename(dir)} starts on a link to it, which Resume in Sidebar relies on`);
   }
 };

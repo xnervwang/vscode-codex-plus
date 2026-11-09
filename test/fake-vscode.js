@@ -23,6 +23,10 @@ class Uri {
   }
   static from(parts) { return new Uri(parts); }
   static file(p) { return new Uri({ scheme: 'file', path: p }); }
+  static parse(text) {
+    const m = /^([a-z][\w+.-]*):\/\/([^/?#]*)([^?#]*)(?:\?([^#]*))?(?:#(.*))?$/i.exec(String(text));
+    return m ? new Uri({ scheme: m[1], authority: m[2], path: m[3] || '', query: m[4] || '', fragment: m[5] || '' }) : new Uri({ path: String(text) });
+  }
   static joinPath(base, ...parts) { return new Uri({ ...base, path: path.posix.join(base.path, ...parts) }); }
   get fsPath() { return this.path; }
   with(change) { return new Uri({ ...this, ...change }); }
@@ -47,7 +51,7 @@ function create() {
   const extChanged = new EventEmitter();
   const groups = [{ viewColumn: 1, tabs: [], activeTab: null, isActive: true }];
   const state = { commands: [], context: {}, extensions: new Map(), clipboard: '', views: [], status: [], log: [], registered: [],
-    said: [], answers: [], handlers: {} };
+    said: [], answers: [], handlers: {}, external: [], externalAnswer: true };
   /* A notification is answered with the button the test set for text it contains (control.answer), else dismissed. */
   const answer = async (message, ...rest) => {
     const buttons = rest.filter((b) => typeof b === 'string');
@@ -93,7 +97,9 @@ function create() {
       getExtension: (id) => state.extensions.get(id),
       onDidChange: extChanged.event,
     },
-    env: { language: 'en', clipboard: { writeText: async (t) => { state.clipboard = t; }, readText: async () => state.clipboard } },
+    env: { language: 'en', uriScheme: 'vscode',
+      openExternal: async (u) => { state.external.push(String(u)); return state.externalAnswer; },
+      clipboard: { writeText: async (t) => { state.clipboard = t; }, readText: async () => state.clipboard } },
     workspace: { workspaceFolders: [], getConfiguration: () => ({ get: (k, d) => (state.config && k in state.config ? state.config[k] : d) }),
       onDidChangeConfiguration: () => ({ dispose() {} }), onDidChangeWorkspaceFolders: () => ({ dispose() {} }) },
   };

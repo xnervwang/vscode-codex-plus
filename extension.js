@@ -447,6 +447,7 @@ function registerCommands(context, { source, memory, sessionsProvider, say, link
   });
   reg('newInTab', () => newConversationInTab(say));
   reg('newInSidebar', async () => {
+    if (await tabs.openRouteInSidebar(vscode, '/')) return;
     await vscode.commands.executeCommand('chatgpt.openSidebar');
     try { await vscode.commands.executeCommand('chatgpt.newChat'); } catch (_) { /* the shortcut is not enabled in every build */ }
   });
@@ -470,10 +471,9 @@ function registerCommands(context, { source, memory, sessionsProvider, say, link
   reg('openThreadInSidebar', async (arg) => {
     const id = threadArg(arg);
     if (!id) return;
-    if (!(await patching.openInSidebar(id))) {
-      vscode.window.showInformationMessage('Opening a given conversation in the sidebar needs the patch to Codex, which is not in place. It was opened in a tab instead.');
-      await tabs.openInTab(vscode, id);
-    }
+    if (await tabs.openRouteInSidebar(vscode, tabs.threadRoute(id)) || await patching.openInSidebar(id)) return;
+    vscode.window.showInformationMessage('Codex did not take the link that opens a conversation in its sidebar, so it was opened in a tab instead.');
+    await tabs.openInTab(vscode, id);
   });
   reg('copyThreadId', async (arg) => {
     const id = threadArg(arg);
