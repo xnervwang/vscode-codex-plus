@@ -37,6 +37,7 @@
  *                         (src/approvals.js): the tab dot, the state the Conversations view shows, the count in the
  *                         status bar and a chime, none of which need a tab to be open on the conversation
  */
+const fs = require('fs');
 const path = require('path');
 const targets = require('./adapters');
 const { activeThread } = require('./codex-tabs');
@@ -646,6 +647,7 @@ async function ensurePatched(vscode, context, log, mode) {
     return;
   }
   state.reason = 'patched; reload the window to connect';
+  reloadOffered = true;
   const reload = 'Reload Window';
   /* Codex reads these files when its extension starts and when it builds a page, so neither half of what was just
      written runs until the window is reloaded. There is no way to hand it over without one. */
@@ -666,10 +668,43 @@ function removePatch(vscode) {
   return [...targets].reverse().map((t) => { try { return `${t.name}: ${t.restore(dir).message}`; } catch (e) { return `${t.name}: ${e.message}`; } });
 }
 
+/*
+ * A window whose Codex started before the patch was written runs Codex's own code until it is reloaded, so it hands
+ * nothing over: no dots, no answers delivered, no chimes. Patching is done once on disk for every window, and only the
+ * window that wrote it offers the reload, so the others are told here, when they get the focus. One stat per focus; the
+ * file is read only when its modification time moved, and the offer is made once per window.
+ */
+let reloadOffered = false;
+let seenMtime = null;
+async function offerReloadIfStale() {
+  if (!deps || state.active || reloadOffered) return false;
+  const { vscode } = deps;
+  const ext = vscode.extensions.getExtension('openai.chatgpt');
+  if (!ext || !ext.isActive || deps.settings().patchCodex === 'off') return false;
+  const dir = ext.extensionPath;
+  let mtime;
+  try { mtime = (await fs.promises.stat(path.join(dir, 'out', 'extension.js'))).mtimeMs; } catch (_) { return false; }
+  if (mtime === seenMtime) return false;
+  seenMtime = mtime;
+  if (!targets.every((t) => t.status(dir) === 'patched')) return false;
+  reloadOffered = true;
+  state.reason = 'patched after this window\'s Codex started; reload to connect';
+  const reload = 'Reload Window';
+  const pick = await vscode.window.showInformationMessage('Codex was patched after this window\'s Codex started, so here it '
+    + 'still runs its own code: no tab dots, no answers delivered, no chimes. Reload this window to connect it.', reload);
+  if (pick === reload) await vscode.commands.executeCommand('workbench.action.reloadWindow');
+  return true;
+}
+
 function activate(context, opts) {
   deps = opts;
   installHooks();
   context.subscriptions.push(opts.source.onDidChangeConversations(() => refreshPanels()));
+  if (typeof opts.vscode.window.onDidChangeWindowState === 'function') {
+    context.subscriptions.push(opts.vscode.window.onDidChangeWindowState((w) => {
+      if (w && w.focused) offerReloadIfStale().catch((e) => opts.log(`patch: ${e.message}`));
+    }));
+  }
   context.subscriptions.push({ dispose: () => {
     for (const k of ['__codexExtrasPanel', '__codexExtrasPageRequest', '__codexExtrasPageResponse', '__codexExtrasMessage', '__codexExtrasBroadcast',
       '__codexExtrasAppServer']) delete globalThis[k];
@@ -685,5 +720,5 @@ function activate(context, opts) {
 module.exports = { activate, ensurePatched, statusLines, openInSidebar, canType, canDeliver, deliver, sidebarThread, panelThreads, shownIn,
   nowShowing, revealPanel, removePatch,
   figuresOf, safeColor, viewOf, sampleLayout, selfCheckPage, selfCheckLines, installHooks, refreshPanels, approvalsOf,
-  decideCount, waitingThreads, onApprovalsChanged, _state: () => state, _registry: registry, _approvals: approvals,
+  decideCount, waitingThreads, onApprovalsChanged, offerReloadIfStale, _state: () => state, _registry: registry, _approvals: approvals,
   TAB_DOTS, ASK_MS };

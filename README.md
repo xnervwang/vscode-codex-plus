@@ -82,6 +82,7 @@ code --install-extension build/xnervwang.codex-extras-0.1.0.vsix
 - A reload on its own cannot carry that across: Codex reads those files when its extension starts and when it builds a page, so the new copy has to be **written first**, and only a reload then hands it over.
 - Writing it is not something to run by hand. A few seconds after this extension starts it writes the new copy over the old one and offers a reload. Clicking that reload is the whole of it.
 - No question is put for this: the one already answered was whether to patch this Codex at all.
+- The patch is written once, into the Codex every window of this machine loads. Only the window that wrote it offers the reload; any other window whose Codex was already running offers it once, the next time it gets the focus, since until then it runs Codex's own code and shows no dots, delivers no answers and plays no chimes.
 
 | State of Codex's files | What happens |
 | --- | --- |
