@@ -359,14 +359,36 @@ async function installLocked({ binary, home, stage, source = SOURCE, python = SH
  */
 async function uninstall({ binary, home }) {
   const kept = savePlans(home);
+  const said = [];
+  const ask = async (server, method, params) => {
+    try { await server.request(method, params); } catch (e) { said.push(`${method}: ${(e && e.message) || e}`); }
+  };
   await withAppServer(binary, home, async (server) => {
-    try { await server.request('plugin/uninstall', { pluginId: PLUGIN_ID }); } catch (_) { /* not installed */ }
-    try { await server.request('marketplace/remove', { marketplaceName: MARKETPLACE }); } catch (_) { /* not added */ }
+    await ask(server, 'plugin/uninstall', { pluginId: PLUGIN_ID });
+    await ask(server, 'marketplace/remove', { marketplaceName: MARKETPLACE });
     // The trust the user gave the hooks is kept by Codex under each hook's key; a null removes it.
     const edits = hookKeys().map((key) => ({ keyPath: `hooks.state.${JSON.stringify(key)}`, value: null, mergeStrategy: 'replace' }));
-    try { await server.request('config/batchWrite', { edits, filePath: null, expectedVersion: null, reloadUserConfig: true }); } catch (_) { /* none kept */ }
+    await ask(server, 'config/batchWrite', { edits, filePath: null, expectedVersion: null, reloadUserConfig: true });
   });
+  /* A request refused because there was nothing of its to remove is no failure, so what counts is what is left. */
+  const left = leftAfterRemoval(home);
+  if (left.length) {
+    throw new Error(`${left.join('; ')}${said.length ? ` (Codex said: ${said.join('; ')})` : ''}`
+      + `${kept ? `. The plans were copied to ${kept} first.` : ''}`);
+  }
   return kept;
+}
+
+/* What a removal leaves of the plugin in `home`: its copy in Codex's cache, its marketplace's entry in config.toml, and
+   the trust given to its hooks, which Codex keeps under hooks.state."<plugin id>:...". */
+function leftAfterRemoval(home) {
+  const left = [];
+  if (installedVersions(home).length) left.push(`the plugin is still in Codex's cache (${cacheDir(home)})`);
+  let lines = [];
+  try { lines = fs.readFileSync(path.join(home, 'config.toml'), 'utf8').split(/\r?\n/).map((l) => l.trim()); } catch (_) { /* none */ }
+  if (lines.includes(`[marketplaces.${MARKETPLACE}]`)) left.push(`config.toml still lists the ${MARKETPLACE} marketplace`);
+  if (lines.some((l) => l.startsWith(`[hooks.state."${PLUGIN_ID}:`))) left.push('config.toml still holds the trust given to its hooks');
+  return left;
 }
 
 /* Copies the plans out of `home` before an uninstall. '' when there are none; throws when they could not all be copied. */
@@ -452,5 +474,5 @@ function sameHooks(a, b) {
 module.exports = {
   MARKETPLACE, PLUGIN, PLUGIN_ID, DATA_DIR, DIGEST_FILE, SOURCE, SHIPPED, SHIPPED_PYTHON, planDir, cacheDir, installedVersions,
   pluginVersion, sourceDigest, installedDigest, installedFit, fitOf, installState, stageMarketplace, fitHooks, pluginLoadState, setPluginEnabled, pluginEnabledEdits,
-  writeHookSettings, install, uninstall, savePlans, hookStatus, trustHooks, sameHooks, hookKeys,
+  writeHookSettings, install, uninstall, leftAfterRemoval, savePlans, hookStatus, trustHooks, sameHooks, hookKeys,
 };
