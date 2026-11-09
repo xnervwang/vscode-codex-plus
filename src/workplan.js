@@ -50,12 +50,17 @@ const planDir = () => install.planDir(files.codexHome());
 /*
  * Every thread id that still has a rollout, or null when that could not be established. Null rather than a partial set:
  * an unreadable state database would make every conversation look gone, and their plans would be deleted.
+ *
+ * A thread with no rollout path means the list came from session_index.jsonl, which listThreads falls back to when
+ * the database cannot be read. That index holds only the conversations that have a name, so it is no list of the
+ * living either.
  */
 function liveSessions(home = files.codexHome()) {
   const threads = files.listThreads(home);
   if (!threads || !threads.length) return null;
+  if (threads.some((t) => !t.rollout)) return null;
   const live = new Set();
-  for (const t of threads) if (!t.rollout || files.existingRollout(t.rollout)) live.add(t.id);
+  for (const t of threads) if (files.existingRollout(t.rollout)) live.add(t.id);
   return live.size ? live : null;
 }
 
@@ -232,6 +237,9 @@ function sweepOrphans(opts = {}) {
     let st;
     try { st = fs.statSync(file); } catch (_) { continue; }
     if (now - st.mtimeMs < SETTLED_MS) { kept++; continue; }
+    /* The last word before a delete is the folders themselves: a rollout the database has lost track of, or one moved
+       by archiving, still means the conversation can be resumed. */
+    if (files.rolloutExists(name.replace(/\.[^.]+$/, ''), opts.home || files.codexHome())) { kept++; continue; }
     // Already gone means another window got here first, which is the ordinary outcome of two of them starting on one
     // day rather than a fault: several extension hosts share this directory and nothing locks it.
     try { fs.unlinkSync(file); deleted++; }

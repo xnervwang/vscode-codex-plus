@@ -243,6 +243,37 @@ module.exports = async ({ ok, bad, eq, tmp }) => {
     eq([swept.deleted, fs.readdirSync(sweepDir).sort()], [2, ['config.json', `${ids.fresh}.json`, `${ids.fresh}.turn`, `${ids.live}.json`, `${ids.live}.turn`].sort()],
       'a gone conversation\'s plan and side files are removed; a live one, one written this week and other files stay');
     eq(sweepOrphans({ dir: sweepDir, live: null }).deleted, 0, 'and nothing is removed when the live set could not be read');
+
+    /*
+     * A state database that cannot be read makes listThreads fall back to session_index.jsonl, which holds only the
+     * conversations that have a name. Taken for the list of the living, it made every unnamed conversation look gone.
+     */
+    {
+      const home2 = tmp('sweep-home');
+      const NAMED = '01a1aaaa-0000-7000-8000-000000000001', UNNAMED = '01a1bbbb-0000-7000-8000-000000000002';
+      const day = path.join(home2, 'sessions', '2026', '10', '01');
+      fs.mkdirSync(day, { recursive: true });
+      for (const id of [NAMED, UNNAMED]) fs.writeFileSync(path.join(day, `rollout-2026-10-01T00-00-00-${id}.jsonl`), '{}\n');
+      fs.writeFileSync(path.join(home2, 'state_5.sqlite'), 'not a database');
+      fs.writeFileSync(path.join(home2, 'session_index.jsonl'), JSON.stringify({ id: NAMED, thread_name: 'named', updated_at: '2026-10-01T00:00:00Z' }) + '\n');
+      const dir2 = tmp('sweep-plans');
+      for (const id of [NAMED, UNNAMED]) { const f = path.join(dir2, `${id}.json`); fs.writeFileSync(f, '{}'); fs.utimesSync(f, oldMs / 1000, oldMs / 1000); }
+      const r = sweepOrphans({ home: home2, dir: dir2 });
+      eq([r.deleted, r.live, fs.readdirSync(dir2).length], [0, null, 2],
+        'a thread list that came from the index is no list of the living, and nothing is deleted on it');
+
+      /* Even with a live set that leaves a conversation out, its rollout on disk keeps its plan: in sessions/, or moved
+         into archived_sessions/ by archiving. */
+      const ARCHIVED = '01a1cccc-0000-7000-8000-000000000003';
+      fs.mkdirSync(path.join(home2, 'archived_sessions'), { recursive: true });
+      fs.writeFileSync(path.join(home2, 'archived_sessions', `rollout-2026-10-01T00-00-00-${ARCHIVED}.jsonl.zst`), 'x');
+      const f3 = path.join(dir2, `${ARCHIVED}.json`); fs.writeFileSync(f3, '{}'); fs.utimesSync(f3, oldMs / 1000, oldMs / 1000);
+      const GONE = '01a1dddd-0000-7000-8000-000000000004';
+      const f4 = path.join(dir2, `${GONE}.json`); fs.writeFileSync(f4, '{}'); fs.utimesSync(f4, oldMs / 1000, oldMs / 1000);
+      const r2 = sweepOrphans({ home: home2, dir: dir2, live: new Set([NAMED]) });
+      eq([r2.deleted, fs.readdirSync(dir2).sort()], [1, [NAMED, UNNAMED, ARCHIVED].map((id) => `${id}.json`).sort()],
+        'a conversation whose rollout is still in sessions/ or archived_sessions/ keeps its plan; only one with none anywhere loses it');
+    }
     eq(planQuestions([{ title: 'a', state: 'waiting', waitingOn: 'user', question: 'Q?' }, { title: 'b', state: 'todo' }]).map((q) => q.question), ['Q?'],
       'planQuestions() finds the rows that wait on the user, for the chime');
 
