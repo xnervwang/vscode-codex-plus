@@ -357,7 +357,10 @@ async function refreshPanels() {
     }
   }
   const logo = source.logo;
-  const icons = logo ? iconsFor({ light: logo.light.fsPath, dark: logo.dark.fsPath }, path.join(context.globalStorageUri.fsPath, 'tab-icons'),
+  /* The dot on a tab's logo is one of the things the master switch covers, so with it off a tab gets Codex's own logo
+     back rather than keeping whichever dot it had when the switch was thrown. */
+  const dots = deps.settings().enabled !== false;
+  const icons = logo && dots ? iconsFor({ light: logo.light.fsPath, dark: logo.dark.fsPath }, path.join(context.globalStorageUri.fsPath, 'tab-icons'),
     undefined, TAB_DOTS) : null;
   for (const [thread, set] of panels) {
     const c = now.get(thread);

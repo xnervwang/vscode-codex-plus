@@ -74,6 +74,20 @@ code --install-extension build/xnervwang.codex-extras-0.1.0.vsix
 - Optional: `Codex Extras: Patch Codex (…)`, then reload the window.
 - `Codex Extras: Show Status` shows what is installed, patched and registered.
 
+### Turning it all off
+
+Three states, and three different acts, because each leaves something different behind.
+
+| | |
+| --- | --- |
+| Off, but ready | `Codex Extras: Turn All the Additions Off`, or `Toggle`, or the `codexExtras.enabled` setting. Nothing is drawn: no times, no message list, no colouring, no chimes, no figures strip, no dot on a tab's logo, no count in the status bar, and Codex is not patched or kept patched. **An applied patch stays in Codex's files.** Each setting keeps its own value, so turning it back on gives back the choices you had rather than the defaults. |
+| Codex's own files back | `Codex Extras: Remove the Patch from Codex`. This is the one that restores `out/extension.js` and `webview/index.html`, and it is also what uninstalling this extension does. Reload the window afterwards. |
+| The plugin left alone | `Codex Extras: Stop Loading the Work Plan Plugin`. Codex keeps the plugin, its marketplace entry and the trust you gave its hooks, and is set not to load it (`enabled = false` under `[plugins."agent-work-plan@codex-extras"]` in `config.toml`). `Load the Work Plan Plugin in Codex` is the way back. `Remove the Work Plan Plugin from Codex` instead takes all three away, and getting back from that means installing and trusting again. |
+
+- The work plan and the Codex session list are not covered by the master switch. They have their own settings (`codexExtras.workPlan`, `codexExtras.sessionList`), because a work plan the model is keeping is not an adornment to be switched off along with a chime.
+- `Codex Extras: Patch Codex` turns the master switch back on if it was off: the patch exists only to serve the additions, so applying it while they are all off would leave Codex patched with nothing drawing through it.
+- `Codex Extras: Show Status` names all three states, including a plugin that is installed but not loaded, which nothing else in Codex shows.
+
 ### Python
 
 The work plan's hooks and its MCP server need Python 3.7 or later. `py -3`, `python` and `python3` are tried in that order on Windows, `python3` then `python` elsewhere, and whichever answers first is written into the installed plugin.

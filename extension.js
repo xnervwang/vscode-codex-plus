@@ -36,23 +36,40 @@ let log = null;
 let reader = null;
 
 function cfg() { return vscode.workspace.getConfiguration(CONFIG); }
+
+/*
+ * The settings, with the master switch (codexExtras.enabled) already applied to the ones it covers.
+ *
+ * The switch is a setting of its own rather than a command that writes `false` over each of the settings below, so that
+ * turning everything off and on again gives back the choices the user had made rather than every default. Everything
+ * it covers is read through it here, which is why nothing else in the extension has to ask about it.
+ *
+ * What it does not cover: the work plan, the session list, and where a new conversation opens. Those are not of a piece
+ * with the rest - a work plan the model is keeping is not an adornment to be switched off by the command that stops a
+ * chime - and the README says as much.
+ *
+ * `patchCodex` reading 'off' stops the patch being applied or kept up to date. It does not take an applied patch out of
+ * Codex's files: that is `Codex Extras: Remove the Patch from Codex`, and the two are different acts.
+ */
 function settings() {
   const c = cfg();
+  const on = c.get('enabled', true);
   return {
-    patchCodex: c.get('patchCodex', 'ask'),
-    chime: c.get('chime', true),
-    figures: c.get('turnFigures', true),
+    enabled: on,
     workPlan: c.get('workPlan', true),
     hideBackgroundSessions: c.get('hideBackgroundSessions', true),
     sessionsInWorkspaceOnly: c.get('sessionsInWorkspaceOnly', true),
     recentClosedSessions: c.get('recentClosedSessions', 10),
     reopenDroppedTabs: c.get('reopenDroppedTabs', true),
     installPlugin: c.get('installWorkPlanPlugin', 'ask'),
-    timestamps: c.get('timestamps', true),
-    conversationNavigation: c.get('conversationNavigation', true),
-    userMessageColor: c.get('userMessageColor', ''),
-    userMessageEdge: c.get('userMessageEdge', true),
-    waitingInStatusBar: c.get('waitingInStatusBar', true),
+    patchCodex: on ? c.get('patchCodex', 'ask') : 'off',
+    chime: on && c.get('chime', true),
+    figures: on && c.get('turnFigures', true),
+    timestamps: on && c.get('timestamps', true),
+    conversationNavigation: on && c.get('conversationNavigation', true),
+    userMessageColor: on ? c.get('userMessageColor', '') : '',
+    userMessageEdge: on && c.get('userMessageEdge', true),
+    waitingInStatusBar: on && c.get('waitingInStatusBar', true),
   };
 }
 const trusted = () => vscode.workspace.isTrusted !== false;
@@ -163,8 +180,10 @@ async function activate(context) {
     if (e.affectsConfiguration(`${CONFIG}.codexHome`)) { applyCodexHome(); source._poll(); }
     if (e.affectsConfiguration(CONFIG)) { writeHookSettings(context); sessionsProvider.refresh(); drawWaiting(); }
     /* The time stamps, the message list and the colours live in Codex's page, and this is how a change to one of them
-       gets there: the same redraw the figures use, rather than a watcher of its own. */
-    if (e.affectsConfiguration(`${CONFIG}.timestamps`) || e.affectsConfiguration(`${CONFIG}.conversationNavigation`)
+       gets there: the same redraw the figures use, rather than a watcher of its own. The master switch is in the list
+       because it decides all three, and a page has to be told when it goes either way. */
+    if (e.affectsConfiguration(`${CONFIG}.enabled`) || e.affectsConfiguration(`${CONFIG}.timestamps`)
+      || e.affectsConfiguration(`${CONFIG}.conversationNavigation`)
       || e.affectsConfiguration(`${CONFIG}.userMessageColor`) || e.affectsConfiguration(`${CONFIG}.userMessageEdge`)) {
       const typed = String(cfg().get('userMessageColor', '') || '').trim();
       if (typed && !patching.safeColor(typed)) {
@@ -236,6 +255,8 @@ function registerCommands(context, { source, memory, sessionsProvider, say, link
     const home = files.codexHome();
     const python = await findPython(context);
     const tried = pythonRuntime.pythons(context.globalStorageUri.fsPath);
+    const installed = install.installedVersions(home);
+    const loadState = install.pluginLoadState(home);
     const threads = reader.threads() || [];
     const counts = {};
     for (const t of threads) counts[t.kind] = (counts[t.kind] || 0) + 1;
@@ -243,7 +264,13 @@ function registerCommands(context, { source, memory, sessionsProvider, say, link
       `CODEX_HOME: ${home}`,
       `State database: ${files.stateDbPath(home) || '(not found)'}`,
       `Threads: ${threads.length} (${Object.entries(counts).map(([k, n]) => `${n} ${k}`).join(', ') || 'none'})`,
-      `Work plan plugin: ${install.installedVersions(home).join(', ') || 'not installed'} (this extension ships ${install.pluginVersion()})`,
+      /* Installed and loaded are two states, not one: Codex can hold the plugin and be set not to load it, and then
+         the work plan simply stays empty with nothing else to show why. */
+      `Work plan plugin: ${install.installedVersions(home).join(', ') || 'not installed'}`
+        + `${installed.length ? `, ${loadState === 'not loaded' ? 'INSTALLED BUT NOT LOADED (Codex is set to skip it)'
+          : loadState === 'no entry' ? 'no entry in config.toml, so Codex does not know of it' : 'loaded'}` : ''}`
+        + ` (this extension ships ${install.pluginVersion()})`,
+      `Additions: ${settings().enabled ? 'on' : 'OFF (codexExtras.enabled); the patch to Codex is left as it is'}`,
       `Python for the hooks: ${python ? `${python.version} as ${python.launcher.join(' ')} (${python.executable})`
         : `none found, tried ${tried.map((l) => l.join(' ')).join(', ')}`
           + (pythonRuntime.build() ? '; "Codex Extras: Download Python for the Work Plan Hooks" fetches one' : '')}`,
@@ -274,8 +301,35 @@ function registerCommands(context, { source, memory, sessionsProvider, say, link
       ? `Codex Extras: ${answer.error}` : 'Codex Extras: the page self-check is in the output panel.', copy);
     if (pick === copy) await vscode.env.clipboard.writeText(lines.join('\n'));
   });
+  /*
+   * The master switch: one act for all the additions at once, rather than six settings to find.
+   *
+   * It writes the one setting the others are read through (settings()), so the user's own choices among them survive
+   * being turned off and come back as they were. What it does not do is take the patch out of Codex's files: with the
+   * switch off the patch is left in place and nothing is drawn with it, and the file is put back only by
+   * `Codex Extras: Remove the Patch from Codex`. The command titles say so, because a "Turn Off" that was thought to
+   * restore Codex's own files would be found out only much later.
+   */
+  const setEnabled = async (on) => {
+    await vscode.workspace.getConfiguration(CONFIG).update('enabled', on, vscode.ConfigurationTarget.Global);
+    sessionsProvider.refresh();
+    patching.refreshPanels().catch((e) => say(`redrawing the Codex pages: ${e.message}`));
+    vscode.window.showInformationMessage(on
+      ? 'Codex Extras: the additions are on again, each as you had it set.'
+      : 'Codex Extras: the additions are off. The patch to Codex\'s files is still in place and unchanged; '
+        + '"Remove the Patch from Codex" is what puts those back.');
+  };
+  reg('turnOn', () => setEnabled(true));
+  reg('turnOff', () => setEnabled(false));
+  reg('toggle', () => setEnabled(!settings().enabled));
   reg('applyPatch', async () => {
     if (restricted()) return;
+    /* Patching while the switch is off would leave the patch in Codex with nothing drawing anything through it, so the
+       command that asks for the patch turns the switch back on as part of doing it. */
+    if (!settings().enabled) {
+      await vscode.workspace.getConfiguration(CONFIG).update('enabled', true, vscode.ConfigurationTarget.Global);
+      say('the additions were off; turned back on, since the patch is only of use to them');
+    }
     await context.globalState.update(`codexExtras.patchAsked:${(vscode.extensions.getExtension('openai.chatgpt') || { packageJSON: {} }).packageJSON.version}`, undefined);
     await vscode.workspace.getConfiguration(CONFIG).update('patchCodex', 'on', vscode.ConfigurationTarget.Global);
     vscode.window.showInformationMessage('Codex will be patched now; reload the window when asked.');
@@ -336,6 +390,28 @@ function registerCommands(context, { source, memory, sessionsProvider, say, link
     if (await downloadPython(context, say)) await installPlugin(context, say, { interactive: true });
   });
   reg('trustWorkPlanHooks', () => (restricted() ? undefined : trustPlugin(say, { interactive: true })));
+  /*
+   * The step between keeping the plugin and removing it: Codex holds it, with its marketplace entry and the trust given
+   * to its hooks, and is told not to load it. Removing it instead takes all three away, so getting back from that means
+   * installing and trusting again.
+   *
+   * Both directions are commands, since the only other way back would be to install over it and trust its hooks afresh.
+   */
+  const loadPlugin = async (on) => {
+    if (restricted()) return;
+    const binary = codexProgram();
+    if (!binary) { vscode.window.showErrorMessage('The codex program of the Codex extension was not found.'); return; }
+    try {
+      await install.setPluginEnabled({ binary, home: files.codexHome(), enabled: on });
+      say(`Codex is now set to ${on ? 'load' : 'skip'} the work plan plugin in ${files.codexHome()}`);
+      vscode.window.showInformationMessage(on
+        ? 'Codex Extras: Codex will load the work plan plugin again. Open a new conversation for it to take effect.'
+        : 'Codex Extras: Codex will not load the work plan plugin. It stays installed, with its hooks still trusted; '
+          + '"Load the Work Plan Plugin in Codex" turns it back on.');
+    } catch (e) { vscode.window.showErrorMessage(`Could not change whether Codex loads the plugin: ${e.message}`); }
+  };
+  reg('stopLoadingWorkPlanPlugin', () => loadPlugin(false));
+  reg('loadWorkPlanPlugin', () => loadPlugin(true));
   reg('removeWorkPlanPlugin', async () => {
     if (restricted()) return;
     const binary = codexProgram();
@@ -551,4 +627,6 @@ async function trustPlugin(say, { interactive }) {
 
 function deactivate() { files.closeAll(); }
 
-module.exports = { activate, deactivate };
+/* `_settings` is for the checks: the master switch is only real if what every part reads comes out of settings() with
+   it already applied, and that is a table to be read rather than inferred from what the extension then did. */
+module.exports = { activate, deactivate, _settings: settings };

@@ -39,6 +39,53 @@ function installedVersions(home) {
 }
 
 /*
+ * Whether Codex is set to load the plugin, which is a thing apart from whether it is installed: 'loaded',
+ * 'not loaded', or 'no entry' for a Codex that has never been told about it. Codex keeps it as `enabled` under
+ * [plugins."<id>"] in config.toml, and its own settings page writes the same key.
+ *
+ * Read without a TOML parser, because only this one key of this one section is wanted and the shape of a section is
+ * fixed: it runs from its own header to the next header, and `enabled` in it is a bare boolean. Another plugin's
+ * section of the very same shape is therefore passed over rather than mistaken for this one.
+ */
+function pluginLoadState(home) {
+  let text;
+  try { text = fs.readFileSync(path.join(home, 'config.toml'), 'utf8'); } catch (_) { return 'no entry'; }
+  const header = `[plugins.${JSON.stringify(PLUGIN_ID)}]`;
+  const lines = text.split(/\r?\n/);
+  const at = lines.findIndex((l) => l.trim() === header);
+  if (at < 0) return 'no entry';
+  for (let i = at + 1; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (line.startsWith('[')) break;
+    const m = /^enabled\s*=\s*(true|false)\b/.exec(line);
+    if (m) return m[1] === 'true' ? 'loaded' : 'not loaded';
+  }
+  /* Codex writes `enabled` when it installs a plugin, so a section without one has been edited by hand. A plugin Codex
+     knows of and has not been told to skip is one it loads. */
+  return 'loaded';
+}
+
+/*
+ * Tell Codex to load the plugin, or to leave it where it is and not load it. Written through the app-server's own
+ * config write, which takes Codex's lock on config.toml and keeps the rest of the file as it stands - the plugin, its
+ * marketplace entry, the trust the user gave its hooks, and everything of the user's own.
+ *
+ * This is the step between keeping the plugin and removing it: uninstall() takes the plugin, its marketplace and that
+ * trust away, and getting them back means installing and trusting again.
+ */
+const pluginEnabledEdits = (enabled) => [{ keyPath: `plugins.${JSON.stringify(PLUGIN_ID)}.enabled`,
+  value: !!enabled, mergeStrategy: 'upsert' }];
+
+async function setPluginEnabled({ binary, home, enabled }) {
+  return withAppServer(binary, home, async (server) => {
+    const edits = pluginEnabledEdits(enabled);
+    const r = await server.request('config/batchWrite', { edits, filePath: null, expectedVersion: null, reloadUserConfig: true });
+    if (r && r.status === 'okOverridden') throw new Error('Another config layer overrides whether this plugin is loaded.');
+    return { enabled: !!enabled };
+  });
+}
+
+/*
  * Copy the marketplace to `stage`, replacing what an earlier version left there, and fit the copy to the Python found
  * on this machine. `python` is what src/python-runtime.js findPython returned, or null when there is none.
  */
@@ -252,6 +299,6 @@ function sameHooks(a, b) {
 
 module.exports = {
   MARKETPLACE, PLUGIN, PLUGIN_ID, DATA_DIR, SOURCE, SHIPPED, SHIPPED_PYTHON, planDir, cacheDir, installedVersions,
-  pluginVersion, stageMarketplace, fitHooks,
+  pluginVersion, stageMarketplace, fitHooks, pluginLoadState, setPluginEnabled, pluginEnabledEdits,
   writeHookSettings, install, uninstall, savePlans, hookStatus, trustHooks, sameHooks, hookKeys,
 };

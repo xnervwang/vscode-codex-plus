@@ -56,6 +56,18 @@
         "title": "Codex Extras: Settings"
       },
       {
+        "command": "codexExtras.toggle",
+        "title": "Codex Extras: Toggle All the Additions On/Off (leaves Codex's files alone)"
+      },
+      {
+        "command": "codexExtras.turnOn",
+        "title": "Codex Extras: Turn All the Additions On"
+      },
+      {
+        "command": "codexExtras.turnOff",
+        "title": "Codex Extras: Turn All the Additions Off (leaves Codex's files alone)"
+      },
+      {
         "command": "codexExtras.installWorkPlanPlugin",
         "title": "Codex Extras: Install the Work Plan Plugin into Codex"
       },
@@ -66,6 +78,14 @@
       {
         "command": "codexExtras.trustWorkPlanHooks",
         "title": "Codex Extras: Trust the Work Plan Hooks in Codex"
+      },
+      {
+        "command": "codexExtras.stopLoadingWorkPlanPlugin",
+        "title": "Codex Extras: Stop Loading the Work Plan Plugin (keeps it installed)"
+      },
+      {
+        "command": "codexExtras.loadWorkPlanPlugin",
+        "title": "Codex Extras: Load the Work Plan Plugin in Codex"
       },
       {
         "command": "codexExtras.removeWorkPlanPlugin",
@@ -274,6 +294,11 @@
           "default": "",
           "markdownDescription": "The Codex home directory to read and to install the work plan plugin into. Empty uses `CODEX_HOME` when it is set, otherwise `~/.codex`.",
           "scope": "machine"
+        },
+        "codexExtras.enabled": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "The master switch over the additions this extension makes to Codex: the time on each message, the list of your own messages, their colouring, the chimes, the figures strip, the dot on a tab's logo and the count in the status bar, and whether Codex is patched at all. Off leaves each of their own settings as you had it, and turns them back on as they were.\n\nIt does **not** take an applied patch out of Codex's files. The patch stays where it is and nothing is drawn through it; `Codex Extras: Remove the Patch from Codex` is what puts Codex's own files back.\n\nThe work plan and the Codex session list are not covered by it, and have their own settings."
         },
         "codexExtras.workPlan": {
           "type": "boolean",

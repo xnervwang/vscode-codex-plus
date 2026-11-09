@@ -59,6 +59,7 @@ function create() {
     EventEmitter, Uri, TabInputCustom, TabInputText, ThemeIcon, ThemeColor, TreeItem, MarkdownString, FileDecoration,
     TreeItemCollapsibleState: { None: 0, Collapsed: 1, Expanded: 2 },
     StatusBarAlignment: { Left: 1, Right: 2 },
+    ConfigurationTarget: { Global: 1, Workspace: 2, WorkspaceFolder: 3 },
     ViewColumn: { Active: -1, Beside: -2, One: 1, Two: 2, Three: 3 },
     window: {
       tabGroups: {
