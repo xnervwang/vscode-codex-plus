@@ -94,9 +94,17 @@ function threadUri(vscode, thread) {
  * vscode.openWith asking for `window.activeTextEditor?.viewColumn`, which is the group of whichever text file was last
  * focused rather than the group in front, so a new conversation can land in a split the user was not looking at.
  * Opening the route here instead means the column can be given explicitly.
+ *
+ * Each one carries a fragment of its own. Codex's editor allows one editor per resource, so VS Code opens a resource
+ * that is already open by moving that editor to the group asked for, and every tab opened on the bare route keeps that
+ * URI for good: a second New would bring the first one forward. VS Code compares the fragment along with the rest of
+ * the URI, and Codex reads a tab's route from its path and query alone (its URI parser), so the fragment makes a new
+ * resource without changing the route.
  */
+let newPanels = 0;
 function newPanelUri(vscode) {
-  return vscode.Uri.from({ scheme: SCHEME, authority: AUTHORITY, path: NEW_PANEL_PATH });
+  const fragment = `new-${Date.now().toString(36)}-${(++newPanels).toString(36)}`;
+  return vscode.Uri.from({ scheme: SCHEME, authority: AUTHORITY, path: NEW_PANEL_PATH, fragment });
 }
 
 /*
@@ -121,13 +129,16 @@ async function codexGroup(vscode) {
   return columns.length ? Math.min(...columns) : vscode.ViewColumn.One;
 }
 
-/* Open a new Codex conversation in a tab, in codexGroup's group. False when Codex did not take the route. */
+/* Open a new Codex conversation in a tab, in codexGroup's group. False when the tab in front afterwards is not the one
+   opened on this route, which is what Codex not taking it looks like. */
 async function openNewInTab(vscode) {
   const viewColumn = await codexGroup(vscode);
-  await vscode.commands.executeCommand('vscode.openWith', newPanelUri(vscode), VIEW_TYPE,
-    { viewColumn, preserveFocus: false, preview: false });
-  const tab = vscode.window.tabGroups.activeTabGroup;
-  return !!(tab && tab.activeTab && isCodexTab(vscode, tab.activeTab));
+  const uri = newPanelUri(vscode);
+  await vscode.commands.executeCommand('vscode.openWith', uri, VIEW_TYPE, { viewColumn, preserveFocus: false, preview: false });
+  const group = vscode.window.tabGroups.activeTabGroup;
+  const front = group && group.activeTab;
+  return !!(front && isCodexTab(vscode, front) && front.input.uri && front.input.uri.path === NEW_PANEL_PATH
+    && front.input.uri.fragment === uri.fragment);
 }
 
 /*
