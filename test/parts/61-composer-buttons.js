@@ -39,11 +39,13 @@ module.exports = async ({ eq, tmp, root }) => {
       [true, 2, '722px', '40px', true], 'two buttons sit in a row of this script\'s own just below the message box, on the body');
     eq([/pointer-events:none/.test(bar.style.cssText), buttons.every((b) => /pointer-events:auto/.test(b.style.cssText))], [true, true],
       'the row takes no clicks, only its two buttons do');
-    eq([buttons[1].textContent, buttons[1].style.textDecoration, buttons.map((b) => b.getAttribute('title'))], ['\u266a', 'none', [null, null]],
-      'the chime button is a plain note while chimes are on, in one colour like Codex\'s own icons, and neither button has a native title');
+    const slash = (b) => b.querySelectorAll('[data-codex-extras-mute]')[0];
+    eq([buttons.map((b) => b.querySelectorAll('svg').length), slash(buttons[1]).getAttribute('visibility'), buttons.map((b) => b.getAttribute('title'))],
+      [[1, 1], 'hidden', [null, null]],
+      'each button is a drawn icon in one colour like Codex\'s own, the note not struck through while chimes are on, and neither has a native title');
     p.view({ chime: false });
     const muted = p.q('[data-codex-extras="bar-button"]')[1];
-    eq([muted.textContent, muted.style.textDecoration, /turn them on/.test(muted.getAttribute('aria-label'))], ['\u266a', 'line-through', true],
+    eq([slash(muted).getAttribute('visibility'), muted.getAttribute('data-codex-extras-muted'), /turn them on/.test(muted.getAttribute('aria-label'))], ['visible', 'true', true],
       'and the same note struck through, saying how to turn them on, while they are off');
     muted.dispatch('mouseenter', {});
     const label = p.q('[data-codex-extras="label"]');

@@ -322,11 +322,11 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
   /*
    * ── a Codex release that renamed what the script selects by ──
    *
-   * The same real sample with the two message anchors renamed, which is what a release that moved them looks like to
-   * this script: turns on the page and no message recognised. The page tells the host once the miss has held for three
+   * The same real sample with the two message anchors and the user bubble renamed, which is what a release that moved
+   * them looks like to this script: turns on the page and no message recognised. The page tells the host once the miss has held for three
    * passes and five seconds, and the message carries counts, a flag and the script's version and nothing else.
    */
-  const RENAMED = ['data-local-conversation-user-anchor', 'data-response-annotation-target'];
+  const RENAMED = ['data-local-conversation-user-anchor', 'data-response-annotation-target', 'data-user-message-bubble'];
   const renamed = JSON.parse(JSON.stringify(sample), (k, v) => (k === 'attrs' && Array.isArray(v)
     ? v.map((a) => (RENAMED.includes(a) ? `${a}-renamed` : a)) : v));
   const moved = createDom();

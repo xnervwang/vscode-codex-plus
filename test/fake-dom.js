@@ -45,9 +45,9 @@ function parseCompound(text) {
   for (;;) {
     const cls = /^\.([\w-]+)/.exec(rest);
     if (cls) { part.classes.push(cls[1]); rest = rest.slice(cls[0].length); continue; }
-    const attr = /^\[([\w-]+)(?:=(?:"([^"]*)"|'([^']*)'|([^\]]*)))?\]/.exec(rest);
+    const attr = /^\[([\w-]+)(?:([*~^]?=)(?:"([^"]*)"|'([^']*)'|([^\]]*)))?\]/.exec(rest);
     if (attr) {
-      part.attrs.push({ name: attr[1], value: attr[2] !== undefined ? attr[2] : attr[3] !== undefined ? attr[3] : attr[4] });
+      part.attrs.push({ name: attr[1], op: attr[2] || '', value: attr[3] !== undefined ? attr[3] : attr[4] !== undefined ? attr[4] : attr[5] });
       rest = rest.slice(attr[0].length);
       continue;
     }
@@ -78,7 +78,10 @@ function matchesCompound(el, part) {
   for (const a of part.attrs) {
     const v = el.getAttribute(a.name);
     if (v === null) return false;
-    if (a.value !== undefined && String(v) !== a.value) return false;
+    if (a.value === undefined) continue;
+    const s = String(v);
+    if (a.op === '*=' ? !s.includes(a.value) : a.op === '^=' ? !s.startsWith(a.value)
+      : a.op === '~=' ? !s.split(/\s+/).includes(a.value) : s !== a.value) return false;
   }
   for (const nots of part.nots) if (nots.some((chain) => matchesChain(el, chain))) return false;
   return true;

@@ -486,14 +486,17 @@ function runningCommands(thread) {
 /*
  * The strip's figures: only what is said nowhere else. A turn's duration is Codex's own "Worked for", and the context,
  * model and effort are on the line beside each reply's time, so the strip has the tool call running now, with when it
- * began, and the commands still running.
+ * began, and the commands still running. The call's id goes with it: a page that shows that call's own row leaves it
+ * to Codex (src/page/codex-extras-page.js codexShowsCall). The id is the rollout's call_id, which is taken to be the id
+ * Codex's page puts on the call's row.
  */
 function figuresOf(c, commandsRunning = 0) {
   if (!c) return null;
   const parts = [];
   if (commandsRunning) parts.push(`${commandsRunning} command${commandsRunning === 1 ? '' : 's'} running`);
   const running = c.state === 'working' && c.lastTool && !c.lastTool.endedMs;
-  return { type: 'codex-extras-figures', text: parts.join(' · '), tool: running ? c.lastTool.name : '', toolSince: running ? c.lastTool.startedMs : 0 };
+  return { type: 'codex-extras-figures', text: parts.join(' · '), tool: running ? c.lastTool.name : '', toolSince: running ? c.lastTool.startedMs : 0,
+    toolCall: running ? String(c.lastTool.callId || '') : '' };
 }
 
 /*

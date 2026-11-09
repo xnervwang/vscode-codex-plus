@@ -143,7 +143,38 @@
    * it from its own copy, so no text leaves the page.
    */
   var bar = null, infoBtn = null, muteBtn = null, infoBox = null, infoAsk = '', barWired = false;
-  var NOTE_GLYPH = String.fromCharCode(9834), INFO_GLYPH = String.fromCharCode(8505);
+  /*
+   * The two glyphs, drawn rather than taken from a font: a font's information sign and note are of different sizes
+   * from each other and from one machine to the next, and Codex's own icons are drawn. Both are line drawings in a
+   * 16-unit box, inked about as tall as Codex's toolbar icons; the note is struck through while chimes are off.
+   */
+  var SVG_NS = 'http://www.w3.org/2000/svg';
+  function icon(parts) {
+    var svg = document.createElementNS(SVG_NS, 'svg');
+    svg.setAttribute('viewBox', '0 0 16 16');
+    svg.setAttribute('width', String(ICON_PX));
+    svg.setAttribute('height', String(ICON_PX));
+    svg.setAttribute('aria-hidden', 'true');
+    svg.style.display = 'block';
+    for (var i = 0; i < parts.length; i++) {
+      var p = document.createElementNS(SVG_NS, parts[i].tag);
+      for (var k in parts[i].attrs) p.setAttribute(k, parts[i].attrs[k]);
+      svg.appendChild(p);
+    }
+    return svg;
+  }
+  var LINE = { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.3', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' };
+  var mix = function (a, b) { var o = {}, k; for (k in a) o[k] = a[k]; for (k in b) o[k] = b[k]; return o; };
+  var infoIcon = function () {
+    return icon([{ tag: 'circle', attrs: mix(LINE, { cx: '8', cy: '8', r: '6.35' }) },
+      { tag: 'path', attrs: mix(LINE, { d: 'M8 7.3v3.9' }) },
+      { tag: 'circle', attrs: { cx: '8', cy: '4.95', r: '0.85', fill: 'currentColor' } }]);
+  };
+  var noteIcon = function () {
+    return icon([{ tag: 'path', attrs: mix(LINE, { d: 'M9.6 11.4V1.9c.4 1.6 1.9 2.4 3.1 3.1' }) },
+      { tag: 'ellipse', attrs: { cx: '7.3', cy: '11.9', rx: '2.5', ry: '1.9', transform: 'rotate(-20 7.3 11.9)', fill: 'currentColor' } },
+      { tag: 'path', attrs: mix(LINE, { d: 'M2.6 2.6l10.8 10.8', 'data-codex-extras-mute': '' }) }]);
+  };
   /*
    * Above Codex's content and below every overlay it draws. Codex puts its content at z-index 0 to 20; the lowest layer
    * it gives a popover portalled to <body> is z-30 (zIndexClassName "z-30"), its menus and dialogs use z-50 or the menu
@@ -151,6 +182,29 @@
    * one above the button, still under all of those.
    */
   var Z_BELOW_CODEX = 25, Z_BELOW_CODEX_BOX = 27;
+  /*
+   * The row below the message box, which holds the two buttons on the left and the figures on the right. It starts
+   * ROW_GAP below the box's frame, and is as tall as one of Codex's own toolbar icons, which is also the size the two
+   * glyphs are drawn at. Codex leaves less room than that under the box, so while the row is drawn the box is given
+   * ROW_ROOM more at its foot (the stylesheet), which takes that much height from the conversation above it.
+   */
+  var ROW_GAP = 2, ROW_ROOM = 4, ICON_PX = 16;
+  var iconPx = function (root) {
+    var svg = root ? one(root, 'button svg') : null, h = 0;
+    try { h = svg ? Math.round(svg.getBoundingClientRect().height) : 0; } catch (e) { h = 0; }
+    return h >= 10 && h <= 24 ? h : ICON_PX;
+  };
+  /* Where the row goes: { top, left, right, size } in the page, or null with no message box recognised. */
+  function rowPlace() {
+    var root = document.body ? composerRoot() : null, r = null;
+    try { r = root ? root.getBoundingClientRect() : null; } catch (e) { r = null; }
+    if (!r || !(r.width > 0)) return null;
+    var size = iconPx(root), vh = +globalThis.innerHeight || 0, vw = +globalThis.innerWidth || 0;
+    var bottom = typeof r.bottom === 'number' ? r.bottom : (r.top || 0) + (r.height || 0);
+    var top = bottom + ROW_GAP;
+    if (vh && top > vh - size) top = vh - size;
+    return { top: Math.round(top), left: Math.round(r.left || 0), right: vw ? Math.max(0, Math.round(vw - (r.left || 0) - (r.width || 0))) : 8, size: size };
+  }
 
   /* A hover label of this script's own, since a native title is not reliably shown in Codex's page. Created on hover
      and removed on leave or click, so nothing stays in the page. */
@@ -199,16 +253,14 @@
     b.setAttribute(MARK, 'bar-button');
     b.setAttribute('role', 'button');
     labelled(b, label);
-    b.style.cssText = 'pointer-events:auto;cursor:pointer;user-select:none;padding:0 4px;border-radius:3px;line-height:18px;'
-      + 'font-size:12px;opacity:.75;';
+    b.style.cssText = 'pointer-events:auto;cursor:pointer;user-select:none;padding:0 4px;border-radius:3px;opacity:.75;';
     b.addEventListener('click', function (ev) { try { ev.stopPropagation(); } catch (e) { /* none */ } onClick(); });
     return b;
   }
   function placeBar() {
-    var root = view.buttons !== false && document.body ? composerRoot() : null;
-    var r = null;
-    try { r = root ? root.getBoundingClientRect() : null; } catch (e) { r = null; }
-    if (!r || !(r.width > 0)) { dropBar(); return; }
+    var at = view.buttons !== false ? rowPlace() : null;
+    placeStrip();
+    if (!at) { dropBar(); return; }
     if (!bar || !bar.isConnected) {
       dropBar();
       bar = document.createElement('div');
@@ -217,9 +269,9 @@
         + 'font:11px var(--vscode-font-family,sans-serif);color:var(--vscode-descriptionForeground,#888);';
       infoBtn = barButton('About this conversation: its thread id, the process of Codex\'s server, the folder it '
         + 'started in, its rollout and size, the context in use and the tokens it used. Click a value to copy it.', toggleInfo);
-      infoBtn.textContent = INFO_GLYPH;
+      infoBtn.appendChild(infoIcon());
       muteBtn = barButton('Chimes', function () { post({ kind: 'toggleChime' }); });
-      muteBtn.textContent = NOTE_GLYPH;
+      muteBtn.appendChild(noteIcon());
       bar.appendChild(infoBtn);
       bar.appendChild(muteBtn);
       document.body.appendChild(bar);
@@ -234,14 +286,18 @@
         });
       }
     }
-    var vh = +globalThis.innerHeight || 0;
-    var top = (typeof r.bottom === 'number' ? r.bottom : (r.top || 0) + (r.height || 0)) + 2;
-    if (vh && top > vh - 20) top = vh - 20;
-    bar.style.left = Math.round(r.left) + 'px';
-    bar.style.top = Math.round(top) + 'px';
+    bar.style.left = at.left + 'px';
+    bar.style.top = at.top + 'px';
+    var px = String(at.size);
+    for (var k = 0; k < bar.children.length; k++) {
+      var s = bar.children[k].style, svg = one(bar.children[k], 'svg');
+      if (s.height !== px + 'px') { s.height = px + 'px'; s.display = 'flex'; s.alignItems = 'center'; }
+      if (svg && svg.getAttribute('width') !== px) { svg.setAttribute('width', px); svg.setAttribute('height', px); }
+    }
     var muted = view.chime === false;
-    var deco = muted ? 'line-through' : 'none';
-    if (muteBtn.style.textDecoration !== deco) muteBtn.style.textDecoration = deco;
+    var slash = one(muteBtn, '[data-codex-extras-mute]');
+    if (slash) { var vis = muted ? 'visible' : 'hidden'; if (slash.getAttribute('visibility') !== vis) slash.setAttribute('visibility', vis); }
+    if (muteBtn.getAttribute(MARK + '-muted') !== (muted ? 'true' : 'false')) muteBtn.setAttribute(MARK + '-muted', muted ? 'true' : 'false');
     if (muteBtn.style.opacity !== (muted ? '0.45' : '0.75')) muteBtn.style.opacity = muted ? '0.45' : '0.75';
     labelled(muteBtn, muted ? 'Chimes are off: click to turn them on (codexPlus.chime)' : 'Chimes are on: click to turn them off (codexPlus.chime)');
   }
@@ -366,20 +422,49 @@
   }
 
   var strip = null, figures = null, timer = null;
+  /* On the row, at its right end under the box's right edge; in the page's corner when there is no box to go by. */
+  function placeStrip() {
+    if (!strip) return;
+    var at = rowPlace();
+    if (at) {
+      strip.style.top = at.top + 'px'; strip.style.right = at.right + 'px'; strip.style.bottom = '';
+      strip.style.lineHeight = at.size + 'px'; strip.style.height = at.size + 'px';
+    } else { strip.style.top = ''; strip.style.right = '8px'; strip.style.bottom = '2px'; }
+  }
+  /*
+   * Whether Codex's page shows the tool call itself, in view: its row carries the call's id among
+   * data-local-conversation-item-target-ids. Then the strip leaves it to Codex, whose own "Working for" line and row say
+   * the same; scrolled out of view, or with no id from the host, the strip says it.
+   */
+  function codexShowsCall(id) {
+    if (!id) return false;
+    var rows = all(document, '[data-local-conversation-item-target-ids*="' + String(id).replace(/["\\]/g, '\\$&') + '"]');
+    var vh = +globalThis.innerHeight || 0;
+    for (var i = 0; i < rows.length; i++) {
+      var ids = String(rows[i].getAttribute('data-local-conversation-item-target-ids') || '').split(/[\s,]+/);
+      if (ids.indexOf(String(id)) === -1) continue;
+      var b = null;
+      try { b = rows[i].getBoundingClientRect(); } catch (e) { b = null; }
+      var bottom = b ? (typeof b.bottom === 'number' ? b.bottom : (b.top || 0) + (b.height || 0)) : 0;
+      if (b && b.height > 0 && (!vh || (bottom > 0 && (b.top || 0) < vh))) return true;
+    }
+    return false;
+  }
   function draw() {
-    if (!figures || (!figures.text && !figures.tool)) { if (strip) strip.style.display = 'none'; return; }
+    var tool = figures && figures.tool && !codexShowsCall(figures.toolCall) ? figures.tool : '';
+    if (!figures || (!figures.text && !tool)) { if (strip) strip.style.display = 'none'; return; }
     if (!strip) {
       strip = document.createElement('div');
       strip.setAttribute(MARK, 'figures');
-      strip.style.cssText = 'position:fixed;right:8px;bottom:2px;z-index:' + Z_BELOW_CODEX + ';pointer-events:none;'
-        + 'font:11px var(--vscode-font-family,sans-serif);color:var(--vscode-descriptionForeground,#888);'
-        + 'background:var(--vscode-editor-background,transparent);opacity:.85;padding:0 4px;border-radius:3px;';
+      strip.style.cssText = 'position:fixed;z-index:' + Z_BELOW_CODEX + ';pointer-events:none;white-space:nowrap;'
+        + 'font:11px var(--vscode-font-family,sans-serif);color:var(--vscode-descriptionForeground,#888);padding:0 4px;';
       document.body.appendChild(strip);
     }
+    placeStrip();
     var text = figures.text;
-    if (figures.tool && figures.toolSince) {
+    if (tool && figures.toolSince) {
       var s = Math.max(0, Math.round((Date.now() - figures.toolSince) / 1000));
-      text = figures.tool + ' running for ' + (s >= 60 ? Math.floor(s / 60) + 'm' + (s % 60) + 's' : s + 's')
+      text = tool + ' running for ' + (s >= 60 ? Math.floor(s / 60) + 'm' + (s % 60) + 's' : s + 's')
         + ' (since ' + clockOf({ ms: figures.toolSince, secs: true }) + ')' + (text ? ' · ' + text : '');
     }
     strip.textContent = text;
@@ -563,6 +648,7 @@
     role: 'data-conversation-role',
     sent: 'data-assistant-message-sent-time',
     bubble: 'data-user-message-bubble',
+    unit: 'data-content-search-unit-key',
   };
   var SEL = { day: 'time[datetime]' };
   Object.keys(ATTR).forEach(function (k) { SEL[k] = '[' + ATTR[k] + ']'; });
@@ -591,6 +677,12 @@
   var lastPass = { fromClock: 0, fromRollout: 0, unstamped: 0, hostTimes: 0, linedUp: false };
 
   var INK_CLASS = 'codex-extras-user-ink', EDGE_CLASS = 'codex-extras-user-edge';
+  /*
+   * On this script's own stamp when it shows a time. The stylesheet hides Codex's own sent time in a reply whose stamp
+   * carries it, so the reply shows one time. It is on the stamp rather than on Codex's element because Codex's render
+   * rewrites the class of its own elements, which no observer here sees.
+   */
+  var TIMED_ATTR = MARK + '-timed';
   var DEBOUNCE_MS = 200, STEP_HOLD_MS = 600;
   var RAIL_W = 26, PANEL_W = 300;
   /* Under Codex's overlays, as the row below the message box is (Z_BELOW_CODEX); the list one above the rail. */
@@ -773,6 +865,24 @@
     return v ? String(v).toLowerCase() : '';
   }
 
+  /*
+   * The user's messages in a turn, in document order. Codex anchors the message a page sent to start a turn
+   * (data-local-conversation-user-anchor) and not one steered into a turn already running, nor one in a turn another
+   * page started; those are a search unit holding a user bubble and no anchor, and are taken as the user's too. One
+   * inside an anchor or inside a reply block is left to that.
+   */
+  function usersIn(turn) {
+    var out = [], found = all(turn, SEL.user + ',' + SEL.unit);
+    for (var i = 0; i < found.length; i++) {
+      var el = found[i];
+      if (el.hasAttribute && el.hasAttribute(ATTR.user)) { out.push(el); continue; }
+      var up = el.parentElement;
+      if (!one(el, SEL.bubble) || (up && up.closest && (up.closest(SEL.user) || up.closest(SEL.assistant) || up.closest(SEL.unit)))) continue;
+      out.push(el);
+    }
+    return out;
+  }
+
   /* How many turns the last entries() saw. */
   var lastTurns = 0;
   /* Every user message and reply block of the conversation, in document order, each with the day it sits under. */
@@ -786,7 +896,7 @@
       if (d !== null) day = d;
       var keyed = one(turn, SEL.turnBody);
       var key = keyed ? String(keyed.getAttribute(ATTR.turnBody) || '') : '';
-      var users = all(turn, SEL.user);
+      var users = usersIn(turn);
       for (var u = 0; u < users.length; u++) out.push({ kind: 'user', node: users[u], day: day, turn: key });
       var sides = all(turn, SEL.assistantSide), firstReply = true;
       for (var s = 0; s < sides.length; s++) {
@@ -824,6 +934,8 @@
       if (host.firstChild) host.insertBefore(el, host.firstChild); else host.appendChild(el);
     }
     if (el.textContent !== text) el.textContent = text;
+    var timed = side === 'assistant' && !!text;
+    if (timed !== (el.getAttribute(TIMED_ATTR) !== null)) { if (timed) el.setAttribute(TIMED_ATTR, ''); else el.removeAttribute(TIMED_ATTR); }
     var fig = figures ? (text ? ' \u00b7 ' : '') + figures : '';
     if (fig) { if (el.getAttribute(FIG_ATTR) !== fig) el.setAttribute(FIG_ATTR, fig); }
     else if (el.getAttribute(FIG_ATTR) !== null) el.removeAttribute(FIG_ATTR);
@@ -922,6 +1034,13 @@
       css += '.' + LOW_CLASS + '{outline:1px solid var(--vscode-editorWarning-foreground,#cca700) !important;'
         + 'outline-offset:1px;border-radius:4px;}';
     }
+    if (view.timestamps) css += SEL.assistant + ':has(> [' + TIMED_ATTR + ']) ' + SEL.sent + '{display:none !important;}';
+    /* The rail stands in the conversation's right edge, so while it is drawn the conversation keeps clear of its
+       column: a transparent border, which leaves Codex's own padding as it is. */
+    if (view.navigation && nav && nav.isConnected) css += SEL.scroller + '{border-inline-end:' + (RAIL_W + 2) + 'px solid transparent !important;}';
+    if (view.buttons !== false || (strip && strip.style.display !== 'none')) {
+      css += '[data-codex-composer-root]{margin-bottom:' + ROW_ROOM + 'px !important;}';
+    }
     css += NAV_CSS;
     if (!sheet || !sheet.isConnected) {
       sheet = document.createElement('style');
@@ -939,11 +1058,13 @@
     + 'display:flex;flex-direction:column;align-items:flex-end;}'
     + '.codex-extras-rail-btn{box-sizing:content-box;width:' + RAIL_W + 'px;height:24px;display:flex;align-items:center;'
     + 'justify-content:center;cursor:pointer;user-select:none;font-size:13px;border-radius:3px 0 0 3px;'
-    + 'background:var(--vscode-editorWidget-background,rgba(40,40,40,.92));'
+    + 'background-color:var(--vscode-editorWidget-background,#282828);'
     + 'border:1px solid var(--vscode-widget-border,rgba(255,255,255,.14));border-right:none;'
     + 'color:var(--vscode-textLink-activeForeground,var(--vscode-focusBorder,#4493f8));}'
     + '.codex-extras-rail-handle{height:60px;font-size:18px;border-radius:4px 0 0 4px;}'
-    + '.codex-extras-rail-btn:hover{background:var(--vscode-toolbar-hoverBackground,rgba(255,255,255,.12));}'
+    /* The hover colour is a tint over the button's own colour, so the button stays opaque while it shows. */
+    + '.codex-extras-rail-btn:hover{background-image:linear-gradient(var(--vscode-toolbar-hoverBackground,rgba(255,255,255,.12)),'
+    + 'var(--vscode-toolbar-hoverBackground,rgba(255,255,255,.12)));}'
     /* Codex's sidebar loads this script too, and there the window is a few hundred pixels wide: the list is as wide as
        it fits rather than as wide as it would like, or in the sidebar it would reach past both edges. */
     + '.codex-extras-panel{position:fixed;right:' + (RAIL_W + 2) + 'px;top:8px;'
@@ -1317,7 +1438,7 @@
       var users = stampAll(list);
       colourAll(users);
       if (view.navigation) buildNav(users); else dropNav();
-      if (anythingOn()) restyle(); else dropSheet();
+      if (anythingOn() || view.buttons !== false) restyle(); else dropSheet();
       markLowContext();
       placeBar();
     } catch (e) { /* this is Codex's page: a fault here leaves everything of its own as it was */ }
@@ -1367,6 +1488,7 @@
         scroller: { selector: SEL.scroller, found: !!scrollerEl() },
         turns: turns.length,
         userAnchors: all(scrollerEl(), SEL.user).length,
+        userWithoutAnchor: users - all(scrollerEl(), SEL.user).length,
         assistantBlocks: all(scrollerEl(), SEL.assistant).length,
         sentTimeElements: all(scrollerEl(), SEL.sent).length,
         bubbles: all(scrollerEl(), SEL.bubble).length,
