@@ -12,6 +12,7 @@
 | Open sessions, Recently closed, Pinned, the sections you made in Codex's own sidebar, Ungrouped, Archived sessions, each with its count | Codex sessions view, in the Codex Extras sidebar | — |
 | Other folders: every conversation outside this workspace, by the folder it started in | Codex sessions view | — |
 | Open sessions covers tabs Codex opened with its own New button, whose URI names no conversation | Codex sessions view | Patch |
+| Open sessions also lists the conversation Codex's sidebar shows while the sidebar is visible; clicking it goes to the sidebar. It is the conversation the sidebar last went to, so on the sidebar's own new-conversation page the one before is still listed | Codex sessions view | Patch |
 | New in tab / New in sidebar; Resume in tab / Resume in sidebar | Codex sessions view | — (the sidebar ones open Codex's own link, `vscode://openai.chatgpt/local/<id>` in this editor's scheme) |
 | Thread ID and group on hover; find by title or four hex characters of the ID | Codex sessions view | — |
 | How long since it was last used and the first and last day it was, as `11d · 09/05→09/16`; title colours; conversations started by `codex exec` left out | Codex sessions view | `codexExtras.hideBackgroundSessions` |

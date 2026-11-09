@@ -119,6 +119,37 @@ function approvalsChanged() {
 
 function canType() { return !!(state.active && state.provider); }
 function sidebarThread() { return sidebar; }
+
+/*
+ * The conversation Codex's sidebar shows now: the one it last went to, while one of its sidebar views is visible; ''
+ * otherwise. Visibility is Codex's own WebviewView's, whose changes are listened to once per view, so the session list
+ * redraws on the event rather than on a poll.
+ */
+const onSidebar = new Set();
+const heardViews = new WeakSet();
+function sidebarViews() {
+  const p = state.provider;
+  if (!p) return [];
+  return [p.sidebarView, ...(Array.isArray(p.sidebarViews) ? p.sidebarViews : [])].filter((v) => v && typeof v === 'object');
+}
+function sidebarChanged() {
+  for (const fn of [...onSidebar]) { try { fn(); } catch (e) { if (deps && deps.log) deps.log(`sidebar: ${e.message}`); } }
+}
+function hearSidebar() {
+  for (const v of sidebarViews()) {
+    if (heardViews.has(v) || typeof v.onDidChangeVisibility !== 'function') continue;
+    heardViews.add(v);
+    try { v.onDidChangeVisibility(() => sidebarChanged()); } catch (_) { /* a view going away */ }
+  }
+}
+function sidebarShowing() {
+  hearSidebar();
+  return sidebar && sidebarViews().some((v) => v.visible === true) ? sidebar : '';
+}
+function onSidebarChanged(fn) {
+  onSidebar.add(fn);
+  return { dispose: () => onSidebar.delete(fn) };
+}
 /** The panels showing `thread` now. */
 function panelsOf(thread) {
   const out = [];
@@ -608,7 +639,7 @@ function installHooks() {
   globalThis.__codexExtrasBroadcast = (method, params) => {
     if (!deps || method !== 'thread-stream-following-changed' || !params || !params.following) return;
     const thread = String(params.conversationId || '');
-    if (thread && !panelsOf(thread).length) { sidebar = thread; deps.source._focus(thread); }
+    if (thread && !panelsOf(thread).length) { sidebar = thread; deps.source._focus(thread); sidebarChanged(); }
   };
   if (globalThis.__codexExtrasProvider) { state.provider = globalThis.__codexExtrasProvider; state.active = true; state.reason = 'connected'; }
 }
@@ -729,5 +760,5 @@ function activate(context, opts) {
 module.exports = { activate, ensurePatched, statusLines, openInSidebar, canType, canDeliver, deliver, sidebarThread, panelThreads, shownIn,
   nowShowing, revealPanel, removePatch,
   figuresOf, safeColor, viewOf, sampleLayout, selfCheckPage, selfCheckLines, installHooks, refreshPanels, approvalsOf,
-  decideCount, waitingThreads, onApprovalsChanged, offerReloadIfStale, _state: () => state, _registry: registry, _approvals: approvals,
+  decideCount, waitingThreads, onApprovalsChanged, offerReloadIfStale, sidebarShowing, onSidebarChanged, _state: () => state, _registry: registry, _approvals: approvals,
   TAB_DOTS, ASK_MS };

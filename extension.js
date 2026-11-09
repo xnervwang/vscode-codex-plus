@@ -144,14 +144,16 @@ async function activate(context) {
   context.subscriptions.push(memory);
   let lastConversations = new Map();
   const sessionsProvider = new SessionsProvider(vscode, { memory, memento: context.globalState, settings, reader,
-    stateOf: (id) => lastConversations.get(id), wantState: (ids) => source.wantState(ids) });
+    stateOf: (id) => lastConversations.get(id), wantState: (ids) => source.wantState(ids),
+    sidebarShowing: () => patching.sidebarShowing() });
   context.subscriptions.push(vscode.window.registerTreeDataProvider('codexExtras.sessions', sessionsProvider));
   context.subscriptions.push(vscode.window.registerFileDecorationProvider(sessionsProvider));
   const redrawSessions = async () => {
     try { lastConversations = new Map((await source.listConversations()).map((c) => [c.sessionId, c])); } catch (_) { /* the last one stays */ }
     sessionsProvider.refresh();
   };
-  context.subscriptions.push(source.onDidChangeConversations(redrawSessions), memory.onDidChange(() => sessionsProvider.refresh()));
+  context.subscriptions.push(source.onDidChangeConversations(redrawSessions), memory.onDidChange(() => sessionsProvider.refresh()),
+    patching.onSidebarChanged(() => sessionsProvider.refresh()));
 
   /*
    * How many conversations are stopped waiting for an answer, in the status bar: shown only while there is one, since

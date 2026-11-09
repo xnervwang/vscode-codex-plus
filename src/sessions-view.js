@@ -87,7 +87,9 @@ function byFolder(threads) {
 }
 
 /** Group a list of threads for the tree. Pure, so the test can hold it to the order above. */
-function group(threads, { open = [], closed = [], sections = new Map(), hideBackground = true, cwdFilter = null, frontAt = () => 0 }) {
+function group(threads, { open = [], closed = [], sections = new Map(), hideBackground = true, cwdFilter = null, frontAt = () => 0,
+  sidebar = '' }) {
+  if (sidebar && !open.includes(sidebar)) open = [...open, sidebar];
   const byId = new Map(threads.map((t) => [t.id, t]));
   const kindOk = (t) => (hideBackground ? t.kind === 'user' : true);
   const here = threads.filter((t) => kindOk(t) && (!cwdFilter || cwdFilter(t.cwd)));
@@ -127,7 +129,7 @@ function placeOf(t, sections) {
 }
 
 class SessionsProvider {
-  constructor(vscode, { memory, memento, settings, stateOf, reader, wantState = () => {} }) {
+  constructor(vscode, { memory, memento, settings, stateOf, reader, wantState = () => {}, sidebarShowing = () => '' }) {
     this.vscode = vscode;
     this.reader = reader;
     this.memory = memory;
@@ -137,6 +139,9 @@ class SessionsProvider {
     /* Asks for the rollout state of conversations the user has not read, on the next poll it was going to make
        anyway. Called when a group is expanded, which is the only time those rows are on screen. */
     this.wantState = wantState;
+    /* The conversation Codex's sidebar shows now, which counts as open in this window as a tab does. */
+    this.sidebarShowing = sidebarShowing;
+    this.sidebarNow = '';
     this.emitter = new vscode.EventEmitter();
     this.onDidChangeTreeData = this.emitter.event;
     this.decoEmitter = new vscode.EventEmitter();
@@ -174,7 +179,9 @@ class SessionsProvider {
      */
     const cwdFilter = this.settings().sessionsInWorkspaceOnly && folders.length ? folderTest(folders, new Map()) : null;
     this.hidden = cwdFilter ? this.threads.filter((t) => t.kind === 'user' && !cwdFilter(t.cwd)).length : 0;
+    try { this.sidebarNow = this.sidebarShowing() || ''; } catch (_) { this.sidebarNow = ''; }
     this.groups = group(this.threads, {
+      sidebar: this.sidebarNow,
       open: this.memory.openThreads(), closed: this.memory.recentlyClosed(this.settings().recentClosedSessions),
       sections: this.sections, hideBackground: this.settings().hideBackgroundSessions, cwdFilter,
       frontAt: (id) => this.memory.frontAt(id),
@@ -259,11 +266,13 @@ class SessionsProvider {
     const md = new vscode.MarkdownString();
     md.appendMarkdown(`**${(t.title || '(untitled)').replace(/[*_`[\]]/g, '\\$&')}**\n\n`);
     const place = element.group === 'other' ? 'Other folders' : placeOf(t, this.sections);
-    md.appendMarkdown(`${look.word} · ${place}${open ? ' · open in this window' : ''}\n\n`);
+    const inSidebar = open && t.id === this.sidebarNow && !this.memory.openThreads().includes(t.id);
+    md.appendMarkdown(`${look.word} · ${place}${inSidebar ? ' · in Codex\'s sidebar' : open ? ' · open in this window' : ''}\n\n`);
     md.appendCodeblock(t.id, 'text');
     if (t.cwd) md.appendMarkdown(`\n${t.cwd}${t.branch ? ` (${t.branch})` : ''}`);
     item.tooltip = md;
-    item.command = { command: 'codexExtras.openThreadInTab', title: 'Open in a tab', arguments: [t.id] };
+    item.command = inSidebar ? { command: 'codexExtras.openThreadInSidebar', title: 'Show in the sidebar', arguments: [t.id] }
+      : { command: 'codexExtras.openThreadInTab', title: 'Open in a tab', arguments: [t.id] };
     return item;
   }
 }

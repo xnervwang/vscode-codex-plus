@@ -226,4 +226,45 @@ module.exports = async ({ ok, bad, eq, tmp }) => {
     'and its rows are the ones whose right-click menu offers Delete Conversation');
 
   ok('the session list was checked against real directories and a symbolic link');
+  /*
+   * The conversation Codex's sidebar shows is open in this window as much as a tab is, so Open sessions lists it while
+   * a sidebar view is visible, and clicking it goes to the sidebar rather than opening a tab. The patch knows the view
+   * (the provider's sidebarView, a WebviewView) and which conversation the sidebar went to last; the list redraws on the
+   * view's own visibility event.
+   */
+  {
+    const inside = tmp('sidebar-ws');
+    const t1 = thread(1, inside), t2 = thread(2, inside);
+    eq(group([t1, t2], { open: [], closed: [], sidebar: ID(2) })[0].threads.map((t) => t.id), [ID(2)],
+      'a conversation the sidebar shows is in Open sessions');
+    eq(group([t1, t2], { open: [ID(2)], closed: [], sidebar: ID(2) })[0].threads.length, 1, 'and once only when a tab shows it too');
+    delete require.cache[require.resolve('../../src/patching')];
+    const patching = require('../../src/patching');
+    patching.installHooks();
+    let hear = null;
+    const view = { visible: true, onDidChangeVisibility: (fn) => { hear = fn; return { dispose() {} }; } };
+    globalThis.__codexExtrasMessage({}, { kind: 'tz', timeZone: 'UTC' }, { sidebarView: view, sidebarViews: [] });
+    patching.activate({ subscriptions: [], globalStorageUri: vscode.Uri.file(tmp('gs')), globalState: fake.memento() }, {
+      vscode, log: () => {}, settings: () => ({ patchCodex: 'off', chime: false, figures: false }), planQuestions: () => 0,
+      source: { onDidChangeConversations: () => ({ dispose() {} }), _focus() {}, listConversations: async () => [], logo: null },
+      context: { globalStorageUri: vscode.Uri.file(tmp('gs2')) } });
+    let redraws = 0;
+    patching.onSidebarChanged(() => { redraws++; });
+    eq(patching.sidebarShowing(), '', 'before the sidebar has gone to any conversation it shows none');
+    globalThis.__codexExtrasBroadcast('thread-stream-following-changed', { conversationId: ID(2), following: true });
+    eq([patching.sidebarShowing(), redraws], [ID(2), 1], 'once it goes to one, that one is shown, and the list is told');
+    view.visible = false;
+    hear();
+    eq([patching.sidebarShowing(), redraws], ['', 2], 'a sidebar that is hidden shows nothing, which its own visibility event says');
+    view.visible = true;
+    const listing = new SessionsProvider(vscode, { memory: stubMemory(), memento: fake.memento(), reader: stubReader([t1, t2]),
+      settings: () => ({ sessionsInWorkspaceOnly: false, hideBackgroundSessions: true, recentClosedSessions: 10 }),
+      stateOf: () => null, sidebarShowing: () => patching.sidebarShowing() });
+    listing.refresh();
+    const open = listing.getChildren(listing.getChildren()[0]);
+    const row = listing.getTreeItem(open[0]);
+    eq([open.length, row.command.command, /in Codex's sidebar/.test(row.tooltip.value)], [1, 'codexExtras.openThreadInSidebar', true],
+      'its row goes to the sidebar when clicked, and says that it is there');
+    patching._approvals.clear();
+  }
 };
