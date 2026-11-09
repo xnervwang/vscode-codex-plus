@@ -18,6 +18,7 @@
 - `src/edits.js`, `src/host.js`, `src/webview-inject.js`, `src/adapters.js`, `src/patching.js`, `uninstall.js`, `src/uninstall-plan.js`: the patch to Codex and its use, and which editors' Codex an uninstall puts back.
 - `src/page/codex-extras-page.js`: the script added to Codex's page; it also takes the layout sample (the structure of the conversation's DOM, with none of its text), since the page is where Codex's run-time structure exists at all.
 - `src/dom-sample.js`: where a layout sample is written and under what name.
+- `src/open-times.js`: how long Codex's pages took to open, from the `app_start` spans Codex writes to its own `Codex.log`.
 - `images/codex-light.svg`, `images/codex-dark.svg`: the tab bar button, the Codex mark from `images/icon.svg`.
 
 ## Checks
@@ -58,6 +59,7 @@ All file reading is in one thread:
 
 - Every file read is in the worker thread (`src/codex-worker.js`): the state database, rollouts, read receipts, plan files.
 - The extension host's own thread reads only the snapshot in memory (`src/codex-reader.js`). Drawing a view reads no file.
+- The one exception is Codex's own log (`src/open-times.js`): read with `fs.promises` in the extension host, only when `Show Status` or its own command runs, each file from where it was last read.
 
 What bounds a single pass:
 

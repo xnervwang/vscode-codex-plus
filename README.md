@@ -26,6 +26,7 @@
 | The time above every message and every reply block, in your own time zone | Codex conversation | Patch; `codexExtras.timestamps` |
 | Your own messages by time and opening words, and where Codex compacted the context; click to scroll, step with the arrows or `,` and `.`, filter, or jump to the top or bottom | Right edge of a Codex conversation | Patch; `codexExtras.conversationNavigation` |
 | Your own messages picked out by their text colour and a bar down their leading edge, in the theme's focus colour | Codex conversation | Patch; `codexExtras.userMessageColor`, `codexExtras.userMessageEdge` |
+| How long each Codex page (the sidebar or a tab) took to open, and how long its stages took: Codex's page script run, first screen, the conversation or home page shown, restoring the conversation; pages that gave up | `Show How Long Opening a Codex Page Took`; the last three in `Show Status` | — (read from Codex's own log, `Codex.log`, in every window's log folder) |
 | The layout of the conversation in front, written to a file, to find the elements a later addition can attach to | Command | Patch, and the window reloaded since it was applied |
 
 - Codex's own button on the tab bar can be hidden: right-click it and choose Hide.

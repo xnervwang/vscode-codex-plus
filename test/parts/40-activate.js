@@ -13,7 +13,7 @@ const path = require('path');
 const fake = require('../fake-vscode');
 const fixture = require('../fixture');
 
-async function run(root, tmp, { core = 'accept', trusted = true, config = {}, takesRoute = false, probe = null } = {}) {
+async function run(root, tmp, { core = 'accept', trusted = true, config = {}, takesRoute = false, probe = null, logDir = '' } = {}) {
   const { vscode, control } = fake.create();
   vscode.workspace.isTrusted = trusted;
   vscode.workspace.onDidGrantWorkspaceTrust = () => ({ dispose() {} });
@@ -37,6 +37,7 @@ async function run(root, tmp, { core = 'accept', trusted = true, config = {}, ta
   const subs = [];
   const globalState = fake.memento();
   const context = { subscriptions: subs, workspaceState: fake.memento(), globalState, globalStorageUri: vscode.Uri.file(tmp('gs')), extensionPath: root };
+  if (logDir) context.logUri = vscode.Uri.file(logDir);
   await ext.activate(context);
   await new Promise((r) => setTimeout(r, 300));
   const out = { state: control.state, registered, home, wroteSettings: fs.existsSync(path.join(home, 'plugins', 'data', 'agent-work-plan-codex-extras', 'config.json')) };
@@ -80,6 +81,28 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
     ['$(bell-dot) 1 to decide', 'codexExtras.goToWaiting', true],
     'a conversation waiting for permission puts a count in the status bar, naming it on hover and going to it when clicked');
   eq(waiting.probed.hiddenAgain, true, 'and the count goes once the request is answered, rather than sitting there at nought');
+
+  /* How long Codex's pages took to open: read from the Codex.log beside this extension's own log folder, by its own
+     command and in Show Status. */
+  {
+    const logs = tmp('logs');
+    const ours = path.join(logs, '20261109T010000', 'exthost1', 'xnervwang.codex-extras');
+    fs.mkdirSync(path.join(path.dirname(ours), 'openai.chatgpt'), { recursive: true });
+    fs.writeFileSync(path.join(path.dirname(ours), 'openai.chatgpt', 'Codex.log'), '2026-11-09 01:00:02.000 [info] '
+      + 'client.performance.span backgroundDurationMs=0 clientPlatform=darwin durationMs=9320.4 hostType=extension '
+      + 'initialSurface=thread marksMs={"renderer_entry_evaluated":6100.5,"shell_visible":7700.3,"thread_visible":9320.4} '
+      + 'name=app_start outcome=success reason=null timingQuality=foreground wallDurationMs=9320.4\n');
+    const w = await run(root, tmp, { logDir: ours, probe: async ({ control }) => {
+      const before = control.state.log.length;
+      await control.state.handlers['codexExtras.showOpenTimes']();
+      const own = control.state.log.slice(before).join('\n');
+      const mark = control.state.log.length;
+      await control.state.handlers['codexExtras.status']();
+      return { own, status: control.state.log.slice(mark).join('\n') };
+    } });
+    eq([/1 found/.test(w.probed.own), /thread +9\.3s .*\[this window\]/.test(w.probed.own), /Opening a Codex page.*1 found/.test(w.probed.status)],
+      [true, true, true], 'its command writes how long this window\'s Codex page took to open, and Show Status includes it');
+  }
 
   const refused = await run(root, tmp, { core: 'refuse' });
   eq([refused.state.context['codexExtras.registered'], refused.state.said.length], [false, 0],

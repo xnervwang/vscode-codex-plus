@@ -31,6 +31,7 @@ const patching = require('./src/patching');
 const domSample = require('./src/dom-sample');
 const supported = require('./src/supported');
 const pythonRuntime = require('./src/python-runtime');
+const openTimes = require('./src/open-times');
 
 const CONFIG = 'codexExtras';
 let log = null;
@@ -198,7 +199,9 @@ async function activate(context) {
   /* When the user's own messages were sent, for the stamps Codex's page draws on them: read in the worker thread, since
      the first read of a conversation goes through its whole rollout (src/user-times.js). */
   const userTimes = (id) => reader.request('userTimes', { home: files.codexHome(), id });
-  registerCommands(context, { source, memory, sessionsProvider, say, link, userTimes });
+  /* How long Codex's pages took to open, from Codex's own log; read only when Show Status or its command asks. */
+  const opens = openTimes.createOpenTimes(openTimes.whereLogs(context.logUri && context.logUri.fsPath));
+  registerCommands(context, { source, memory, sessionsProvider, say, link, userTimes, opens });
 
   /* Everything that writes waits for a trusted workspace. */
   let wrote = false;
@@ -244,7 +247,7 @@ async function newConversationInTab(say) {
   await vscode.commands.executeCommand('chatgpt.newCodexPanel');
 }
 
-function registerCommands(context, { source, memory, sessionsProvider, say, link, userTimes }) {
+function registerCommands(context, { source, memory, sessionsProvider, say, link, userTimes, opens }) {
   const reg = (name, fn) => context.subscriptions.push(vscode.commands.registerCommand(`${CONFIG}.${name}`, fn));
   const threadArg = (arg) => (typeof arg === 'string' ? arg : arg && arg.thread ? arg.thread.id : arg && arg.sessionId) || '';
   const restricted = () => {
@@ -285,6 +288,7 @@ function registerCommands(context, { source, memory, sessionsProvider, say, link
       `Workspace trusted: ${trusted() ? 'yes' : 'no (Restricted Mode: nothing is written)'}`,
       ...patching.statusLines(),
       ...supported.statusLines(codexVersion()),
+      ...openTimes.reportLines(await opens.read().catch(() => []), { zone: context.globalState.get('codexExtras.clientTimeZone') || '', last: 3 }),
       /* What Codex's own page makes of the conversation in front. A window with no patch, or none with a Codex tab in
          front, answers with the one line saying so rather than holding this command up. */
       ...patching.selfCheckLines(await patching.selfCheckPage()),
@@ -388,6 +392,11 @@ function registerCommands(context, { source, memory, sessionsProvider, say, link
     }
     if (!tabs.codexTabs(vscode).some((t) => t.thread === id) && patching.revealPanel(id)) return;
     await source.reveal(id, null);
+  });
+  reg('showOpenTimes', async () => {
+    const spans = await opens.read().catch(() => []);
+    log.appendLine(openTimes.reportLines(spans, { zone: context.globalState.get('codexExtras.clientTimeZone') || '', last: 20 }).join('\n'));
+    log.show(true);
   });
   reg('openSettings', () => vscode.commands.executeCommand('workbench.action.openSettings', '@ext:xnervwang.codex-extras'));
   reg('installWorkPlanPlugin', () => (restricted() ? undefined : installPlugin(context, say, { interactive: true })));

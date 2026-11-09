@@ -165,6 +165,10 @@
         "title": "Codex Extras: Check What the Page Script Found in This Conversation"
       },
       {
+        "command": "codexExtras.showOpenTimes",
+        "title": "Codex Extras: Show How Long Opening a Codex Page Took"
+      },
+      {
         "command": "codexExtras.goToWaiting",
         "title": "Codex Extras: Go to the Conversation Waiting for You"
       }
