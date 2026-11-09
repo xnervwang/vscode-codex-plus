@@ -301,17 +301,17 @@
         "codexPlus.turnFigures": {
           "type": "boolean",
           "default": true,
-          "markdownDescription": "With the patch: beside the time on each reply, that turn's context use, model and effort; and a line at the bottom right of a Codex tab with the last turn's, and the tool call running now. A turn's duration is left to Codex's own \"Worked for\"."
+          "markdownDescription": "With the patch: beside the time on each reply, that turn's context use, model and effort; and, at the right end of the row below the message box, the commands still running and the tool call running now, which is left to Codex while its own row for that call is in view. A turn's duration is left to Codex's own \"Worked for\"."
         },
         "codexPlus.timestamps": {
           "type": "boolean",
           "default": true,
-          "markdownDescription": "With the patch: the time above every message and every reply block in a Codex conversation, in your own time zone. For a reply, Codex records the time on the block itself. For one of your own messages, the time comes from the clock Codex shows on hover, or failing that from the conversation's rollout, and is left off altogether when the rollout and the page disagree on how many of your messages there are."
+          "markdownDescription": "With the patch: the time above every message and every reply block in a Codex conversation, in your own time zone, a message sent while a turn was running included. For a reply, Codex records the time on the block itself, and its own time under the reply is hidden where this one is drawn. For one of your own messages, the time comes from the clock Codex shows on hover, or failing that from the conversation's rollout, and is left off altogether when the rollout and the page disagree on how many of your messages there are."
         },
         "codexPlus.conversationNavigation": {
           "type": "boolean",
           "default": true,
-          "markdownDescription": "With the patch: a strip on the right edge of a Codex conversation listing your own messages by time and opening words. Click one to scroll to it, step with the arrows or with `,` and `.`, filter the list, or jump to the top or the bottom."
+          "markdownDescription": "With the patch: a strip on the right edge of a Codex conversation listing your own messages by time and opening words. Click one to scroll to it, step with the arrows or with `,` and `.`, filter the list, or jump to the top or the bottom. While it is drawn the conversation keeps clear of its column."
         },
         "codexPlus.userMessageColor": {
           "type": "string",

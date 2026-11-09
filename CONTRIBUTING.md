@@ -9,15 +9,15 @@
 - `src/folders.js`: whether a conversation's folder is in this window's workspace, by real path.
 - `src/codex-source.js`: Codex as a source of Agent Plus, protocol 1, defined in Agent Plus's `docs/protocol.md`.
 - `src/host-link.js`: finding Agent Plus's `agentPlus` interface, registering, the `codexPlus.registered` key.
-- `src/workplan.js`: plan files (reading, the sweep of plans whose conversation is gone, questions for the chime).
+- `src/workplan.js`: plan files (reading, and the sweep of plans whose conversation is gone).
 - `src/logo-dot.js`: Codex's logo with a state dot, for the tab icons.
 - `src/sessions-view.js`, `src/tab-memory.js`, `src/session-info.js`: the Codex sessions view, recently closed and dropped tabs, session information.
 - `src/appserver.js`: a short-lived `codex app-server` client.
 - `src/plugin-install.js`: installing, trusting and removing the companion plugin through app-server.
 - `codex-plugin/`: the companion Codex plugin (marketplace `codex-extras`, plugin `agent-work-plan`): hooks, skill, MCP server.
 - `src/edits.js`, `src/host.js`, `src/webview-inject.js`, `src/adapters.js`, `src/patching.js`, `uninstall.js`, `src/uninstall-plan.js`: the patch to Codex and its use, and which editors' Codex an uninstall puts back.
-- `src/page/codex-extras-page.js`: the script added to Codex's page; it also takes the layout sample (the structure of the conversation's DOM, with none of its text), since the page is where Codex's run-time structure exists at all.
-- `src/dom-sample.js`: where a layout sample is written and under what name.
+- `src/page/codex-extras-page.js`: the script added to Codex's page; it also takes the layout sample (the structure of the conversation's DOM, with none of its text) for the render check, since the page is where Codex's run-time structure exists at all.
+- `test/render/`: the render check (README, The render check): stand-ins for VS Code and Codex's host in the page, an offline app-server, a made-up conversation, and the measurements.
 - `src/open-times.js`: how long Codex's pages took to open, from the `app_start` spans Codex writes to its own `Codex.log`.
 - `images/codex-light.svg`, `images/codex-dark.svg`: the tab bar button, the Codex mark from `images/icon.svg`.
 
