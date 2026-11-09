@@ -143,15 +143,16 @@ function createApprovals({ now = () => Date.now() } = {}) {
      */
     prune(running) {
       const dropped = [];
-      const mark = (key, entry, map) => {
-        if (running(entry.thread)) { entry.strikes = 0; return; }
+      /* A request names its conversation; a page's flag is kept under its conversation's id. */
+      const mark = (key, thread, entry, map) => {
+        if (running(thread)) { entry.strikes = 0; return; }
         entry.strikes++;
         if (entry.strikes < STRIKES) return;
         map.delete(key);
-        if (!dropped.includes(entry.thread)) dropped.push(entry.thread);
+        if (!dropped.includes(thread)) dropped.push(thread);
       };
-      for (const [id, e] of [...pending]) mark(id, e, pending);
-      for (const [t, e] of [...pages]) mark(t, e, pages);
+      for (const [id, e] of [...pending]) mark(id, e.thread, e, pending);
+      for (const [t, e] of [...pages]) mark(t, t, e, pages);
       return dropped;
     },
     clear() { pending.clear(); pages.clear(); },
