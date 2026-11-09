@@ -48,7 +48,7 @@ const REQUIRED = [
 ];
 
 const SECRETS = {
-  'a message of the reader\'s': 'rebase onto the release branch before Friday',
+  'a message of the user\'s': 'rebase onto the release branch before Friday',
   'a reply': 'The branch is already rebased, so nothing was left to do',
   'a tooltip': 'tooltip-of-the-copy-button',
   'a thread id': '01a1b8f2-fd2b-7e60-9ffc-16e5cb642e31',
@@ -167,7 +167,7 @@ module.exports = async ({ ok, bad, eq, note, tmp, root }) => {
   const page = pageUnder(root, dom);
   const DAY = '2026-11-08';
   const made = conversation(dom, [
-    { key: 't1', day: DAY, top: 100, ask: SECRETS['a message of the reader\'s'], askedAt: '10:35 PM',
+    { key: 't1', day: DAY, top: 100, ask: SECRETS['a message of the user\'s'], askedAt: '10:35 PM',
       reply: SECRETS['a reply'], sent: '2026-11-08T22:36:04Z', sentShown: '10:36 PM' },
     /* No time of Codex's own on the user's message, and the reply's carried as a count of seconds. */
     { key: 't2', top: 400, ask: 'and the tests?', reply: 'All 273 pass.', sent: '1762641600', sentShown: '' },
@@ -180,11 +180,11 @@ module.exports = async ({ ok, bad, eq, note, tmp, root }) => {
   eq([stampOf(one.user) !== null, stampOf(one.user).getAttribute('data-codex-extras'),
     stampOf(one.user) === one.user.children[0]],
   [true, 'stamp', true], 'a stamp is this script\'s own element, first inside the message it belongs to');
-  eq(stampText(one.user), '22:35', 'the time Codex itself shows on the reader\'s message is read and rewritten in their own zone');
+  eq(stampText(one.user), '22:35', 'the time Codex itself shows on the user\'s message is read and rewritten in their own zone');
   eq(stampText(one.reply), '22:36:04', 'a reply\'s sent time is taken from its attribute and shown to the second');
   eq(stampText(two.reply), '22:40:00', 'a sent time written as a count of seconds is read as one');
   eq(stampText(three.reply), null, 'a sent time in no form the parser knows leaves the reply unstamped');
-  eq(stampText(two.user), null, 'and the reader\'s message carries none while nothing says when it was sent');
+  eq(stampText(two.user), null, 'and the user\'s message carries none while nothing says when it was sent');
   const shapes = page.posted.filter((m) => m.kind === 'stampShape');
   eq([shapes.length, shapes[0] && shapes[0].len, shapes[0] && shapes[0].first, shapes[0] && shapes[0].digits],
     [1, 'the day before yesterday'.length, 'letter', false],
@@ -204,7 +204,7 @@ module.exports = async ({ ok, bad, eq, note, tmp, root }) => {
 
   /* The list of the user's own messages. */
   let rows = dom.document.root.querySelectorAll('[data-codex-extras="nav-row"]');
-  eq(rows.length, 3, 'the list has one row per message of the reader\'s');
+  eq(rows.length, 3, 'the list has one row per message of the user\'s');
   eq(rows.map((r) => r.textContent), ['22:35rebase onto the release branch before Friday', '22:39:02and the tests?', '22:44:30ship it'],
     'each row is that message\'s time and its opening words, in the order the conversation has them');
   eq(rows[0].getAttribute('title').includes('rebase onto the release branch'), true,
@@ -281,7 +281,7 @@ module.exports = async ({ ok, bad, eq, note, tmp, root }) => {
     else ok(`the page sent the host no ${what}`);
   }
   eq(page.posted.map((m) => m.kind).filter((k, i, a) => a.indexOf(k) === i), ['tz', 'stampShape'],
-    'the only things it posts at all are the reader\'s time zone and the shape of a time it could not read');
+    'the only things it posts at all are the user\'s time zone and the shape of a time it could not read');
 
   /* ── the host: those times out of a rollout ── */
   const times = require('../../src/user-times');
@@ -292,7 +292,7 @@ module.exports = async ({ ok, bad, eq, note, tmp, root }) => {
   const first = [
     JSON.stringify({ timestamp: '2026-11-08T22:00:00.000Z', type: 'session_meta', payload: { id: 'x' } }),
     line('2026-11-08T22:35:00.000Z', 'user', '<environment_context>\n  <cwd>/tmp</cwd>\n</environment_context>'),
-    line('2026-11-08T22:35:10.000Z', 'user', SECRETS['a message of the reader\'s']),
+    line('2026-11-08T22:35:10.000Z', 'user', SECRETS['a message of the user\'s']),
     JSON.stringify({ timestamp: '2026-11-08T22:35:20.000Z', type: 'response_item', payload: { type: 'function_call', name: 'shell' } }),
     line('2026-11-08T22:36:04.000Z', 'assistant', SECRETS['a reply']),
     '',
@@ -300,7 +300,7 @@ module.exports = async ({ ok, bad, eq, note, tmp, root }) => {
   fs.writeFileSync(roll, first);
   times.forget();
   eq(times.userTimes(roll), [Date.parse('2026-11-08T22:35:10.000Z')],
-    'one time per message the reader typed, and none for the one Codex wrote itself in their name');
+    'one time per message the user typed, and none for the one Codex wrote itself in their name');
   fs.appendFileSync(roll, line('2026-11-08T22:39:02.000Z', 'user', 'and the tests?') + '\n');
   eq(times.userTimes(roll), [Date.parse('2026-11-08T22:35:10.000Z'), Date.parse('2026-11-08T22:39:02.000Z')],
     'and a rollout that has grown is read from where the last read stopped');
@@ -350,7 +350,7 @@ module.exports = async ({ ok, bad, eq, note, tmp, root }) => {
   const whens = posted.filter((m) => m.type === 'codex-extras-user-times').pop();
   eq([view && view.timestamps, view && view.navigation, view && view.userColor, view && view.userEdge],
     [true, false, 'lightgreen', true], 'a redraw sends the panel what the settings say');
-  eq(whens && whens.times, [111, 222], 'and, while the times are on, when the reader\'s own messages were sent');
+  eq(whens && whens.times, [111, 222], 'and, while the times are on, when the user\'s own messages were sent');
   const lines = patching.removePatch(vscode);
   const off = posted.filter((m) => m.type === 'codex-extras-view').pop();
   eq([off.timestamps, off.navigation, off.userEdge, off.userColor, Array.isArray(lines)], [false, false, false, '', true],

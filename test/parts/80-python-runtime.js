@@ -143,7 +143,7 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
     const last = offered.names[offered.names.length - 1] || '';
     eq([offered.names.slice(0, offered.shipped.length), offered.names.length - offered.shipped.length,
       last.endsWith('/python.exe')],
-    [offered.shipped, 1, true], 'once one has been downloaded it is tried last, after any Python the reader installed');
+    [offered.shipped, 1, true], 'once one has been downloaded it is tried last, after any Python the user installed');
   }
 
   /* ── fitting the staged plugin to whichever Python won ── */
@@ -165,7 +165,7 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
   eq([r1.state, r1.hooks, commands(fitted).every((c) => c.startsWith('py -3 "$PLUGIN_ROOT/hooks/'))],
     ['fitted', 9, true], 'a launcher with arguments goes in front of every hook command, leaving the rest of the line alone');
   eq([mcpOf(fitted).command, mcpOf(fitted).args], ['C:/Python312/python.exe', ['-3', './hooks/plan-mcp.py']],
-    "the MCP server gets the interpreter's own path, since it is not started from the reader's shell");
+    "the MCP server gets the interpreter's own path, since it is not started from the user's shell");
   eq(JSON.parse(fs.readFileSync(launcherFile(fitted), 'utf8')), { row: ['py', '-3'] },
     'and launcher.json gets the words a person would type, which is what the model is told to run');
 

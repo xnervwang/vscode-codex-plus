@@ -506,7 +506,7 @@
   }
 
   /* Which side a block is, as Codex itself labels it for a screen reader. Read rather than taken from where the block
-     sits, so a block Codex marks as the reader's own is stamped and listed as theirs; any other wording leaves the
+     sits, so a block Codex marks as the user's own is stamped and listed as theirs; any other wording leaves the
      block where it sits. */
   function roleOf(el) {
     var h = one(el, SEL.role);

@@ -45,7 +45,7 @@ module.exports = async ({ ok, bad, note, eq, tmp }) => {
   const ask = (method, params) => waitOf({ id: 1, method, params });
   for (const [method, where] of Object.entries(APPROVALS)) {
     eq(ask(method, { [where]: THREAD, turnId: 't1' }), { thread: THREAD, method, decides: true },
-      `${method} waits for the reader, and says which conversation by its ${where}`);
+      `${method} waits for the user, and says which conversation by its ${where}`);
   }
   eq(ask('item/commandExecution/requestApproval', {}), null,
     'a request naming no conversation is not counted, since nothing could be shown for it');
@@ -54,11 +54,11 @@ module.exports = async ({ ok, bad, note, eq, tmp }) => {
 
   eq(ask('item/tool/requestUserInput', { threadId: THREAD, isBlocking: true }),
     { thread: THREAD, method: 'item/tool/requestUserInput', decides: true },
-    'a blocking input request waits for the reader: Codex takes its own countdown off that one');
+    'a blocking input request waits for the user: Codex takes its own countdown off that one');
   eq(ask('item/tool/requestUserInput', { threadId: THREAD }).decides, false,
     'a non-blocking one does not, since Codex answers it with an empty input once its countdown runs out');
   eq(ask('mcpServer/elicitation/request', { threadId: THREAD, mode: 'openai/userVerification' }).decides, true,
-    'a user-verification elicitation waits for the reader');
+    'a user-verification elicitation waits for the user');
   eq(ask('mcpServer/elicitation/request', { threadId: THREAD, _meta: { autoResolutionMs: 30000 } }).decides, false,
     'an elicitation that asked for a countdown does not: Codex declines it when the countdown runs out');
   eq([ask('mcpServer/elicitation/request', { threadId: THREAD }).decides,
@@ -66,7 +66,7 @@ module.exports = async ({ ok, bad, note, eq, tmp }) => {
     ask('mcpServer/elicitation/request', { threadId: THREAD, _meta: { autoResolutionMs: COUNTDOWN_MS.max + 1 } }).decides,
     ask('mcpServer/elicitation/request', { threadId: THREAD, _meta: { autoResolutionMs: 30000.5 } }).decides],
   [true, true, true, true],
-  'an elicitation whose _meta asks for no countdown, or one outside the range Codex accepts, gets none and so waits for the reader');
+  'an elicitation whose _meta asks for no countdown, or one outside the range Codex accepts, gets none and so waits for the user');
 
   /* ── the two kinds are counted apart ── */
   const book = createApprovals();
@@ -174,9 +174,9 @@ module.exports = async ({ ok, bad, note, eq, tmp }) => {
   conversations = [{ sessionId: THREAD, state: 'prompt', working: true, decide: 1 }];
   await patching.refreshPanels();
   eq(chimes.filter((m) => m.type === 'codex-extras-chime').length, 0,
-    'a turn waiting on the reader does not ring the finished-turn chime, though the state it reports is no longer working');
+    'a turn waiting on the user does not ring the finished-turn chime, though the state it reports is no longer working');
   globalThis.__codexExtrasAppServer('answer', { id: 11 });
-  eq(patching.TAB_DOTS.prompt, '#f59e0b', 'and the tab dot has a colour for waiting on the reader, beside working and unread');
+  eq(patching.TAB_DOTS.prompt, '#f59e0b', 'and the tab dot has a colour for waiting on the user, beside working and unread');
 
   /* ── what a page reports, and which conversation it is taken to be about ── */
   const sidebarPage = {};

@@ -73,7 +73,7 @@ function conversationOf(thread, { unread, openHere, now = Date.now(), state = nu
     hasPlan,
     // Beyond the protocol: what this extension's own parts draw (the tab figures).
     /* The rollout's own answer, which `state` no longer carries once `prompt` wins it: what decides whether a request
-       stopped on the reader is still live (src/approvals.js prune) has to not be derived from those requests. */
+       stopped on the user is still live (src/approvals.js prune) has to not be derived from those requests. */
     working,
     decide,
     soon,

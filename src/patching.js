@@ -130,7 +130,7 @@ function postTo(panel, msg) {
 
 /* Put `text` into the conversation's message box as a draft. Codex's composer takes a draft from the route state it is
    navigated with, and leaves a box that already has text alone, and nothing reports back which of the two happened.
-   So the outcome is uncertain (the protocol's word for it): the sender keeps the answer and tells the reader to look. */
+   So the outcome is uncertain (the protocol's word for it): the sender keeps the answer and tells the user to look. */
 async function deliver(thread, text) {
   const set = panels.get(thread);
   const panel = set && [...set][0];

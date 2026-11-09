@@ -142,7 +142,7 @@ module.exports = async ({ ok, bad, eq, tmp }) => {
       const backOnACodexTab = source.isFocused(unread.id);
       source._focus(unread.id);
       eq([afterLeaving, backOnACodexTab, source.isFocused(unread.id)], [false, false, true],
-        'the sidebar stops answering for a conversation once the reader goes to a tab of something else, until it comes to the front again');
+        'the sidebar stops answering for a conversation once the user goes to a tab of something else, until it comes to the front again');
       eq([source.canDeliver(idle.id), source.canDeliver(working.id)], [true, false], 'an answer can go only to a conversation the patch can type into');
       const d1 = await source.deliverAnswer(idle.id, 'once', { deliveryId: 'd-1' });
       const d2 = await source.deliverAnswer(idle.id, 'once', { deliveryId: 'd-1' });

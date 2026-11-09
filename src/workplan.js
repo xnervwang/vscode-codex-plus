@@ -199,7 +199,7 @@ const SETTLED_MS = 7 * 24 * 60 * 60 * 1000;
  * that still have a rollout, which is null when that is unknown and nothing was deleted.
  *
  * A conversation whose rollout is gone can never be resumed, so its plan is a file nothing can reach: not this view,
- * which reads only the conversation in front of the reader, and not Codex. Left alone they only accumulate - at the
+ * which reads only the conversation in front of the user, and not Codex. Left alone they only accumulate - at the
  * rate this machine starts conversations, thousands within a year.
  *
  * It deletes rather than moving them aside. An archive was the first shape of this and it was the wrong one: it has no
