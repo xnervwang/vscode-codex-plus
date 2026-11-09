@@ -30,7 +30,8 @@
  *   window broadcasts     a thread this window starts following in a view that is not one of its tabs is taken to be
  *                         in front in the sidebar (onDidFocus). sidebarThread() is the last such thread, and nothing
  *                         is reported after it; whether the user is still looking at the sidebar is worked out by the
- *                         source from the active tab (src/codex-source.js isFocused)
+ *                         source from the active tab and whether a sidebar view is visible (sidebarShowing,
+ *                         src/codex-source.js isFocused)
  *   page messages         the user's time zone, whether an approval card is on a page, and, when one was asked for, a
  *                         self-check of what the page script found and drew
  *   app-server traffic    which conversations are stopped waiting for the user, and how many of those owe an answer

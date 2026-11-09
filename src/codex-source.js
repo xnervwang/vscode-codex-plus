@@ -158,6 +158,15 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
    * Codex's is as close as it gets, and it is what Agent Plus's question a moment later turns on.
    */
   let leftSidebar = false;
+  /* The conversation Codex's sidebar shows while one of its views is visible: a hidden sidebar is not in front, whatever
+     it last went to. A stand-in patch without that answer is taken at its last conversation. */
+  const sidebarInFront = () => {
+    if (!patching) return '';
+    try {
+      if (typeof patching.sidebarShowing === 'function') return patching.sidebarShowing() || '';
+      return typeof patching.sidebarThread === 'function' ? patching.sidebarThread() || '' : '';
+    } catch (_) { return ''; }
+  };
   let frontTab;
   const activeTab = () => {
     const groups = vscode.window.tabGroups;
@@ -191,8 +200,8 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
       const id = threadOfCodexTab(vscode, patching, tab);
       if (id) out.push(id);
     }
-    if (!leftSidebar && patching && typeof patching.sidebarThread === 'function') {
-      const id = patching.sidebarThread();
+    if (!leftSidebar) {
+      const id = sidebarInFront();
       if (id && !out.includes(id)) out.push(id);
     }
     return out;
@@ -285,14 +294,14 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
     onDidFocus: focused.event,
     /*
      * Whether `sessionId` is still in front: its own tab is the active one, or Codex's sidebar came to the front with
-     * it and the user has not gone to a tab of something else since. Without that second condition the sidebar would
+     * it, is still showing, and the user has not gone to a tab of something else since. Without that second condition the sidebar would
      * answer for a conversation the user left, and the work plan view would be pulled back to it.
      */
     isFocused(sessionId) {
       if (!sessionId) return false;
       const tab = activeTab();
       if (tab && threadOfCodexTab(vscode, patching, tab) === sessionId) return true;
-      return !leftSidebar && !!(patching && patching.sidebarThread() === sessionId);
+      return !leftSidebar && sidebarInFront() === sessionId;
     },
     async listConversations() {
       const snap = await reader.ready(files.codexHome());
