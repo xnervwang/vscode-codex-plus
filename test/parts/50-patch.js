@@ -187,8 +187,11 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
     const file = t.targetFile(dir);
     fs.mkdirSync(path.dirname(file), { recursive: true });
     const mark = t === host ? host.MARK : page.mark();
+    /* A page backup is held to be a Codex page, one with the entry script the patch anchors on, as in Codex's
+       webview/index.html. */
+    const original = t === page ? '<html><head><script type="module" crossorigin src="./assets/index-0a1b2c3d.js"></script></head></html>' : 'original';
     const writePatched = () => {
-      fs.writeFileSync(file + t.BACKUP_SUFFIX, 'original');
+      fs.writeFileSync(file + t.BACKUP_SUFFIX, original);
       if (t === page) fs.writeFileSync(path.join(path.dirname(file), page.PAGE_FILE), 'script');
       fs.writeFileSync(file, `${mark} patched`);
     };

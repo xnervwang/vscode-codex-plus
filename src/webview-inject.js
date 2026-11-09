@@ -73,11 +73,16 @@ function apply(codexExtensionPath) {
   if (!original || original.includes(ANY_MARK)) return { changed: false, current: false, message: 'an older page patch is present without a clean backup; reinstall Codex' };
   const r = patchSource(original);
   if (r.error) return { changed: false, current: false, message: r.error };
-  if (state === 'clean') fs.writeFileSync(backup, original);
+  /* Written as the patched file is: a backup cut short would be put back over Codex's page by the next restore. */
+  if (state === 'clean') writeAtomic(backup, original);
   writeAtomic(path.join(path.dirname(file), PAGE_FILE), pageScript());
   writeAtomic(file, r.out);
   return { changed: true, current: true, message: 'patched' };
 }
+
+/* Whether a backup can stand for Codex's page: one holding the entry script the patch anchors on, as the page it was
+   taken from did. Anything else is not put back over it. */
+const usableBackup = (html) => new RegExp(EDITS[0].re.source).test(html);
 
 function restore(codexExtensionPath) {
   const file = htmlFile(codexExtensionPath);
@@ -85,6 +90,7 @@ function restore(codexExtensionPath) {
   if (!fs.existsSync(backup)) return { changed: false, message: 'nothing to restore' };
   const original = fs.readFileSync(backup, 'utf8');
   if (original.includes(ANY_MARK)) return { changed: false, message: 'backup is itself patched; not restored' };
+  if (!usableBackup(original)) return { changed: false, message: 'backup is not a Codex page; not restored, reinstall Codex' };
   const r = moveBack(backup, file);
   /* Unless another window has patched the page again since the move: the script then belongs to that patch. */
   let clean = false;

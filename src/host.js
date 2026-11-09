@@ -168,9 +168,16 @@ function apply(codexExtensionPath) {
   }
   const r = patchSource(original);
   if (r.error) return no(r.error);
-  if (state === 'clean') fs.writeFileSync(backup, original);
+  /* Written as the patched file is: a backup cut short would be put back over Codex's file by the next restore. */
+  if (state === 'clean') writeAtomic(backup, original);
   writeAtomic(file, r.out);
   return { changed: true, current: true, message: 'patched' };
+}
+
+/* Whether a backup can stand for Codex's bundle: something that parses. Anything else is not put back over it. */
+function usableBackup(text) {
+  if (!text.trim()) return false;
+  try { new vm.Script(text, { filename: 'extension.js' }); return true; } catch (_) { return false; }
 }
 
 /** Put the original bundle back and remove the backup. */
@@ -180,6 +187,7 @@ function restore(codexExtensionPath) {
   if (!fs.existsSync(backup)) return { changed: false, message: 'nothing to restore' };
   const original = fs.readFileSync(backup, 'utf8');
   if (original.includes(ANY_MARK)) return { changed: false, message: 'backup is itself patched; not restored' };
+  if (!usableBackup(original)) return { changed: false, message: 'backup is empty or does not parse; not restored, reinstall Codex' };
   return moveBack(backup, file);
 }
 
