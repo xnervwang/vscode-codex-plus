@@ -145,6 +145,54 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
       'uninstalling puts back the Codex in its own extensions folder and leaves another editor\'s alone');
   }
 
+  /*
+   * A restore in one window and a patch in another at the same moment: whatever order their steps fall in, a patched
+   * file keeps its backup. The other window's patch is run from inside the restore's rename, right after the original
+   * lands, which is the one moment the file is clean while the restore is still running.
+   */
+  const race = (label, t, dir, patchOther) => {
+    const file = t.targetFile(dir);
+    const backup = file + t.BACKUP_SUFFIX;
+    const realRename = fs.renameSync;
+    let other = '';
+    fs.renameSync = (from, to) => {
+      realRename.call(fs, from, to);
+      if (to !== file || other) return;
+      other = 'clean';
+      if (!fs.readFileSync(file, 'utf8').includes(t.ANY_MARK)) { patchOther(); other = 'patched'; }
+    };
+    try { t.restore(dir); } finally { fs.renameSync = realRename; }
+    const now = fs.readFileSync(file, 'utf8');
+    const patched = now.includes(t.ANY_MARK);
+    const kept = fs.existsSync(backup) && !fs.readFileSync(backup, 'utf8').includes(t.ANY_MARK);
+    eq([other, patched, kept, t.status(dir)], ['patched', true, true, 'patched'],
+      `${label}: a patch landing just after a restore keeps its backup, and the target reads as patched`);
+  };
+  for (const t of require('../../src/adapters')) {
+    const dir = tmp(`race-${t.name.replace(/\W+/g, '-')}`);
+    const file = t.targetFile(dir);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    const mark = t === host ? host.MARK : page.mark();
+    const writePatched = () => {
+      fs.writeFileSync(file + t.BACKUP_SUFFIX, 'original');
+      if (t === page) fs.writeFileSync(path.join(path.dirname(file), page.PAGE_FILE), 'script');
+      fs.writeFileSync(file, `${mark} patched`);
+    };
+    writePatched();
+    race(`${t.name}, with stand-in contents`, t, dir, writePatched);
+  }
+  if (installs.length) {
+    const src = installs[0];
+    const pristine = (t) => fs.readFileSync(fs.existsSync(t.targetFile(src) + t.BACKUP_SUFFIX) ? t.targetFile(src) + t.BACKUP_SUFFIX : t.targetFile(src));
+    for (const t of require('../../src/adapters')) {
+      const dir = tmp(`race-real-${t.name.replace(/\W+/g, '-')}`);
+      fs.mkdirSync(path.dirname(t.targetFile(dir)), { recursive: true });
+      fs.writeFileSync(t.targetFile(dir), pristine(t));
+      t.apply(dir);
+      race(`${t.name}, on a copy of ${path.basename(src)}`, t, dir, () => t.apply(dir));
+    }
+  }
+
   /* The hooks, with a stand-in provider and panel. */
   const sent = [], navigated = [], focused = [];
   const provider = {

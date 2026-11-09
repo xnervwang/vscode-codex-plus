@@ -39,7 +39,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
-const { applyEdits, shapesOf } = require('./edits');
+const { applyEdits, shapesOf, moveBack } = require('./edits');
 
 const VERSION = 1;
 const ANY_MARK = '/* CODEX-EXTRAS-HOST v';
@@ -180,9 +180,7 @@ function restore(codexExtensionPath) {
   if (!fs.existsSync(backup)) return { changed: false, message: 'nothing to restore' };
   const original = fs.readFileSync(backup, 'utf8');
   if (original.includes(ANY_MARK)) return { changed: false, message: 'backup is itself patched; not restored' };
-  writeAtomic(file, original);
-  fs.unlinkSync(backup);
-  return { changed: true, message: 'restored' };
+  return moveBack(backup, file);
 }
 
 module.exports = {

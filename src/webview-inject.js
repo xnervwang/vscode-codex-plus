@@ -16,7 +16,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
-const { applyEdits } = require('./edits');
+const { applyEdits, moveBack } = require('./edits');
 
 const PAGE_FILE = 'codex-extras-page.js';
 const PAGE_SOURCE = path.join(__dirname, 'page', PAGE_FILE);
@@ -85,10 +85,12 @@ function restore(codexExtensionPath) {
   if (!fs.existsSync(backup)) return { changed: false, message: 'nothing to restore' };
   const original = fs.readFileSync(backup, 'utf8');
   if (original.includes(ANY_MARK)) return { changed: false, message: 'backup is itself patched; not restored' };
-  writeAtomic(file, original);
-  fs.unlinkSync(backup);
-  try { fs.unlinkSync(path.join(path.dirname(file), PAGE_FILE)); } catch (_) { /* never copied */ }
-  return { changed: true, message: 'restored' };
+  const r = moveBack(backup, file);
+  /* Unless another window has patched the page again since the move: the script then belongs to that patch. */
+  let clean = false;
+  try { clean = !fs.readFileSync(file, 'utf8').includes(ANY_MARK); } catch (_) { /* gone */ }
+  if (r.changed && clean) { try { fs.unlinkSync(path.join(path.dirname(file), PAGE_FILE)); } catch (_) { /* never copied */ } }
+  return r;
 }
 
 module.exports = { id: 'openai.chatgpt', name: 'Codex page', VERSION, ANY_MARK, BACKUP_SUFFIX, PAGE_FILE, EDITS, mark,

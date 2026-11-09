@@ -19,8 +19,10 @@
  * written unless every edit found its shape - a half-patched bundle is worse than an unpatched one, since the panel
  * would then be neither what Codex shipped nor what this extension expects.
  *
- * Both patch targets share this file, so that rule is stated once rather than copied.
+ * Both patch targets share this file, so that rule is stated once rather than copied, and so is the way a target is
+ * put back (moveBack).
  */
+const fs = require('fs');
 
 /** An edit's alternative shapes. A single-shape edit is written inline without the wrapper, and is the common case. */
 function shapesOf(edit) {
@@ -70,4 +72,17 @@ function applyEdits(src, edits) {
   return { out, chosen };
 }
 
-module.exports = { shapesOf, pickShape, applyEdits };
+/*
+ * Put a target's original back by moving its backup over it in one step, so no window can find a clean file beside its
+ * backup: one patching in that moment would write a fresh backup for a separate delete to take, and leave a patched file
+ * with nothing to restore it from. Of two restores at once, the one whose move finds no backup has nothing left to do.
+ */
+function moveBack(backup, file) {
+  try { fs.renameSync(backup, file); } catch (e) {
+    if (e && e.code === 'ENOENT') return { changed: false, message: 'nothing to restore' };
+    throw e;
+  }
+  return { changed: true, message: 'restored' };
+}
+
+module.exports = { shapesOf, pickShape, applyEdits, moveBack };
