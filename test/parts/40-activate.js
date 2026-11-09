@@ -227,12 +227,12 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
     layout([[file, codex]], [[codex], true], [[codex]]);
     eq(await tabsMod.codexGroup(vscode), 2, 'and of several such groups, the one in front');
     layout([[file], true]);
-    eq([await tabsMod.codexGroup(vscode), control.state.commands.map((c) => c[0])], [-1, ['workbench.action.newGroupRight']],
-      'with no Codex tab and the one group holding a file, a new group is opened to the right and the tab goes in it');
-    layout([[], true], [[file]]);
+    eq([await tabsMod.codexGroup(vscode), control.state.commands.map((c) => c[0])], [1, []],
+      'with no Codex tab, the main editor area, and no new group is opened beside it');
+    layout([[file]], [[file], true]);
     control.state.config = { openSideBySideDirection: 'down' };
-    eq([await tabsMod.codexGroup(vscode), control.state.commands.map((c) => c[0])], [-1, ['workbench.action.newGroupBelow']],
-      'and below instead when the editor opens side by side downwards, even beside an empty group of two');
+    eq([await tabsMod.codexGroup(vscode), control.state.commands.map((c) => c[0])], [1, []],
+      'the first group even when a split is the one in front, whichever way splits open');
   }
   /*
    * Resume in Sidebar and New in Sidebar go through Codex's own URI handler, which focuses its sidebar and navigates it,

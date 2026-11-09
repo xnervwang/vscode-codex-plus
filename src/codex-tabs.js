@@ -100,16 +100,14 @@ function newPanelUri(vscode) {
 }
 
 /*
- * The editor group a new Codex tab goes in, chosen the way Claude Code 2.1.319 chooses one for a new Claude tab from
- * its Open command (createPanel with no column), with Codex tabs where it counts Claude tabs:
+ * The editor group a new Codex tab goes in:
  *
  *   1. a group holding only Codex tabs, the active one first;
  *   2. else a group holding any Codex tab, the active one first;
- *   3. else the only group, when the window has one and it is empty;
- *   4. else a new group beside the others (to the right, or below when workbench.editor.openSideBySideDirection says
- *      down), which is then the active one.
+ *   3. else the first group, the main editor area.
  *
- * Claude Code also locks the group it starts; this does not. Resolves to a viewColumn.
+ * Never a new group: a conversation opened in a split beside the file being edited is one the user then has to move.
+ * Resolves to a viewColumn.
  */
 async function codexGroup(vscode) {
   const groups = vscode.window.tabGroups.all.map((g) => {
@@ -119,13 +117,8 @@ async function codexGroup(vscode) {
   const pick = (test) => (groups.find((g) => g.isActive && test(g)) || groups.find(test) || {}).viewColumn;
   const found = pick((g) => g.codex > 0 && g.other === 0) || pick((g) => g.codex > 0);
   if (found) return found;
-  if (groups.length === 1 && !groups[0].codex && !groups[0].other) return groups[0].viewColumn;
-  const editor = vscode.workspace.getConfiguration('workbench.editor');
-  const down = editor && typeof editor.get === 'function' && editor.get('openSideBySideDirection') === 'down';
-  try {
-    await vscode.commands.executeCommand(down ? 'workbench.action.newGroupBelow' : 'workbench.action.newGroupRight');
-  } catch (_) { /* opened in the group in front instead */ }
-  return vscode.ViewColumn.Active;
+  const columns = groups.map((g) => g.viewColumn).filter((c) => typeof c === 'number');
+  return columns.length ? Math.min(...columns) : vscode.ViewColumn.One;
 }
 
 /* Open a new Codex conversation in a tab, in codexGroup's group. False when Codex did not take the route. */

@@ -223,7 +223,7 @@ async function activate(context) {
 }
 
 /*
- * A new Codex conversation in a tab, in the editor group Claude Code's own Open command would pick for one of its tabs
+ * A new Codex conversation in a tab, in a group already holding Codex tabs or else the main editor area
  * (src/codex-tabs.js codexGroup). Codex's own chatgpt.newCodexPanel asks for the group of the text file last focused,
  * which puts the conversation in a split the user was not looking at. Codex's command is the fallback, in case it stops
  * taking the route.
