@@ -14,6 +14,9 @@
  *   - The strip shows the figures the host sends for this conversation: the last turn's duration, how much of the
  *     context window is in use, model and effort, and while a turn runs, the tool call in progress and for how long.
  *   - On request, a sample of the conversation layout: element structure only, with no text from it.
+ *   - On request, a self-check: how much of Codex's own tree each part below found, and how much of its own each one
+ *     drew, as counts and flags. This is how the parts that only a person looking at a live Codex could confirm are
+ *     confirmed by a command instead.
  *   - A time on every message and reply block, a list of your own messages on the right edge, and your own messages
  *     marked out. Those three write into Codex's own tree; everything else this script draws sits in a strip of its
  *     own alongside.
@@ -34,6 +37,11 @@
   try { post({ kind: 'tz', timeZone: String(Intl.DateTimeFormat().resolvedOptions().timeZone || '') }); } catch (e) { /* none */ }
 
   var MARK = 'data-codex-extras';
+
+  /* This script's own version. A page runs the copy it was built with, so a page left on an older patch answers a
+     self-check with an older version here, which is the one case the host cannot tell from reading its own files.
+     test/parts/62-selfcheck.js holds it to package.json, since a page cannot read that file. */
+  var SCRIPT_VERSION = '0.1.0';
 
   var audio = null;
   /* Rising for a question, falling for a finished turn, and three notes for a request that cannot go on without an
@@ -322,6 +330,14 @@
      Used only when there are exactly as many as the page shows - see stampAll. */
   var hostWhen = null;
 
+  /*
+   * Which source the last pass took each user-side time from. This is the one thing the self-check cannot read back off
+   * the page: a stamp reads the same whichever source it came from, and the user side has two (the clock Codex rendered
+   * in the hover row, and the rollout's own times through the host). Counted where the choice is made rather than
+   * worked out again afterwards, so what is reported is what was drawn.
+   */
+  var lastPass = { fromClock: 0, fromRollout: 0, unstamped: 0, hostTimes: 0, linedUp: false };
+
   var INK_CLASS = 'codex-extras-user-ink', EDGE_CLASS = 'codex-extras-user-edge';
   var DEBOUNCE_MS = 200, STEP_HOLD_MS = 600;
   var RAIL_W = 26, PANEL_W = 300;
@@ -551,10 +567,12 @@
      * they do would put a time against the wrong message.
      */
     var lined = hostWhen && hostWhen.length === users.length ? hostWhen : null;
+    lastPass = { fromClock: 0, fromRollout: 0, unstamped: 0, hostTimes: hostWhen ? hostWhen.length : 0, linedUp: !!lined };
     for (var j = 0; j < list.length; j++) {
-      var e = list[j], text = '';
+      var e = list[j], text = '', took = '';
       if (view.timestamps) {
         var when = e.kind === 'assistant' ? assistantWhen(e.node, e.day) : userWhenInPage(e.node, e.day);
+        if (e.kind === 'user') took = when ? 'clock' : '';
         if (e.kind === 'user' && lined) {
           /*
            * The rollout's time carries seconds and the clock Codex rendered does not, so the rollout's is preferred,
@@ -563,10 +581,15 @@
            * count alone cannot see a page and a rollout that hold the same number of messages but not the same ones.
            */
           var host = { ms: lined[e.at], secs: true };
-          if (!when || sameMinute(when.ms, host.ms)) when = host;
+          if (!when || sameMinute(when.ms, host.ms)) { when = host; took = 'rollout'; }
         }
         text = clockOf(when);
         if (e.kind === 'user') e.when = text;
+      }
+      if (e.kind === 'user') {
+        if (!text) lastPass.unstamped++;
+        else if (took === 'rollout') lastPass.fromRollout++;
+        else lastPass.fromClock++;
       }
       stampOn(e.node, e.kind, text);
     }
@@ -938,6 +961,106 @@
     finally { refreshing = false; }
   }
 
+  /*
+   * ── What this script makes of the page it is actually running in ──
+   *
+   * Everything above this is drawn for a person to look at, which left one question answerable only by that person:
+   * whether any of it found what it was looking for in a live Codex. This answers it instead, as counts and flags that
+   * one command copies out.
+   *
+   * Two sources, and the difference matters when they disagree. What Codex drew is counted by querying Codex's own
+   * data-* attributes, and what this script drew by querying its own `data-codex-extras` marks - so a count of turns
+   * with no stamps against them says the anchors were found and the times were not, which is a different fault from
+   * finding no turns at all. The one thing neither query can answer is which source a user-side time came from, since
+   * both render the same stamp; that comes from `lastPass`, recorded where the choice is made.
+   *
+   * It carries no text from the conversation: no message, no title, no stamp's value, and no selector read off the
+   * page. The selector strings in the reply are this script's own constants, which are already in its source.
+   * test/parts/62-selfcheck.js plants nine strings in a stand-in page and looks for each of them in the whole reply.
+   */
+  var SELFCHECK_FORMAT = 1;
+  function selfCheck() {
+    if (!document.body) return { error: 'the page has no body yet' };
+    /* A pass first, so the counts describe the page as it stands rather than as it was before the last reply arrived. */
+    refresh();
+    var list = entries();
+    var turns = all(scrollerEl(), SEL.turn);
+    var userStamps = all(document, '.codex-extras-stamp-user');
+    var assistantStamps = all(document, '.codex-extras-stamp-assistant');
+    var users = 0, assistants = 0;
+    for (var i = 0; i < (list || []).length; i++) { if (list[i].kind === 'user') users++; else assistants++; }
+    var card = null;
+    try { card = document.querySelector(APPROVAL_SEL); } catch (e) { card = null; }
+    return {
+      format: SELFCHECK_FORMAT,
+      script: { version: SCRIPT_VERSION, running: true },
+      /* What the host last told this page to show. The colour is a flag rather than its value: what is being checked
+         is whether one got through, and a value the user typed is still a value. */
+      settings: { timestamps: !!view.timestamps, navigation: !!view.navigation,
+        userColor: !!view.userColor, userEdge: view.userEdge !== false },
+      /* Codex's own tree, by the attributes this script selects by. `found` false means the conversation was not
+         recognised at all, which is the failure a Codex release causes. */
+      codex: {
+        scroller: { selector: SEL.scroller, found: !!scrollerEl() },
+        turns: turns.length,
+        userAnchors: all(scrollerEl(), SEL.user).length,
+        assistantBlocks: all(scrollerEl(), SEL.assistant).length,
+        sentTimeElements: all(scrollerEl(), SEL.sent).length,
+        bubbles: all(scrollerEl(), SEL.bubble).length,
+        dayDividers: turns.length ? all(scrollerEl(), SEL.day).length : 0,
+        /* What entries() made of all that, which is what every feature below works from. */
+        entries: list === null ? null : { user: users, assistant: assistants },
+      },
+      /* The times. Both sides are counted from the stamps on screen; the user side's source is the recorded one. */
+      times: {
+        assistant: assistantStamps.length,
+        user: userStamps.length,
+        userFromClock: lastPass.fromClock,
+        userFromRollout: lastPass.fromRollout,
+        userUnstamped: lastPass.unstamped,
+        userSource: lastPass.fromRollout ? (lastPass.fromClock ? 'both' : 'rollout')
+          : lastPass.fromClock ? 'clock' : 'none',
+        hostTimes: lastPass.hostTimes,
+        hostTimesLinedUp: !!lastPass.linedUp,
+        /* Forms of a sent time the parser could not read, as a count of distinct forms. The forms themselves have
+           already gone to the host's log, one line each (kind 'stampShape'). */
+        unreadableForms: Object.keys(toldShapes).length,
+      },
+      /* The list down the right edge, and which scroll container its buttons move. */
+      navigation: {
+        railButtons: all(document, '[' + MARK + '="nav-button"]').length,
+        rows: all(document, '[' + MARK + '="nav-row"]').length,
+        listOpen: panelOpen(),
+        scrolls: { selector: SEL.scroller, found: !!scrollerEl() },
+      },
+      /* The user's own messages marked out: class names counted on Codex's elements, since that is where they go. */
+      colour: {
+        inked: all(document, '.' + INK_CLASS).length,
+        edged: all(document, '.' + EDGE_CLASS).length,
+        colourAccepted: !!(view.userColor && SAFE_COLOR.test(view.userColor)),
+        styleSheet: !!(sheet && sheet.isConnected),
+      },
+      /*
+       * The approval card. `observing` and `marksObserving` are read together on purpose: the card's watcher is meant
+       * to survive the page being hidden and the marks' watcher is meant not to, so a self-check taken on a hidden page
+       * is what tells the two apart. `hidden` says which kind of page this was taken on.
+       */
+      approval: {
+        onScreen: !!card,
+        told: approvalOn,
+        watching: { selector: approvalObserved ? (approvalObserved === document.body ? 'body' : ACTIVITY_SEL) : '',
+          activityRootFound: !!one(document, ACTIVITY_SEL), observing: !!approvalObserver },
+        cardSelector: APPROVAL_SEL,
+      },
+      /* The strip in the corner. Its text is the host's figures for this conversation, so only whether there is any. */
+      figures: { present: !!(strip && strip.isConnected), showing: !!(strip && strip.style.display !== 'none'),
+        hasText: !!(figures && figures.text), toolRunning: !!(figures && figures.tool) },
+      /* Everything this script has in the page, as one count: nothing of its own left behind when all of it is off. */
+      marks: { total: all(document, '[' + MARK + ']').length },
+      page: { hidden: !!document.hidden, marksObserving: !!observer },
+    };
+  }
+
   var waiting = false, visWired = false;
   function ready() {
     if (!document.body) {
@@ -967,6 +1090,14 @@
         if (s.error) reply.error = s.error; else reply.sample = s;
       } catch (err) { reply.error = 'sampling the layout failed: ' + String((err && err.name) || 'Error'); }
       post(reply);
+    } else if (m.type === 'codex-extras-selfcheck') {
+      var answer = { kind: 'selfcheck', id: m.id };
+      try {
+        var r = selfCheck();
+        if (r.error) answer.error = r.error; else answer.report = r;
+        /* The error's name and never its message: a message can quote a selector or a node's text. */
+      } catch (err2) { answer.error = 'the self-check failed: ' + String((err2 && err2.name) || 'Error'); }
+      post(answer);
     } else if (m.type === 'codex-extras-figures') {
       figures = m;
       if (timer) { clearInterval(timer); timer = null; }

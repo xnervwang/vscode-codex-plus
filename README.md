@@ -123,3 +123,18 @@ Timestamps, the navigation strip and the colouring of your own messages are all 
 
 - Bring the Codex conversation tab to the front first: the sample is of the page in front, and the command says so rather than sampling the wrong page.
 - It samples only when you run the command, and leaves nothing watching the page.
+
+## Checking what the page found
+
+Everything in **Inside a Codex conversation** is drawn inside Codex's page, which used to leave one question answerable only by looking at it: whether any of it found what it was looking for. `Codex Extras: Check What the Page Script Found in This Conversation` asks the page instead, and the same lines are added to the end of `Codex Extras: Show Status`.
+
+| | |
+| --- | --- |
+| What it reports | The page script's own version; how many turns, messages of yours, reply blocks, sent-time elements and bubbles were recognised; how many times were drawn on each side and which source your side's came from; the navigation rows and rail buttons; how many of your messages were coloured and given a bar; whether an approval card is up and which element its watcher is on; whether the figures strip is drawn; and how many elements of its own are in the page |
+| What it never sends | Any text of the conversation, any title, any time as a string, and no selector read off the page. Every string in the reply is one of this extension's own constants, which a check holds it to |
+| Needs | The patch (`Codex Extras: Patch Codex`) **and** a window reload after it, plus a Codex conversation tab in front |
+| Where it comes out | The Codex Extras output channel, with a **Copy** button for pasting the whole of it back |
+
+- A window with no patch, with a page left on an older copy of the script, or with no Codex tab in front gets one line saying which of those it is, rather than a report of zeroes that would read as a Codex release having moved an anchor.
+- Your side's time has two possible sources and the report names the one used, because the stamp looks the same either way: `clock` is the one Codex renders beside the message on hover, `rollout` is the conversation's own record.
+- Taken on a hidden page it is also how the two observers are told apart: the one for the marks is meant to be gone and the approval card's is meant to have stayed.

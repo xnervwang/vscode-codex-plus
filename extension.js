@@ -253,9 +253,26 @@ function registerCommands(context, { source, memory, sessionsProvider, say, link
       `Workspace trusted: ${trusted() ? 'yes' : 'no (Restricted Mode: nothing is written)'}`,
       ...patching.statusLines(),
       ...supported.statusLines(codexVersion()),
+      /* What Codex's own page makes of the conversation in front. A window with no patch, or none with a Codex tab in
+         front, answers with the one line saying so rather than holding this command up. */
+      ...patching.selfCheckLines(await patching.selfCheckPage()),
     ];
     log.appendLine(lines.join('\n'));
     log.show(true);
+  });
+  /*
+   * The same self-check on its own, for pasting back: the parts drawn inside Codex's page are the ones nothing but a
+   * person looking at them could confirm, and this is how they report themselves instead.
+   */
+  reg('pageSelfCheck', async () => {
+    const answer = await patching.selfCheckPage();
+    const lines = patching.selfCheckLines(answer);
+    log.appendLine(lines.join('\n'));
+    log.show(true);
+    const copy = 'Copy';
+    const pick = await vscode.window.showInformationMessage(answer.error
+      ? `Codex Extras: ${answer.error}` : 'Codex Extras: the page self-check is in the output panel.', copy);
+    if (pick === copy) await vscode.env.clipboard.writeText(lines.join('\n'));
   });
   reg('applyPatch', async () => {
     if (restricted()) return;

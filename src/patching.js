@@ -24,8 +24,8 @@
  *                         in front in the sidebar (onDidFocus). sidebarThread() is the last such thread, and nothing
  *                         is reported after it; whether the user is still looking at the sidebar is worked out by the
  *                         source from the active tab (src/codex-source.js isFocused)
- *   page messages         the user's time zone, whether an approval card is on a page, and a sample of the
- *                         conversation layout when one was asked for
+ *   page messages         the user's time zone, whether an approval card is on a page, and, when one was asked for, a
+ *                         sample of the conversation layout or a self-check of what the page script found and drew
  *   app-server traffic    which conversations are stopped waiting for the user, and how many of those owe an answer
  *                         (src/approvals.js): the tab dot, the state the Conversations view shows, the count in the
  *                         status bar and a chime, none of which need a tab to be open on the conversation
@@ -154,13 +154,18 @@ async function openInSidebar(thread) {
 }
 
 /*
- * A sample of the conversation layout, for writing selectors against what Codex draws at run time: the page in front is
- * asked for one and answers once (src/page/codex-extras-page.js). The reply carries structure and nothing the
- * conversation says. One request at a time, identified by a nonce so a late answer to an abandoned request is dropped,
- * and the one timer involved is the timeout, cleared as soon as either side finishes.
+ * The two questions the page in front can be asked, both answered once (src/page/codex-extras-page.js):
+ *
+ *   sample     the conversation's layout, for writing selectors against what Codex draws at run time. Structure only,
+ *              and nothing the conversation says.
+ *   selfcheck  how much of Codex's tree the page script found and how much of its own it drew, as counts and flags.
+ *              This is what makes the parts drawn in the page checkable without a person looking at them.
+ *
+ * One question at a time per kind, identified by a nonce so a late answer to an abandoned question is dropped, and the
+ * one timer involved is the timeout, cleared as soon as either side finishes.
  */
-const SAMPLE_MS = 5000;
-let pendingSample = null;
+const ASK_MS = 5000;
+const pending = new Map();
 
 /*
  * The conversation panel the user is looking at: the one reporting itself active, or else the one holding the
@@ -183,8 +188,14 @@ function pagePatchState() {
   return dir && page ? page.status(dir) : '';
 }
 
-/** { sample } or { error } - the error is a sentence for the user, saying what to do about it. */
-async function sampleLayout({ timeoutMs = SAMPLE_MS } = {}) {
+/*
+ * Ask the page in front one question. `kind` is both the reply's kind and the request's type (codex-extras-<kind>);
+ * `field` is the key the page puts its answer under, and the three sentences are what the user reads.
+ *
+ * The refusals before anything is sent are what a user meets most often, so each names the command that fixes it: a
+ * page that cannot answer looks exactly like a page that is slow to answer.
+ */
+async function askPage(kind, { field, doing, noun, busy, failed, timeoutMs = ASK_MS }) {
   if (!state.active) {
     return { error: 'the patch to Codex is not in effect, so its page cannot be asked. Run "Codex Extras: Patch Codex" '
       + 'and reload the window.' };
@@ -192,20 +203,94 @@ async function sampleLayout({ timeoutMs = SAMPLE_MS } = {}) {
   const pageState = pagePatchState();
   if (pageState && pageState !== 'patched') {
     return { error: `Codex's page carries ${pageState === 'outdated' ? 'an older version of' : 'none of'} this extension's `
-      + 'page script, so it does not know how to take a sample. Run "Codex Extras: Patch Codex" and reload the window.' };
+      + `page script, so it does not know how to ${doing}. Run "Codex Extras: Patch Codex" and reload the window.` };
   }
   const panel = activePanel();
-  if (!panel) return { error: 'bring a Codex conversation tab to the front first: the sample is of the page in front.' };
-  if (pendingSample) return { error: 'a sample is already being taken' };
+  if (!panel) return { error: `bring a Codex conversation tab to the front first: the ${noun} is of the page in front.` };
+  if (pending.has(kind)) return { error: busy };
   const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  const reply = new Promise((resolve) => { pendingSample = { id, resolve }; });
-  const settle = (r) => { if (pendingSample && pendingSample.id === id) { const p = pendingSample; pendingSample = null; p.resolve(r); } };
+  const reply = new Promise((resolve) => { pending.set(kind, { id, field, failed, resolve }); });
+  const settle = (r) => {
+    const p = pending.get(kind);
+    if (p && p.id === id) { pending.delete(kind); p.resolve(r); }
+  };
   const timer = setTimeout(() => settle({ error: 'Codex\'s page did not answer. It runs the script as it was when the '
     + 'page was built, so reload the window after a patch and try again.' }), timeoutMs);
-  postTo(panel, { type: 'codex-extras-sample', id });
+  postTo(panel, { type: `codex-extras-${kind}`, id });
   const r = await reply;
   clearTimeout(timer);
   return r;
+}
+
+/** { sample } or { error } - the error is a sentence for the user, saying what to do about it. */
+const sampleLayout = (opts = {}) => askPage('sample', { field: 'sample', doing: 'take a sample', noun: 'sample',
+  busy: 'a sample is already being taken', failed: 'take a sample', ...opts });
+
+/** { report } or { error }: what the page in front makes of the conversation it is showing. */
+const selfCheckPage = (opts = {}) => askPage('selfcheck', { field: 'report', doing: 'answer a self-check',
+  noun: 'self-check', busy: 'a self-check is already running', failed: 'finish its self-check', ...opts });
+
+/*
+ * The self-check as lines for a person to read and to paste back. The same lines go into Show Status and into the
+ * command that offers to copy them, so the two can never drift apart.
+ *
+ * An answer that did not arrive is one line and not a throw: much the commonest reason for one is a window where Codex
+ * is not patched at all, which is a state to report rather than a fault. Each count is labelled with what it counts,
+ * because a bare number here would have to be looked up in the source to be read at all.
+ */
+const count = (n, one, many) => `${n} ${n === 1 ? one : many || `${one}s`}`;
+const onOff = (on) => (on ? 'on' : 'off');
+const yesNo = (yes) => (yes ? 'yes' : 'no');
+
+function selfCheckLines(answer) {
+  if (!answer || answer.error) return [`Page self-check: ${(answer && answer.error) || 'the page sent no answer'}`];
+  const r = answer.report || {};
+  const s = r.settings || {}, c = r.codex || {}, t = r.times || {}, nav = r.navigation || {};
+  const col = r.colour || {}, ap = r.approval || {}, fig = r.figures || {}, pg = r.page || {};
+  const sc = c.scroller || {}, w = ap.watching || {};
+  const lines = [
+    `Page self-check: page script ${(r.script || {}).version || 'of an unknown version'}, report format ${r.format || '?'}`,
+    `  Settings it has: times ${onOff(s.timestamps)}, navigation ${onOff(s.navigation)}, `
+      + `colour ${s.userColor ? 'set' : 'unset'}, edge ${onOff(s.userEdge)}`,
+    `  Codex's own tree: scroller ${sc.found ? 'found' : 'NOT FOUND'} (${sc.selector || '?'}), `
+      + `${count(c.turns || 0, 'turn')}, ${count(c.userAnchors || 0, 'message of yours', 'messages of yours')}, `
+      + `${count(c.assistantBlocks || 0, 'reply block')}, ${count(c.sentTimeElements || 0, 'sent-time element')}, `
+      + `${count(c.bubbles || 0, 'bubble')}, ${count(c.dayDividers || 0, 'day divider')}`,
+  ];
+  /* entries() returning nothing at all is the one failure that stops every part below it, so it is said in its own
+     line rather than as a zero among the counts. */
+  lines.push(c.entries
+    ? `  Read as a conversation: ${count(c.entries.user || 0, 'message of yours', 'messages of yours')} and `
+      + `${count(c.entries.assistant || 0, 'reply', 'replies')}`
+    : '  Read as a conversation: NO - the scroller was not found, so nothing below was drawn');
+  lines.push(`  Times drawn: ${t.assistant || 0} on replies, ${t.user || 0} on messages of yours`);
+  lines.push(`    your side came from: ${t.userSource || 'none'} `
+    + `(${t.userFromClock || 0} from the clock Codex rendered, ${t.userFromRollout || 0} from the rollout, `
+    + `${t.userUnstamped || 0} left unstamped)`);
+  /* With no times at all there is nothing for "lined up" to be about, so that clause is left off rather than reading
+     as a disagreement between the page and the rollout. */
+  lines.push(t.hostTimes
+    ? `    the host sent ${count(t.hostTimes, 'time')}, which `
+      + `${t.hostTimesLinedUp ? 'lined up with the page' : 'did not line up with the page and went unused'}`
+    : '    the host has sent no times for this conversation');
+  lines.push(`    forms of a sent time it could not read: ${t.unreadableForms || 0}`);
+  lines.push(`  Navigation: ${count(nav.railButtons || 0, 'rail button')}, ${count(nav.rows || 0, 'row')}, `
+    + `list ${nav.listOpen ? 'open' : 'shut'}, scrolls ${(nav.scrolls || {}).selector || '?'}`);
+  lines.push(`  Your messages marked: ${col.inked || 0} coloured, ${col.edged || 0} given a bar; `
+    + `colour accepted: ${yesNo(col.colourAccepted)}; stylesheet in place: ${yesNo(col.styleSheet)}`);
+  lines.push(`  Approval card: ${ap.onScreen ? 'ON SCREEN' : 'not on screen'} `
+    + `(what the host was last told: ${ap.told === null || ap.told === undefined ? 'nothing yet' : String(ap.told)})`);
+  lines.push(`    watcher on ${w.selector || '(nothing)'}, activity root found: ${yesNo(w.activityRootFound)}, `
+    + `observing: ${yesNo(w.observing)}`);
+  lines.push(`    card selector: ${ap.cardSelector || '?'}`);
+  lines.push(`  Figures strip: ${fig.present ? 'in the page' : 'not in the page'}, `
+    + `${fig.showing ? 'showing' : 'hidden'}, ${fig.hasText ? 'with text' : 'with no text'}, `
+    + `${fig.toolRunning ? 'a tool call running' : 'no tool call running'}`);
+  lines.push(`  Its own elements in the page: ${(r.marks || {}).total || 0}`);
+  /* Said last because it changes how the two watchers above are to be read: on a hidden page the marks watcher is
+     meant to be gone and the card's is meant to have stayed. */
+  lines.push(`  Page hidden when asked: ${yesNo(pg.hidden)}; marks watcher observing: ${yesNo(pg.marksObserving)}`);
+  return lines;
 }
 
 /** A CSS colour the user typed, or '' for anything else: nothing but a colour may reach the page's stylesheet. */
@@ -338,10 +423,14 @@ function installHooks() {
         refreshPanels().catch(() => { /* the next poll draws it */ });
       }
     }
-    if (msg && msg.kind === 'sample' && pendingSample && msg.id === pendingSample.id) {
-      const p = pendingSample;
-      pendingSample = null;
-      p.resolve(msg.error ? { error: `Codex's page could not take a sample: ${msg.error}` } : { sample: msg.sample });
+    /* An answer to a question this window asked, matched by the nonce it was asked with: an answer carrying another
+       nonce belongs to a question already abandoned, and is dropped so that question times out rather than being
+       settled by the wrong page. */
+    const asked = msg && msg.kind && pending.get(msg.kind);
+    if (asked && msg.id === asked.id) {
+      pending.delete(msg.kind);
+      asked.resolve(msg.error ? { error: `Codex's page could not ${asked.failed}: ${msg.error}` }
+        : { [asked.field]: msg[asked.field] });
     }
   };
   /*
@@ -431,5 +520,6 @@ function activate(context, opts) {
 }
 
 module.exports = { activate, statusLines, openInSidebar, canType, canDeliver, deliver, sidebarThread, panelThreads, revealPanel, removePatch,
-  figuresOf, safeColor, viewOf, sampleLayout, installHooks, refreshPanels, approvalsOf, decideCount, waitingThreads,
-  onApprovalsChanged, _state: () => state, _panels: panels, _approvals: approvals, TAB_DOTS, SAMPLE_MS };
+  figuresOf, safeColor, viewOf, sampleLayout, selfCheckPage, selfCheckLines, installHooks, refreshPanels, approvalsOf,
+  decideCount, waitingThreads, onApprovalsChanged, _state: () => state, _panels: panels, _approvals: approvals,
+  TAB_DOTS, ASK_MS };

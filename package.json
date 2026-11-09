@@ -141,6 +141,10 @@
         "title": "Codex Extras: Sample the Conversation Layout"
       },
       {
+        "command": "codexExtras.pageSelfCheck",
+        "title": "Codex Extras: Check What the Page Script Found in This Conversation"
+      },
+      {
         "command": "codexExtras.goToWaiting",
         "title": "Codex Extras: Go to the Conversation Waiting for You"
       }
