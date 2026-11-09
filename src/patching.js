@@ -269,6 +269,7 @@ const ANSWER_OUTCOMES = {
   submitted: { outcome: 'submitted' },
   drafted: { outcome: 'drafted' },
   occupied: { outcome: 'notReceived', reason: 'the message box already holds a draft of yours, which Codex does not overwrite' },
+  changed: { outcome: 'uncertain' },
 };
 async function deliver(thread, text, { waitMs = ANSWER_WAIT_MS } = {}) {
   const panel = panelsOf(thread)[0];
@@ -277,15 +278,13 @@ async function deliver(thread, text, { waitMs = ANSWER_WAIT_MS } = {}) {
     return { outcome: 'notReceived', reason: 'neither a Codex tab nor Codex\'s sidebar in this window shows the conversation' };
   }
   const path = `/local/${thread}`, route = { prefillPrompt: text, prefillPromptOnlyIfEmpty: true };
-  try {
-    if (panel) state.provider.sendMessageToPanel(panel, { type: 'navigate-to-route', path, state: route });
-    else state.provider.navigateToRoute(path, route);
-  } catch (e) { return { outcome: 'notReceived', reason: String((e && e.message) || e).slice(0, 200) }; }
-  if (panel) { try { panel.reveal(undefined, false); } catch (_) { /* typed, just not brought forward */ } }
-  if (pagePatchState() && pagePatchState() !== 'patched') return { outcome: 'uncertain' };
+  /* The page is told before Codex is asked to put the answer in the box, so that what it finds in the box then is the
+     user's own; both go to the page in the order they are posted. A page without this script is not told at all. */
+  const watched = !pagePatchState() || pagePatchState() === 'patched';
   const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  const seen = await new Promise((resolve) => {
-    const timer = setTimeout(() => { answering.delete(id); resolve(''); }, waitMs);
+  let timer = null;
+  const seen = !watched ? null : new Promise((resolve) => {
+    timer = setTimeout(() => { answering.delete(id); resolve(''); }, waitMs);
     answering.set(id, (word) => { clearTimeout(timer); answering.delete(id); resolve(word); });
     const msg = { type: 'codex-extras-answer', id, text };
     try {
@@ -293,7 +292,17 @@ async function deliver(thread, text, { waitMs = ANSWER_WAIT_MS } = {}) {
       else state.provider.postMessageToSidebar(msg);
     } catch (_) { /* the timer answers */ }
   });
-  return ANSWER_OUTCOMES[seen] || { outcome: 'uncertain' };
+  try {
+    if (panel) state.provider.sendMessageToPanel(panel, { type: 'navigate-to-route', path, state: route });
+    else state.provider.navigateToRoute(path, route);
+  } catch (e) {
+    if (timer) clearTimeout(timer);
+    answering.delete(id);
+    return { outcome: 'notReceived', reason: String((e && e.message) || e).slice(0, 200) };
+  }
+  if (panel) { try { panel.reveal(undefined, false); } catch (_) { /* typed, just not brought forward */ } }
+  if (!seen) return { outcome: 'uncertain' };
+  return ANSWER_OUTCOMES[await seen] || { outcome: 'uncertain' };
 }
 
 async function openInSidebar(thread) {

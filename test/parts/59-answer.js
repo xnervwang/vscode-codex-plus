@@ -57,15 +57,17 @@ module.exports = async ({ eq, tmp, root }) => {
       'the report is a word and the request\'s id, with nothing of the answer in it');
   }
   {
-    const p = page(root, { holds: ANSWER, onKey: (e, el) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) el.textContent = ''; } });
+    const p = page(root, { onKey: (e, el) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) el.textContent = ''; } });
     p.send({ type: 'codex-extras-answer', id: 'a2', text: ANSWER });
+    p.editor.textContent = ANSWER;
     const r = p.settle();
     eq([r && r.outcome, (p.editor.dispatched || []).map((e) => !!(e.ctrlKey || e.metaKey))], ['submitted', [false, true]],
       'a box that wants a modified Enter, as Codex\'s own setting can ask, gets one after the plain Enter did nothing');
   }
   {
-    const p = page(root, { holds: ANSWER });
+    const p = page(root);
     p.send({ type: 'codex-extras-answer', id: 'a3', text: ANSWER });
+    p.editor.textContent = ANSWER;
     eq((p.settle() || {}).outcome, 'drafted', 'a box that keeps the text through both is reported as drafted, for the user to send');
   }
   {
@@ -123,8 +125,8 @@ module.exports = async ({ eq, tmp, root }) => {
   asked.length = 0;
   says = 'submitted';
   eq([patching.canDeliver(SIDE), (await patching.deliver(SIDE, ANSWER)).outcome, asked],
-    [true, 'submitted', [['sidebar route', `/local/${SIDE}`, true], ['sidebar page', true]]],
-    'a conversation the sidebar shows can take an answer, into an empty box only, and is sent there');
+    [true, 'submitted', [['sidebar page', true], ['sidebar route', `/local/${SIDE}`, true]]],
+    'a conversation the sidebar shows can take an answer, into an empty box only, and is sent there, its page told first');
   view.visible = false;
   eq([patching.canDeliver(SIDE), (await patching.deliver(SIDE, ANSWER)).outcome], [false, 'notReceived'],
     'while the sidebar is hidden it cannot');

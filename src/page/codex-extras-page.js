@@ -381,6 +381,10 @@
    * then sends it as the user would: Enter, and if the box still holds it, the modified Enter Codex's own setting may ask
    * for instead (Cmd on a Mac, Ctrl elsewhere). While a turn runs Codex queues it or steers with it, as it does with
    * anything sent then. What goes back is a word for what was seen, and no text.
+   *
+   * The host says an answer is coming before it navigates with the answer, so text already in the box is the user's
+   * own, even text that reads like the answer, and is left alone. An answer counts as sent once the box is empty again;
+   * a box holding other text by then ('changed') says nothing either way.
    */
   var ANSWER_TRIES = 30, ANSWER_STEP_MS = 100, SENT_CHECK_MS = 800;
   var squash = function (s) { return String(s || '').replace(/\s+/g, ''); };
@@ -404,15 +408,21 @@
   function takeAnswer(m) {
     var want = squash(m.text), tries = 0;
     var reply = function (outcome) { post({ kind: 'answer', id: m.id, outcome: outcome }); };
-    var holds = function () { var el = composerEditor(); return !!el && squash(el.textContent) === want; };
+    var boxText = function () { var el = composerEditor(); return el ? squash(el.textContent) : ''; };
+    if (boxText()) { reply('occupied'); return; }
+    var after = function (stillThere) {
+      var have = boxText();
+      if (!have) reply('submitted'); else if (have === want) stillThere(); else reply('changed');
+    };
     var look = function () {
       var el = composerEditor(), have = el ? squash(el.textContent) : '';
       if (el && want && have === want) {
         pressEnter(el, false);
         setTimeout(function () {
-          if (!holds()) { reply('submitted'); return; }
-          pressEnter(composerEditor(), true);
-          setTimeout(function () { reply(holds() ? 'drafted' : 'submitted'); }, SENT_CHECK_MS);
+          after(function () {
+            pressEnter(composerEditor(), true);
+            setTimeout(function () { after(function () { reply('drafted'); }); }, SENT_CHECK_MS);
+          });
         }, SENT_CHECK_MS);
         return;
       }
