@@ -245,6 +245,7 @@
           "markdownDescription": "The master switch over the additions this extension makes to Codex: the time on each message, the list of your own messages, their colouring, the chimes, the figures strip and the dot on a tab's logo, and whether Codex is patched at all. Off leaves each of their own settings as you had it, and turns them back on as they were.\n\nIt does **not** take an applied patch out of Codex's files. The patch stays where it is and nothing is drawn through it; `Codex Plus: Remove the Patch from Codex` is what puts Codex's own files back.\n\nThe work plan and the Codex session list are not covered by it, and have their own settings."
         },
         "codexPlus.workPlan": {
+          "scope": "application",
           "type": "boolean",
           "default": true,
           "markdownDescription": "Keep a work plan for each Codex conversation: the open rows put in front of the model every turn, and the reminders at the end of one. Agent Plus draws the plans. Off makes the hooks say nothing and refuse to change a plan, and no Codex plan is shown."
@@ -272,23 +273,27 @@
           "markdownDescription": "Reopen the Codex tabs that were open when the window closed but that VS Code did not restore, as can happen after the window lost its remote connection. Tabs you closed while connected stay closed."
         },
         "codexPlus.tellCodexYourTimeZone": {
+          "scope": "application",
           "type": "boolean",
           "default": true,
           "markdownDescription": "Tell Codex the time zone you read in, when it differs from the machine Codex runs on, so it gives you times in your zone. The zone is the one Codex's page runs in. Nothing is said while Codex's own page has already told the model that zone in the conversation (it does at the start of every conversation it drives), so this speaks in `codex exec`, the terminal client, sub-agents, and after a compaction or a long stretch of conversation."
         },
         "codexPlus.workPlanOfferMinTurns": {
+          "scope": "application",
           "type": "number",
           "default": 3,
           "markdownDescription": "How many messages you must have sent before a conversation without a plan is offered one.",
           "minimum": 1
         },
         "codexPlus.workPlanOfferMinToolCalls": {
+          "scope": "application",
           "type": "number",
           "default": 25,
           "markdownDescription": "How many tool calls one turn must make before that offer.",
           "minimum": 1
         },
         "codexPlus.workPlanQuietWhenReplyMatches": {
+          "scope": "application",
           "type": "string",
           "default": "",
           "markdownDescription": "A regular expression (Python syntax) tested on the latest reply. A match silences the reminders around a compaction, for conversations relaying another model's replies word for word."

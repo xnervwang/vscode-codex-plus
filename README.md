@@ -109,6 +109,7 @@ Four different acts, because each leaves something different behind.
 | Uninstalling this extension | Codex's own files are put back, in this editor's extensions folder and in any other editor's that no longer has this extension. Once no editor on the machine has it, the work plan plugin is removed from Codex too, as by `Remove the Work Plan Plugin from Codex`, with the plans copied to `agent-work-plan-plans-<time>` under `CODEX_HOME` first. A plugin it could not remove stops doing anything once VS Code has deleted this extension's global storage. |
 
 - The work plan and the Codex session list are not covered by the master switch. They have their own settings (`codexPlus.workPlan`, `codexPlus.sessionList`), because a work plan the model is keeping is not an adornment to be switched off along with a chime.
+- The work plan's own settings (`codexPlus.workPlan`, `codexPlus.workPlanOfferMinTurns`, `codexPlus.workPlanOfferMinToolCalls`, `codexPlus.workPlanQuietWhenReplyMatches`) and `codexPlus.tellCodexYourTimeZone` are user settings only. Every window and every `codex` run on the machine reads them from one file under `CODEX_HOME`, so VS Code ignores a value of theirs in workspace or folder settings.
 - `Codex Plus: Patch Codex` turns the master switch back on if it was off: the patch exists only to serve the additions, so applying it while they are all off would leave Codex patched with nothing drawing through it.
 - `Codex Plus: Show Status` names all three states, including a plugin that is installed but not loaded, which nothing else in Codex shows.
 
