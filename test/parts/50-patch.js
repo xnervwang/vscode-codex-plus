@@ -243,7 +243,8 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
   eq(patching.canDeliver(thread), false, 'a closed panel takes no more answers');
   const f = patching.figuresOf({ state: 'working', lastTurnMs: 130000, context: { used: 85000, window: 258400 }, model: 'openai.gpt-6.1-sol', effort: 'ultra',
     lastTool: { name: 'exec_command', startedMs: 5, endedMs: 0 } });
-  eq([f.text, f.tool, f.toolSince], ['2m10s · ctx 33% · gpt-6.1-sol ultra', 'exec_command', 5], 'the figures read like a reply\'s figures line');
+  eq([f.text, f.tool, f.toolSince], ['ctx 33% · gpt-6.1-sol ultra', 'exec_command', 5],
+    'the strip reads like the line under a reply, and leaves the turn\'s duration to Codex\'s own "Worked for"');
 
   /* The page script, in a stand-in page. */
   const posted = [];

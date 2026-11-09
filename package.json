@@ -427,7 +427,7 @@
         "codexExtras.turnFigures": {
           "type": "boolean",
           "default": true,
-          "markdownDescription": "With the patch: a line at the bottom right of a Codex tab with the last turn's duration, context use, model and effort, and the tool call running now."
+          "markdownDescription": "With the patch: beside the time on each reply, that turn's context use, model and effort; and a line at the bottom right of a Codex tab with the last turn's, and the tool call running now. A turn's duration is left to Codex's own \"Worked for\"."
         },
         "codexExtras.timestamps": {
           "type": "boolean",

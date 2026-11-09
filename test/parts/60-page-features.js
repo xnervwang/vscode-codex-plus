@@ -292,7 +292,7 @@ module.exports = async ({ ok, bad, eq, note, tmp, root }) => {
   eq(dom.live().length, 1, 'and it is watched again when it comes back');
 
   /* Everything off: every mark and every element of this script's goes, and Codex's page is as it was. */
-  page.view({ timestamps: false, navigation: false, userColor: '', userEdge: false, lowContext: false });
+  page.view({ timestamps: false, navigation: false, userColor: '', userEdge: false, lowContext: false, replyFigures: false });
   eq([stampText(one.user), stampText(one.reply), stampText(three.user)], [null, null, null], 'the stamps go when the times go off');
   eq(dom.document.root.querySelectorAll('[data-codex-extras="nav"]').length, 0, 'the rail and the list go when the navigation goes off');
   eq([one.user.className, one.bubble.className], ['', ''], 'and the class names this script put on Codex\'s elements go with them');
@@ -336,7 +336,7 @@ module.exports = async ({ ok, bad, eq, note, tmp, root }) => {
   eq(times.userTimes(roll).length, 3, 'and it is read once the rest of it is there');
   eq(times.timesIn([line('2026-11-08T22:50:00.000Z', 'user', 'go on'), 'not json at all', ''], []).times.length, 1,
     'a line that is not JSON is passed over rather than throwing');
-  eq(times.timesIn([JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ text: 'go on' }] } })], []),
+  eq((({ times: t, compactions: c, broken: b }) => ({ times: t, compactions: c, broken: b }))(times.timesIn([JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ text: 'go on' }] } })], [])),
     { times: [], compactions: [], broken: true }, 'a message of theirs with no readable time makes the whole list unusable, since it would be one short');
 
   /* Where Codex compacted the context: counted in the user's messages before it, read in the same pass. */
@@ -345,9 +345,34 @@ module.exports = async ({ ok, bad, eq, note, tmp, root }) => {
   fs.appendFileSync(roll, compacted('2026-11-08T22:46:00.000Z') + '\n' + line('2026-11-08T22:47:00.000Z', 'user', 'after it') + '\n');
   eq(times.rolloutMarks(roll), { times: [Date.parse('2026-11-08T22:35:10.000Z'), Date.parse('2026-11-08T22:39:02.000Z'),
     Date.parse('2026-11-08T22:44:30.000Z'), Date.parse('2026-11-08T22:47:00.000Z')],
-  compactions: [{ after: 3, at: Date.parse('2026-11-08T22:46:00.000Z') }] },
+  compactions: [{ after: 3, at: Date.parse('2026-11-08T22:46:00.000Z') }], turns: {} },
   'a compaction is noted after the messages before it, and the user message its summary carries is not counted as one of theirs');
   eq(times.userTimes(roll).length, 4, 'and the times alone are what they were');
+
+  /*
+   * Each turn's model, effort and context, for the line under its reply. The rows have the keys Codex 0.164 writes:
+   * task_started and turn_context carry the turn id, a token_count carries none and belongs to the turn begun last.
+   */
+  const turnRoll = path.join(rolls, 'turns.jsonl');
+  const ev = (ts, payload) => JSON.stringify({ timestamp: ts, type: 'event_msg', payload });
+  const usage = (ts, input) => ev(ts, { type: 'token_count', info: { last_token_usage: { input_tokens: input, cached_input_tokens: 0, output_tokens: 9,
+    reasoning_output_tokens: 0, total_tokens: input + 9 }, total_token_usage: { total_tokens: input + 9 }, model_context_window: 258400 },
+  rate_limits: { limit_id: 'codex', primary: null } });
+  const ctxRow = (ts, id, model, effort) => JSON.stringify({ timestamp: ts, type: 'turn_context', payload: { turn_id: id, cwd: '/w', model, effort, summary: 'auto' } });
+  const T1 = '019a6a10-0000-7000-8000-000000000001', T2 = '019a6a10-0000-7000-8000-000000000002';
+  fs.writeFileSync(turnRoll, [
+    ev('2026-11-08T22:35:00.000Z', { type: 'task_started', turn_id: T1, started_at: 1, model_context_window: 258400, collaboration_mode_kind: 'default' }),
+    ctxRow('2026-11-08T22:35:00.001Z', T1, 'openai.gpt-6.1-sol', 'ultra'),
+    usage('2026-11-08T22:35:05.000Z', 40000), usage('2026-11-08T22:35:09.000Z', 85000),
+    ev('2026-11-08T22:36:00.000Z', { type: 'task_started', turn_id: T2, started_at: 2, model_context_window: 258400, collaboration_mode_kind: 'default' }),
+    ctxRow('2026-11-08T22:36:00.001Z', T2, 'openai.gpt-5.6-luna', 'high'),
+    '',
+  ].join('\n'));
+  times.forget();
+  eq(times.rolloutMarks(turnRoll).turns, { [T1]: 'ctx 33% · gpt-6.1-sol ultra', [T2]: 'gpt-5.6-luna high' },
+    'each turn gets its model and effort, and the context of its last model call, by its own turn id');
+  fs.appendFileSync(turnRoll, usage('2026-11-08T22:36:04.000Z', 129200) + '\n');
+  eq(times.rolloutMarks(turnRoll).turns[T2], 'ctx 50% · gpt-5.6-luna high', 'a token count read later belongs to the turn begun last before it');
   eq(times.userTimes(path.join(rolls, 'not-there.jsonl')), null, 'a rollout that is not there answers with no times rather than an empty list');
   fs.writeFileSync(path.join(rolls, 'gone.jsonl.zst'), 'not really zstd');
   eq(times.userTimes(path.join(rolls, 'gone.jsonl')), null, 'and a rollout Codex has compressed is left alone');
@@ -363,9 +388,9 @@ module.exports = async ({ ok, bad, eq, note, tmp, root }) => {
     patching.safeColor('red;background:url(x)'), patching.safeColor('')],
   ['#90EE90', 'lightgreen', 'rgb(144,238,144)', '', ''], 'only a plain CSS colour is passed on to the page');
   eq(patching.viewOf({ timestamps: false, conversationNavigation: true, userMessageColor: ' #abc ', userMessageEdge: false }),
-    { type: 'codex-extras-view', timestamps: false, navigation: true, userColor: '#abc', userEdge: false, lowContext: true },
+    { type: 'codex-extras-view', timestamps: false, navigation: true, userColor: '#abc', userEdge: false, lowContext: true, replyFigures: true },
     'the settings reach the page as one message, with the colour trimmed');
-  eq(patching.viewOf({}), { type: 'codex-extras-view', timestamps: true, navigation: true, userColor: '', userEdge: true, lowContext: true },
+  eq(patching.viewOf({}), { type: 'codex-extras-view', timestamps: true, navigation: true, userColor: '', userEdge: true, lowContext: true, replyFigures: true },
     'and a setting nobody has touched reads as on, the same way the page itself defaults');
 
   const posted = [];

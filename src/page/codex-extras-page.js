@@ -351,7 +351,11 @@
 
   /* What the host last said to show. The defaults are the settings' own defaults, so a page the host has not spoken to
      yet shows what those settings say rather than nothing at all. */
-  var view = { timestamps: true, navigation: true, userColor: '', userEdge: true, lowContext: true };
+  var view = { timestamps: true, navigation: true, userColor: '', userEdge: true, lowContext: true, replyFigures: true };
+  /* Each turn's model, effort and context as the host read them from the rollout, by turn id: { turnId: text }. They
+     are placed by the turn id Codex puts on each turn (data-content-search-turn-key), never by position. */
+  var hostTurns = {};
+  var FIG_ATTR = 'data-codex-extras-figures';
   /* One time per user message of this conversation, in the order the rollout has them, as the host read them there.
      Used only when there are exactly as many as the page shows - see stampAll. */
   var hostWhen = null;
@@ -379,7 +383,8 @@
   var words = function (el) { return String((el && el.textContent) || '').replace(/\s+/g, ' ').trim(); };
   var isOurs = function (el) { return !!(el && el.getAttribute && el.getAttribute(MARK) != null); };
   var anythingOn = function () {
-    return !!(view.timestamps || view.navigation || view.userColor || view.userEdge !== false || view.lowContext !== false);
+    return !!(view.timestamps || view.navigation || view.userColor || view.userEdge !== false || view.lowContext !== false
+      || view.replyFigures !== false);
   };
 
   /* Anything outside these two years is not a time somebody wrote, whatever the number happened to parse as. */
@@ -556,26 +561,34 @@
     for (var i = 0; i < turns.length; i++) {
       var turn = turns[i], d = dayOfTurn(turn);
       if (d !== null) day = d;
+      var keyed = one(turn, SEL.turnBody);
+      var key = keyed ? String(keyed.getAttribute(ATTR.turnBody) || '') : '';
       var users = all(turn, SEL.user);
-      for (var u = 0; u < users.length; u++) out.push({ kind: 'user', node: users[u], day: day });
-      var sides = all(turn, SEL.assistantSide);
+      for (var u = 0; u < users.length; u++) out.push({ kind: 'user', node: users[u], day: day, turn: key });
+      var sides = all(turn, SEL.assistantSide), firstReply = true;
       for (var s = 0; s < sides.length; s++) {
         var blocks = all(sides[s], SEL.assistant);
         for (var b = 0; b < blocks.length; b++) {
-          out.push({ kind: roleOf(blocks[b]) === 'user' ? 'user' : 'assistant', node: blocks[b], day: day });
+          var kind = roleOf(blocks[b]) === 'user' ? 'user' : 'assistant';
+          out.push({ kind: kind, node: blocks[b], day: day, turn: key, first: kind === 'assistant' && firstReply });
+          if (kind === 'assistant') firstReply = false;
         }
       }
     }
     return out;
   }
 
-  /* This script's own line at the top of Codex's element, put there once and only retitled afterwards. */
-  function stampOn(host, side, text) {
+  /*
+   * This script's own line at the top of Codex's element, put there once and only retitled afterwards. `figures` is the
+   * turn's line from the host, shown after the time by the stylesheet from an attribute, so the line's own text stays
+   * the time alone.
+   */
+  function stampOn(host, side, text, figures) {
     var el = null, kids = host.children || [];
     for (var i = 0; i < kids.length; i++) {
       if (kids[i].getAttribute && kids[i].getAttribute(MARK) === 'stamp') { el = kids[i]; break; }
     }
-    if (!text) {
+    if (!text && !figures) {
       if (el) { try { host.removeChild(el); } catch (e) { /* already gone */ } }
       return;
     }
@@ -588,6 +601,9 @@
       if (host.firstChild) host.insertBefore(el, host.firstChild); else host.appendChild(el);
     }
     if (el.textContent !== text) el.textContent = text;
+    var fig = figures ? (text ? ' \u00b7 ' : '') + figures : '';
+    if (fig) { if (el.getAttribute(FIG_ATTR) !== fig) el.setAttribute(FIG_ATTR, fig); }
+    else if (el.getAttribute(FIG_ATTR) !== null) el.removeAttribute(FIG_ATTR);
   }
 
   /* The time on every message, and the words for the list. Returns the user messages in document order. */
@@ -601,7 +617,8 @@
      * they do would put a time against the wrong message.
      */
     var lined = hostWhen && hostWhen.length === users.length ? hostWhen : null;
-    lastPass = { fromClock: 0, fromRollout: 0, unstamped: 0, hostTimes: hostWhen ? hostWhen.length : 0, linedUp: !!lined };
+    lastPass = { fromClock: 0, fromRollout: 0, unstamped: 0, hostTimes: hostWhen ? hostWhen.length : 0, linedUp: !!lined,
+      turnsKeyed: 0, turnsMatched: 0, figuresDrawn: 0 };
     for (var j = 0; j < list.length; j++) {
       var e = list[j], text = '', took = '';
       if (view.timestamps) {
@@ -625,7 +642,14 @@
         else if (took === 'rollout') lastPass.fromRollout++;
         else lastPass.fromClock++;
       }
-      stampOn(e.node, e.kind, text);
+      var figures = '';
+      if (e.first && e.turn) {
+        lastPass.turnsKeyed++;
+        var known = Object.prototype.hasOwnProperty.call(hostTurns, e.turn) ? hostTurns[e.turn] : '';
+        if (known) lastPass.turnsMatched++;
+        if (known && view.replyFigures !== false) { figures = known; lastPass.figuresDrawn++; }
+      }
+      stampOn(e.node, e.kind, text, figures);
     }
     return users;
   }
@@ -661,7 +685,8 @@
     var css = '.codex-extras-stamp{font:11px var(--vscode-font-family,sans-serif);'
       + 'color:var(--vscode-descriptionForeground,#8b949e);opacity:.85;line-height:1.4;'
       + 'user-select:none;pointer-events:none;}'
-      + '.codex-extras-stamp-user{text-align:end;}';
+      + '.codex-extras-stamp-user{text-align:end;}'
+      + '.codex-extras-stamp[' + FIG_ATTR + ']::after{content:attr(' + FIG_ATTR + ');}';
     if (view.userColor && SAFE_COLOR.test(view.userColor)) {
       css += '.' + INK_CLASS + ',.' + INK_CLASS + ' *{color:' + view.userColor + ' !important;}';
     }
@@ -1094,7 +1119,7 @@
     var list = entries();
     var turns = all(scrollerEl(), SEL.turn);
     var userStamps = all(document, '.codex-extras-stamp-user');
-    var assistantStamps = all(document, '.codex-extras-stamp-assistant');
+    var assistantStamps = all(document, '.codex-extras-stamp-assistant').filter(function (el) { return !!el.textContent; });
     var users = 0, assistants = 0;
     for (var i = 0; i < (list || []).length; i++) { if (list[i].kind === 'user') users++; else assistants++; }
     var card = null;
@@ -1162,6 +1187,10 @@
           activityRootFound: !!one(document, ACTIVITY_SEL), observing: !!approvalObserver },
         cardSelector: APPROVAL_SEL,
       },
+      /* The line under each reply: how many turns carried an id, how many of those the host had figures for, and on
+         how many replies they were drawn. */
+      replyFigures: { setting: view.replyFigures !== false, fromHost: Object.keys(hostTurns).length,
+        turnsKeyed: lastPass.turnsKeyed, matched: lastPass.turnsMatched, drawn: lastPass.figuresDrawn },
       /* Codex's own context meter, and whether this script outlined it. The percentage is the number Codex shows. */
       context: { meterFound: meter.found, percentUsed: meter.percent, outlined: meter.low,
         outlineSetting: view.lowContext !== false, outlineAt: LOW_AT },
@@ -1219,12 +1248,18 @@
     } else if (m.type === 'codex-extras-view') {
       view = { timestamps: m.timestamps !== false, navigation: m.navigation !== false,
         userColor: typeof m.userColor === 'string' ? m.userColor : '', userEdge: m.userEdge !== false,
-        lowContext: m.lowContext !== false };
+        lowContext: m.lowContext !== false, replyFigures: m.replyFigures !== false };
       ready();
     } else if (m.type === 'codex-extras-user-times') {
       hostWhen = Array.isArray(m.times)
         ? m.times.filter(function (n) { return typeof n === 'number' && isFinite(n); })
         : null;
+      hostTurns = {};
+      if (m.turns && typeof m.turns === 'object') {
+        Object.keys(m.turns).forEach(function (k) {
+          if (typeof m.turns[k] === 'string' && m.turns[k].length <= 120) hostTurns[k] = m.turns[k];
+        });
+      }
       hostCompactions = Array.isArray(m.compactions)
         ? m.compactions.filter(function (c) { return c && typeof c.after === 'number' && c.after >= 0; })
           .map(function (c) { return { after: Math.floor(c.after), at: typeof c.at === 'number' && isFinite(c.at) ? c.at : 0 }; })

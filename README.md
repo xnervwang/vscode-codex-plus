@@ -22,7 +22,8 @@
 | Green / red / orange dot on a Codex tab's logo while working / replied and unread / stopped for your permission | Editor tabs | Patch |
 | A conversation stopped for your permission shows as waiting in the Conversations view, counts in the status bar, and chimes | Conversations view; status bar; Codex tab | Patch; `codexExtras.waitingInStatusBar`, `codexExtras.chime` |
 | Chime when a turn finishes, the plan asks a question, the model asks you something and waits for the answer (a blocking input request), or Codex stops for your permission; a question has a sound of its own, rising, and a permission three notes | Codex tab | Patch |
-| Last turn's duration, context share, model and effort; the tool call running now | Codex tab, bottom right | Patch |
+| The last turn's context share, model and effort; the tool call running now. A turn's duration is left to Codex's own "Worked for" | Codex tab, bottom right | Patch; `codexExtras.turnFigures` |
+| Beside each reply's time: that turn's context share, model and effort, as `14:02:11 · ctx 33% · gpt-6.1-sol high`, matched to the reply by the turn id Codex puts on it | Codex conversation | Patch; `codexExtras.turnFigures` |
 | An outline round Codex's own context meter in the message box once 85% or more of the context window is used. Codex draws that meter only with its own setting on, which is off by default: in Codex's settings, General, Composer, **Show context window usage**; hovering it shows the tokens used and the window | Codex message box | Patch; `codexExtras.lowContextOutline` |
 | The time above every message and every reply block, in your own time zone | Codex conversation | Patch; `codexExtras.timestamps` |
 | Your own messages by time and opening words, and where Codex compacted the context; click to scroll, step with the arrows or `,` and `.`, filter, or jump to the top or bottom | Right edge of a Codex conversation | Patch; `codexExtras.conversationNavigation` |

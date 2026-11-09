@@ -358,6 +358,9 @@ function selfCheckLines(answer) {
   lines.push(`    watcher on ${w.selector || '(nothing)'}, activity root found: ${yesNo(w.activityRootFound)}, `
     + `observing: ${yesNo(w.observing)}`);
   lines.push(`    card selector: ${ap.cardSelector || '?'}`);
+  const rf = r.replyFigures || {};
+  lines.push(`  Line under each reply: ${rf.setting === false ? 'turned off' : `drawn on ${count(rf.drawn || 0, 'reply', 'replies')}`}; `
+    + `${rf.matched || 0} of the ${count(rf.turnsKeyed || 0, 'turn')} with an id on the page matched the host's, which sent ${rf.fromHost || 0}`);
   const cx = r.context || {};
   lines.push(`  Codex's context meter: ${cx.meterFound ? `found, ${cx.percentUsed}% used` : 'not found (Codex shows it only with its own setting on)'}`
     + `; outlined at ${cx.outlineAt || 85}% or more: ${cx.outlineSetting === false ? 'turned off' : yesNo(cx.outlined)}`);
@@ -382,13 +385,14 @@ function safeColor(value) {
    the host has not spoken to yet shows what the settings say rather than nothing. */
 function viewOf(s = {}) {
   return { type: 'codex-extras-view', timestamps: s.timestamps !== false, navigation: s.conversationNavigation !== false,
-    userColor: safeColor(s.userMessageColor), userEdge: s.userMessageEdge !== false, lowContext: s.lowContextOutline !== false };
+    userColor: safeColor(s.userMessageColor), userEdge: s.userMessageEdge !== false, lowContext: s.lowContextOutline !== false,
+    replyFigures: s.figures !== false };
 }
 
+/* The strip's figures. A turn's duration is not among them: Codex draws "Worked for" on every finished turn itself. */
 function figuresOf(c) {
   if (!c) return null;
   const parts = [];
-  if (c.lastTurnMs) parts.push(c.lastTurnMs >= 60000 ? `${Math.floor(c.lastTurnMs / 60000)}m${Math.round(c.lastTurnMs % 60000 / 1000)}s` : `${Math.round(c.lastTurnMs / 1000)}s`);
   if (c.context && c.context.window) parts.push(`ctx ${Math.round(100 * c.context.used / c.context.window)}%`);
   if (c.model) parts.push([String(c.model).replace(/^openai\./, ''), c.effort].filter(Boolean).join(' '));
   const running = c.state === 'working' && c.lastTool && !c.lastTool.endedMs;
@@ -465,14 +469,16 @@ async function refreshPanels() {
   const view = viewOf(deps.settings());
   /* The settings reach a page whose conversation is not known yet as well: it draws from them as soon as one starts. */
   for (const [panel, rec] of registry) if (!rec.thread && isConversationPanel(rec)) postTo(panel, view);
-  /* Only while the stamps or the list are on, and only for the conversations a panel here shows: the stamps use the
-     times, the list places the compaction points by them. */
+  /* Only while the stamps, the list or the line under each reply is on, and only for the conversations a panel here
+     shows: the stamps use the times, the list places the compaction points by them, and the line is each turn's model,
+     effort and context, keyed by turn id. */
   const whens = new Map();
-  if ((view.timestamps || view.navigation) && typeof deps.userTimes === 'function') {
+  if ((view.timestamps || view.navigation || view.replyFigures) && typeof deps.userTimes === 'function') {
     for (const thread of panels.keys()) {
       try {
         const r = await deps.userTimes(thread);
-        if (r && Array.isArray(r.times)) whens.set(thread, { times: r.times, compactions: Array.isArray(r.compactions) ? r.compactions : [] });
+        if (r) whens.set(thread, { times: Array.isArray(r.times) ? r.times : null, compactions: Array.isArray(r.compactions) ? r.compactions : [],
+          turns: r.turns && typeof r.turns === 'object' ? r.turns : {} });
       } catch (_) { /* the page falls back to what Codex itself rendered */ }
     }
   }

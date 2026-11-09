@@ -298,7 +298,7 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
     [1, false, 'clock'], 'fewer than the page shows do not line up and go unused, and Codex\'s own clock still stands');
 
   /* Everything off: the self-check is how "nothing of its own is left in the page" is read back. */
-  page.view({ timestamps: false, navigation: false, userColor: '', userEdge: false, lowContext: false });
+  page.view({ timestamps: false, navigation: false, userColor: '', userEdge: false, lowContext: false, replyFigures: false });
   const off = page.ask().report;
   eq([off.marks.total, off.times.user, off.times.assistant, off.navigation.rows, off.colour.inked, off.colour.edged],
     [0, 0, 0, 0, 0, 0], 'with every setting off it reports nothing of its own anywhere in the page');
@@ -354,6 +354,36 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
   for (let i = 0; i < 4; i++) page.view();
   eq(page.posted.filter((m) => m.kind === 'anchorsMissing').length, 0,
     'the real sample, whose messages are all recognised, never says it');
+
+  /*
+   * ── the line under each reply, placed by turn id ──
+   *
+   * The sample records the turn-id attribute's name and not its value, so the rebuilt page's turns are given ids here,
+   * shaped as Codex's (UUIDv7). The host sends figures for all but one of them: only those are drawn, each on the first
+   * reply block of its own turn, and the self-check counts how many lined up.
+   */
+  {
+    const d = createDom();
+    pageFromSample(d, sample);
+    const keyed = d.document.root.querySelectorAll('[data-content-search-turn-key]');
+    keyed.forEach((el, i) => el.setAttribute('data-content-search-turn-key', `019a6a10-0000-7000-8000-${String(i + 1).padStart(12, '0')}`));
+    const p = pageUnder(root, d);
+    p.view();
+    const turnsSent = {};
+    keyed.slice(1).forEach((el, i) => { turnsSent[el.getAttribute('data-content-search-turn-key')] = `ctx ${10 + i}% · gpt-test high`; });
+    p.send({ type: 'codex-extras-user-times', times: null, compactions: [], turns: turnsSent });
+    const rf = p.ask().report.replyFigures;
+    eq([keyed.length > 1, rf.turnsKeyed, rf.matched, rf.drawn, rf.fromHost], [true, keyed.length, keyed.length - 1, keyed.length - 1, keyed.length - 1],
+      'every turn on the page has an id, all but the one the host sent nothing for line up, and each of those is drawn once');
+    const drawn = d.document.root.querySelectorAll('[data-codex-extras-figures]');
+    eq([drawn.length, drawn.every((el) => /^ · ctx \d+% · gpt-test high$/.test(el.getAttribute('data-codex-extras-figures')))],
+      [keyed.length - 1, true], 'the line follows the time on the stamp, which keeps the time as its only text');
+    const firstTurn = d.document.root.querySelectorAll('[data-turn-key]')[0];
+    eq(firstTurn.querySelectorAll('[data-codex-extras-figures]').length, 0, 'and the turn the host knew nothing about has none');
+    p.view({ replyFigures: false });
+    eq([d.document.root.querySelectorAll('[data-codex-extras-figures]').length, p.ask().report.replyFigures.drawn], [0, 0],
+      'with the setting off none is drawn');
+  }
 
   /* ── Codex's own context meter, outlined once 85% of the window is used ── */
   eq(sample.page.dataAttrs.includes(COMPOSER), true, 'the message box\'s own attribute is one the live page had');
