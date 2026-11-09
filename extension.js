@@ -258,6 +258,7 @@ function registerCommands(context, { source, memory, sessionsProvider, say, link
     const python = await findPython(context);
     const tried = pythonRuntime.pythons(context.globalStorageUri.fsPath);
     const installed = install.installedVersions(home);
+    const copy = install.installState(home).why;
     const loadState = install.pluginLoadState(home);
     const threads = reader.threads() || [];
     const counts = {};
@@ -271,7 +272,9 @@ function registerCommands(context, { source, memory, sessionsProvider, say, link
       `Work plan plugin: ${install.installedVersions(home).join(', ') || 'not installed'}`
         + `${installed.length ? `, ${loadState === 'not loaded' ? 'INSTALLED BUT NOT LOADED (Codex is set to skip it)'
           : loadState === 'no entry' ? 'no entry in config.toml, so Codex does not know of it' : 'loaded'}` : ''}`
-        + ` (this extension ships ${install.pluginVersion()})`,
+        + ` (this extension ships ${install.pluginVersion()}`
+        + `${installed.length ? `; Codex's copy has ${({ current: 'the same files', 'other version': 'another version',
+          'no digest': 'files of unknown age', 'files differ': 'DIFFERENT FILES, reinstall to update it' })[copy] || copy}` : ''})`,
       `Additions: ${settings().enabled ? 'on' : 'OFF (codexExtras.enabled); the patch to Codex is left as it is'}`,
       `Python for the hooks: ${python ? `${python.version} as ${python.launcher.join(' ')} (${python.executable})`
         : `none found, tried ${tried.map((l) => l.join(' ')).join(', ')}`
@@ -515,22 +518,28 @@ function registerCommands(context, { source, memory, sessionsProvider, say, link
   });
 }
 
-/* The plugin is offered once per Codex home; after that it is the user's commands that install or remove it. */
+/*
+ * The plugin is offered once per Codex home and per set of its files; after that it is the user's commands that install
+ * or remove it. A plugin whose files changed under the same version is an upgrade like any other.
+ */
 async function offerPlugin(context, say) {
   if (!trusted() || !cfg().get('workPlan', true)) return;
   const home = files.codexHome();
-  const have = install.installedVersions(home);
-  const want = install.pluginVersion();
-  if (have.includes(want)) { await trustPlugin(say, { interactive: false }); return; }
+  const st = install.installState(home);
+  if (st.current) { await trustPlugin(say, { interactive: false }); return; }
+  say(`work plan plugin in Codex: ${st.why} (${st.versions.join(', ') || 'none'}; this extension carries ${st.want})`);
   const mode = settings().installPlugin;
   if (mode === 'never') return;
   if (mode === 'ask') {
-    const key = `codexExtras.offered:${home}:${want}`;
+    const key = `codexExtras.offered:${home}:${st.want}:${st.digest}`;
     if (context.globalState.get(key)) return;
     await context.globalState.update(key, true);
+    const have = st.versions;
     const go = have.length ? 'Upgrade' : 'Install';
     const pick = await vscode.window.showInformationMessage(
-      have.length ? `The Codex work plan plugin ${have.join(', ')} is older than ${want}.` : 'Install the work plan plugin into Codex?',
+      !have.length ? 'Install the work plan plugin into Codex?'
+        : have.includes(st.want) ? `The Codex work plan plugin ${st.want} in Codex is not the one this extension carries.`
+          : `The Codex work plan plugin ${have.join(', ')} is older than ${st.want}.`,
       { detail: `It adds a skill, hooks and a small MCP server to ${home}. Codex asks you to trust the hooks afterwards.` }, go, 'Not now');
     if (pick !== go) return;
   }
@@ -631,5 +640,6 @@ async function trustPlugin(say, { interactive }) {
 function deactivate() { files.closeAll(); }
 
 /* `_settings` is for the checks: the master switch is only real if what every part reads comes out of settings() with
-   it already applied, and that is a table to be read rather than inferred from what the extension then did. */
-module.exports = { activate, deactivate, _settings: settings };
+   it already applied, and that is a table to be read rather than inferred from what the extension then did.
+   `_offerPlugin` is the start-up decision to install the plugin, which activation only makes after a delay. */
+module.exports = { activate, deactivate, _settings: settings, _offerPlugin: offerPlugin };

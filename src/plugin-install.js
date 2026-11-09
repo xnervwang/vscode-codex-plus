@@ -16,7 +16,13 @@
  * the plugin's files. Trusting is the user's act: hookStatus() says what needs review, and trustHooks() writes the same
  * keys Codex's own Settings > Hooks page writes when Trust is clicked, and is only ever called after the user said yes
  * to a dialog naming the hooks.
+ *
+ * Whether Codex holds the plugin as this extension carries it is a matter of its files, not of its version: the version
+ * goes up only when the plugin is released, and the hooks, skill and MCP server change between releases. The staged
+ * copy carries a digest of the plugin's files, Codex copies it into its cache with the rest, and installState() compares
+ * that with the digest of the files here.
  */
+const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const { withAppServer } = require('./appserver');
@@ -31,11 +37,60 @@ const MANIFEST = path.join('.agents', 'plugins', 'marketplace.json');
 
 const planDir = (home) => path.join(home, 'plugins', 'data', DATA_DIR);
 const cacheDir = (home) => path.join(home, 'plugins', 'cache', MARKETPLACE, PLUGIN);
-const pluginVersion = () => JSON.parse(fs.readFileSync(path.join(SOURCE, PLUGIN, '.codex-plugin', 'plugin.json'), 'utf8')).version;
+const pluginVersion = (source = SOURCE) => JSON.parse(fs.readFileSync(path.join(source, PLUGIN, '.codex-plugin', 'plugin.json'), 'utf8')).version;
+/* In the plugin's own directory, which is what Codex copies into its cache; a dot file at that level (.mcp.json) is
+   copied like the rest. */
+const DIGEST_FILE = '.codex-extras-digest';
 
 /** Whether some version of the plugin is in Codex's cache, and which. */
 function installedVersions(home) {
   try { return fs.readdirSync(cacheDir(home)).filter((v) => fs.existsSync(path.join(cacheDir(home), v, '.codex-plugin'))); } catch (_) { return []; }
+}
+
+/*
+ * A digest of the plugin's files as this extension carries them: every file's path and content, in path order, as
+ * they are before fitting to a Python, so that the Python found on a machine does not count as a change of the plugin.
+ * __pycache__ is left out, as staging leaves it out.
+ */
+function sourceDigest(source = SOURCE) {
+  const root = path.join(source, PLUGIN);
+  const files = [];
+  const walk = (dir, rel) => {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (e.name === '__pycache__' || e.name === DIGEST_FILE) continue;
+      const r = rel ? `${rel}/${e.name}` : e.name;
+      if (e.isDirectory()) walk(path.join(dir, e.name), r);
+      else if (e.isFile()) files.push(r);
+    }
+  };
+  walk(root, '');
+  const hash = crypto.createHash('sha256');
+  for (const f of files.sort()) hash.update(`${f}\0`).update(fs.readFileSync(path.join(root, ...f.split('/')))).update('\0');
+  return hash.digest('hex');
+}
+
+/** The digest Codex's cached copy of `version` carries, or '' for a copy without one (staged by an older build). */
+function installedDigest(home, version) {
+  try { return fs.readFileSync(path.join(cacheDir(home), version, DIGEST_FILE), 'utf8').trim(); } catch (_) { return ''; }
+}
+
+/*
+ * Whether Codex's cache holds the plugin as it is here. `current` is true only for the same version with the same
+ * files; `why` says otherwise: 'not installed', 'other version', 'no digest' (installed by a build that recorded none,
+ * so its files are unknown and taken to differ) or 'files differ'.
+ */
+function installState(home, source = SOURCE) {
+  const versions = installedVersions(home);
+  const want = pluginVersion(source);
+  const digest = sourceDigest(source);
+  let why = 'current';
+  if (!versions.length) why = 'not installed';
+  else if (!versions.includes(want)) why = 'other version';
+  else {
+    const have = installedDigest(home, want);
+    why = !have ? 'no digest' : have === digest ? 'current' : 'files differ';
+  }
+  return { current: why === 'current', why, versions, want, digest };
 }
 
 /*
@@ -94,6 +149,7 @@ function stageMarketplace(stage, source = SOURCE, python = SHIPPED_PYTHON) {
   for (const name of fs.readdirSync(stage)) fs.rmSync(path.join(stage, name), { recursive: true, force: true });
   fs.cpSync(source, stage, { recursive: true, filter: (p) => !p.includes(`${path.sep}__pycache__`) });
   fitHooks(stage, python);
+  fs.writeFileSync(path.join(stage, PLUGIN, DIGEST_FILE), sourceDigest(source) + '\n');
   return path.join(stage, MANIFEST);
 }
 
@@ -194,7 +250,7 @@ async function install({ binary, home, stage, source = SOURCE, python = SHIPPED_
       await server.request('marketplace/add', { source: stage });
     }
     await server.request('plugin/install', { marketplacePath: manifest, pluginName: PLUGIN });
-    return { version: pluginVersion(), marketplace: stage, python };
+    return { version: pluginVersion(source), marketplace: stage, python };
   });
 }
 
@@ -298,7 +354,7 @@ function sameHooks(a, b) {
 }
 
 module.exports = {
-  MARKETPLACE, PLUGIN, PLUGIN_ID, DATA_DIR, SOURCE, SHIPPED, SHIPPED_PYTHON, planDir, cacheDir, installedVersions,
-  pluginVersion, stageMarketplace, fitHooks, pluginLoadState, setPluginEnabled, pluginEnabledEdits,
+  MARKETPLACE, PLUGIN, PLUGIN_ID, DATA_DIR, DIGEST_FILE, SOURCE, SHIPPED, SHIPPED_PYTHON, planDir, cacheDir, installedVersions,
+  pluginVersion, sourceDigest, installedDigest, installState, stageMarketplace, fitHooks, pluginLoadState, setPluginEnabled, pluginEnabledEdits,
   writeHookSettings, install, uninstall, savePlans, hookStatus, trustHooks, sameHooks, hookKeys,
 };

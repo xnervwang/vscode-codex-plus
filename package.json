@@ -308,14 +308,14 @@
         "codexExtras.installWorkPlanPlugin": {
           "type": "string",
           "default": "ask",
-          "markdownDescription": "Whether to install the work plan plugin into Codex when it is missing or older than the one this extension ships.",
+          "markdownDescription": "Whether to install the work plan plugin into Codex when it is missing or is not the one this extension ships: another version, or other files under the same version.",
           "enum": [
             "ask",
             "auto",
             "never"
           ],
           "enumDescriptions": [
-            "Ask once per Codex home and plugin version",
+            "Ask once per Codex home and set of plugin files",
             "Install without asking; Codex still asks you to trust its hooks",
             "Never install it; use the command"
           ]
