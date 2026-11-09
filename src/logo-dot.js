@@ -23,7 +23,7 @@ const R = 4.2;
 const GAP = 1.4;
 
 /** The logo with a dot of `color`, or '' when `svg` is not something this knows how to wrap. */
-function withDot(svg, color) {
+function withDot(svg, color, { r = R, gap = GAP } = {}) {
   const text = String(svg || '');
   const open = /<svg\b[^>]*>/i.exec(text);
   const close = text.lastIndexOf('</svg>');
@@ -32,11 +32,11 @@ function withDot(svg, color) {
   if (!vb) return '';
   const inner = text.slice(open.index + open[0].length, close);
   if (/<script/i.test(inner)) return '';
-  const cx = BOX - R, cy = R;
+  const cx = BOX - r, cy = r;
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${BOX}" height="${BOX}" viewBox="0 0 ${BOX} ${BOX}">`
-    + `<defs><mask id="d"><rect width="${BOX}" height="${BOX}" fill="white"/><circle cx="${cx}" cy="${cy}" r="${R + GAP}" fill="black"/></mask></defs>`
+    + `<defs><mask id="d"><rect width="${BOX}" height="${BOX}" fill="white"/><circle cx="${cx}" cy="${cy}" r="${r + gap}" fill="black"/></mask></defs>`
     + `<g mask="url(#d)"><svg width="${BOX}" height="${BOX}" viewBox="${vb[1]}" fill="none">${inner}</svg></g>`
-    + `<circle cx="${cx}" cy="${cy}" r="${R}" fill="${color}"/></svg>`;
+    + `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${color}"/></svg>`;
 }
 
 /* Written under another name and moved into place: a file is named by its content and never rewritten once it is
@@ -56,17 +56,17 @@ function writeWhole(file, text) {
  * Icon paths for every state, { [state]: { light, dark } } as file paths, written into `dir` once per logo version; null
  * when either logo is missing or cannot be wrapped.
  */
-function iconsFor(logo, dir, cache = new Map(), palette = DOT) {
+function iconsFor(logo, dir, cache = new Map(), palette = DOT, size = {}) {
   if (!logo || !logo.light || !logo.dark) return null;
   let light, dark;
   try { light = fs.readFileSync(logo.light, 'utf8'); dark = fs.readFileSync(logo.dark, 'utf8'); } catch (_) { return null; }
-  const key = crypto.createHash('sha1').update(light).update(dark).update(JSON.stringify(palette)).digest('hex').slice(0, 12);
+  const key = crypto.createHash('sha1').update(light).update(dark).update(JSON.stringify(palette)).update(JSON.stringify(size)).digest('hex').slice(0, 12);
   if (cache.has(key)) return cache.get(key);
   const out = {};
   try {
     fs.mkdirSync(dir, { recursive: true });
     for (const [state, color] of Object.entries(palette)) {
-      const l = withDot(light, color), d = withDot(dark, color);
+      const l = withDot(light, color, size), d = withDot(dark, color, size);
       if (!l || !d) { cache.set(key, null); return null; }
       const lp = path.join(dir, `logo-${key}-${state}-light.svg`), dp = path.join(dir, `logo-${key}-${state}-dark.svg`);
       if (!fs.existsSync(lp)) writeWhole(lp, l);

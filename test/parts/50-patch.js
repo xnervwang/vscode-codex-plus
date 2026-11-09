@@ -117,7 +117,10 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
     eq(await fromClean('no'), { status: ['clean', 'clean'], asked: false, stored: 'no' }, 'a no stays a no');
     eq(await fromClean(true, 'Patch Codex'), { status: ['patched', 'patched'], asked: true, stored: 'yes' },
       'what an older build stored, which says only that it asked, is asked again, and the answer is the one kept');
-    eq((await fromClean(undefined, 'Not now')).stored, 'no', 'and declining is kept as a no');
+    eq(await fromClean(undefined), { status: ['patched', 'patched'], asked: false, stored: undefined },
+      'once the user has said yes to patching any Codex version, a later one is patched without asking');
+    await asked.update(patching.PATCH_YES_KEY, undefined);
+    eq((await fromClean(undefined, 'Not now')).stored, 'no', 'and, with no yes before, declining is kept as a no');
     control.state.answers = [];
 
     /*
@@ -244,8 +247,8 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
   eq(patching.canDeliver(thread), false, 'a closed panel takes no more answers');
   const f = patching.figuresOf({ state: 'working', lastTurnMs: 130000, context: { used: 85000, window: 258400 }, model: 'openai.gpt-6.1-sol', effort: 'ultra',
     lastTool: { name: 'exec_command', startedMs: 5, endedMs: 0 } });
-  eq([f.text, f.tool, f.toolSince], ['ctx 33% · gpt-6.1-sol ultra', 'exec_command', 5],
-    'the strip reads like the line under a reply, and leaves the turn\'s duration to Codex\'s own "Worked for"');
+  eq([f.text, f.tool, f.toolSince], ['', 'exec_command', 5],
+    'the strip carries only the tool call running now: the context, model and effort are beside each reply, the duration is Codex\'s own "Worked for"');
 
   /* The page script, in a stand-in page. */
   const posted = [];

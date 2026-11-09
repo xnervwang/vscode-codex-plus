@@ -44,7 +44,14 @@ const { activeThread } = require('./codex-tabs');
 const { iconsFor } = require('./logo-dot');
 const { createApprovals } = require('./approvals');
 
-const TAB_DOTS = { working: '#22c55e', unread: '#ef4444', prompt: '#f59e0b' };
+/* As Claude Code Extras draws them on its tabs: green working, red replied and unread, blue waiting for the user, at
+   its size (radius 5.5 in a 24-unit box). */
+const TAB_DOTS = { working: '#22c55e', unread: '#ef4444', prompt: '#3b82f6' };
+const TAB_DOT_SIZE = { r: 5.5, gap: 1 };
+/* As long a tab title as Claude Code Extras gives one; the tab bar cuts what does not fit. */
+const TITLE_MAX = 200;
+/* Set once the user has said yes to patching any Codex version. */
+const PATCH_YES_KEY = 'codexPlus.patchedBefore';
 let state = { active: false, reason: 'not checked yet', provider: null };
 /*
  * Every panel Codex handed over, whether or not its conversation is known: panel -> {
@@ -437,7 +444,7 @@ function selfCheckLines(answer) {
     + `${rf.matched || 0} of the ${count(rf.turnsKeyed || 0, 'turn')} with an id on the page matched the host's, which sent ${rf.fromHost || 0}`);
   const cx = r.context || {};
   lines.push(`  Codex's context meter: ${cx.meterFound ? `found, ${cx.percentUsed}% used` : 'not found (Codex shows it only with its own setting on)'}`
-    + `; outlined at ${cx.outlineAt || 85}% or more: ${cx.outlineSetting === false ? 'turned off' : yesNo(cx.outlined)}`);
+    + `; outlined at ${cx.outlineAt || 80}% or more: ${cx.outlineSetting === false ? 'turned off' : yesNo(cx.outlined)}`);
   lines.push(`  Figures strip: ${fig.present ? 'in the page' : 'not in the page'}, `
     + `${fig.showing ? 'showing' : 'hidden'}, ${fig.hasText ? 'with text' : 'with no text'}, `
     + `${fig.toolRunning ? 'a tool call running' : 'no tool call running'}`);
@@ -487,13 +494,15 @@ function runningCommands(thread) {
   return [...commands.values()].filter((c) => !thread || c.thread === thread).sort((a, b) => a.startedMs - b.startedMs);
 }
 
-/* The strip's figures. A turn's duration is not among them: Codex draws "Worked for" on every finished turn itself. */
+/*
+ * The strip's figures: only what is said nowhere else. A turn's duration is Codex's own "Worked for", and the context,
+ * model and effort are on the line beside each reply's time, so the strip has the tool call running now, with when it
+ * began, and the commands still running.
+ */
 function figuresOf(c, commandsRunning = 0) {
   if (!c) return null;
   const parts = [];
   if (commandsRunning) parts.push(`${commandsRunning} command${commandsRunning === 1 ? '' : 's'} running`);
-  if (c.context && c.context.window) parts.push(`ctx ${Math.round(100 * c.context.used / c.context.window)}%`);
-  if (c.model) parts.push([String(c.model).replace(/^openai\./, ''), c.effort].filter(Boolean).join(' '));
   const running = c.state === 'working' && c.lastTool && !c.lastTool.endedMs;
   return { type: 'codex-extras-figures', text: parts.join(' · '), tool: running ? c.lastTool.name : '', toolSince: running ? c.lastTool.startedMs : 0 };
 }
@@ -586,7 +595,7 @@ async function refreshPanels() {
      back rather than keeping whichever dot it had when the switch was thrown. */
   const dots = deps.settings().enabled !== false;
   const icons = logo && dots ? iconsFor({ light: logo.light.fsPath, dark: logo.dark.fsPath }, path.join(context.globalStorageUri.fsPath, 'tab-icons'),
-    undefined, TAB_DOTS) : null;
+    undefined, TAB_DOTS, TAB_DOT_SIZE) : null;
   for (const [thread, set] of panels) {
     const c = now.get(thread);
     const was = last.get(thread);
@@ -595,6 +604,10 @@ async function refreshPanels() {
       try {
         panel.iconPath = pair ? { light: vscode.Uri.file(pair.light), dark: vscode.Uri.file(pair.dark) } : (logo || panel.iconPath);
       } catch (_) { /* disposed */ }
+      /* The tab is titled by its conversation, kept in step as Codex names or renames it: Codex itself titles only a
+         tab opened on an existing conversation, once, so one started in a tab stays "Codex". */
+      const title = c && c.title && c.title !== '(untitled)' ? String(c.title).slice(0, TITLE_MAX) : '';
+      if (title) { try { if (panel.title !== title) panel.title = title; } catch (_) { /* disposed */ } }
       /* Against the rollout's own answer, not against `state`: a turn that stopped on an approval has not finished, and
          `state` reads `prompt` for it, which would otherwise ring the finished-turn chime. */
       if (deps.settings().chime && was) {
@@ -751,13 +764,14 @@ async function ensurePatched(vscode, context, log, mode) {
    * command, or a Codex update into a fresh directory) is a fresh decision and goes through the question below.
    */
   const refresh = states.every((s) => s === 'patched' || s === 'outdated');
-  /* The answer given for this Codex version: 'yes' goes ahead without asking again, even after the patch was taken off
-     by something other than the user (a failed refresh puts every target back), and 'no' stays a no. Anything else,
-     including what an older build stored without saying which answer it was, is asked again. */
+  /* Asked once: a yes to any Codex version holds for every later one, so an update of Codex does not ask again. A no
+     holds for the version it was given for. Either way the patch going missing (a failed refresh puts every target
+     back) is not a reason to ask again. */
   const key = `codexPlus.patchAsked:${version}`;
   const answered = context.globalState.get(key);
+  const yesBefore = context.globalState.get(PATCH_YES_KEY) === true;
   if (mode === 'ask' && !refresh && answered === 'no') { state.reason = 'not patched: declined for this Codex version'; return; }
-  if (mode === 'ask' && !refresh && answered !== 'yes') {
+  if (mode === 'ask' && !refresh && answered !== 'yes' && !yesBefore) {
     const go = 'Patch Codex';
     const pick = await vscode.window.showInformationMessage(`Patch the Codex extension ${version}?`, {
       detail: 'It adds status dots to Codex tabs, opening a conversation in the sidebar, answers into a conversation\'s '
@@ -765,6 +779,7 @@ async function ensurePatched(vscode, context, log, mode) {
         + 'a list of your own messages on the right edge, and your own messages marked out. Codex\'s files are kept and '
         + 'put back by "Codex Plus: Remove the Patch from Codex" or on uninstall. A window reload applies it.' }, go, 'Not now');
     await context.globalState.update(key, pick === go ? 'yes' : 'no');
+    if (pick === go) await context.globalState.update(PATCH_YES_KEY, true);
     if (pick !== go) { state.reason = 'not patched: declined for this Codex version'; return; }
   }
   const results = [];
@@ -855,4 +870,4 @@ module.exports = { activate, ensurePatched, statusLines, openInSidebar, canType,
   nowShowing, revealPanel, removePatch,
   figuresOf, safeColor, viewOf, sampleLayout, selfCheckPage, selfCheckLines, installHooks, refreshPanels, approvalsOf,
   decideCount, waitingThreads, onApprovalsChanged, offerReloadIfStale, sidebarShowing, onSidebarChanged, runningCommands, _state: () => state, _registry: registry, _approvals: approvals,
-  TAB_DOTS, ASK_MS };
+  TAB_DOTS, ASK_MS, PATCH_YES_KEY };

@@ -200,7 +200,7 @@ module.exports = async ({ ok, bad, note, eq, tmp }) => {
   eq(chimes.filter((m) => m.type === 'codex-extras-chime').length, 0,
     'a turn waiting on the user does not ring the finished-turn chime, though the state it reports is no longer working');
   globalThis.__codexExtrasAppServer('answer', { id: 11 });
-  eq(patching.TAB_DOTS.prompt, '#f59e0b', 'and the tab dot has a colour for waiting on the user, beside working and unread');
+  eq(patching.TAB_DOTS.prompt, '#3b82f6', 'and the tab dot has a colour for waiting on the user, beside working and unread: Claude Code Extras\' blue');
 
   /* ── what a page reports, and which conversation it is taken to be about ── */
   const sidebarPage = {};
@@ -242,7 +242,7 @@ module.exports = async ({ ok, bad, note, eq, tmp }) => {
   globalThis.__codexExtrasAppServer('notification', { method: 'item/started', params: { threadId: THREAD, item: { type: 'agentMessage', id: 'm1' } } });
   eq(patching.runningCommands(THREAD).map((c) => [c.command, c.cwd]), [['/bin/bash -lc "sleep 120"', '/w']],
     'a command started through unified exec counts as running; one of another source and any other item do not');
-  eq(patching.figuresOf({ state: 'working', context: { used: 1000, window: 258400 } }, 1).text, '1 command running · ctx 0%',
+  eq(patching.figuresOf({ state: 'working', context: { used: 1000, window: 258400 } }, 1).text, '1 command running',
     'and the strip leads with how many are running');
   eq(/Commands running in this window's Codex: \/bin\/bash -lc "sleep 120" \(since \d\d:\d\d:\d\d UTC/.test(patching.statusLines().join('\n')), true,
     'Show Status lists it with when it started');

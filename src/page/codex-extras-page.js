@@ -44,21 +44,29 @@
   var SCRIPT_VERSION = '1.0.0';
 
   var audio = null;
-  /* Rising for a question, falling for a finished turn, and three notes for a request that cannot go on without an
-     answer, so the three are told apart without looking. */
-  var NOTES = { question: [660, 880], approval: [880, 660, 880], done: [880, 660] };
+  /* The three sounds of Claude Code Extras, note for note and at its volume, so someone using both hears the same thing
+     for the same event: rising for a finished turn, three equal notes for a permission, falling for a question. Each
+     step is [frequency in Hz, start in s, length in s]. */
+  var TONES = {
+    done: [[880, 0, 0.09], [1174, 0.09, 0.16]],
+    approval: [[880, 0, 0.07], [880, 0.13, 0.07], [880, 0.26, 0.11]],
+    question: [[1174, 0, 0.09], [880, 0.10, 0.16]],
+  };
+  var CHIME_GAIN = 0.05;
   function chime(kind) {
     try {
       audio = audio || new (globalThis.AudioContext || globalThis.webkitAudioContext)();
-      var notes = NOTES[kind] || NOTES.done;
-      notes.forEach(function (f, i) {
+      var steps = TONES[kind] || TONES.done, t0 = audio.currentTime;
+      steps.forEach(function (step) {
+        var at = t0 + step[1], dur = step[2];
         var o = audio.createOscillator(), g = audio.createGain();
-        o.frequency.value = f;
-        g.gain.setValueAtTime(0.0001, audio.currentTime + i * 0.12);
-        g.gain.exponentialRampToValueAtTime(0.08, audio.currentTime + i * 0.12 + 0.02);
-        g.gain.exponentialRampToValueAtTime(0.0001, audio.currentTime + i * 0.12 + 0.11);
+        o.type = 'sine';
+        o.frequency.setValueAtTime(step[0], at);
+        g.gain.setValueAtTime(0.0001, at);
+        g.gain.exponentialRampToValueAtTime(CHIME_GAIN, at + 0.012);
+        g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
         o.connect(g); g.connect(audio.destination);
-        o.start(audio.currentTime + i * 0.12); o.stop(audio.currentTime + i * 0.12 + 0.12);
+        o.start(at); o.stop(at + dur + 0.02);
       });
     } catch (e) { /* no audio here */ }
   }
@@ -99,12 +107,14 @@
 
   /*
    * An outline round Codex's own context meter, the donut in the message box, once LOW_AT percent or more of the window
-   * is used; Codex's own only fades its label past half. Codex draws it only while its own setting is on. It is the
+   * is used; Codex's own only fades its label past half. Codex compacts at 90% of the model's full window and the meter
+   * counts against the window Codex reports, 95% of the full one, so on the meter compaction falls at 0.9 / 0.95, about
+   * 94.7%; LOW_AT is 15 points before that, which is when Claude Code Extras outlines its own meter. Codex draws it only while its own setting is on. It is the
    * image in the composer whose accessible label carries a percentage; the label is localised, so only the number is
    * read. Checked on the approval watcher's pass, which already sees the composer change, and on the marks' pass. Only a
    * class goes on Codex's element.
    */
-  var LOW_CLASS = 'codex-extras-ctx-low', LOW_AT = 85;
+  var LOW_CLASS = 'codex-extras-ctx-low', LOW_AT = 80;
   var COMPOSER_SEL = '[data-codex-composer-root],[data-codex-composer]', METER_SEL = 'span[role="img"][aria-label]';
   var meter = { found: false, percent: null, low: false };
   function markLowContext() {
@@ -358,11 +368,11 @@
 
   var strip = null, figures = null, timer = null;
   function draw() {
-    if (!figures || !figures.text) { if (strip) strip.style.display = 'none'; return; }
+    if (!figures || (!figures.text && !figures.tool)) { if (strip) strip.style.display = 'none'; return; }
     if (!strip) {
       strip = document.createElement('div');
       strip.setAttribute(MARK, 'figures');
-      strip.style.cssText = 'position:fixed;right:8px;bottom:2px;z-index:2147483000;pointer-events:none;'
+      strip.style.cssText = 'position:fixed;right:8px;bottom:2px;z-index:' + Z_BELOW_CODEX + ';pointer-events:none;'
         + 'font:11px var(--vscode-font-family,sans-serif);color:var(--vscode-descriptionForeground,#888);'
         + 'background:var(--vscode-editor-background,transparent);opacity:.85;padding:0 4px;border-radius:3px;';
       document.body.appendChild(strip);
@@ -370,7 +380,8 @@
     var text = figures.text;
     if (figures.tool && figures.toolSince) {
       var s = Math.max(0, Math.round((Date.now() - figures.toolSince) / 1000));
-      text = figures.tool + ' running for ' + (s >= 60 ? Math.floor(s / 60) + 'm' + (s % 60) + 's' : s + 's') + ' · ' + text;
+      text = figures.tool + ' running for ' + (s >= 60 ? Math.floor(s / 60) + 'm' + (s % 60) + 's' : s + 's')
+        + ' (since ' + clockOf({ ms: figures.toolSince, secs: true }) + ')' + (text ? ' · ' + text : '');
     }
     strip.textContent = text;
     strip.style.display = '';
@@ -583,8 +594,8 @@
   var INK_CLASS = 'codex-extras-user-ink', EDGE_CLASS = 'codex-extras-user-edge';
   var DEBOUNCE_MS = 200, STEP_HOLD_MS = 600;
   var RAIL_W = 26, PANEL_W = 300;
-  /* Below the figures strip's layer, so the strip is never covered by the list. */
-  var Z_PANEL = 2147482900, Z_RAIL = 2147482800;
+  /* Under Codex's overlays, as the row below the message box is (Z_BELOW_CODEX); the list one above the rail. */
+  var Z_PANEL = 26, Z_RAIL = 25;
 
   var all = function (root, sel) { try { return [].slice.call((root || document).querySelectorAll(sel)); } catch (e) { return []; } };
   var one = function (root, sel) { try { return (root || document).querySelector(sel); } catch (e) { return null; } };
@@ -909,8 +920,8 @@
         + 'padding-inline-start:8px !important;}';
     }
     if (view.lowContext !== false) {
-      css += '.' + LOW_CLASS + '{outline:2px solid var(--vscode-editorWarning-foreground,#cca700) !important;'
-        + 'outline-offset:1px;border-radius:50%;}';
+      css += '.' + LOW_CLASS + '{outline:1px solid var(--vscode-editorWarning-foreground,#cca700) !important;'
+        + 'outline-offset:1px;border-radius:4px;}';
     }
     css += NAV_CSS;
     if (!sheet || !sheet.isConnected) {
@@ -967,6 +978,10 @@
   var mirror = function () { if (chevron) chevron.textContent = panelOpen() ? OPEN : SHUT; };
   var openList = function () {
     if (!panel) return;
+    /* Kept above the message box, so a long list never covers Codex's send and stop buttons. Measured when it opens. */
+    var box = composerRoot(), top = 0;
+    try { top = box ? box.getBoundingClientRect().top : 0; } catch (e) { top = 0; }
+    panel.style.maxHeight = top > 120 ? Math.round(top - 16) + 'px' : '';
     panel.style.display = 'block';
     /* The newest message is the one most often wanted. */
     try { panel.scrollTop = panel.scrollHeight; } catch (e) { /* no box */ }

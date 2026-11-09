@@ -101,7 +101,7 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
       hiddenAgain: !(after && after.shown) };
   } });
   eq([waiting.probed.text, waiting.probed.command, /One/.test(waiting.probed.tooltip || '')],
-    ['$(bell-dot) 1 to decide', 'codexPlus.goToWaiting', true],
+    ['$(bell-dot) 1 to approve', 'codexPlus.goToWaiting', true],
     'a conversation waiting for permission puts a count in the status bar, naming it on hover and going to it when clicked');
   eq(waiting.probed.hiddenAgain, true, 'and the count goes once the request is answered, rather than sitting there at nought');
 

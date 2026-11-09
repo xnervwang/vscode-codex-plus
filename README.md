@@ -21,13 +21,13 @@
 | Tabs VS Code did not restore after a reconnect are opened again | Editor tabs | — |
 | Session information: thread ID, the process id of Codex's server for this window, folder, the conversation log Codex writes (its rollout) and its size, how much of the context window is in use, tokens the conversation used, the account | Command; the ⓘ button on the tab bar while a Codex conversation is in front; the ℹ button below the message box, where clicking a value copies it | — (the button below the message box needs the patch) |
 | Chimes on or off from the ♪ button below the message box, beside the information button; struck through while they are off | Codex conversation, the row below the message box | Patch; `codexPlus.chime` |
-| Green / red / orange dot on a Codex tab's logo while working / replied and unread / stopped for your permission | Editor tabs | Patch |
-| A conversation stopped for your permission shows as waiting in the Conversations view, counts in the status bar, and chimes | Conversations view; status bar; Codex tab | Patch; `codexPlus.waitingInStatusBar`, `codexPlus.chime` |
-| Chime when a turn finishes, the plan asks a question, the model asks you something and waits for the answer (a blocking input request), or Codex stops for your permission; a question has a sound of its own, rising, and a permission three notes | Codex tab | Patch |
-| The last turn's context share, model and effort; the tool call running now. A turn's duration is left to Codex's own "Worked for" | Codex tab, bottom right | Patch; `codexPlus.turnFigures` |
+| Green / red / blue dot on a Codex tab's logo while working / replied and unread / stopped for your permission, in Claude Code Extras' colours and size; the tab titled by its conversation, kept in step as Codex names it, including a conversation started in a tab | Editor tabs | Patch |
+| A conversation stopped for your permission shows as waiting in the Conversations view, counts in the status bar as `N to approve` (Agent Plus's own `N to decide` counts the plans' questions), and chimes | Conversations view; status bar; Codex tab | Patch; `codexPlus.waitingInStatusBar`, `codexPlus.chime` |
+| Chime when a turn finishes, the plan asks a question, the model asks you something and waits for the answer (a blocking input request), or Codex stops for your permission; the three sounds are Claude Code Extras' own: rising for a finished turn, three equal notes for a permission, falling for a question | Codex tab | Patch |
+| The tool call running now, as `exec_command running for 2m55s (since 11:11:18)`. The context, model and effort are beside each reply's time instead, and a turn's duration is Codex's own "Worked for" | Codex tab, bottom right | Patch; `codexPlus.turnFigures` |
 | Commands Codex started that are still running, such as a build or a `sleep` it left in the background: counted at the head of the bottom-right strip, and listed with their folder and start time, until Codex reports the process ended. Only this window's Codex is seen, and a window reloaded while one runs learns of it only when it ends | Codex tab, bottom right; `Show the Commands Codex Is Still Running`; `Show Status` | Patch |
 | Beside each reply's time: that turn's context share, model and effort, as `14:02:11 · ctx 33% · gpt-6.1-sol high`, matched to the reply by the turn id Codex puts on it | Codex conversation | Patch; `codexPlus.turnFigures` |
-| An outline round Codex's own context meter in the message box once 85% or more of the context window is used. Codex draws that meter only with its own setting on, which is off by default: in Codex's settings, General, Composer, **Show context window usage**; hovering it shows the tokens used and the window | Codex message box | Patch; `codexPlus.lowContextOutline` |
+| An outline round Codex's own context meter in the message box once 80% or more of the context window is used, 15 points before Codex compacts (it compacts at about 94.7% on that meter), as Claude Code Extras outlines its meter 15% before a compaction. Codex draws that meter only with its own setting on, which is off by default: in Codex's settings, General, Composer, **Show context window usage**; hovering it shows the tokens used and the window | Codex message box | Patch; `codexPlus.lowContextOutline` |
 | The time above every message and every reply block, in your own time zone | Codex conversation | Patch; `codexPlus.timestamps` |
 | Your own messages by time and opening words, and where Codex compacted the context; click to scroll, step with the arrows or `,` and `.`, filter, or jump to the top or bottom | Right edge of a Codex conversation | Patch; `codexPlus.conversationNavigation` |
 | Your own messages picked out by their text colour and a bar down their leading edge, in the theme's focus colour | Codex conversation | Patch; `codexPlus.userMessageColor`, `codexPlus.userMessageEdge` |
@@ -93,7 +93,7 @@ code --install-extension build/xnervwang.codex-plus-1.0.0.vsix
 | --- | --- |
 | This build's patch | Nothing. |
 | An older build's patch | Written over without asking, then a reload is offered. |
-| Codex's own files, never patched | Asked about once per Codex version (`codexPlus.patchCodex`). |
+| Codex's own files, never patched | Asked once (`codexPlus.patchCodex`): a yes holds for every later Codex version, a no for the version it was given for. |
 | Codex's own files, after `Remove the Patch from Codex` | Left alone. That command also sets `codexPlus.patchCodex` to `off`. |
 
 ### Turning it all off

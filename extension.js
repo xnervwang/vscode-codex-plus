@@ -168,7 +168,8 @@ async function activate(context) {
     let n = 0, threads = [];
     try { n = patching.decideCount(); threads = patching.waitingThreads(); } catch (_) { n = 0; }
     if (!n || !settings().waitingInStatusBar) { waitingItem.hide(); return; }
-    waitingItem.text = `$(bell-dot) ${n} to decide`;
+    /* Not "to decide": Agent Plus has its own "N to decide" item, which counts the plans' questions. */
+    waitingItem.text = `$(bell-dot) ${n} to approve`;
     const named = threads.filter((t) => patching.approvalsOf(t).decide)
       .map((t) => `- ${(reader.thread(t) || {}).title || t}`);
     waitingItem.tooltip = `Codex is waiting for you in:\n${named.join('\n')}`;
@@ -354,6 +355,7 @@ function registerCommands(context, { source, memory, sessionsProvider, say, link
       say('the additions were off; turned back on, since the patch is only of use to them');
     }
     await context.globalState.update(`codexPlus.patchAsked:${(vscode.extensions.getExtension('openai.chatgpt') || { packageJSON: {} }).packageJSON.version}`, 'yes');
+    await context.globalState.update(patching.PATCH_YES_KEY, true);
     await vscode.workspace.getConfiguration(CONFIG).update('patchCodex', 'on', vscode.ConfigurationTarget.Global);
     vscode.window.showInformationMessage('Codex will be patched now; reload the window when asked.');
     /* Only the patching itself: activation already wired the hooks and the listeners, and wiring them again would
