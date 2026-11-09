@@ -382,13 +382,14 @@ function findRollout(id, home) {
  * Whether any file under the folders Codex keeps rollouts in still carries this thread's id in its name: sessions/,
  * and archived_sessions/, where archiving moves one. Asked before anything of a conversation's is deleted, and so it
  * looks by name rather than at the path the state database holds, which can lag a move, and it counts every form a
- * rollout takes (plain, compressed, or paginated) as the conversation still being there.
+ * rollout takes (plain, compressed, or paginated) as the conversation still being there. A folder that is there and
+ * cannot be read counts the same way, since it may hold the rollout; only a folder that is not there holds none.
  */
 function rolloutExists(id, home = codexHome()) {
   if (!THREAD_ID.test(String(id || ''))) return false;
   const walk = (dir, depth) => {
     let entries;
-    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch (_) { return false; }
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch (e) { return !!e && e.code !== 'ENOENT' && e.code !== 'ENOTDIR'; }
     for (const e of entries) {
       if (e.name.includes(id)) return true;
       if (e.isDirectory() && depth < 5 && walk(path.join(dir, e.name), depth + 1)) return true;
