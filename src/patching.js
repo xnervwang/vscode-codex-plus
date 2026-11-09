@@ -611,24 +611,47 @@ async function refreshPanels() {
   }
 }
 
-function installHooks() {
-  /* `thread` is the one the tab's URI names, null for any other panel; `route` is the route Codex opened it on. */
-  globalThis.__codexExtrasPanel = (panel, thread, provider, route) => {
-    if (provider) state.provider = provider;
-    if (!panel || registry.has(panel)) return;
-    const id = thread ? String(thread) : '';
-    registry.set(panel, { thread: id, opened: id, route: typeof route === 'string' ? route : '', starts: new Set(), started: [] });
-    state.active = true;
-    state.reason = 'Codex handed over its panels';
-    /* A page that is gone cannot say its card went with it (leave). */
+/* `thread` is the one the tab's URI names, null for any other panel; `route` is the route Codex opened it on. */
+function adoptPanel(panel, thread, provider, route) {
+  if (provider) state.provider = provider;
+  if (!panel || registry.has(panel)) return;
+  const id = thread ? String(thread) : '';
+  registry.set(panel, { thread: id, opened: id, route: typeof route === 'string' ? route : '', starts: new Set(), started: [] });
+  state.active = true;
+  state.reason = 'Codex handed over its panels';
+  /* A page that is gone cannot say its card went with it (leave). */
+  try {
     panel.onDidDispose(() => {
       const rec = registry.get(panel);
       if (!rec) return;
       registry.delete(panel);
       leave(rec.thread);
     });
-    setTimeout(refreshPanels, 500);
-  };
+  } catch (_) { registry.delete(panel); return; }
+  setTimeout(refreshPanels, 500);
+}
+
+/*
+ * The panels Codex built before the hooks existed. A Codex tab restored at a reload activates Codex on its custom editor,
+ * ahead of this extension's start-up event, so its call into adoptPanel found nothing to call. Codex's own map holds
+ * them with the route each opened on; a conversation tab's names its conversation as its URI did, and a panel of the
+ * other kind is handed over with none, as the live hook hands it over.
+ */
+function adoptEarlierPanels(provider) {
+  let held = [];
+  try { held = provider.editorPanels instanceof Map ? [...provider.editorPanels] : []; } catch (_) { return; }
+  const plain = provider.constructor && provider.constructor.panelViewType;
+  for (const [panel, entry] of held) {
+    const route = entry && typeof entry.initialRoute === 'string' ? entry.initialRoute : '';
+    let editor = false;
+    try { editor = !!panel && (!plain || panel.viewType !== plain); } catch (_) { continue; }
+    const m = editor ? /^\/(?:local|remote)\/([^/?#]+)/.exec(route) : null;
+    adoptPanel(panel, m ? m[1] : null, provider, route);
+  }
+}
+
+function installHooks() {
+  globalThis.__codexExtrasPanel = adoptPanel;
   /*
    * A page starting a thread, and the answer that names it. Only a panel's own page is followed: the sidebar's pages
    * are not in the registry, and a page's request is tied to its answer by the request id Codex itself routes the
@@ -736,7 +759,12 @@ function installHooks() {
     const thread = String(params.conversationId || '');
     if (thread && !panelsOf(thread).length) { sidebar = thread; deps.source._focus(thread); sidebarChanged(); }
   };
-  if (globalThis.__codexExtrasProvider) { state.provider = globalThis.__codexExtrasProvider; state.active = true; state.reason = 'connected'; }
+  if (globalThis.__codexExtrasProvider) {
+    state.provider = globalThis.__codexExtrasProvider;
+    state.active = true;
+    state.reason = 'connected';
+    adoptEarlierPanels(state.provider);
+  }
 }
 
 /*
