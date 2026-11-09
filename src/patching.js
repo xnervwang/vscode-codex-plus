@@ -531,7 +531,9 @@ function activate(context, opts) {
     approvals.clear();
     onApprovals.clear();
   } });
-  setTimeout(() => ensurePatched(opts.vscode, context, opts.log, opts.settings().patchCodex).catch((e) => opts.log(`patch: ${e.message}`)), 5000);
+  /* Straight after activation rather than after a pause: Codex starts on the same event as this extension, in no set
+     order, and every moment waited is one more in which it reads the copy of its files that is about to be replaced. */
+  setImmediate(() => ensurePatched(opts.vscode, context, opts.log, opts.settings().patchCodex).catch((e) => opts.log(`patch: ${e.message}`)));
   return state;
 }
 
