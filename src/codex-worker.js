@@ -27,12 +27,13 @@ function at(h) {
   return files.codexHome();
 }
 
-/* Cheap: the state database's and its write-ahead log's sizes and times, and the size of every rollout touched in the
+/* Cheap: the state database's and its write-ahead log's sizes and times, session_index.jsonl's, which is the whole list
+   when the database cannot be read and whose threads name no rollout, and the size of every rollout touched in the
    last day. Only when that moves is the rest read again. */
 function stampOf(dir, threads) {
   const db = files.stateDbPath(dir);
   const parts = [];
-  for (const f of [db, db && db + '-wal']) {
+  for (const f of [db, db && db + '-wal', path.join(dir, 'session_index.jsonl')]) {
     try { const s = fs.statSync(f); parts.push(s.size, s.mtimeMs); } catch (_) { parts.push(0); }
   }
   try { const s = fs.statSync(install.planDir(dir)); parts.push(s.mtimeMs); } catch (_) { parts.push(0); }
