@@ -42,7 +42,7 @@
   /* This script's own version. A page runs the copy it was built with, so a page left on an older patch answers a
      self-check with an older version here, which is the one case the host cannot tell from reading its own files.
      test/parts/62-selfcheck.js holds it to package.json, since a page cannot read that file. */
-  var SCRIPT_VERSION = '1.0.0';
+  var SCRIPT_VERSION = '1.0.1';
 
   var audio = null;
   /* The three sounds of Claude Code Extras, note for note and at its volume, so someone using both hears the same thing
