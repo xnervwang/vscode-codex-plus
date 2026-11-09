@@ -9,8 +9,8 @@
  *   - The page's time zone goes to the extension host, since this is the one part that runs where the user is.
  *   - Whether an approval card is on screen goes to the host as a flag, which is how the conversation Codex's sidebar
  *     is showing is seen as waiting even though it has no tab of its own.
- *   - A chime plays when the host says a turn finished, a plan question appeared, or Codex stopped for permission, for
- *     the conversation shown here.
+ *   - A chime plays when the host says a turn finished, Codex stopped for permission, or the model asked something,
+ *     for the conversation shown here.
  *   - The strip shows the figures the host sends for this conversation: the last turn's duration, how much of the
  *     context window is in use, model and effort, and while a turn runs, the tool call in progress and for how long.
  *   - On request, a sample of the conversation layout: element structure only, with no text from it. The render check
