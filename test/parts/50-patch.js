@@ -121,28 +121,43 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
     control.state.answers = [];
 
     /*
-     * The uninstall hook puts back only the Codex beside the copy of this extension being uninstalled. Another editor on
-     * the machine has its own copy, or none, and its Codex is that copy's to patch and to put back.
+     * The uninstall hook puts back the Codex beside the copy of this extension being uninstalled, and the Codex of any
+     * other editor on the machine that holds no copy of this extension any more. An editor that still holds one leaves
+     * its Codex to that copy. The editors are laid out under a home of the test's own, which the hook is run with, so
+     * the real extensions folders of this machine are never looked at.
      */
-    const editor = (name) => {
-      const ext = tmp(name);
+    const home = tmp('uninstall-home');
+    const editor = (ext, copies = [], marked = {}) => {
       const codex = path.join(ext, 'openai.chatgpt-26.1021.22027-linux-x64');
       fs.mkdirSync(path.join(codex, 'out'), { recursive: true });
       fs.mkdirSync(path.join(codex, 'webview'), { recursive: true });
       fs.writeFileSync(host.targetFile(codex), origHost);
       fs.writeFileSync(page.targetFile(codex), origPage);
       targets.forEach((t) => t.apply(codex));
+      for (const c of copies) fs.mkdirSync(path.join(ext, c));
+      if (Object.keys(marked).length) fs.writeFileSync(path.join(ext, '.obsolete'), JSON.stringify(marked));
       return { ext, codex };
     };
-    const mine = editor('editor-uninstalling'), other = editor('editor-other');
+    const inHome = (d) => path.join(home, d, 'extensions');
+    const mine = editor(inHome('.vscode-server'));
+    const kept = editor(inHome('.vscode-server-insiders'), ['xnervwang.codex-extras-0.2.0']);
+    const none = editor(inHome('.cursor'));
+    const leaving = editor(inHome('.vscode'), ['xnervwang.codex-extras-0.1.0'], { 'xnervwang.codex-extras-0.1.0': true });
+    const lookalike = editor(inHome('.vscode-insiders'), ['xnervwang.codex-extras-plus-1.0.0']);
+    const elsewhere = editor(tmp('editor-elsewhere'));
     const self = path.join(mine.ext, 'xnervwang.codex-extras-0.1.0');
     fs.mkdirSync(self);
-    fs.copyFileSync(path.join(root, 'uninstall.js'), path.join(self, 'uninstall.js'));
+    for (const f of ['uninstall.js', 'package.json']) fs.copyFileSync(path.join(root, f), path.join(self, f));
     fs.cpSync(path.join(root, 'src'), path.join(self, 'src'), { recursive: true });
-    require('child_process').execFileSync(process.execPath, [path.join(self, 'uninstall.js')], { stdio: 'pipe' });
-    eq([targets.map((t) => t.status(mine.codex)), targets.map((t) => t.status(other.codex))],
-      [['clean', 'clean'], ['patched', 'patched']],
-      'uninstalling puts back the Codex in its own extensions folder and leaves another editor\'s alone');
+    require('child_process').execFileSync(process.execPath, [path.join(self, 'uninstall.js')],
+      { stdio: 'pipe', env: { ...process.env, HOME: home, USERPROFILE: home } });
+    const st = (e) => targets.map((t) => t.status(e.codex));
+    eq([st(mine), st(kept)], [['clean', 'clean'], ['patched', 'patched']],
+      'uninstalling puts back the Codex in its own extensions folder and leaves one whose editor still has this extension');
+    eq([st(none), st(leaving), st(lookalike)], [['clean', 'clean'], ['clean', 'clean'], ['clean', 'clean']],
+      'and puts back another editor\'s Codex when that editor has no copy of this extension left: none at all, only one '
+      + 'marked for deletion, or only an extension whose name merely starts with this one\'s');
+    eq(st(elsewhere), ['patched', 'patched'], 'a folder that is no editor\'s extensions folder is not looked in');
   }
 
   /*

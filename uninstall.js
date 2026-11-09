@@ -7,16 +7,19 @@
  * Run by VS Code once this extension has been uninstalled (the vscode:uninstall script): puts Codex's own files back in
  * the Codex installs beside it. No VS Code API is available here, so they are found by folder name.
  *
- * Only in the extensions folder this copy was installed in, which is the one it runs from. Another editor on the same
- * machine (Insiders, the desktop build, a Remote SSH server) has its own copy of this extension, or none, and its Codex
- * is that copy's to patch and to put back.
+ * In the extensions folder this copy was installed in, and in any other editor's on this machine that no longer holds a
+ * copy of this extension (src/uninstall-plan.js). Another editor that still holds one leaves its Codex to that copy.
+ * The work plan plugin and the plans are left where they are.
  */
 const fs = require('fs');
 const path = require('path');
 const targets = require('./src/adapters');
+const plan = require('./src/uninstall-plan');
 
-const roots = [path.dirname(__dirname)];
-for (const root of roots) {
+const manifest = (() => { try { return require('./package.json'); } catch (_) { return {}; } })();
+const id = manifest.publisher && manifest.name ? `${manifest.publisher}.${manifest.name}` : plan.ID;
+
+for (const root of plan.restoreDirs(path.dirname(__dirname), { id })) {
   let names = [];
   try { names = fs.readdirSync(root); } catch (_) { continue; }
   for (const name of names.filter((n) => /^openai\.chatgpt-/.test(n))) {

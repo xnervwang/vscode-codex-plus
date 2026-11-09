@@ -15,7 +15,7 @@
 - `src/appserver.js`: a short-lived `codex app-server` client.
 - `src/plugin-install.js`: installing, trusting and removing the companion plugin through app-server.
 - `codex-plugin/`: the companion Codex plugin (marketplace `codex-extras`, plugin `agent-work-plan`): hooks, skill, MCP server.
-- `src/edits.js`, `src/host.js`, `src/webview-inject.js`, `src/adapters.js`, `src/patching.js`, `uninstall.js`: the patch to Codex and its use.
+- `src/edits.js`, `src/host.js`, `src/webview-inject.js`, `src/adapters.js`, `src/patching.js`, `uninstall.js`, `src/uninstall-plan.js`: the patch to Codex and its use, and which editors' Codex an uninstall puts back.
 - `src/page/codex-extras-page.js`: the script added to Codex's page; it also takes the layout sample (the structure of the conversation's DOM, with none of its text), since the page is where Codex's run-time structure exists at all.
 - `src/dom-sample.js`: where a layout sample is written and under what name.
 - `images/codex-light.svg`, `images/codex-dark.svg`: the tab bar button, the Codex mark from `images/icon.svg`.
