@@ -117,6 +117,13 @@ function createApprovals({ now = () => Date.now() } = {}) {
       const h = hostOf(thread);
       return { decide: h.decide || (pages.has(thread) ? 1 : 0), soon: h.soon };
     },
+    /** How many of a conversation's needed answers are the model asking the user something (requestUserInput), not
+        asking leave to act. */
+    asking(thread) {
+      let n = 0;
+      for (const e of pending.values()) if (e.thread === thread && e.decides && e.method === 'item/tool/requestUserInput') n++;
+      return n;
+    },
     /** How many answers the user owes, across every conversation of this window. */
     decideCount() {
       let n = 0;

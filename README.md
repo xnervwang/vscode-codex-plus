@@ -21,7 +21,7 @@
 | Session information: thread ID, the process id of Codex's server for this window, folder, the conversation log Codex writes (its rollout) and its size, how much of the context window is in use, tokens the conversation used | Command | — |
 | Green / red / orange dot on a Codex tab's logo while working / replied and unread / stopped for your permission | Editor tabs | Patch |
 | A conversation stopped for your permission shows as waiting in the Conversations view, counts in the status bar, and chimes | Conversations view; status bar; Codex tab | Patch; `codexExtras.waitingInStatusBar`, `codexExtras.chime` |
-| Chime when a turn finishes, the plan asks a question, or Codex stops for your permission | Codex tab | Patch |
+| Chime when a turn finishes, the plan asks a question, the model asks you something and waits for the answer (a blocking input request), or Codex stops for your permission; a question has a sound of its own, rising, and a permission three notes | Codex tab | Patch |
 | Last turn's duration, context share, model and effort; the tool call running now | Codex tab, bottom right | Patch |
 | The time above every message and every reply block, in your own time zone | Codex conversation | Patch; `codexExtras.timestamps` |
 | Your own messages by time and opening words, and where Codex compacted the context; click to scroll, step with the arrows or `,` and `.`, filter, or jump to the top or bottom | Right edge of a Codex conversation | Patch; `codexExtras.conversationNavigation` |

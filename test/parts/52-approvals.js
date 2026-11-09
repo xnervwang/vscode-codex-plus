@@ -169,6 +169,30 @@ module.exports = async ({ ok, bad, note, eq, tmp }) => {
   await patching.refreshPanels();
   eq(chimes.filter((m) => m.type === 'codex-extras-chime').length, 0, 'and not again while the same request is still waiting');
 
+  /* The model asking the user something through a blocking input request rings the question chime, not the one for
+     permission; a permission arriving with it still rings the permission chime. */
+  globalThis.__codexExtrasAppServer('answer', { id: 11 });
+  await patching.refreshPanels();
+  chimes.length = 0;
+  globalThis.__codexExtrasAppServer('request', { id: 21, method: 'item/tool/requestUserInput', params: { threadId: THREAD, isBlocking: true } });
+  await patching.refreshPanels();
+  eq(chimes.filter((m) => m.type === 'codex-extras-chime').map((m) => m.kind), ['question'],
+    'a blocking input request from the model rings the question chime');
+  chimes.length = 0;
+  globalThis.__codexExtrasAppServer('request', { id: 22, method: 'item/tool/requestUserInput', params: { threadId: THREAD, isBlocking: true } });
+  globalThis.__codexExtrasAppServer('request', { id: 23, method: 'item/permissions/requestApproval', params: { threadId: THREAD } });
+  await patching.refreshPanels();
+  eq(chimes.filter((m) => m.type === 'codex-extras-chime').map((m) => m.kind), ['approval'],
+    'and a question arriving together with a request for permission rings the permission chime, once');
+  chimes.length = 0;
+  globalThis.__codexExtrasAppServer('request', { id: 24, method: 'item/tool/requestUserInput', params: { threadId: THREAD, isBlocking: false } });
+  await patching.refreshPanels();
+  eq(chimes.filter((m) => m.type === 'codex-extras-chime').length, 0,
+    'one Codex will answer by itself after its countdown rings nothing, as before');
+  for (const id of [21, 22, 23, 24]) globalThis.__codexExtrasAppServer('answer', { id });
+  globalThis.__codexExtrasAppServer('request', { id: 11, method: 'item/commandExecution/requestApproval', params: { threadId: THREAD } });
+  await patching.refreshPanels();
+
   /* A turn that stopped on an approval has not finished, so it must not ring the finished-turn chime. */
   chimes.length = 0;
   conversations = [{ sessionId: THREAD, state: 'prompt', working: true, decide: 1 }];

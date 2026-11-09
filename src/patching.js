@@ -439,11 +439,16 @@ async function refreshPanels() {
   if (deps.settings().chime) {
     for (const thread of approvals.threads()) {
       const n = approvals.of(thread).decide;
-      if (n > (owed.get(thread) || 0)) for (const panel of panels.get(thread) || []) postTo(panel, { type: 'codex-extras-chime', kind: 'approval' });
+      const was = owed.get(thread) || { decide: 0, asking: 0 };
+      if (n <= was.decide) continue;
+      /* The question chime only when every new answer owed is the model asking something; a permission among them
+         rings the permission chime. */
+      const kind = approvals.asking(thread) - was.asking >= n - was.decide ? 'question' : 'approval';
+      for (const panel of panels.get(thread) || []) postTo(panel, { type: 'codex-extras-chime', kind });
     }
   }
   owed.clear();
-  for (const thread of approvals.threads()) owed.set(thread, approvals.of(thread).decide);
+  for (const thread of approvals.threads()) owed.set(thread, { decide: approvals.of(thread).decide, asking: approvals.asking(thread) });
   if (!registry.size) return;
   const view = viewOf(deps.settings());
   /* The settings reach a page whose conversation is not known yet as well: it draws from them as soon as one starts. */
