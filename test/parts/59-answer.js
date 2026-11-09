@@ -104,6 +104,7 @@ module.exports = async ({ eq, tmp, root }) => {
       setImmediate(() => globalThis.__codexExtrasMessage(webview, { kind: 'answer', id: msg.id, outcome: says }, provider));
     },
     postMessageToSidebar: (msg) => {
+      if (msg.type !== 'codex-extras-answer') return;
       asked.push(['sidebar page', msg.text === ANSWER]);
       setImmediate(() => globalThis.__codexExtrasMessage({}, { kind: 'answer', id: msg.id, outcome: says }, provider));
     },

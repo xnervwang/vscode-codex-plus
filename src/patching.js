@@ -244,6 +244,15 @@ function postTo(panel, msg) {
     else panel.webview.postMessage(msg);
   } catch (_) { /* the panel is gone */ }
 }
+/* Codex's sidebar runs the same page script as a tab, and Codex posts to it the same way. Nothing is sent while it
+   has no view. */
+function postToSidebar(msg) {
+  const p = state.provider;
+  if (!p || typeof p.postMessageToSidebar !== 'function') return;
+  try { p.postMessageToSidebar(msg); } catch (_) { /* the view is gone */ }
+}
+/* What clears a page's figures strip. */
+const NO_FIGURES = { type: 'codex-extras-figures', text: '' };
 
 /* Put `text` into the conversation's message box as a draft. Codex's composer takes a draft from the route state it is
    navigated with, and leaves a box that already has text alone, and nothing reports back which of the two happened.
@@ -566,8 +575,13 @@ async function refreshPanels() {
   }
   owed.clear();
   for (const thread of approvals.threads()) owed.set(thread, { decide: approvals.of(thread).decide, asking: approvals.asking(thread) });
-  if (!registry.size) return;
   const view = viewOf(deps.settings());
+  const figuresOn = !!deps.settings().figures;
+  /* The sidebar's page draws from the same settings; the times and figures of its conversation are worth reading only
+     while it is showing. */
+  postToSidebar(view);
+  const side = sidebarShowing();
+  if (!registry.size && !side) return;
   /* The settings reach a page whose conversation is not known yet as well: it draws from them as soon as one starts. */
   for (const [panel, rec] of registry) if (!rec.thread && isConversationPanel(rec)) postTo(panel, view);
   /* Only while the stamps, the list or the line under each reply is on, and only for the conversations a panel here
@@ -575,7 +589,7 @@ async function refreshPanels() {
      effort and context, keyed by turn id. */
   const whens = new Map();
   if ((view.timestamps || view.navigation || view.replyFigures) && typeof deps.userTimes === 'function') {
-    for (const thread of panels.keys()) {
+    for (const thread of new Set([...panels.keys(), ...(side ? [side] : [])])) {
       try {
         const r = await deps.userTimes(thread);
         if (r) whens.set(thread, { times: Array.isArray(r.times) ? r.times : null, compactions: Array.isArray(r.compactions) ? r.compactions : [],
@@ -604,11 +618,15 @@ async function refreshPanels() {
       /* Against the rollout's own answer, not against `state`: a turn that stopped on an approval has not finished, and
          `state` reads `prompt` for it, which would otherwise ring the finished-turn chime. */
       if (deps.settings().chime && was && was.working && c && !c.working) postTo(panel, { type: 'codex-extras-chime', kind: 'done' });
-      if (deps.settings().figures) postTo(panel, figuresOf(c, runningCommands(thread).length) || { type: 'codex-extras-figures', text: '' });
+      postTo(panel, (figuresOn && figuresOf(c, runningCommands(thread).length)) || NO_FIGURES);
       postTo(panel, view);
       if (whens.has(thread)) postTo(panel, { type: 'codex-extras-user-times', ...whens.get(thread) });
     }
     if (c) last.set(thread, { state: c.state, working: !!c.working });
+  }
+  if (side) {
+    postToSidebar((figuresOn && figuresOf(now.get(side), runningCommands(side).length)) || NO_FIGURES);
+    if (whens.has(side)) postToSidebar({ type: 'codex-extras-user-times', ...whens.get(side) });
   }
 }
 
@@ -758,7 +776,12 @@ function installHooks() {
   globalThis.__codexExtrasBroadcast = (method, params) => {
     if (!deps || method !== 'thread-stream-following-changed' || !params || !params.following) return;
     const thread = String(params.conversationId || '');
-    if (thread && !panelsOf(thread).length) { sidebar = thread; deps.source._focus(thread); sidebarChanged(); }
+    if (thread && !panelsOf(thread).length) {
+      sidebar = thread;
+      deps.source._focus(thread);
+      sidebarChanged();
+      refreshPanels().catch(() => { /* the next poll draws it */ });
+    }
   };
   if (globalThis.__codexExtrasProvider) {
     state.provider = globalThis.__codexExtrasProvider;
@@ -813,8 +836,11 @@ function removePatch(vscode) {
   /* Restoring the files leaves the pages already built still running this extension's script, until the window is
      reloaded. Told that everything is off, each of them takes its own stamps, list and classes back off Codex's tree,
      so a reader who does not reload at once is not left with marks nothing maintains. */
-  const off = { type: 'codex-extras-view', timestamps: false, navigation: false, userColor: '', userEdge: false };
-  for (const panel of registry.keys()) postTo(panel, off);
+  const off = viewOf({ enabled: false, timestamps: false, conversationNavigation: false, userMessageColor: '', userMessageEdge: false,
+    lowContextOutline: false, figures: false, chime: false });
+  for (const panel of registry.keys()) { postTo(panel, off); postTo(panel, NO_FIGURES); }
+  postToSidebar(off);
+  postToSidebar(NO_FIGURES);
   return [...targets].reverse().map((t) => { try { return `${t.name}: ${t.restore(dir).message}`; } catch (e) { return `${t.name}: ${e.message}`; } });
 }
 
@@ -850,6 +876,8 @@ function activate(context, opts) {
   deps = opts;
   installHooks();
   context.subscriptions.push(opts.source.onDidChangeConversations(() => refreshPanels()));
+  /* The sidebar shown again, or hidden: what its page draws for its conversation is sent while it is showing. */
+  context.subscriptions.push(onSidebarChanged(() => { refreshPanels().catch(() => { /* the next poll draws it */ }); }));
   if (typeof opts.vscode.window.onDidChangeWindowState === 'function') {
     context.subscriptions.push(opts.vscode.window.onDidChangeWindowState((w) => {
       if (w && w.focused) offerReloadIfStale().catch((e) => opts.log(`patch: ${e.message}`));
