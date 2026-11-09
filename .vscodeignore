@@ -3,3 +3,5 @@ test/**
 CONTRIBUTING.md
 **/__pycache__/**
 *.vsix
+.github/**
+.gitignore
