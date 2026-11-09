@@ -19,8 +19,10 @@ mkdir -p "$stage/extension"
 
 cd "$root"
 # codex-plugin/ is the companion Codex plugin. It ships inside the extension so the two always match.
-cp -r package.json extension.js uninstall.js src codex-plugin README.md LICENSE "$stage/extension/"
+cp -r package.json extension.js uninstall.js src codex-plugin README.md "$stage/extension/"
 cp -r images "$stage/extension/"
+# The marketplace finds a package part by its extension, so a license file without one is not found.
+cp LICENSE "$stage/extension/LICENSE.txt"
 # Running the plugin's hooks locally seeds __pycache__ inside the tree copied above; it has no business in a package.
 find "$stage/extension" -name __pycache__ -type d -prune -exec rm -rf {} +
 node build/make-manifest.js "$stage"

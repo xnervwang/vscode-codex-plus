@@ -45,23 +45,35 @@ const vsix = `<?xml version="1.0" encoding="utf-8"?>
   <Assets>
     <Asset Type="Microsoft.VisualStudio.Code.Manifest" Path="extension/package.json" Addressable="true" />
     <Asset Type="Microsoft.VisualStudio.Services.Content.Details" Path="extension/README.md" Addressable="true" />
+    <Asset Type="Microsoft.VisualStudio.Services.Content.License" Path="extension/LICENSE.txt" Addressable="true" />
     <Asset Type="Microsoft.VisualStudio.Services.Icons.Default" Path="extension/images/icon.png" Addressable="true" />
   </Assets>
 </PackageManifest>
 `;
 
+/*
+ * A .vsix is an Open Packaging Conventions zip: a part whose extension has no Default in [Content_Types].xml is not
+ * part of the package to a reader that follows the format, and the Marketplace is one. So every extension in the staged
+ * tree is listed, and a file with no extension at all stops the build.
+ */
+const TYPES = {
+  '.css': 'text/css', '.html': 'text/html', '.js': 'application/javascript', '.json': 'application/json',
+  '.md': 'text/markdown', '.png': 'image/png', '.py': 'text/x-python', '.svg': 'image/svg+xml', '.txt': 'text/plain',
+};
+const files = [];
+const walk = (dir) => {
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (e.isDirectory()) walk(path.join(dir, e.name));
+    else files.push(path.relative(stage, path.join(dir, e.name)));
+  }
+};
+walk(path.join(stage, 'extension'));
+const bare = files.filter((f) => !path.extname(f));
+if (bare.length) { console.error(`make-manifest.js: files with no extension, which the package cannot carry: ${bare.join(', ')}`); process.exit(1); }
+const exts = [...new Set(files.map((f) => path.extname(f).toLowerCase()).concat('.vsixmanifest'))].sort();
 const types = `<?xml version="1.0" encoding="utf-8"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
-  <Default Extension=".json" ContentType="application/json" />
-  <Default Extension=".js" ContentType="application/javascript" />
-  <Default Extension=".md" ContentType="text/markdown" />
-  <Default Extension=".py" ContentType="text/x-python" />
-  <Default Extension=".html" ContentType="text/html" />
-  <Default Extension=".css" ContentType="text/css" />
-  <Default Extension=".png" ContentType="image/png" />
-  <Default Extension=".svg" ContentType="image/svg+xml" />
-  <Default Extension=".txt" ContentType="text/plain" />
-  <Default Extension=".vsixmanifest" ContentType="text/xml" />
+${exts.map((x) => `  <Default Extension="${esc(x)}" ContentType="${x === '.vsixmanifest' ? 'text/xml' : TYPES[x] || 'application/octet-stream'}" />`).join('\n')}
 </Types>
 `;
 
