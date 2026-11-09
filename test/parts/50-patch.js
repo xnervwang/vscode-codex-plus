@@ -226,11 +226,11 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
   eq(patching.canDeliver(thread), false, 'before Codex hands over a panel, nothing can be typed');
   globalThis.__codexExtrasPanel(panel, thread, provider);
   eq(patching.canDeliver(thread), true, 'once its panel is handed over, that conversation can take an answer');
-  const r = await patching.deliver(thread, 'My answer to row 1');
+  const r = await patching.deliver(thread, 'My answer to row 1', { waitMs: 50 });
   eq([r.outcome, sent[0] && sent[0].type, sent[0] && sent[0].path, sent[0] && sent[0].state.prefillPrompt,
     sent[0] && sent[0].state.prefillPromptOnlyIfEmpty],
   ['uncertain', 'navigate-to-route', `/local/${thread}`, 'My answer to row 1', true],
-  'the answer goes to its panel as a draft, only into an empty box, and is reported uncertain since nothing confirms it');
+  'the answer goes to its panel as a draft, only into an empty box, and is reported uncertain when its page does not say what it saw');
   eq((await patching.deliver('aaaaaaaa-0000-0000-0000-000000000000', 'x')).outcome, 'notReceived', 'a conversation with no panel here does not receive it');
   vscode.commands.executeCommand = async () => {};
   eq([await patching.openInSidebar(thread), navigated[0]], [true, `/local/${thread}`], 'opening in the sidebar navigates Codex\'s sidebar to it');

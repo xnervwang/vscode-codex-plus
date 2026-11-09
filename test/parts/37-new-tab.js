@@ -160,8 +160,9 @@ module.exports = async ({ eq, note, tmp }) => {
   eq([patching.panelThreads(), patching.canDeliver(NEW)], [[NEW], true],
     'once the first message is sent the thread is in Codex\'s list, and the tab is that conversation\'s');
   sent.length = 0;
-  const r = await patching.deliver(NEW, 'an answer');
-  eq([r.outcome, toPanel(one).map((m) => m.type)], ['uncertain', ['navigate-to-route']], 'so an answer for it goes into that tab');
+  const r = await patching.deliver(NEW, 'an answer', { waitMs: 50 });
+  eq([r.outcome, toPanel(one).map((m) => m.type).slice(0, 2)], ['uncertain', ['navigate-to-route', 'codex-extras-answer']],
+    'so an answer for it goes into that tab, and its page, which here never answers, leaves it uncertain');
   globalThis.__codexExtrasAppServer('request', { id: 41, method: 'item/commandExecution/requestApproval', params: { threadId: NEW } });
   say(one.webview, true);
   eq([patching.waitingThreads(), patching.decideCount(), patching.approvalsOf(SIDEBAR).decide], [[NEW], 1, 0],

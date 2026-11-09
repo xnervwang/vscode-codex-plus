@@ -449,6 +449,11 @@
           "default": true,
           "markdownDescription": "With the patch: a bar down the leading edge of **your own messages** in a Codex conversation, in the theme's focus colour. Off leaves Codex's own bubble as it is."
         },
+        "codexExtras.sendAnswers": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "With the patch: an answer from Agent Work Plan's Answer view is sent into the conversation, as pressing Enter in Codex's message box would; while a turn is running Codex queues it or steers the turn with it, as with anything you send then. Off leaves it in the message box as a draft for you to send. Either way it goes in only when the box is empty."
+        },
         "codexExtras.lowContextOutline": {
           "type": "boolean",
           "default": true,

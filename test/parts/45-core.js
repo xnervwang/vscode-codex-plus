@@ -91,7 +91,10 @@ module.exports = async ({ eq, note, tmp, root }) => {
       'an answer goes into the shared folder; without the patch no window can type it, so it waits to be taken');
     /* With the patch handing over the Codex panel of that conversation, this window can type the answer into it. */
     const posted = [];
-    const provider = { sendMessageToPanel: (panel, msg) => posted.push(msg), postMessageToWebview() {} };
+    /* The page script answers what it saw; this stand-in says the box let go of the text, as it does once sent. */
+    const provider = { sendMessageToPanel: (panel, msg) => posted.push(msg), postMessageToWebview: (webview, msg) => {
+      if (msg && msg.type === 'codex-extras-answer') setImmediate(() => globalThis.__codexExtrasMessage(webview, { kind: 'answer', id: msg.id, outcome: 'submitted' }, provider));
+    } };
     const panel = { webview: {}, reveal() {}, onDidDispose() {}, iconPath: null };
     globalThis.__codexExtrasPanel(panel, asking.id, provider);
     const view2 = control.state.webviews['agentWorkPlan.answer'];
@@ -102,8 +105,8 @@ module.exports = async ({ eq, note, tmp, root }) => {
     await wait(400);
     const typed = posted.filter((m) => m.type === 'navigate-to-route');
     eq([typed.map((m) => m.path), typed.map((m) => m.state.prefillPrompt.split('\n').pop()), view2.states.get(view2.current.key).kind],
-      [[`/local/${asking.id}`, `/local/${asking.id}`], ['Yes.', 'Yes, now.'], 'uncertain'],
-      'once the patch hands over the panel, the answer still waiting is taken too; each is drafted there, and nothing confirms it, so it is uncertain');
+      [[`/local/${asking.id}`, `/local/${asking.id}`], ['Yes.', 'Yes, now.'], 'submitted'],
+      'once the patch hands over the panel, the answer still waiting is taken too; each is drafted there and sent by its page, which says so');
     eq(other.id.length, 36, 'the other thread exists');
   } finally {
     for (const c of [selfContext, coreContext]) for (const d of c.subscriptions.splice(0)) { try { d.dispose(); } catch (_) { /* gone */ } }

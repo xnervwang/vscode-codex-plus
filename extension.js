@@ -74,6 +74,7 @@ function settings() {
     userMessageEdge: on && c.get('userMessageEdge', true),
     lowContextOutline: on && c.get('lowContextOutline', true),
     waitingInStatusBar: on && c.get('waitingInStatusBar', true),
+    sendAnswers: c.get('sendAnswers', true),
   };
 }
 const trusted = () => vscode.workspace.isTrusted !== false;

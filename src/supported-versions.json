@@ -47,6 +47,8 @@
         "data-assistant-message-sent-time",
         "data-codex-approval-surface",
         "data-codex-composer",
+        "data-codex-composer-root",
+        "data-composer-input",
         "data-content-search-turn-key",
         "data-conversation-role",
         "data-local-conversation-final-assistant",

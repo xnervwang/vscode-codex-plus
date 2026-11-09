@@ -201,6 +201,13 @@ class El {
   scrollTo(opts) { this.scrolledTo.push(opts); this.scrollTop = (opts && opts.top) || 0; }
 
   addEventListener(type, fn) { (this.listeners[type] = this.listeners[type] || []).push(fn); }
+  /* An event the page script dispatched itself, handed to this element's listeners and to the document's. */
+  dispatchEvent(event) {
+    (this.dispatched = this.dispatched || []).push(event);
+    for (const fn of (this.listeners[event.type] || []).slice()) fn(Object.assign(event, { target: this }));
+    return true;
+  }
+  focus() { this.focused = true; }
   removeEventListener(type, fn) { this.listeners[type] = (this.listeners[type] || []).filter((x) => x !== fn); }
   dispatch(type, event) { for (const fn of (this.listeners[type] || []).slice()) fn(Object.assign({ target: this }, event)); }
 }
@@ -262,6 +269,7 @@ function createDom() {
     parseInt,
     isFinite,
     isNaN,
+    KeyboardEvent: class KeyboardEvent { constructor(type, init = {}) { Object.assign(this, init, { type }); } },
     setTimeout: (fn, ms) => { timers.push({ fn, ms, id: timers.length + 1 }); return timers.length; },
     clearTimeout: (id) => { const t = timers.find((x) => x.id === id); if (t) t.dead = true; },
     setInterval: () => 1,

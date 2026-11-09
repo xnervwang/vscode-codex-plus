@@ -16,7 +16,7 @@
  *   the provider          open a conversation in Codex's sidebar (navigateToRoute), and post to a panel
  *   each panel + thread   a dot on that tab's logo: green while a turn runs, red when one finished and is not read;
  *                         an answer from the Conversations tab put into that conversation's message box as a draft
- *                         (route state prefillPrompt, only if the box is empty), which the user sends with Enter;
+ *                         (route state prefillPrompt, only if the box is empty), which its page then sends (deliver);
  *                         a chime when a turn there finishes or its plan asks a question; a strip with the last turn's
  *                         figures and the tool call running now; and the settings the page draws its time stamps, its
  *                         list of the user's own messages and their colouring from, with the times its rollout gives
@@ -166,7 +166,7 @@ function byThread() {
   }
   return out;
 }
-function canDeliver(thread) { return canType() && panelsOf(thread).length > 0; }
+function canDeliver(thread) { return canType() && (panelsOf(thread).length > 0 || (!!thread && sidebarShowing() === thread)); }
 
 /*
  * The threads shown by Codex's own panels in this window. For a tab Codex opened with its New button this is the only
@@ -230,15 +230,44 @@ function postTo(panel, msg) {
 /* Put `text` into the conversation's message box as a draft. Codex's composer takes a draft from the route state it is
    navigated with, and leaves a box that already has text alone, and nothing reports back which of the two happened.
    So the outcome is uncertain (the protocol's word for it): the sender keeps the answer and tells the user to look. */
-async function deliver(thread, text) {
+/*
+ * An answer into a conversation shown here, in a tab or in the sidebar: Codex's own route state puts it in the message
+ * box as a draft (into an empty box only), and the page script then sends it unless codexExtras.sendAnswers is off and
+ * reports what it saw (src/page/codex-extras-page.js takeAnswer). A page with no such script, or one that does not
+ * answer in time, leaves the outcome uncertain: the draft may still be there.
+ */
+const ANSWER_WAIT_MS = 6000;
+const answering = new Map();
+const ANSWER_OUTCOMES = {
+  submitted: { outcome: 'submitted' },
+  drafted: { outcome: 'drafted' },
+  occupied: { outcome: 'notReceived', reason: 'the message box already holds a draft of yours, which Codex does not overwrite' },
+};
+async function deliver(thread, text, { waitMs = ANSWER_WAIT_MS } = {}) {
   const panel = panelsOf(thread)[0];
-  if (!canType() || !panel) return { outcome: 'notReceived', reason: 'no Codex tab in this window shows the conversation' };
+  const inSidebar = !panel && !!thread && sidebarShowing() === thread;
+  if (!canType() || (!panel && !inSidebar)) {
+    return { outcome: 'notReceived', reason: 'neither a Codex tab nor Codex\'s sidebar in this window shows the conversation' };
+  }
+  const path = `/local/${thread}`, route = { prefillPrompt: text, prefillPromptOnlyIfEmpty: true };
   try {
-    state.provider.sendMessageToPanel(panel, { type: 'navigate-to-route', path: `/local/${thread}`,
-      state: { prefillPrompt: text, prefillPromptOnlyIfEmpty: true } });
+    if (panel) state.provider.sendMessageToPanel(panel, { type: 'navigate-to-route', path, state: route });
+    else state.provider.navigateToRoute(path, route);
   } catch (e) { return { outcome: 'notReceived', reason: String((e && e.message) || e).slice(0, 200) }; }
-  try { panel.reveal(undefined, false); } catch (_) { /* typed, just not brought forward */ }
-  return { outcome: 'uncertain' };
+  if (panel) { try { panel.reveal(undefined, false); } catch (_) { /* typed, just not brought forward */ } }
+  if (pagePatchState() && pagePatchState() !== 'patched') return { outcome: 'uncertain' };
+  const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const submit = !deps || deps.settings().sendAnswers !== false;
+  const seen = await new Promise((resolve) => {
+    const timer = setTimeout(() => { answering.delete(id); resolve(''); }, waitMs);
+    answering.set(id, (word) => { clearTimeout(timer); answering.delete(id); resolve(word); });
+    const msg = { type: 'codex-extras-answer', id, text, submit };
+    try {
+      if (panel) postTo(panel, msg);
+      else state.provider.postMessageToSidebar(msg);
+    } catch (_) { /* the timer answers */ }
+  });
+  return ANSWER_OUTCOMES[seen] || { outcome: 'uncertain' };
 }
 
 async function openInSidebar(thread) {
@@ -591,6 +620,8 @@ function installHooks() {
         + `${msg.first === 'digit' || msg.first === 'letter' ? msg.first : 'character that is neither'}`
         + `, ${msg.digits ? 'all digits' : 'not all digits'}. No time is shown on replies.`);
     }
+    /* What a page saw of an answer it was asked to send: one word of its own vocabulary. */
+    if (msg && msg.kind === 'answer' && answering.has(msg.id)) answering.get(msg.id)(String(msg.outcome || ''));
     /* A page that has turns and recognised none of the messages in them. Only numbers and flags come with it. */
     if (msg && msg.kind === 'anchorsMissing') {
       const turns = Math.max(0, Math.floor(+msg.turns || 0));

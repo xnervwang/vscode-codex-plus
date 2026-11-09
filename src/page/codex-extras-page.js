@@ -105,7 +105,7 @@
    * class goes on Codex's element.
    */
   var LOW_CLASS = 'codex-extras-ctx-low', LOW_AT = 85;
-  var COMPOSER_SEL = '[data-codex-composer]', METER_SEL = 'span[role="img"][aria-label]';
+  var COMPOSER_SEL = '[data-codex-composer-root],[data-codex-composer]', METER_SEL = 'span[role="img"][aria-label]';
   var meter = { found: false, percent: null, low: false };
   function markLowContext() {
     var found = null, pct = null, boxes = all(document, COMPOSER_SEL);
@@ -146,6 +146,54 @@
     }
     watchApproval();
     tellApproval();
+  }
+
+  /*
+   * An answer from the host for the conversation this page shows. The host has already put it in the message box as a
+   * draft through Codex's own route state (prefillPrompt, into an empty box only). This waits for it to appear there and
+   * then sends it as the user would: Enter, and if the box still holds it, the modified Enter Codex's own setting may ask
+   * for instead (Cmd on a Mac, Ctrl elsewhere). While a turn runs Codex queues it or steers with it, as it does with
+   * anything sent then. What goes back is a word for what was seen, and no text.
+   */
+  var ANSWER_TRIES = 30, ANSWER_STEP_MS = 100, SENT_CHECK_MS = 800;
+  var squash = function (s) { return String(s || '').replace(/\s+/g, ''); };
+  function composerEditor() {
+    var boxes = all(document, COMPOSER_SEL);
+    for (var i = 0; i < boxes.length; i++) {
+      var el = one(boxes[i], '[data-composer-input] [contenteditable="true"]') || one(boxes[i], '[contenteditable="true"]');
+      if (el) return el;
+    }
+    return null;
+  }
+  function pressEnter(el, modified) {
+    if (!el) return;
+    var init = { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true, composed: true };
+    if (modified) {
+      if (/Mac|iPhone|iPad/.test(String((globalThis.navigator || {}).platform || ''))) init.metaKey = true; else init.ctrlKey = true;
+    }
+    try { if (typeof el.focus === 'function') el.focus(); } catch (e) { /* not focusable */ }
+    try { el.dispatchEvent(new KeyboardEvent('keydown', init)); } catch (e) { /* no keyboard events here */ }
+  }
+  function takeAnswer(m) {
+    var want = squash(m.text), tries = 0;
+    var reply = function (outcome) { post({ kind: 'answer', id: m.id, outcome: outcome }); };
+    var holds = function () { var el = composerEditor(); return !!el && squash(el.textContent) === want; };
+    var look = function () {
+      var el = composerEditor(), have = el ? squash(el.textContent) : '';
+      if (el && want && have === want) {
+        if (!m.submit) { reply('drafted'); return; }
+        pressEnter(el, false);
+        setTimeout(function () {
+          if (!holds()) { reply('submitted'); return; }
+          pressEnter(composerEditor(), true);
+          setTimeout(function () { reply(holds() ? 'drafted' : 'submitted'); }, SENT_CHECK_MS);
+        }, SENT_CHECK_MS);
+        return;
+      }
+      if (++tries >= ANSWER_TRIES) { reply(!el ? 'noComposer' : have ? 'occupied' : 'noDraft'); return; }
+      setTimeout(look, ANSWER_STEP_MS);
+    };
+    look();
   }
 
   var strip = null, figures = null, timer = null;
@@ -1225,6 +1273,7 @@
     var m = e && e.data;
     if (!m || typeof m.type !== 'string' || m.type.indexOf('codex-extras-') !== 0) return;
     if (m.type === 'codex-extras-chime') chime(m.kind);
+    else if (m.type === 'codex-extras-answer' && typeof m.text === 'string' && m.id) takeAnswer(m);
     else if (m.type === 'codex-extras-sample') {
       var reply = { kind: 'sample', id: m.id };
       try {
