@@ -90,21 +90,54 @@ module.exports = async ({ ok, bad, eq, tmp }) => {
     /* ── the source ── */
     const { createCodexSource, conversationOf, PROTOCOL, EXTENSION_ID } = require('../../src/codex-source');
     const typed = [];
+    let sidebarOn = '';
     const patching = { canDeliver: (id) => id === idle.id, deliver: async (id, text) => { typed.push(text); return { outcome: 'uncertain' }; },
-      sidebarThread: () => unread.id };
+      sidebarThread: () => sidebarOn };
     let trusted = true;
-    const source = createCodexSource(vscode, { reader: inWorker, patching, trusted: () => trusted });
+    /* A record of what was looked at that starts before every turn in the stand-in home, so that each of those turns
+       counts as a reply nobody has seen until its conversation comes to the front. */
+    const { createSeen, SINCE_KEY } = require('../../src/seen');
+    const seenState = fake.memento();
+    await seenState.update(SINCE_KEY, 1);
+    const source = createCodexSource(vscode, { reader: inWorker, patching, trusted: () => trusted, seen: createSeen(seenState) });
     try {
       eq([source.protocol, source.id, source.label, source.extensionId, PROTOCOL, EXTENSION_ID], [1, 'codex', 'Codex', 'xnervwang.codex-extras', 1, 'xnervwang.codex-extras'],
         'the source speaks protocol 1 and names its extension');
       eq(source.planPath(idle.id), path.join(home, 'plugins', 'data', 'agent-work-plan-codex-extras', `${idle.id}.json`), 'its plans are in the plugin\'s data directory');
       eq([source.planPath('../x'), source.sessionForTab(control.codexTab(unread.id)), source.sessionForTab(newTab), source.sessionForTab(control.fileTab('/x'))],
         [null, unread.id, '', null], 'sessionForTab: a thread, \'\' for a new Codex tab, null for a file');
+      control.setTabs([control.codexTab(idle.id)], 0);
+      source._tabsChanged();
       const list = await source.listConversations();
       eq(list.map((c) => c.title).sort(), ['Archived', 'Idle here', 'Old', 'Unread elsewhere', 'Working here'], 'lists only conversations a person started');
       const by = new Map(list.map((c) => [c.title, c]));
       eq([by.get('Working here').state, by.get('Unread elsewhere').state, by.get('Idle here').state, by.get('Old').state], ['working', 'unread', 'idle', 'idle'],
-        'working, unread and idle come from the reader\'s snapshot');
+        'working from the rollout; unread for a turn that ended after the user last had it in front; idle for the one in front');
+
+      /* Bringing it to the front is what reads it, and the views are told at once rather than at the next poll. */
+      let told = 0;
+      const hear = source.onDidChangeConversations(() => { told++; });
+      control.setTabs([control.codexTab(unread.id)], 0);
+      source._tabsChanged();
+      const afterLooking = new Map((await source.listConversations()).map((c) => [c.title, c.state]));
+      eq([afterLooking.get('Unread elsewhere'), afterLooking.get('Idle here'), told > 0], ['idle', 'idle', true],
+        'a conversation brought to the front stops being unread, the one left keeps having been read, and the views hear of it');
+      eq(files.unreadThreads().has(unread.id), true,
+        'while Codex\'s own read receipt for it still says unread, which is how every receipt stays inside VS Code');
+      hear.dispose();
+
+      /* A window that is not focused is not being looked at, even with the tab in front. */
+      const archived = made[3];
+      vscode.window.state = { focused: false };
+      control.setTabs([control.codexTab(archived.id)], 0);
+      source._tabsChanged();
+      const unfocused = new Map((await source.listConversations()).map((c) => [c.title, c.state]));
+      vscode.window.state = { focused: true };
+      const focusedAgain = new Map((await source.listConversations()).map((c) => [c.title, c.state]));
+      delete vscode.window.state;
+      eq([unfocused.get('Archived'), focusedAgain.get('Archived')], ['unread', 'idle'],
+        'a reply in the front tab of a window that is not focused stays unread until the window is');
+      sidebarOn = unread.id;
       const stale = conversationOf({ id: 'x', title: 't', cwd: '/', updatedMs: Date.now() - 5 * 3600e3 },
         { unread: new Map(), openHere: new Set(), state: { working: true, lastActivityMs: Date.now() - 5 * 3600e3 } });
       eq(stale.state, 'idle', 'a turn silent for hours is no longer counted as working');

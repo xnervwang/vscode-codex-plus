@@ -30,6 +30,7 @@
 
 - Codex's own button on the tab bar can be hidden: right-click it and choose Hide.
 - In Restricted Mode nothing is installed into Codex, Codex is not patched, and no file is written.
+- **Replied and unread** means a turn ended after you last had that conversation in front of you in a focused window, in its tab or in Codex's sidebar. Bringing it to the front clears it in every window. Codex's own unread marks are not used: inside VS Code nothing ever marks them read.
 
 ## Waiting for your permission
 

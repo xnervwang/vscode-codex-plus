@@ -15,9 +15,10 @@
  *   reveal                         bring one to the front: only a tab already in this window
  *   canDeliver, deliverAnswer      typing an answer into one, through the patch to Codex (src/patching.js)
  *
- * Three of the states come from files: `working` while its rollout has a task_started with no task_complete after it,
- * `unread` while Codex's read receipts say so, `idle` otherwise. `prompt` does not, because Codex writes an approval
- * request to a file at all, so it comes from the patch instead (src/approvals.js), and only for the conversations of this
+ * `working` comes from files: its rollout has a task_started with no task_complete after it. `unread` is a turn that
+ * ended after the user last had the conversation in front of them in a focused window (src/seen.js; Codex's own read
+ * receipts stay unread for good inside VS Code). `idle` is the rest. `prompt` comes from the patch instead
+ * (src/approvals.js), because Codex writes no approval request to a file, and only for the conversations of this
  * window. One running in another window, or started by `codex exec`, never reports it.
  *
  * This module opens none of Codex's files; src/codex-reader.js has the snapshot its worker thread made.
@@ -26,6 +27,7 @@ const path = require('path');
 const files = require('./codex-files');
 const tabs = require('./codex-tabs');
 const install = require('./plugin-install');
+const { createSeen } = require('./seen');
 
 /* A turn whose rollout has been silent this long is no longer running, whatever its last line says: the process that
    was writing it is gone (a closed window, a crash). Long tool calls write nothing while they run, so this is generous. */
@@ -113,9 +115,10 @@ function unnamedTabThread(vscode, patching) {
 
 /*
  * `deps`: reader (src/codex-reader.js), patching (src/patching.js), enabled() (codexExtras.workPlan), trusted()
- * (not in Restricted Mode) and log.
+ * (not in Restricted Mode), seen (src/seen.js) and log.
  */
-function createCodexSource(vscode, { log = () => {}, reader, patching = null, enabled = () => true, trusted = () => true } = {}) {
+function createCodexSource(vscode, { log = () => {}, reader, patching = null, enabled = () => true, trusted = () => true,
+  seen = createSeen() } = {}) {
   const changed = new vscode.EventEmitter();
   const focused = new vscode.EventEmitter();
   let timer = null;
@@ -142,12 +145,43 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
     if (tab === frontTab) return;
     frontTab = tab;
     if (tab && !tabs.isCodexTab(vscode, tab)) leftSidebar = true;
+    if (markFront()) changed.fire();
   };
   {
     const groups = vscode.window.tabGroups;
     for (const name of ['onDidChangeTabs', 'onDidChangeTabGroups']) {
       if (groups && typeof groups[name] === 'function') { try { subs.push(groups[name](tabsChanged)); } catch (_) { /* no tab events here */ } }
     }
+    if (typeof vscode.window.onDidChangeWindowState === 'function') {
+      try { subs.push(vscode.window.onDidChangeWindowState((s) => { if (s && s.focused && markFront()) changed.fire(); })); } catch (_) { /* none */ }
+    }
+  }
+
+  /* The conversations in front of the user: the active tab's, and Codex's sidebar's while isFocused() still counts it.
+     None while the window itself is not focused, since a reply that arrives then has not been looked at. */
+  function frontThreads() {
+    if (vscode.window.state && vscode.window.state.focused === false) return [];
+    const out = [];
+    const tab = activeTab();
+    if (tab) {
+      const id = tabs.threadOfTab(vscode, tab) || (tabs.isCodexTab(vscode, tab) ? unnamedTabThread(vscode, patching) : '');
+      if (id) out.push(id);
+    }
+    if (!leftSidebar && patching && typeof patching.sidebarThread === 'function') {
+      const id = patching.sidebarThread();
+      if (id && !out.includes(id)) out.push(id);
+    }
+    return out;
+  }
+  const endedOf = (id) => { const st = reader.state(id); return st && !st.working ? st.endedMs : 0; };
+  /* Marks what is in front as seen now; true when that took away an unread state, so the views redraw at once. */
+  function markFront() {
+    let cleared = false;
+    for (const id of frontThreads()) {
+      if (seen.unread(id, endedOf(id))) cleared = true;
+      seen.mark(id);
+    }
+    return cleared;
   }
 
   /*
@@ -187,7 +221,7 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
       // An answered request is dropped: the reader keeps that state, so asking again would read the rollout afresh
       // every pass for a row that has not changed.
       for (const id of [...wanted]) if (reader.state(id)) wanted.delete(id);
-      if (moved) changed.fire();
+      if (markFront() || moved) changed.fire();
     }).catch((e) => log(`codex source: ${(e && e.message) || e}`));
   }
   /*
@@ -239,7 +273,8 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
     async listConversations() {
       const snap = await reader.ready(files.codexHome());
       const threads = ((snap && snap.threads) || []).filter((t) => t.kind === 'user');
-      const unread = reader.unread();
+      markFront();
+      const unread = new Set(threads.filter((t) => seen.unread(t.id, endedOf(t.id))).map((t) => t.id));
       const openHere = new Set(openThreads());
       const out = threads.map((t) => conversationOf(t, { unread, openHere, state: reader.state(t.id),
         hasPlan: enabled() && reader.hasPlan(t.id), waiting: waitingOn(t.id) }));
@@ -295,6 +330,7 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
       leftSidebar = false;
       frontTab = activeTab();
       focused.fire({ sessionId });
+      if (markFront()) changed.fire();
     },
     _poll: poll,
     wantState,
@@ -303,6 +339,7 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
     _wanted: wanted,
     dispose() {
       if (timer) clearInterval(timer);
+      seen.flush();
       for (const d of subs.splice(0)) { try { d.dispose(); } catch (_) { /* already disposed */ } }
       changed.dispose();
       focused.dispose();

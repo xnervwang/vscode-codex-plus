@@ -21,6 +21,7 @@ const tabs = require('./src/codex-tabs');
 const install = require('./src/plugin-install');
 const { codexBinary } = require('./src/appserver');
 const { createCodexSource } = require('./src/codex-source');
+const { createSeen } = require('./src/seen');
 const { CodexReader } = require('./src/codex-reader');
 const hostLink = require('./src/host-link');
 const { readPlan, planQuestions } = require('./src/workplan');
@@ -118,7 +119,8 @@ async function activate(context) {
 
   reader = new CodexReader({ log: say });
   context.subscriptions.push(reader);
-  const source = createCodexSource(vscode, { log: say, reader, patching, trusted, enabled: () => cfg().get('workPlan', true) });
+  const source = createCodexSource(vscode, { log: say, reader, patching, trusted, enabled: () => cfg().get('workPlan', true),
+    seen: createSeen(context.globalState) });
   context.subscriptions.push(source);
   /* The user's time zone, as Codex's page reported it through the patch. */
   source.timeZone = () => context.globalState.get('codexExtras.clientTimeZone') || '';
