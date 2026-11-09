@@ -637,7 +637,11 @@
     return null;
   }
 
-  /* Codex's own sent time for a reply: the attribute's value, or else what it has already rendered in that element. */
+  /*
+   * Codex's own sent time for a reply. The attribute marks the element that shows it and carries no time: Codex 26.1021
+   * sets it to true (its value reads "true"), so the time is read from the element's text, the clock Codex rendered.
+   * A value that does parse as a time is still taken first, for a build that puts one there.
+   */
   function assistantWhen(block, dayMs) {
     var el = one(block, SEL.sent);
     if (!el) return null;
