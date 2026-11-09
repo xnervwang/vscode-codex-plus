@@ -703,6 +703,9 @@
   var EPOCH_LO = Date.UTC(2001, 0, 1), EPOCH_HI = Date.UTC(2100, 0, 1);
   /* A clock Codex has already rendered: 24-hour, or 12-hour with am or pm, with seconds optional in both. */
   var CLOCK = /^(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(?:([AaPp])\.?[Mm]\.?)?$/;
+  /* The same clock after a few words naming its day, as Codex writes the time of a message from an earlier day
+     ("Sunday 9:02 AM"). */
+  var DAY_AND_CLOCK = /^(\S.{0,23}?)[\s,]+(\d{1,2}:\d{2}(?::\d{2})?\s*(?:[AaPp]\.?[Mm]\.?)?)$/;
 
   /* The local midnight of a day the page states, from a date-only value or from a full instant. */
   function dayMsOf(value) {
@@ -714,10 +717,20 @@
     return isFinite(t) ? t : null;
   }
 
-  /* A clock with no date needs one; `dayMs` is the day the page put the message under, or today when it said none. */
+  /*
+   * A clock with no date needs one; `dayMs` is the day the page put the message under, or today when it said none. A
+   * clock after the words for its day is read only with a day from the page: those words are not read as a date, and
+   * taken as today they would put the message on the wrong day.
+   */
   function parseClock(value, dayMs) {
-    var m = CLOCK.exec(String(value == null ? '' : value).trim());
-    if (!m) return null;
+    var s = String(value == null ? '' : value).trim();
+    var m = CLOCK.exec(s);
+    if (!m) {
+      var dated = DAY_AND_CLOCK.exec(s);
+      if (!dated || !(typeof dayMs === 'number' && isFinite(dayMs))) return null;
+      m = CLOCK.exec(dated[2]);
+      if (!m) return null;
+    }
     var h = +m[1], mi = +m[2], se = m[3] === undefined ? 0 : +m[3], half = m[4];
     if (mi > 59 || se > 59) return null;
     if (half) {
@@ -819,7 +832,7 @@
         if (n.nodeType === 1) { stack.push(n); continue; }
         if (n.nodeType !== 3) continue;
         var t = String(n.nodeValue || '').trim();
-        if (!t || t.length > 12) continue;
+        if (!t || t.length > 36) continue;
         var when = parseClock(t, dayMs);
         if (!when) continue;
         if (found) return null;

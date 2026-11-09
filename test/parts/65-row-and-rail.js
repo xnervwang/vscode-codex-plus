@@ -13,6 +13,7 @@
  *   one time per reply              Codex's own sent time hidden under a reply this script stamped
  *   the tool call running           left to Codex while its own row for that call is in view
  *   a message without an anchor     one steered into a running turn, taken as the user's
+ *   a time after its day's name     "Sunday 9:02 AM", as Codex writes an earlier day's, read with the page's own day
  *
  * Each is checked in a stand-in page (test/fake-dom.js); how they look in the real one is the render check's.
  */
@@ -126,6 +127,31 @@ module.exports = async ({ eq, root }) => {
     const steered = dom.document.root.querySelectorAll('[data-content-search-unit-key="t:9"]')[0];
     const bubble = steered.querySelectorAll('[data-user-message-bubble]')[0];
     eq(bubble.classList.contains('codex-extras-user-edge'), true, 'and its bubble gets the bar down its edge like the others');
+  }
+
+  /* ── a time written after its day's name, as Codex writes one from an earlier day ── */
+  for (const withDay of [true, false]) {
+    const dom = createDom();
+    const { el } = dom;
+    const head = withDay ? [el('div', { kids: [el('time', { attrs: { datetime: '2026-11-08T17:02:11.000Z' }, texts: ['Yesterday 9:02 AM'] })] })] : [];
+    const user = el('div', { attrs: { 'data-local-conversation-user-anchor': 'true', 'data-content-search-unit-key': 't:1' },
+      kids: [el('div', { attrs: { 'data-user-message-bubble': 'true' }, kids: [el('p', { texts: ['Look at the cache key'] })] }),
+        el('div', { kids: [el('span', { kids: [el('span', { texts: ['Sunday 9:02 AM'] })] })] })] });
+    const reply = el('div', { attrs: { 'data-response-annotation-target': 'item-2' },
+      kids: [el('h4', { attrs: { 'data-conversation-role': 'assistant' }, texts: ['Codex said'] }), el('p', { texts: ['It is read once.'] }),
+        el('div', { kids: [el('span', { attrs: { 'data-assistant-message-sent-time': 'true' }, kids: [el('span', { texts: ['Sunday 9:04 AM'] })] })] })] });
+    const turn = el('div', { attrs: { 'data-turn-key': 'k1' }, kids: [...head, el('div', { attrs: { 'data-content-search-turn-key': 'turn-1' },
+      kids: [user, el('div', { attrs: { 'data-local-conversation-final-assistant': '' }, kids: [reply] })] })] });
+    dom.setBody(el('body', { kids: [el('div', { attrs: { 'data-app-action-timeline-scroll': '' }, rect: { top: 0, height: 600 }, kids: [turn] })] }));
+    const p = pageUnder(root, dom);
+    p.view();
+    const stamp = (host) => { const s = host.children.find((k) => k.getAttribute('data-codex-extras') === 'stamp'); return s ? s.textContent : null; };
+    if (withDay) {
+      eq([stamp(user), stamp(reply)], ['09:02', '09:04'],
+        'under a day the page states, a time written after its day\'s name is read as that day\'s clock, on both sides');
+    } else {
+      eq([stamp(user), stamp(reply)], [null, null], 'with no day on the page the same time is left off rather than put on today');
+    }
   }
 
   /* ── the tool call running, left to Codex while its row is in view ── */
