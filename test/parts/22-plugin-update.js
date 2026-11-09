@@ -60,10 +60,10 @@ module.exports = async ({ note, eq, tmp, root }) => {
   const stage = tmp('stage');
   install.stageMarketplace(stage, install.SOURCE, install.SHIPPED_PYTHON);
   const staged = path.join(stage, install.PLUGIN, install.DIGEST_FILE);
-  eq(fs.readFileSync(staged, 'utf8').trim(), install.sourceDigest(), 'the staged plugin carries the digest of the plugin\'s files');
+  eq(fs.readFileSync(staged, 'utf8').split('\n')[0], install.sourceDigest(), 'the staged plugin carries the digest of the plugin\'s files');
   const fitted = tmp('stage-fitted');
   install.stageMarketplace(fitted, install.SOURCE, { launcher: ['python'], executable: '/usr/bin/python', version: '3.12' });
-  eq(fs.readFileSync(path.join(fitted, install.PLUGIN, install.DIGEST_FILE), 'utf8').trim(), install.sourceDigest(),
+  eq(fs.readFileSync(path.join(fitted, install.PLUGIN, install.DIGEST_FILE), 'utf8').split('\n')[0], install.sourceDigest(),
     'and the same one when it was fitted to another Python, since that is this machine and not a change of the plugin');
 
   const home = tmp('codex-home');

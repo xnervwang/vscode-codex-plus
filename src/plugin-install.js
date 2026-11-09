@@ -19,8 +19,8 @@
  *
  * Whether Codex holds the plugin as this extension carries it is a matter of its files, not of its version: the version
  * goes up only when the plugin is released, and the hooks, skill and MCP server change between releases. The staged
- * copy carries a digest of the plugin's files, Codex copies it into its cache with the rest, and installState() compares
- * that with the digest of the files here.
+ * copy carries a digest of the plugin's files and the Python it was fitted to, Codex copies it into its cache with the
+ * rest, and installState() compares that with the digest of the files here and the Python found now.
  */
 const crypto = require('crypto');
 const fs = require('fs');
@@ -69,17 +69,33 @@ function sourceDigest(source = SOURCE) {
   return hash.digest('hex');
 }
 
-/** The digest Codex's cached copy of `version` carries, or '' for a copy without one (staged by an older build). */
-function installedDigest(home, version) {
-  try { return fs.readFileSync(path.join(cacheDir(home), version, DIGEST_FILE), 'utf8').trim(); } catch (_) { return ''; }
+/*
+ * What a staged copy was fitted to, written under the digest of the plugin's files in DIGEST_FILE. A copy fitted to no
+ * Python has no hooks, MCP server or skill, and one fitted to a Python started by another name names that Python's
+ * path, so the copy in Codex's cache is current only for the Python found now as well as for the plugin's files. The
+ * shipped `python3` is written by name alone, as fitHooks leaves those files untouched.
+ */
+function fitOf(python) {
+  if (!python) return 'no python';
+  if (python.launcher.length === 1 && python.launcher[0] === SHIPPED) return SHIPPED;
+  return `${python.launcher.join(' ')} -> ${python.executable}`;
 }
+
+function digestLines(home, version) {
+  try { return fs.readFileSync(path.join(cacheDir(home), version, DIGEST_FILE), 'utf8').trim().split(/\r?\n/); } catch (_) { return []; }
+}
+/** The digest Codex's cached copy of `version` carries, or '' for a copy without one (staged by an older build). */
+function installedDigest(home, version) { return digestLines(home, version)[0] || ''; }
+/** What that copy was fitted to (fitOf), or '' for a copy staged by a build that did not write it down. */
+function installedFit(home, version) { return digestLines(home, version)[1] || ''; }
 
 /*
  * Whether Codex's cache holds the plugin as it is here. `current` is true only for the same version with the same
- * files; `why` says otherwise: 'not installed', 'other version', 'no digest' (installed by a build that recorded none,
- * so its files are unknown and taken to differ) or 'files differ'.
+ * files, fitted to `python` (what findPython found now, null for none) when one is given; `why` says otherwise:
+ * 'not installed', 'other version', 'no digest' (installed by a build that recorded none, so its files are unknown and
+ * taken to differ), 'files differ' or 'python differs'.
  */
-function installState(home, source = SOURCE) {
+function installState(home, source = SOURCE, python = undefined) {
   const versions = installedVersions(home);
   const want = pluginVersion(source);
   const digest = sourceDigest(source);
@@ -88,7 +104,8 @@ function installState(home, source = SOURCE) {
   else if (!versions.includes(want)) why = 'other version';
   else {
     const have = installedDigest(home, want);
-    why = !have ? 'no digest' : have === digest ? 'current' : 'files differ';
+    why = !have ? 'no digest' : have !== digest ? 'files differ'
+      : python !== undefined && installedFit(home, want) !== fitOf(python) ? 'python differs' : 'current';
   }
   return { current: why === 'current', why, versions, want, digest };
 }
@@ -149,7 +166,7 @@ function stageMarketplace(stage, source = SOURCE, python = SHIPPED_PYTHON) {
   for (const name of fs.readdirSync(stage)) fs.rmSync(path.join(stage, name), { recursive: true, force: true });
   fs.cpSync(source, stage, { recursive: true, filter: (p) => !p.includes(`${path.sep}__pycache__`) });
   fitHooks(stage, python);
-  fs.writeFileSync(path.join(stage, PLUGIN, DIGEST_FILE), sourceDigest(source) + '\n');
+  fs.writeFileSync(path.join(stage, PLUGIN, DIGEST_FILE), `${sourceDigest(source)}\n${fitOf(python)}\n`);
   return path.join(stage, MANIFEST);
 }
 
@@ -390,6 +407,6 @@ function sameHooks(a, b) {
 
 module.exports = {
   MARKETPLACE, PLUGIN, PLUGIN_ID, DATA_DIR, DIGEST_FILE, SOURCE, SHIPPED, SHIPPED_PYTHON, planDir, cacheDir, installedVersions,
-  pluginVersion, sourceDigest, installedDigest, installState, stageMarketplace, fitHooks, pluginLoadState, setPluginEnabled, pluginEnabledEdits,
+  pluginVersion, sourceDigest, installedDigest, installedFit, fitOf, installState, stageMarketplace, fitHooks, pluginLoadState, setPluginEnabled, pluginEnabledEdits,
   writeHookSettings, install, uninstall, savePlans, hookStatus, trustHooks, sameHooks, hookKeys,
 };

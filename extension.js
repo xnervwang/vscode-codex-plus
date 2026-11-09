@@ -257,7 +257,7 @@ function registerCommands(context, { source, memory, sessionsProvider, say, link
     const python = await findPython(context);
     const tried = pythonRuntime.pythons(context.globalStorageUri.fsPath);
     const installed = install.installedVersions(home);
-    const copy = install.installState(home).why;
+    const copy = install.installState(home, undefined, python).why;
     const loadState = install.pluginLoadState(home);
     const threads = reader.threads() || [];
     const counts = {};
@@ -274,7 +274,8 @@ function registerCommands(context, { source, memory, sessionsProvider, say, link
           : loadState === 'no entry' ? 'no entry in config.toml, so Codex does not know of it' : 'loaded'}` : ''}`
         + ` (this extension ships ${install.pluginVersion()}`
         + `${installed.length ? `; Codex's copy has ${({ current: 'the same files', 'other version': 'another version',
-          'no digest': 'files of unknown age', 'files differ': 'DIFFERENT FILES, reinstall to update it' })[copy] || copy}` : ''})`,
+          'no digest': 'files of unknown age', 'files differ': 'DIFFERENT FILES, reinstall to update it',
+          'python differs': 'files fitted to another Python than the one found now, reinstall to update it' })[copy] || copy}` : ''})`,
       `Additions: ${settings().enabled ? 'on' : 'OFF (codexPlus.enabled); the patch to Codex is left as it is'}`,
       `Python for the hooks: ${python ? `${python.version} as ${python.launcher.join(' ')} (${python.executable})`
         : `none found, tried ${tried.map((l) => l.join(' ')).join(', ')}`
@@ -484,7 +485,9 @@ function registerCommands(context, { source, memory, sessionsProvider, say, link
  */
 async function ensurePlugin(context, say) {
   if (!trusted() || !cfg().get('workPlan', true)) return;
-  const st = install.installState(files.codexHome());
+  /* The Python found now is part of it: a copy installed while there was none has no hooks, and one is fitted to the
+     Python it was installed with. */
+  const st = install.installState(files.codexHome(), undefined, await findPython(context));
   if (st.current) { await trustPlugin(say, { interactive: false }); return; }
   say(`work plan plugin in Codex: ${st.why} (${st.versions.join(', ') || 'none'}; this extension carries ${st.want})`);
   await installPlugin(context, say, { interactive: false });
