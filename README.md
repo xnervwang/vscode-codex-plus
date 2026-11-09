@@ -99,13 +99,14 @@ code --install-extension build/xnervwang.codex-plus-1.0.0.vsix
 
 ### Turning it all off
 
-Three states, and three different acts, because each leaves something different behind.
+Four different acts, because each leaves something different behind.
 
 | | |
 | --- | --- |
 | Off, but ready | `Codex Plus: Turn All the Additions Off`, or `Toggle`, or the `codexPlus.enabled` setting. Nothing is drawn: no times, no message list, no colouring, no chimes, no figures strip, no dot on a tab's logo, and Codex is not patched or kept patched. **An applied patch stays in Codex's files.** Each setting keeps its own value, so turning it back on gives back the choices you had rather than the defaults. |
 | Codex's own files back | `Codex Plus: Remove the Patch from Codex`. This is the one that restores `out/extension.js` and `webview/index.html`, and it is also what uninstalling this extension does. Reload the window afterwards. |
-| The plugin left alone | `Codex Plus: Stop Loading the Work Plan Plugin`. Codex keeps the plugin, its marketplace entry and the trust you gave its hooks, and is set not to load it (`enabled = false` under `[plugins."agent-work-plan@codex-extras"]` in `config.toml`). `Install the Work Plan Plugin into Codex` is the way back; the install at start-up leaves it not loaded. `Remove the Work Plan Plugin from Codex` instead takes all three away, and getting back from that means installing and trusting again; uninstalling this extension leaves the plugin and the plans in Codex. |
+| The plugin left alone | `Codex Plus: Stop Loading the Work Plan Plugin`. Codex keeps the plugin, its marketplace entry and the trust you gave its hooks, and is set not to load it (`enabled = false` under `[plugins."agent-work-plan@codex-extras"]` in `config.toml`). `Install the Work Plan Plugin into Codex` is the way back; the install at start-up leaves it not loaded. `Remove the Work Plan Plugin from Codex` instead takes all three away, and getting back from that means installing and trusting again. |
+| Uninstalling this extension | Codex's own files are put back, in this editor's extensions folder and in any other editor's that no longer has this extension. Once no editor on the machine has it, the work plan plugin is removed from Codex too, as by `Remove the Work Plan Plugin from Codex`, with the plans copied to `agent-work-plan-plans-<time>` under `CODEX_HOME` first. A plugin it could not remove stops doing anything once VS Code has deleted this extension's global storage. |
 
 - The work plan and the Codex session list are not covered by the master switch. They have their own settings (`codexPlus.workPlan`, `codexPlus.sessionList`), because a work plan the model is keeping is not an adornment to be switched off along with a chime.
 - `Codex Plus: Patch Codex` turns the master switch back on if it was off: the patch exists only to serve the additions, so applying it while they are all off would leave Codex patched with nothing drawing through it.

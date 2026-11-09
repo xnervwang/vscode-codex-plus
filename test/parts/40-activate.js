@@ -13,7 +13,8 @@ const path = require('path');
 const fake = require('../fake-vscode');
 const fixture = require('../fixture');
 
-async function run(root, tmp, { core = 'accept', trusted = true, config = {}, takesRoute = false, probe = null, logDir = '', configToml = '' } = {}) {
+async function run(root, tmp, { core = 'accept', trusted = true, config = {}, takesRoute = false, probe = null, logDir = '', configToml = '',
+  extensionPath = root } = {}) {
   const { vscode, control } = fake.create();
   vscode.workspace.isTrusted = trusted;
   vscode.workspace.onDidGrantWorkspaceTrust = () => ({ dispose() {} });
@@ -38,13 +39,13 @@ async function run(root, tmp, { core = 'accept', trusted = true, config = {}, ta
   const ext = require(path.join(root, 'extension.js'));
   const subs = [];
   const globalState = fake.memento({ 'codexPlus.patchRemoved': true });
-  const context = { subscriptions: subs, workspaceState: fake.memento(), globalState, globalStorageUri: vscode.Uri.file(tmp('gs')), extensionPath: root };
+  const context = { subscriptions: subs, workspaceState: fake.memento(), globalState, globalStorageUri: vscode.Uri.file(tmp('gs')), extensionPath };
   if (logDir) context.logUri = vscode.Uri.file(logDir);
   await ext.activate(context);
   await new Promise((r) => setTimeout(r, 300));
   let hookSettings = null;
   try { hookSettings = JSON.parse(fs.readFileSync(path.join(home, 'plugins', 'data', 'agent-work-plan-codex-extras', 'config.json'), 'utf8')); } catch (_) { /* none */ }
-  const out = { state: control.state, registered, home, hookSettings, wroteSettings: fs.existsSync(path.join(home, 'plugins', 'data', 'agent-work-plan-codex-extras', 'config.json')) };
+  const out = { state: control.state, registered, home, hookSettings, storage: context.globalStorageUri.fsPath, wroteSettings: fs.existsSync(path.join(home, 'plugins', 'data', 'agent-work-plan-codex-extras', 'config.json')) };
   /* Asked while the extension is still up, since the lines below dispose it. */
   if (probe) out.probed = await probe({ vscode, control, home });
   for (const d of subs) { try { d.dispose(); } catch (_) { /* gone */ } }
@@ -65,9 +66,29 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
   eq(declared.filter((c) => !hosted.state.registered.includes(c)), [], 'every command in the manifest is registered');
   eq(hosted.wroteSettings, true, 'in a trusted window the hooks\' settings are written');
   const planPath = fs.readFileSync(path.join(root, 'codex-plugin', 'agent-work-plan', 'hooks', 'plan_path.py'), 'utf8');
-  const known = [...(/^DEFAULTS = \{([\s\S]*?)^\}/m.exec(planPath) || ['', ''])[1].matchAll(/^ {4}"(\w+)":/gm)].map((m) => m[1]);
+  const known = [...(/^DEFAULTS = \{([\s\S]*?)^\}/m.exec(planPath) || ['', ''])[1].matchAll(/^ {4}"(\w+)":/gm)].map((m) => m[1])
+    .concat([...planPath.matchAll(/\bgiven\.get\("(\w+)"\)/g)].map((m) => m[1]));
   eq(Object.keys(hosted.hookSettings || {}).filter((k) => !known.includes(k)), [], 'every key written for the hooks is one plan_path.py knows');
   eq(hosted.hookSettings.compactTokenLimit, 0, 'with no compaction limit in config.toml the hooks are handed none');
+  eq(hosted.hookSettings.extensionMarkers, [hosted.storage],
+    'and the window registers its global storage with them, which the hooks read as this extension still being installed');
+
+  /* deactivate after an uninstall: this copy's folder marked for deletion, and no other copy beside it. */
+  const leavingDir = tmp('extensions-leaving');
+  const leavingSelf = path.join(leavingDir, `${pkg.publisher}.${pkg.name}-${pkg.version}`);
+  fs.mkdirSync(leavingSelf);
+  fs.writeFileSync(path.join(leavingDir, '.obsolete'), JSON.stringify({ [path.basename(leavingSelf)]: true }));
+  const childProcess = require('child_process');
+  const realSpawn = childProcess.spawn;
+  const spawned = [];
+  childProcess.spawn = (exe, args, opts) => { spawned.push({ args, detached: !!(opts && opts.detached) }); return { unref() {} }; };
+  try {
+    await run(root, tmp);
+    const before = spawned.length;
+    await run(root, tmp, { extensionPath: leavingSelf });
+    eq([before, spawned.slice(before)], [0, [{ args: [path.join(leavingSelf, 'uninstall.js')], detached: true }]],
+      'deactivate starts nothing on a reload, and on an uninstall starts the uninstall script in a process of its own');
+  } finally { childProcess.spawn = realSpawn; }
   const limited = await run(root, tmp, { configToml: 'model_provider = "amazon-bedrock"\nmodel_auto_compact_token_limit = 150000\n' });
   eq(limited.hookSettings.compactTokenLimit, 150000, 'and with one set there, the hooks are handed it, since Codex compacts at it');
 

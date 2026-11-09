@@ -56,4 +56,57 @@ function restoreDirs(extensionsDir, { id = [ID, ...FORMER_IDS], home = os.homedi
   return roots(own, home).filter((d) => d === own || !liveCopies(d, id).length);
 }
 
-module.exports = { ID, FORMER_IDS, EDITORS, roots, obsolete, liveCopies, restoreDirs };
+/*
+ * Whether no editor on this machine holds a copy of this extension any more, the one being uninstalled being marked for
+ * deletion by then. Only then is the work plan plugin removed from Codex: every copy left goes on using it and its
+ * plans. An editor whose extensions folder is not among EDITORS is not seen, and the plugin its copy uses is installed
+ * again at that copy's next start.
+ */
+function lastCopy(extensionsDir, { id = [ID, ...FORMER_IDS], home = os.homedir() } = {}) {
+  return roots(path.resolve(extensionsDir), home).every((d) => !liveCopies(d, id).length);
+}
+
+/*
+ * Whether the editor is taking this copy away with no other copy of it staying in its folder: the editor marks the
+ * folder in .obsolete before the extension host restarts, and an update marks the old folder the same way while the new
+ * one stays unmarked. A reload or a window closing marks nothing.
+ */
+function beingUninstalled(extensionPath, id = [ID, ...FORMER_IDS]) {
+  if (!extensionPath) return false;
+  const dir = path.dirname(path.resolve(extensionPath));
+  const mine = path.basename(extensionPath);
+  if (obsolete(dir)[mine] !== true) return false;
+  return !liveCopies(dir, id).some((d) => path.basename(d) !== mine);
+}
+
+/* The Codex installs in one extensions folder that its editor has not marked for deletion. */
+function codexInstalls(extensionsDir) {
+  const marked = obsolete(extensionsDir);
+  let names;
+  try { names = fs.readdirSync(extensionsDir); } catch (_) { return []; }
+  return names.filter((n) => /^openai\.chatgpt-/.test(n) && marked[n] !== true).map((n) => path.join(extensionsDir, n));
+}
+
+/*
+ * deactivate on an uninstall: VS Code runs the uninstall hook only when it deletes the folder, which in remote
+ * development is the next start of the remote server, so the hook is started here in a process of its own, which
+ * outlives this extension host and its five-second wait for deactivate. Codex in this editor's folder is put back first,
+ * synchronously, since a host that exits takes nothing further. Every step of the hook is safe to run twice.
+ */
+function finishUninstall(extensionPath, id = [ID, ...FORMER_IDS], spawn = require('child_process').spawn) {
+  if (!beingUninstalled(extensionPath, id)) return false;
+  const targets = require('./adapters');
+  for (const dir of codexInstalls(path.dirname(path.resolve(extensionPath)))) {
+    for (const t of [...targets].reverse()) { try { t.restore(dir); } catch (_) { /* the hook tries again */ } }
+  }
+  const child = spawn(process.execPath, [path.join(extensionPath, 'uninstall.js')], {
+    detached: true, stdio: 'ignore',
+    // On a desktop install the host's binary is Electron, which runs a script as plain Node only when told to.
+    env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
+  });
+  if (child && typeof child.unref === 'function') child.unref();
+  return true;
+}
+
+module.exports = { ID, FORMER_IDS, EDITORS, roots, obsolete, liveCopies, restoreDirs, lastCopy, beingUninstalled, codexInstalls,
+  finishUninstall };

@@ -115,6 +115,18 @@ DEFAULTS = {
 }
 
 
+def extension_gone(given):
+    """Whether the extension that installed this plugin has been uninstalled from every editor that wrote here.
+
+    Each editor lists its own global storage directory in extensionMarkers, and the editor deletes that directory when
+    it uninstalls the extension, not when it updates it. Settings that list none say nothing about it, as with a
+    plugin set up by hand.
+    """
+    markers = given.get("extensionMarkers") if isinstance(given, dict) else None
+    named = [m for m in markers if isinstance(m, str) and os.path.isabs(m)] if isinstance(markers, list) else []
+    return bool(named) and not any(os.path.isdir(m) for m in named)
+
+
 def settings(directory=None):
     """The numbers above, with anything the extension wrote on top. A bad value is ignored rather than fatal.
 
@@ -126,6 +138,10 @@ def settings(directory=None):
         with open(os.path.join(directory or data_dir(), SETTINGS_FILE), encoding="utf-8") as fh:
             given = json.load(fh)
     except Exception:
+        return out
+    if extension_gone(given):
+        out["enabled"] = False
+        out["tellTimeZone"] = False
         return out
     for key, fallback in DEFAULTS.items():
         value = given.get(key) if isinstance(given, dict) else None

@@ -32,8 +32,12 @@ const pythonRuntime = require('./src/python-runtime');
 const { folderTest } = require('./src/folders');
 const openTimes = require('./src/open-times');
 const codexConfig = require('./src/codex-config');
+const uninstallPlan = require('./src/uninstall-plan');
 
 const CONFIG = 'codexPlus';
+/* This copy's id and folder, kept for deactivate, which runs after the editor's API is gone. */
+const ID = (() => { try { const p = require('./package.json'); return `${p.publisher}.${p.name}`; } catch (_) { return uninstallPlan.ID; } })();
+let selfPath = '';
 let log = null;
 let reader = null;
 /* The memento that remembers "Remove the Patch" (patching.PATCH_REMOVED_KEY) until "Patch Codex" is run again. */
@@ -104,13 +108,14 @@ function writeHookSettings(context) {
       quietWhenReplyMatches: c.get('workPlanQuietWhenReplyMatches', ''),
       tellTimeZone: c.get('tellCodexYourTimeZone', true),
       compactTokenLimit: codexConfig.compactLimit(files.codexHome()),
-    });
+    }, { marker: context.globalStorageUri && context.globalStorageUri.fsPath });
     const zone = context.globalState.get('codexPlus.clientTimeZone');
     if (zone) fs.writeFileSync(path.join(install.planDir(files.codexHome()), 'client-time-zone.json'), JSON.stringify({ timeZone: zone }) + '\n');
   } catch (e) { log.appendLine(`could not write the hooks' settings: ${e.message}`); }
 }
 
 async function activate(context) {
+  selfPath = context.extensionPath || '';
   log = vscode.window.createOutputChannel('Codex Plus');
   context.subscriptions.push(log);
   memento = context.globalState;
@@ -375,7 +380,8 @@ function registerCommands(context, { source, memory, sessionsProvider, say, link
         + 'hooks still trusted; "Install the Work Plan Plugin into Codex" has it loaded again.');
     } catch (e) { vscode.window.showErrorMessage(`Could not change whether Codex loads the plugin: ${e.message}`); }
   });
-  /* Kept as a command because the uninstall hook leaves the plugin and the plans in Codex (uninstall.js). */
+  /* Uninstalling this extension removes the plugin only once no editor on the machine holds a copy (uninstall.js), so
+     this is how one editor's user takes it out of a Codex home the others still share. */
   reg('removeWorkPlanPlugin', async () => {
     if (restricted()) return;
     const binary = codexProgram();
@@ -575,7 +581,12 @@ async function trustPlugin(say, { interactive }) {
   vscode.window.showWarningMessage('The work plan hooks kept changing while you were asked, so none was trusted. Try again.');
 }
 
-function deactivate() { files.closeAll(); }
+/* An uninstall is handed to the uninstall script here rather than left until VS Code deletes the folder
+   (src/uninstall-plan.js finishUninstall). */
+function deactivate() {
+  files.closeAll();
+  try { uninstallPlan.finishUninstall(selfPath, [ID, ...uninstallPlan.FORMER_IDS]); } catch (_) { /* VS Code runs the hook later */ }
+}
 
 /* `_settings` is for the checks: the master switch is only real if what every part reads comes out of settings() with
    it already applied, and that is a table to be read rather than inferred from what the extension then did.
