@@ -50,8 +50,10 @@ module.exports = ({ ok, bad, eq, root }) => {
   eq(/claudeCodeExtras|codexExtras\.(standalone|hosted|answer"|sessionsHosted|conversations")/.test(JSON.stringify(c)), false, 'nothing names the old host or the standalone views');
   const open = c.commands.find((x) => x.command === 'codexExtras.openCodex');
   eq([c.menus['editor/title'], open && open.icon, ['codex-light.svg', 'codex-dark.svg'].every((f) => fs.existsSync(path.join(root, 'images', f)))],
-    [[{ command: 'codexExtras.openCodex', group: 'navigation' }], { light: 'images/codex-light.svg', dark: 'images/codex-dark.svg' }, true],
-    'the tab bar has the Codex button, with its icons');
+    [[{ command: 'codexExtras.openCodex', group: 'navigation' },
+      { command: 'codexExtras.sessionInfo', when: "activeCustomEditorId == 'chatgpt.conversationEditor'", group: 'navigation' }],
+    { light: 'images/codex-light.svg', dark: 'images/codex-dark.svg' }, true],
+    'the tab bar has the Codex button, with its icons, and the session information button while a Codex conversation is in front');
   const target = c.configuration.properties['codexExtras.openButtonTarget'];
   eq([target.enum, target.default], [['tab', 'sidebar'], 'tab'], 'the button opens a tab unless set to the sidebar');
   eq(['icon.png', 'icon.svg'].every((f) => fs.existsSync(path.join(root, 'images', f))) && pkg.icon === 'images/icon.png', true, 'the marketplace icon is there');

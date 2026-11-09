@@ -127,6 +127,27 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
       [true, true, true], 'its command writes how long this window\'s Codex page took to open, and Show Status includes it');
   }
 
+  /* Session Information on a tab Codex opened with its own New button, whose URI names no conversation: the patch has
+     tied its panel to the thread its own page started, and the command finds it through the source. */
+  {
+    const w = await run(root, tmp, { probe: async ({ vscode, control, home }) => {
+      const id = /([0-9a-f-]{36})\.jsonl$/.exec(fs.readdirSync(path.join(home, 'sessions'), { recursive: true }).map(String).find((f) => f.endsWith('.jsonl')).replace(/\\/g, '/'))[1];
+      const provider = { postMessageToWebview() {}, sendMessageToPanel() {} };
+      const panel = { webview: {}, visible: true, viewColumn: 1, reveal() {}, onDidDispose() {}, iconPath: null };
+      globalThis.__codexExtrasPanel(panel, null, provider, '/extension/panel/new');
+      globalThis.__codexExtrasPageRequest(panel.webview, { id: 7, method: 'thread/start' }, 'request');
+      globalThis.__codexExtrasPageResponse(panel.webview, { id: 7, result: { thread: { id } } });
+      await new Promise((r) => setTimeout(r, 200));
+      control.setTabs([{ label: 'Codex', input: new vscode.TabInputCustom(vscode.Uri.from({ scheme: 'openai-codex', authority: 'route',
+        path: '/extension/panel/new' }), 'chatgpt.conversationEditor') }], 0);
+      await control.state.handlers['codexExtras.sessionInfo']();
+      const rows = (control.state.picks[control.state.picks.length - 1] || []).map((p) => `${p.label}=${p.value}`);
+      return { id, rows, said: control.state.said.map((x) => x.message) };
+    } });
+    eq([w.probed.rows.includes(`Thread id=${w.probed.id}`), w.probed.said.some((m) => /Bring a Codex conversation tab/.test(m))], [true, false],
+      'Session Information on a tab opened with Codex\'s New button shows the conversation that tab went on to start');
+  }
+
   const refused = await run(root, tmp, { core: 'refuse' });
   eq([refused.state.context['codexExtras.registered'], refused.state.said.length], [false, 0],
     'a refused registration leaves the key off, and Agent Work Plan, not this extension, says which one to update');

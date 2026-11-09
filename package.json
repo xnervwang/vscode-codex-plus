@@ -291,6 +291,11 @@
         {
           "command": "codexExtras.openCodex",
           "group": "navigation"
+        },
+        {
+          "command": "codexExtras.sessionInfo",
+          "when": "activeCustomEditorId == 'chatgpt.conversationEditor'",
+          "group": "navigation"
         }
       ]
     },

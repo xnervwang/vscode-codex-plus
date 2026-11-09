@@ -298,7 +298,7 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
     [1, false, 'clock'], 'fewer than the page shows do not line up and go unused, and Codex\'s own clock still stands');
 
   /* Everything off: the self-check is how "nothing of its own is left in the page" is read back. */
-  page.view({ timestamps: false, navigation: false, userColor: '', userEdge: false, lowContext: false, replyFigures: false });
+  page.view({ timestamps: false, navigation: false, userColor: '', userEdge: false, lowContext: false, replyFigures: false, buttons: false });
   const off = page.ask().report;
   eq([off.marks.total, off.times.user, off.times.assistant, off.navigation.rows, off.colour.inked, off.colour.edged],
     [0, 0, 0, 0, 0, 0], 'with every setting off it reports nothing of its own anywhere in the page');
@@ -447,7 +447,7 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
   eq(/in front/.test((await patching.selfCheckPage()).error || ''), true,
     'with the patch but no Codex tab in front it says to bring one forward, rather than checking the wrong page');
   globalThis.__codexExtrasMessage(panel.webview, told()[0], provider);
-  eq(patching.statusLines().filter((l) => /showed \d+ turns and the page script recognised none of the messages in them: /.test(l)).length, 1,
+  eq(patching.statusLines().filter((l) => /showed \d+ turns and the page script recognised none of the messages in them[,:]/.test(l)).length, 1,
     'the host keeps what such a page told it, and Show Status says it in one line naming the command that finds which part moved');
   panel.active = true;
   const wanted = patching.selfCheckPage();

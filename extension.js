@@ -194,7 +194,7 @@ async function activate(context) {
     if (e.affectsConfiguration(`${CONFIG}.enabled`) || e.affectsConfiguration(`${CONFIG}.timestamps`)
       || e.affectsConfiguration(`${CONFIG}.conversationNavigation`)
       || e.affectsConfiguration(`${CONFIG}.userMessageColor`) || e.affectsConfiguration(`${CONFIG}.userMessageEdge`)
-      || e.affectsConfiguration(`${CONFIG}.lowContextOutline`)) {
+      || e.affectsConfiguration(`${CONFIG}.lowContextOutline`) || e.affectsConfiguration(`${CONFIG}.chime`)) {
       const typed = String(cfg().get('userMessageColor', '') || '').trim();
       if (typed && !patching.safeColor(typed)) {
         vscode.window.showWarningMessage(`Codex Extras: "${typed}" is not a CSS colour (use for example #90EE90, `
@@ -203,12 +203,15 @@ async function activate(context) {
       patching.refreshPanels().catch((err) => say(`redrawing the Codex pages: ${err.message}`));
     }
   }));
+  /* A conversation's session information, as its rows: Session Information and the page's own info button both show it. */
+  const sessionInfoRows = async (id) => [...await reader.request('info', { home: files.codexHome(), id }),
+    { label: 'Account', value: codexConfig.accountLine(files.codexHome()) }];
   /* When the user's own messages were sent, for the stamps Codex's page draws on them: read in the worker thread, since
      the first read of a conversation goes through its whole rollout (src/user-times.js). */
   const userTimes = (id) => reader.request('userTimes', { home: files.codexHome(), id });
   /* How long Codex's pages took to open, from Codex's own log; read only when Show Status or its command asks. */
   const opens = openTimes.createOpenTimes(openTimes.whereLogs(context.logUri && context.logUri.fsPath));
-  registerCommands(context, { source, memory, sessionsProvider, say, link, userTimes, opens });
+  registerCommands(context, { source, memory, sessionsProvider, say, link, userTimes, opens, sessionInfoRows });
 
   /* Everything that writes waits for a trusted workspace. */
   let wrote = false;
@@ -225,7 +228,10 @@ async function activate(context) {
     }, 60000);
     try {
       patching.activate(context, { vscode, log: say, codexProgram, source, context, settings, onTimeZone: reportTimeZone,
-        userTimes, planQuestions: (id) => planQuestions((readPlan(id) || {}).nodes).length });
+        userTimes, planQuestions: (id) => planQuestions((readPlan(id) || {}).nodes).length,
+        sessionInfo: (id) => sessionInfoRows(id),
+        copy: async (value, label) => { await vscode.env.clipboard.writeText(value); vscode.window.setStatusBarMessage(`Copied ${label}`, 3000); },
+        toggleChime: () => cfg().update('chime', !cfg().get('chime', true), vscode.ConfigurationTarget.Global) });
     } catch (e) { say(`patching: ${e.message}`); }
   };
   whenTrusted();
@@ -254,7 +260,7 @@ async function newConversationInTab(say) {
   await vscode.commands.executeCommand('chatgpt.newCodexPanel');
 }
 
-function registerCommands(context, { source, memory, sessionsProvider, say, link, userTimes, opens }) {
+function registerCommands(context, { source, memory, sessionsProvider, say, link, userTimes, opens, sessionInfoRows }) {
   const reg = (name, fn) => context.subscriptions.push(vscode.commands.registerCommand(`${CONFIG}.${name}`, fn));
   const threadArg = (arg) => (typeof arg === 'string' ? arg : arg && arg.thread ? arg.thread.id : arg && arg.sessionId) || '';
   const restricted = () => {
@@ -535,11 +541,12 @@ function registerCommands(context, { source, memory, sessionsProvider, say, link
     } catch (e) { vscode.window.showErrorMessage(`Codex could not delete it: ${e.message}`); }
   });
   reg('sessionInfo', async (arg) => {
-    const id = threadArg(arg) || tabs.activeThread(vscode);
-    if (!id) { vscode.window.showInformationMessage('Bring a Codex conversation tab to the front first.'); return; }
+    /* A tab Codex opened with its New button names no conversation in its URI; the source knows it through the patch. */
+    const front = (vscode.window.tabGroups.activeTabGroup || {}).activeTab;
+    const id = threadArg(arg) || (front && source.sessionForTab(front)) || tabs.activeThread(vscode);
+    if (!id) { vscode.window.showInformationMessage('Bring a Codex conversation tab to the front first; a new one counts once its first message is sent.'); return; }
     let rows = [];
-    try { rows = await reader.request('info', { home: files.codexHome(), id }); } catch (e) { vscode.window.showErrorMessage(`Could not read it: ${e.message}`); return; }
-    rows = [...rows, { label: 'Account', value: codexConfig.accountLine(files.codexHome()) }];
+    try { rows = await sessionInfoRows(id); } catch (e) { vscode.window.showErrorMessage(`Could not read it: ${e.message}`); return; }
     const pick = await vscode.window.showQuickPick(rows.map((r) => ({ label: r.label, description: r.value, value: r.value })),
       { placeHolder: 'Click a value to copy it' });
     if (pick && pick.value) { await vscode.env.clipboard.writeText(pick.value); vscode.window.setStatusBarMessage(`Copied ${pick.label}`, 3000); }

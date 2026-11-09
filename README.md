@@ -19,7 +19,8 @@
 | Delete an archived conversation | Codex sessions view, right-click | — |
 | Codex button on the tab bar: a new Codex conversation, in a tab or in the sidebar | Editor title bar | `codexExtras.openButtonTarget`: `tab` (default) or `sidebar`; `codexExtras.newConversationGroup`: `main` (default, the first editor group) or `active` (the group the button was pressed in) |
 | Tabs VS Code did not restore after a reconnect are opened again | Editor tabs | — |
-| Session information: thread ID, the process id of Codex's server for this window, folder, the conversation log Codex writes (its rollout) and its size, how much of the context window is in use, tokens the conversation used | Command | — |
+| Session information: thread ID, the process id of Codex's server for this window, folder, the conversation log Codex writes (its rollout) and its size, how much of the context window is in use, tokens the conversation used, the account | Command; the ⓘ button on the tab bar while a Codex conversation is in front; the ℹ button below the message box, where clicking a value copies it | — (the button below the message box needs the patch) |
+| Chimes on or off from a bell button below the message box, beside the information button | Codex conversation, the row below the message box | Patch; `codexExtras.chime` |
 | Green / red / orange dot on a Codex tab's logo while working / replied and unread / stopped for your permission | Editor tabs | Patch |
 | A conversation stopped for your permission shows as waiting in the Conversations view, counts in the status bar, and chimes | Conversations view; status bar; Codex tab | Patch; `codexExtras.waitingInStatusBar`, `codexExtras.chime` |
 | Chime when a turn finishes, the plan asks a question, the model asks you something and waits for the answer (a blocking input request), or Codex stops for your permission; a question has a sound of its own, rising, and a permission three notes | Codex tab | Patch |

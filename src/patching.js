@@ -77,9 +77,11 @@ function codexPath(vscode) {
 }
 
 function anchorsMissingLine(m) {
-  return `A Codex page showed ${m.turns} turn${m.turns === 1 ? '' : 's'} and the page script recognised none of the `
-    + `messages in ${m.turns === 1 ? 'it' : 'them'}${m.scroller ? '' : ', nor the element the conversation scrolls in'}: `
-    + 'this Codex build has probably changed what the times, the message list and the colouring are attached to. '
+  const what = m.messages ? 'its message box, which the buttons below it are placed by'
+    : `the messages in ${m.turns === 1 ? 'it' : 'them'}${m.scroller ? '' : ', nor the element the conversation scrolls in'}`
+      + `${m.composer === false ? ', nor its message box' : ''}`;
+  return `A Codex page showed ${m.turns} turn${m.turns === 1 ? '' : 's'} and the page script recognised none of ${what}: `
+    + 'this Codex build has probably changed what the additions in its page are attached to. '
     + '"Codex Extras: Check What the Page Script Found in This Conversation" says which part was not found.';
 }
 
@@ -222,6 +224,15 @@ function revealPanel(thread) {
   try { panel.reveal(undefined, false); return true; } catch (_) { return false; }
 }
 
+/* What the information box of each page was last sent, so a value is copied from this side's own copy. */
+const infoShown = new WeakMap();
+function postToWebview(webview, msg) {
+  const p = state.provider;
+  try {
+    if (p && typeof p.postMessageToWebview === 'function') p.postMessageToWebview(webview, msg);
+    else webview.postMessage(msg);
+  } catch (_) { /* the page is gone */ }
+}
 function postTo(panel, msg) {
   const p = state.provider;
   try {
@@ -449,7 +460,7 @@ function safeColor(value) {
 function viewOf(s = {}) {
   return { type: 'codex-extras-view', timestamps: s.timestamps !== false, navigation: s.conversationNavigation !== false,
     userColor: safeColor(s.userMessageColor), userEdge: s.userMessageEdge !== false, lowContext: s.lowContextOutline !== false,
-    replyFigures: s.figures !== false };
+    replyFigures: s.figures !== false, buttons: s.enabled !== false, chime: s.chime !== false };
 }
 
 /*
@@ -650,10 +661,30 @@ function installHooks() {
     }
     /* What a page saw of an answer it was asked to send: one word of its own vocabulary. */
     if (msg && msg.kind === 'answer' && answering.has(msg.id)) answering.get(msg.id)(String(msg.outcome || ''));
-    /* A page that has turns and recognised none of the messages in them. Only numbers and flags come with it. */
+    /* The buttons below the message box: the conversation's information, a value of it copied by its position in
+       the list this side sent, and the chime switched. */
+    if (msg && msg.kind === 'infoAsk' && deps && typeof deps.sessionInfo === 'function') {
+      const rec = recordOfWebview(webview);
+      const thread = rec ? rec.thread : sidebar;
+      Promise.resolve(thread ? deps.sessionInfo(thread) : [{ label: 'Thread id', value: 'no conversation started in this page yet' }])
+        .then((rows) => {
+          const list = (Array.isArray(rows) ? rows : []).map((r) => ({ label: String(r.label || ''), value: String(r.value == null ? '' : r.value) }));
+          infoShown.set(webview, { id: msg.id, rows: list });
+          postToWebview(webview, { type: 'codex-extras-info', id: msg.id, rows: list });
+        }).catch(() => { /* the box stays shut */ });
+    }
+    if (msg && msg.kind === 'infoCopy' && deps && typeof deps.copy === 'function') {
+      const shown = infoShown.get(webview);
+      const row = shown && shown.id === msg.id ? shown.rows[Math.floor(+msg.index)] : null;
+      if (row) deps.copy(row.value, row.label);
+    }
+    if (msg && msg.kind === 'toggleChime' && deps && typeof deps.toggleChime === 'function') deps.toggleChime();
+    /* A page that has turns and recognised none of the messages in them, or no message box. Only numbers and flags
+       come with it. */
     if (msg && msg.kind === 'anchorsMissing') {
       const turns = Math.max(0, Math.floor(+msg.turns || 0));
-      state.anchorsMissing = { at: Date.now(), turns, scroller: msg.scroller === true };
+      state.anchorsMissing = { at: Date.now(), turns, scroller: msg.scroller === true,
+        messages: Math.max(0, Math.floor(+msg.messages || 0)), composer: msg.composer !== false };
       if (deps && deps.log) deps.log(anchorsMissingLine(state.anchorsMissing));
     }
     /* Whether an approval card is on this page's screen. A tab's page says it for the conversation that tab holds, and

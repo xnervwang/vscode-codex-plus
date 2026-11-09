@@ -123,6 +123,124 @@
     meter = { found: !!found, percent: found ? pct : null, low: low };
   }
 
+  /*
+   * Two buttons in the row below Codex's message box, outside the box: this conversation's session information, and the
+   * chime on or off. The row is a node of this script's own on <body>, placed by measuring the box
+   * (data-codex-composer-root) on each pass of either observer and on a resize; the row takes no pointer events, only
+   * its two buttons do. With the master switch off, or with no box recognised, nothing is drawn.
+   *
+   * The information comes from the host. Clicking a value sends back only its position in the list, and the host copies
+   * it from its own copy, so no text leaves the page.
+   */
+  var bar = null, infoBtn = null, muteBtn = null, infoBox = null, infoAsk = '', barWired = false;
+  var BELL = '\uD83D\uDD14', NO_BELL = '\uD83D\uDD15', INFO_GLYPH = String.fromCharCode(8505);
+  var Z_BAR = 2147483000;
+  var composerRoot = function () { return one(document, '[data-codex-composer-root]') || one(document, '[data-codex-composer]'); };
+  var infoOpen = function () { return !!(infoBox && infoBox.isConnected && infoBox.style.display === 'block'); };
+  function closeInfo() { if (infoBox) infoBox.style.display = 'none'; }
+  function dropBar() {
+    if (bar) { try { bar.remove(); } catch (e) { /* gone */ } }
+    if (infoBox) { try { infoBox.remove(); } catch (e) { /* gone */ } }
+    bar = infoBtn = muteBtn = infoBox = null;
+  }
+  function barButton(label, onClick) {
+    var b = document.createElement('div');
+    b.setAttribute(MARK, 'bar-button');
+    b.setAttribute('role', 'button');
+    b.setAttribute('title', label);
+    b.setAttribute('aria-label', label);
+    b.style.cssText = 'pointer-events:auto;cursor:pointer;user-select:none;padding:0 4px;border-radius:3px;line-height:18px;'
+      + 'font-size:12px;opacity:.75;';
+    b.addEventListener('click', function (ev) { try { ev.stopPropagation(); } catch (e) { /* none */ } onClick(); });
+    return b;
+  }
+  function placeBar() {
+    var root = view.buttons !== false && document.body ? composerRoot() : null;
+    var r = null;
+    try { r = root ? root.getBoundingClientRect() : null; } catch (e) { r = null; }
+    if (!r || !(r.width > 0)) { dropBar(); return; }
+    if (!bar || !bar.isConnected) {
+      dropBar();
+      bar = document.createElement('div');
+      bar.setAttribute(MARK, 'bar');
+      bar.style.cssText = 'position:fixed;z-index:' + Z_BAR + ';pointer-events:none;display:flex;gap:2px;'
+        + 'font:11px var(--vscode-font-family,sans-serif);color:var(--vscode-descriptionForeground,#888);';
+      infoBtn = barButton('About this conversation: its thread id, the process of Codex\'s server, the folder it '
+        + 'started in, its rollout and size, the context in use and the tokens it used. Click a value to copy it.', toggleInfo);
+      infoBtn.textContent = INFO_GLYPH;
+      muteBtn = barButton('', function () { post({ kind: 'toggleChime' }); });
+      bar.appendChild(infoBtn);
+      bar.appendChild(muteBtn);
+      document.body.appendChild(bar);
+      if (!barWired) {
+        barWired = true;
+        try { globalThis.addEventListener('resize', function () { placeBar(); }); } catch (e) { /* no window events */ }
+        document.addEventListener('click', function (ev) {
+          if (!infoOpen()) return;
+          var t = ev && ev.target;
+          if (t && ((infoBox && infoBox.contains && infoBox.contains(t)) || (infoBtn && infoBtn.contains && infoBtn.contains(t)))) return;
+          closeInfo();
+        });
+      }
+    }
+    var vh = +globalThis.innerHeight || 0;
+    var top = (typeof r.bottom === 'number' ? r.bottom : (r.top || 0) + (r.height || 0)) + 2;
+    if (vh && top > vh - 20) top = vh - 20;
+    bar.style.left = Math.round(r.left) + 'px';
+    bar.style.top = Math.round(top) + 'px';
+    var muted = view.chime === false;
+    if (muteBtn.textContent !== (muted ? NO_BELL : BELL)) muteBtn.textContent = muted ? NO_BELL : BELL;
+    var label = muted ? 'Chimes are off: click to turn them on (codexExtras.chime)' : 'Chimes are on: click to turn them off (codexExtras.chime)';
+    if (muteBtn.getAttribute('title') !== label) { muteBtn.setAttribute('title', label); muteBtn.setAttribute('aria-label', label); }
+  }
+  function toggleInfo() {
+    if (infoOpen()) { closeInfo(); return; }
+    infoAsk = 'info-' + Date.now() + '-' + Math.floor(Math.random() * 1e6);
+    post({ kind: 'infoAsk', id: infoAsk });
+  }
+  function showInfo(m) {
+    if (!bar || m.id !== infoAsk || !Array.isArray(m.rows)) return;
+    if (!infoBox || !infoBox.isConnected) {
+      infoBox = document.createElement('div');
+      infoBox.setAttribute(MARK, 'info');
+      infoBox.style.cssText = 'position:fixed;z-index:' + Z_BAR + ';display:none;width:420px;max-width:calc(100vw - 32px);'
+        + 'padding:8px 10px;border-radius:5px;font:11px var(--vscode-font-family,sans-serif);line-height:1.5;'
+        + 'background:var(--vscode-editorHoverWidget-background,rgba(30,30,30,.99));'
+        + 'color:var(--vscode-editorHoverWidget-foreground,#ddd);'
+        + 'border:1px solid var(--vscode-editorHoverWidget-border,rgba(255,255,255,.18));box-shadow:0 4px 14px rgba(0,0,0,.5);';
+      document.body.appendChild(infoBox);
+    }
+    infoBox.textContent = '';
+    m.rows.slice(0, 20).forEach(function (row, i) {
+      if (!row || typeof row.label !== 'string') return;
+      var line = document.createElement('div');
+      line.style.cssText = 'display:flex;gap:10px;padding:2px 0;';
+      var k = document.createElement('span');
+      k.textContent = row.label;
+      k.style.cssText = 'flex:0 0 110px;opacity:.6;';
+      var v = document.createElement('span');
+      v.textContent = String(row.value == null ? '' : row.value);
+      v.style.cssText = 'flex:1 1 auto;min-width:0;word-break:break-all;cursor:pointer;'
+        + 'font-family:var(--vscode-editor-font-family,monospace);';
+      v.setAttribute('title', 'Click to copy');
+      v.addEventListener('click', function (ev) {
+        try { ev.stopPropagation(); } catch (e) { /* none */ }
+        post({ kind: 'infoCopy', id: m.id, index: i });
+        var was = v.textContent;
+        v.textContent = 'copied';
+        setTimeout(function () { if (v.isConnected) v.textContent = was; }, 900);
+      });
+      line.appendChild(k); line.appendChild(v);
+      infoBox.appendChild(line);
+    });
+    var r = null;
+    try { r = bar.getBoundingClientRect(); } catch (e) { r = null; }
+    var vh = +globalThis.innerHeight || 0;
+    infoBox.style.left = Math.round(r ? r.left : 8) + 'px';
+    infoBox.style.bottom = Math.round(vh && r ? Math.max(4, vh - r.top + 4) : 28) + 'px';
+    infoBox.style.display = 'block';
+  }
+
   function watchApproval() {
     if (typeof MutationObserver !== 'function' || !document.body) return;
     var target = null;
@@ -132,7 +250,7 @@
     if (approvalObserver) { try { approvalObserver.disconnect(); } catch (e) { /* gone */ } }
     approvalObserver = new MutationObserver(function () {
       if (approvalDue) return;
-      approvalDue = setTimeout(function () { approvalDue = 0; watchApproval(); tellApproval(); markLowContext(); }, APPROVAL_DEBOUNCE_MS);
+      approvalDue = setTimeout(function () { approvalDue = 0; watchApproval(); tellApproval(); markLowContext(); placeBar(); }, APPROVAL_DEBOUNCE_MS);
     });
     approvalObserved = target;
     try { approvalObserver.observe(target, { childList: true, subtree: true }); }
@@ -399,7 +517,8 @@
 
   /* What the host last said to show. The defaults are the settings' own defaults, so a page the host has not spoken to
      yet shows what those settings say rather than nothing at all. */
-  var view = { timestamps: true, navigation: true, userColor: '', userEdge: true, lowContext: true, replyFigures: true };
+  var view = { timestamps: true, navigation: true, userColor: '', userEdge: true, lowContext: true, replyFigures: true,
+    buttons: true, chime: true };
   /* Each turn's model, effort and context as the host read them from the rollout, by turn id: { turnId: text }. They
      are placed by the turn id Codex puts on each turn (data-content-search-turn-key), never by position. */
   var hostTurns = {};
@@ -1117,12 +1236,14 @@
   var MISS_PASSES = 3, MISS_MS = 5000, missRun = 0, missSince = 0, missTold = false;
   function noteMisses(list) {
     var turns = list ? lastTurns : all(document, SEL.turn).length;
-    if (!turns || (list && list.length)) { missRun = 0; missSince = 0; missTold = false; return; }
+    var composer = !!composerRoot();
+    if (!turns || (list && list.length && composer)) { missRun = 0; missSince = 0; missTold = false; return; }
     if (!missRun) missSince = Date.now();
     missRun++;
     if (missTold || missRun < MISS_PASSES || Date.now() - missSince < MISS_MS) return;
     missTold = true;
-    post({ kind: 'anchorsMissing', version: SCRIPT_VERSION, turns: turns, scroller: !!list });
+    post({ kind: 'anchorsMissing', version: SCRIPT_VERSION, turns: turns, scroller: !!list,
+      messages: list ? list.length : 0, composer: composer });
   }
 
   var refreshing = false;
@@ -1138,6 +1259,7 @@
       if (view.navigation) buildNav(users); else dropNav();
       if (anythingOn()) restyle(); else dropSheet();
       markLowContext();
+      placeBar();
     } catch (e) { /* this is Codex's page: a fault here leaves everything of its own as it was */ }
     finally { refreshing = false; }
   }
@@ -1239,6 +1361,8 @@
          how many replies they were drawn. */
       replyFigures: { setting: view.replyFigures !== false, fromHost: Object.keys(hostTurns).length,
         turnsKeyed: lastPass.turnsKeyed, matched: lastPass.turnsMatched, drawn: lastPass.figuresDrawn },
+      /* The two buttons below the message box, and the box they are placed by. */
+      buttons: { setting: view.buttons !== false, composerFound: !!composerRoot(), drawn: !!(bar && bar.isConnected) },
       /* Codex's own context meter, and whether this script outlined it. The percentage is the number Codex shows. */
       context: { meterFound: meter.found, percentUsed: meter.percent, outlined: meter.low,
         outlineSetting: view.lowContext !== false, outlineAt: LOW_AT },
@@ -1274,6 +1398,7 @@
     if (!m || typeof m.type !== 'string' || m.type.indexOf('codex-extras-') !== 0) return;
     if (m.type === 'codex-extras-chime') chime(m.kind);
     else if (m.type === 'codex-extras-answer' && typeof m.text === 'string' && m.id) takeAnswer(m);
+    else if (m.type === 'codex-extras-info') showInfo(m);
     else if (m.type === 'codex-extras-sample') {
       var reply = { kind: 'sample', id: m.id };
       try {
@@ -1297,8 +1422,10 @@
     } else if (m.type === 'codex-extras-view') {
       view = { timestamps: m.timestamps !== false, navigation: m.navigation !== false,
         userColor: typeof m.userColor === 'string' ? m.userColor : '', userEdge: m.userEdge !== false,
-        lowContext: m.lowContext !== false, replyFigures: m.replyFigures !== false };
+        lowContext: m.lowContext !== false, replyFigures: m.replyFigures !== false, buttons: m.buttons !== false,
+        chime: m.chime !== false };
       ready();
+      placeBar();
     } else if (m.type === 'codex-extras-user-times') {
       hostWhen = Array.isArray(m.times)
         ? m.times.filter(function (n) { return typeof n === 'number' && isFinite(n); })
