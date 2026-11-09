@@ -13,7 +13,8 @@
  *     the conversation shown here.
  *   - The strip shows the figures the host sends for this conversation: the last turn's duration, how much of the
  *     context window is in use, model and effort, and while a turn runs, the tool call in progress and for how long.
- *   - On request, a sample of the conversation layout: element structure only, with no text from it.
+ *   - On request, a sample of the conversation layout: element structure only, with no text from it. The render check
+ *     (test/render/run.js) asks for one of the page it draws.
  *   - On request, a self-check: how much of Codex's own tree each part below found, and how much of its own each one
  *     drew, as counts and flags. This is how the parts that only a person looking at a live Codex could confirm are
  *     confirmed by a command instead.
@@ -472,8 +473,8 @@
   }
 
   /*
-   * A sample of the conversation layout, taken only when the host asks for one and leaving behind neither a timer nor an
-   * observer. Codex's own class names are not known to this script, so nothing here is selected by name: one pass over
+   * A sample of the conversation layout, taken only when asked for one (the render check asks) and leaving behind
+   * neither a timer nor an observer. Codex's own class names are not known to this script, so nothing here is selected by name: one pass over
    * the page finds the element the user actually scrolls, and the sample is the tree under it.
    *
    * Only shape is sent. Each element gives its tag, its class names, the names of its attributes, its depth, how many

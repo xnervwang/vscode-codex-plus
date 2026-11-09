@@ -128,6 +128,27 @@ Everything this extension adds to Codex depends on the exact shape of one build,
 - `Codex Plus: Show Status` says whether the installed build is one of them. An unrecorded build also puts one line in the Codex Plus output channel, and never a dialog.
 - An unrecorded build is not a broken one. The patch is all or nothing, so a rule that no longer fits leaves Codex untouched and says so in the status.
 
+## The render check
+
+- `test/render/run.js` draws Codex's real conversation page, from the installed Codex extension, with this repository's page script in it, and checks what can only be seen in a drawn page.
+- It is not part of `test/check.js` and not in the package.
+
+```sh
+node test/render/run.js [--out <dir>] [--codex <Codex extension folder>] [--only <scenes>]
+```
+
+| | |
+| --- | --- |
+| When to run it | Once for every new Codex build, before adding it to `src/supported-versions.json`, and after a change to how the page script draws |
+| What it draws | A made-up conversation, in seven states: four turns at 1100, 400 and 1600 pixels wide; a turn stopped on an approval; a command still running in the background with Codex's own context meter on; 25 turns over two days; Codex's model menu and conversation menu open |
+| What it asserts | The page script finds the conversation and draws a time on every message; nothing of this extension's overlaps Codex's bubbles, buttons, message box, approval card, context meter or tool rows; nothing of Codex's is in the rail's column; the row below the message box is 2 px below its frame, with no background, its glyphs inked within the heights of Codex's toolbar icons; Codex's own reply time is hidden where ours is drawn; an approval card is reported; nothing of ours is over Codex's menus |
+| What it writes | Screenshots in `<out>/shots`, the measurements in `<out>/results.json`, and the page script's layout sample of the drawn page in `<out>/layout-sample.json`, with the `data-*` names it does not share with the fixture in `test/fixtures/` printed. `<out>` is a new folder in the system's temporary folder unless given |
+| What it needs | A headless Chromium (Playwright's `chromium_headless_shell`, or `CHROME`), `unshare -rn` for an unprivileged user, and an installed Codex extension. Without one of them it says which and exits 0 |
+| What leaves the machine | Nothing. The browser fails every request not to `127.0.0.1` and the run prints how many it failed; Codex's app-server runs in a namespace with no network. Codex's installed files are only read |
+| How long | About four minutes: each scene starts Codex's app-server and loads Codex's page afresh. `--only narrow,approval` runs some of them (`conversation`, `narrow`, `wide`, `approval`, `background`, `long`) |
+
+- A new Codex build may need the stand-ins updated (`test/render/harness/`): they answer the page's host services and its app-server requests the way Codex's host does.
+
 ## Inside a Codex conversation
 
 Timestamps, the navigation strip and the colouring of your own messages are all drawn into Codex's own page, so each needs the patch **and** a window reload after it, since a page runs the script it was built with.

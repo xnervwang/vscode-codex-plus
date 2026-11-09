@@ -26,6 +26,7 @@
 - `node test/check.js`: the whole suite, no dependencies; parts in `test/parts/`, run in name order.
 - `node test/e2e-codex.js <codex> <CODEX_HOME>`: the work plan against a real codex; needs model credentials.
 - `node test/against-latest.js`: the patch against the newest Codex on the marketplace (`CODEX_EXTRAS_PRERELEASE=1` for pre-releases).
+- `node test/render/run.js [--out <dir>] [--only <scene>]`: Codex's real page with the page script in it, drawn in a headless Chromium against Codex's app-server offline, with what only a drawn page shows asserted; once per new Codex build. Needs a headless Chromium, `unshare -rn` and an installed Codex, and says which is missing otherwise (README, The render check).
 - `test/parts/45-core.js`: this extension and Agent Plus together; needs its checkout beside this one, or `AGENT_WORK_PLAN_DIR`.
 - `node test/against-core.js`: the protocol major against the newest Agent Plus on the marketplace.
 - `bash build/pack.sh`: runs the suite and builds the `.vsix`.

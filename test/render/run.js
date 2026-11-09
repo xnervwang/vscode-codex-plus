@@ -1,0 +1,336 @@
+// BSD 3-Clause License
+// Copyright (c) 2026, Xnerv Wang
+// All rights reserved.
+
+'use strict';
+/*
+ * The render check: Codex's real conversation page, from the installed Codex extension, with this repository's page
+ * script in it, drawn in a headless Chromium against Codex's real app-server running offline on a made-up conversation.
+ * Not part of test/check.js and not in the package. Run it once per new Codex version:
+ *
+ *   node test/render/run.js [--out <dir>] [--codex <Codex extension dir>]
+ *
+ * It asserts what can only be seen in a drawn page - that nothing of this extension's covers Codex's own controls, that
+ * the page script finds what it looks for, that an approval card is reported - and saves a screenshot of each state in
+ * <out>/shots (by default a new directory under the system's temporary directory). On a machine without what it needs
+ * (lib/env.js) it says what is missing and exits 0. It exits 1 when an assertion fails.
+ *
+ * Nothing leaves the machine: the browser fails every request that is not to 127.0.0.1 and the number it failed is
+ * printed, and the app-server runs in a namespace with no network.
+ */
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const env = require('./lib/env');
+const scene = require('./lib/scene');
+const fake = require('./lib/fake-codex-home');
+const live = require('./lib/live-turn');
+const { MEASURE, OVER_FLOATING } = require('./lib/measure');
+const png = require('./lib/png');
+const patching = require('../../src/patching');
+
+const args = process.argv.slice(2);
+const arg = (name) => { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : ''; };
+const found = env.find({ codexDir: arg('--codex') });
+if (found.missing.length) {
+  console.log('The render check could not run here. Missing:');
+  for (const m of found.missing) console.log(`  - ${m}`);
+  process.exit(0);
+}
+/* --only <name>[,<name>] runs those scenes alone: conversation, narrow, wide, approval, background, long. */
+const ONLY = arg('--only') ? arg('--only').split(',') : null;
+const want = (name) => !ONLY || ONLY.includes(name);
+const OUT = path.resolve(arg('--out') || fs.mkdtempSync(path.join(os.tmpdir(), 'codex-plus-render-')));
+const SHOTS = path.join(OUT, 'shots');
+fs.mkdirSync(SHOTS, { recursive: true });
+const ENV = { ...found, work: path.join(OUT, 'work') };
+
+let passed = 0, failed = 0;
+const results = { codex: found.codex.version, capnweb: found.capnweb, scenes: {}, blocked: [] };
+const check = (ok, what, detail) => {
+  if (ok) { passed++; console.log(`  ok    ${what}`); } else { failed++; console.log(`  FAIL  ${what}${detail === undefined ? '' : `: ${JSON.stringify(detail)}`}`); }
+};
+const sleep = scene.sleep;
+
+const VIEW = { type: 'codex-extras-view', timestamps: true, navigation: true, userColor: '', userEdge: true, lowContext: true,
+  replyFigures: true, buttons: true, chime: true };
+
+/* Open a scene, tell the page what this extension's host would, and wait for it to draw. */
+async function opened(name, opts = {}) {
+  console.log(`\n── ${name}`);
+  const s = await scene.open(ENV, { name, ...opts });
+  await s.toPage(VIEW);
+  await s.toPage({ type: 'codex-extras-user-times', times: s.data.times, compactions: [], turns: s.data.figures });
+  await s.toPage(patching.figuresOf({ state: 'idle' }, 0));
+  await sleep(1200);
+  results.scenes[name] = { measures: {} };
+  return s;
+}
+async function selfcheck(s) {
+  const id = `sc-${Date.now()}`;
+  await s.toPage({ type: 'codex-extras-selfcheck', id });
+  for (let i = 0; i < 20; i++) {
+    const r = await s.b.evaluate(`(window.__posted || []).filter((m) => m.kind === 'selfcheck' && m.id === ${JSON.stringify(id)}).pop() || null`);
+    if (r) return r.report;
+    await sleep(200);
+  }
+  return null;
+}
+const scrollTo = (s, where) => s.b.evaluate(`(() => { const sc = document.querySelector('[data-app-action-timeline-scroll]'); if (!sc) return -1;
+  sc.scrollTop = ${where === 'top' ? 0 : 'sc.scrollHeight'}; return sc.scrollTop; })()`).then(() => sleep(700));
+/* The measurements, and how tall the row's glyphs and Codex's own toolbar icons are inked, read off a screenshot of the
+   bottom of the page at twice its size. */
+async function measured(s, name, label) {
+  await sleep(400);
+  const m = await s.b.evaluate(MEASURE);
+  const top = m.composer ? Math.max(0, m.composer.y0 - 4) : Math.max(0, m.viewport[1] - 200);
+  const file = path.join(ENV.work, `${name}-${label}-ink.png`);
+  await s.b.screenshot(file, { x: 0, y: top, width: m.viewport[0], height: m.viewport[1] - top, scale: 2 });
+  const img = png.read(file);
+  const inked = (r) => { const k = png.ink(img, { x0: r.x0 * 2, y0: (r.y0 - top) * 2, x1: r.x1 * 2, y1: (r.y1 - top) * 2 }); return k ? k.h / 2 : 0; };
+  m.ink = { ours: m.ourButtons.map((b) => inked(b.rect)), codex: m.codexIcons.map(inked).filter((h) => h > 0) };
+  results.scenes[name].measures[label] = m;
+  return m;
+}
+const shot = (s, file, clip) => s.b.screenshot(path.join(SHOTS, `${file}.png`), clip);
+const centre = (s, sel) => s.b.evaluate(`(() => { const e = document.querySelector(${JSON.stringify(sel)}); if (!e) return null;
+  const b = e.getBoundingClientRect(); return [b.left + b.width / 2, b.top + b.height / 2]; })()`);
+
+/*
+ * Codex's floating boxes over our elements: its model menu and the conversation's own menu, each opened, shot, and
+ * sampled where it overlaps anything of ours. No overlap at all is said, since nothing is then checked.
+ */
+async function floating(s, name) {
+  for (const [label, sel] of [['model menu', 'button[data-codex-intelligence-trigger]'], ['chat actions menu', 'button[aria-label="Chat actions"]']]) {
+    const at = await centre(s, sel);
+    if (!at) { check(false, `${name}: Codex's ${label} button is in the page`); continue; }
+    await s.b.click(at[0], at[1]);
+    await sleep(700);
+    await shot(s, `${name}-floating-${label.replace(/ /g, '-')}`);
+    const f = await s.b.evaluate(OVER_FLOATING('[role="menu"],[role="listbox"],[role="dialog"],[data-radix-popper-content-wrapper]'));
+    results.scenes[name][`floating ${label}`] = f;
+    check(f.boxes > 0, `${name}: Codex's ${label} opens`, f);
+    if (!f.sampled) console.log(`  note  ${name}: Codex's ${label} overlaps nothing of ours here, so there was nothing to sample`);
+    else check(f.wrong.length === 0, `${name}: nothing of ours is drawn over Codex's ${label} (${f.sampled} points sampled where they overlap)`, f.wrong.slice(0, 5));
+    await s.b.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+    await s.b.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+    await sleep(400);
+  }
+}
+
+/* The assertions every drawn state is held to. */
+function geometry(m, where, { strip = false } = {}) {
+  check(!m.overlaps.length, `${where}: nothing of ours overlaps Codex's bubbles, buttons, message box, approval card, meter or tool rows`,
+    m.overlaps.map((o) => `${o.ours} on ${o.codex}, ${o.area} px²`));
+  if (m.rail) {
+    check(!m.railColumn.length, `${where}: nothing Codex draws in the conversation, and no stamp of ours, is in the rail's column`,
+      m.railColumn.map((c) => `${c.what}, ${c.coveredPx} px`));
+  }
+  if (m.bar && m.composer) {
+    check(m.gaps.barBelowFrame >= 2 && m.gaps.barInView, `${where}: the button row is at least 2 px below the message box frame and inside the page`,
+      { below: m.gaps.barBelowFrame, inView: m.gaps.barInView });
+    /* Codex's own icons are not all one height; the glyphs are held to the range they span. Its chevrons are left out. */
+    const icons = m.ink.codex.filter((h) => h >= 6);
+    if (icons.length < 3) console.log(`  note  ${where}: ${icons.length} of Codex's toolbar icons drawn here, too few to hold the row's glyphs to`);
+    else {
+      const lo = Math.min(...icons), hi = Math.max(...icons);
+      check(m.ink.ours.length && m.ink.ours.every((h) => h >= lo && h <= hi),
+        `${where}: the row's glyphs are inked within the heights of Codex's own toolbar icons (${lo} to ${hi} px)`, m.ink);
+    }
+    check(m.barTone && m.barTone.diff <= 1, `${where}: the button row shows no background of its own against the page`, m.barTone && m.barTone.diff);
+  }
+  if (strip) {
+    check(!!m.strip, `${where}: the figures strip is drawn`);
+    if (m.strip && m.composer) {
+      check(m.gaps.stripBelowFrame >= 2 && m.gaps.stripInView, `${where}: the figures strip is at least 2 px below the message box frame and inside the page`,
+        { below: m.gaps.stripBelowFrame, inView: m.gaps.stripInView });
+      check(m.stripTone && m.stripTone.diff <= 1, `${where}: the figures strip shows no background of its own against the page`, m.stripTone && m.stripTone.diff);
+    }
+  }
+  check(m.replyTimes.shown === 0, `${where}: a reply carrying our time does not show Codex's own sent time as well`, m.replyTimes);
+}
+function selfchecked(r, where, { turns, users, rows, replies = turns }) {
+  const c = (r && r.codex) || {}, t = (r && r.times) || {}, nav = (r && r.navigation) || {};
+  check(!!(c.scroller && c.scroller.found), `${where}: the page script found the conversation's scroller`);
+  check(c.turns >= turns, `${where}: it sees ${turns} turns or more`, c.turns);
+  check(c.entries && c.entries.user === users, `${where}: it reads ${users} messages of yours`, c.entries);
+  check(t.user === users && t.assistant >= replies, `${where}: every message of yours and every one of the ${replies} replies carries a time`, { user: t.user, assistant: t.assistant });
+  check(nav.rows === rows, `${where}: the list has a row for each of your messages`, nav.rows);
+}
+
+(async () => {
+  let s;
+  /* ── the conversation: four turns, 1100 by 760 ── */
+  if (want('conversation')) s = await opened('conversation');
+  if (want('conversation')) try {
+    const r = await selfcheck(s);
+    results.scenes.conversation.selfcheck = r;
+    selfchecked(r, 'conversation', { turns: 4, users: 4, rows: 4 });
+    /* The page script's layout sample of the drawn page, beside the one taken in a user's window (test/fixtures):
+       which data-* names the two do not share, for a new Codex build to be read against. Said, not asserted. */
+    await s.toPage({ type: 'codex-extras-sample', id: 'layout' });
+    await sleep(700);
+    const taken = await s.b.evaluate('(window.__posted || []).filter((m) => m.kind === "sample").pop() || null');
+    if (taken && taken.sample) {
+      fs.writeFileSync(path.join(OUT, 'layout-sample.json'), JSON.stringify(taken.sample, null, 1));
+      const fixtures = path.join(__dirname, '..', 'fixtures');
+      const name = fs.readdirSync(fixtures).filter((n) => /^conversation-layout-.*\.json$/.test(n)).sort().pop();
+      if (name) {
+        const real = JSON.parse(fs.readFileSync(path.join(fixtures, name), 'utf8')).sample.page.dataAttrs;
+        const drawn = taken.sample.page.dataAttrs;
+        const cut = real[real.length - 1];
+        const near = (list) => list.filter((a) => a <= cut);
+        results.layout = { fixture: name, onlyInFixture: near(real).filter((a) => !drawn.includes(a)), onlyDrawn: near(drawn).filter((a) => !real.includes(a)) };
+        console.log(`  note  layout sample written to ${path.join(OUT, 'layout-sample.json')}; against ${name}, up to where its list is cut: `
+          + `${results.layout.onlyInFixture.length} data-* names only in the fixture, ${results.layout.onlyDrawn.length} only in the drawn page`);
+      }
+    }
+    await scrollTo(s, 'top');
+    await shot(s, 'conversation-top');
+    geometry(await measured(s, 'conversation', 'top'), 'conversation, top');
+    await scrollTo(s, 'bottom');
+    await shot(s, 'conversation-bottom');
+    geometry(await measured(s, 'conversation', 'bottom'), 'conversation, bottom');
+    await shot(s, 'composer-row', { x: 0, y: 560, width: 1100, height: 200 });
+    await shot(s, 'composer-row-zoom', { x: 0, y: 720, width: 1100, height: 40, scale: 2 });
+    await s.b.evaluate(`(() => { const a = [...document.querySelectorAll('[data-local-conversation-user-anchor]')].pop(); const b = a && a.querySelector('button'); if (b) b.focus(); })()`);
+    await shot(s, 'user-message-focused', { x: 600, y: 380, width: 500, height: 140 });
+    await s.b.evaluate('document.activeElement && document.activeElement.blur()');
+    const handle = await centre(s, '.codex-extras-rail-handle');
+    if (handle) {
+      await s.b.click(handle[0], handle[1]);
+      await sleep(500);
+      await shot(s, 'list-open');
+      await s.b.hover(handle[0], handle[1]);
+      await sleep(300);
+      const hover = await s.b.evaluate(`(() => { const h = document.querySelector('.codex-extras-rail-handle'); const c = getComputedStyle(h);
+        return { color: c.backgroundColor, image: c.backgroundImage }; })()`);
+      results.scenes.conversation.handleHover = hover;
+      const opaque = /rgb\(/.test(hover.color) || (/rgba\([^)]*,\s*1\)/.test(hover.color));
+      check(opaque, 'the rail handle is opaque while hovered', hover);
+      await s.b.click(handle[0], handle[1]);
+      await s.b.hover(10, 10);
+    }
+    await floating(s, 'conversation');
+    results.blocked.push(...s.b.blocked);
+  } finally { await s.close(); }
+
+  /* ── the same at the width of Codex's sidebar, and at a wide window ── */
+  for (const [name, width, height] of [['narrow', 400, 760], ['wide', 1600, 900]].filter(([n]) => want(n))) {
+    s = await opened(name, { width, height });
+    try {
+      await scrollTo(s, 'bottom');
+      await shot(s, `${name}-bottom`);
+      geometry(await measured(s, name, 'bottom'), `${name}, bottom`);
+      await scrollTo(s, 'top');
+      geometry(await measured(s, name, 'top'), `${name}, top`);
+      const handle = await centre(s, '.codex-extras-rail-handle');
+      if (handle) { await s.b.click(handle[0], handle[1]); await sleep(500); await shot(s, `${name}-list-open`); await s.b.click(handle[0], handle[1]); await sleep(300); }
+      if (name === 'narrow') { await scrollTo(s, 'bottom'); await floating(s, name); }
+      results.blocked.push(...s.b.blocked);
+    } finally { await s.close(); }
+  }
+
+  /* ── a turn some other page started, stopped on an approval ── */
+  if (want('approval')) s = await opened('approval');
+  if (want('approval')) try {
+    let tool = null;
+    for (const m of live.approval()) {
+      await s.toPage(m);
+      if (m.type === 'mcp-notification' && m.method === 'item/started' && m.params.item.type === 'commandExecution') {
+        tool = { name: 'shell', startedMs: m.params.startedAtMs, endedMs: 0, callId: m.params.item.id };
+      }
+      await sleep(120);
+    }
+    await s.toPage(patching.figuresOf({ state: 'working', lastTool: tool }, 0));
+    await sleep(1500);
+    await scrollTo(s, 'bottom');
+    const r = await selfcheck(s);
+    results.scenes.approval.selfcheck = r;
+    check(!!(r && r.approval && r.approval.onScreen && r.approval.told === true), 'approval: the card is seen and the host is told approval: true', r && r.approval);
+    const told = await s.b.evaluate(`(window.__posted || []).filter((m) => m.kind === 'approval').map((m) => m.on)`);
+    check(told.includes(true), 'approval: the page posted approval: true', told);
+    selfchecked(r, 'approval', { turns: 5, users: 5, rows: 5, replies: 4 });
+    await shot(s, 'approval');
+    await shot(s, 'approval-zoom', { x: 0, y: 520, width: 1100, height: 240, scale: 2 });
+    const m = await measured(s, 'approval', 'bottom');
+    geometry(m, 'approval, bottom', { strip: false });
+    check(!/running for/.test(m.stripText), 'approval: while Codex shows the running command itself, the strip does not say it again', m.stripText);
+    results.blocked.push(...s.b.blocked);
+  } finally { await s.close(); }
+
+  /* ── the message box with a command still running in the background, and Codex's own context meter on ── */
+  if (want('background')) s = await opened('background', { settings: { 'show-context-window-usage': true } });
+  if (want('background')) try {
+    patching.installHooks();
+    let tool = null;
+    for (const m of live.background()) {
+      await s.toPage(m);
+      if (m.type === 'mcp-notification') globalThis.__codexExtrasAppServer('notification', { method: m.method, params: m.params });
+      if (m.method === 'item/started' && m.params.item.type === 'commandExecution') tool = { name: 'exec_command', startedMs: m.params.startedAtMs, endedMs: 0, callId: m.params.item.id };
+      await sleep(120);
+    }
+    const usage = { inputTokens: 251000, cachedInputTokens: 0, outputTokens: 900, reasoningOutputTokens: 300, totalTokens: 251900 };
+    await s.toPage({ type: 'mcp-notification', hostId: 'local', method: 'thread/tokenUsage/updated',
+      params: { threadId: fake.THREAD, turnId: live.TURN, tokenUsage: { last: usage, total: usage, modelContextWindow: 400000 } } });
+    const running = patching.runningCommands(fake.THREAD).length;
+    const fig = patching.figuresOf({ state: 'working', lastTool: tool }, running);
+    await s.toPage(fig);
+    await sleep(1500);
+    await scrollTo(s, 'bottom');
+    await shot(s, 'background');
+    await shot(s, 'background-composer', { x: 0, y: 480, width: 1100, height: 280 });
+    await shot(s, 'background-composer-zoom', { x: 500, y: 680, width: 600, height: 80, scale: 2 });
+    const m = await measured(s, 'background', 'bottom');
+    const meter = m.codex.filter((c) => c.label === 'context meter').length;
+    results.scenes.background.meter = meter;
+    results.scenes.background.figures = fig;
+    check(running === 1, 'background: the host counts one command still running from the app-server\'s item/started', running);
+    check(meter > 0, 'background: Codex\'s own context meter is drawn', meter);
+    geometry(m, 'background, bottom', { strip: true });
+    check(/1 command running/.test(m.stripText) && !/running for/.test(m.stripText),
+      'background: the strip says one command is running, and not the tool call Codex already shows', m.stripText);
+    results.blocked.push(...s.b.blocked);
+  } finally { await s.close(); }
+
+  /* ── a long conversation over two days: ten turns yesterday and fifteen today ── */
+  if (want('long')) s = await opened('long', { turns: fake.manyTurns(25), days: [[1, 10], [0, 15]] });
+  if (want('long')) try {
+    await scrollTo(s, 'bottom');
+    await sleep(800);
+    const r = await selfcheck(s);
+    results.scenes.long.selfcheck = r;
+    const c = (r && r.codex) || {}, nav = (r && r.navigation) || {};
+    console.log(`  note  long: Codex keeps ${c.turns} of 25 turns in the page; ${c.userAnchors} messages of yours found, the list has ${nav.rows} rows`);
+    await shot(s, 'long-bottom');
+    geometry(await measured(s, 'long', 'bottom'), 'long, bottom');
+    const handle = await centre(s, '.codex-extras-rail-handle');
+    if (handle) { await s.b.click(handle[0], handle[1]); await sleep(600); }
+    await shot(s, 'long-list-open');
+    const list = await s.b.evaluate(`(() => { const p = document.querySelector('.codex-extras-panel'); const f = document.querySelector('[data-codex-composer-root]');
+      if (!p) return null; const a = p.getBoundingClientRect(), b = f ? f.getBoundingClientRect() : null;
+      const rows = [...p.querySelectorAll('.codex-extras-row')].map((x) => (x.querySelector('.codex-extras-row-when') || {}).textContent || '');
+      return { rows: rows.length, whens: rows, panel: [a.left, a.top, a.right, a.bottom].map(Math.round),
+        overComposer: b ? Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top)) * Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left)) : 0 }; })()`);
+    results.scenes.long.list = list;
+    const stamps = await s.b.evaluate(`[...document.querySelectorAll('.codex-extras-stamp-user')].map((e) => e.textContent)`);
+    results.scenes.long.userStamps = stamps;
+    const leftNav = await s.b.evaluate(`(() => [...document.querySelectorAll('body *')].filter((e) => { if (e.closest('[data-codex-extras]')) return false;
+      const st = getComputedStyle(e); if (st.position !== 'fixed' && st.position !== 'sticky' && st.position !== 'absolute') return false;
+      const b = e.getBoundingClientRect(); return b.left <= 4 && b.width > 0 && b.width < 60 && b.height > 80; }).length)()`);
+    results.scenes.long.leftNav = leftNav;
+    console.log(`  note  long: the list shows ${list && list.rows} rows; stamps on your messages read ${JSON.stringify(stamps.slice(0, 2))}...; `
+      + `${leftNav} narrow fixed element(s) of Codex's at the left edge; the open list overlaps the message box by ${list && list.overComposer} px²`);
+    check(list && list.overComposer === 0, 'long: the open list does not cover the message box', list);
+    results.blocked.push(...s.b.blocked);
+  } finally { await s.close(); }
+
+  results.passed = passed;
+  results.failed = failed;
+  fs.writeFileSync(path.join(OUT, 'results.json'), JSON.stringify(results, null, 1));
+  const hosts = [...new Set(results.blocked.map((u) => { try { return new URL(u).host; } catch (_) { return u; } }))];
+  console.log(`\nrequests failed in the browser because they were not to 127.0.0.1: ${results.blocked.length}${hosts.length ? ` (${hosts.join(', ')})` : ''}`);
+  console.log(`screenshots in ${SHOTS}; measurements in ${path.join(OUT, 'results.json')}`);
+  console.log(`\n${passed} passed, ${failed} failed`);
+  process.exit(failed ? 1 : 0);
+})().catch((e) => { console.error(e && e.stack || e); process.exit(1); });
