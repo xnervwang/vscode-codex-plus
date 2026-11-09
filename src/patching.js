@@ -6,10 +6,10 @@
 /*
  * The patch to Codex's own extension at run time: putting it in place, and using what it hands over.
  *
- * Patching is asked once per Codex version (codexPlus.patchCodex: ask, on or off) and takes effect after a reload.
- * Once Codex carries the patch, a build of this extension that changes what the patch writes refreshes it without
- * asking again: the question answered was whether to patch this Codex, and the answer is still the same one.
- * Removing it is a command, and the uninstall hook restores Codex's files too (uninstall.js).
+ * Codex is patched at start-up without asking, as Claude Code Plus patches Claude Code, and the patch takes effect after
+ * a reload; a build of this extension that changes what the patch writes refreshes it the same way. "Remove the Patch
+ * from Codex" puts Codex's files back and is remembered (PATCH_REMOVED_KEY) until "Patch Codex" is run, as Claude Code
+ * Plus remembers its Remove; the uninstall hook restores Codex's files too (uninstall.js).
  *
  * What the patched host hands over (src/host.js), and what is done with it:
  *
@@ -17,7 +17,7 @@
  *   each panel + thread   a dot on that tab's logo: green while a turn runs, red when one finished and is not read;
  *                         an answer from the Conversations tab put into that conversation's message box as a draft
  *                         (route state prefillPrompt, only if the box is empty), which its page then sends (deliver);
- *                         a chime when a turn there finishes or its plan asks a question; a strip with the last turn's
+ *                         a chime when a turn there finishes; a strip with the last turn's
  *                         figures and the tool call running now; and the settings the page draws its time stamps, its
  *                         list of the user's own messages and their colouring from, with the times its rollout gives
  *                         for those messages (src/page/codex-extras-page.js draws all of it, src/user-times.js reads
@@ -32,10 +32,10 @@
  *                         is reported after it; whether the user is still looking at the sidebar is worked out by the
  *                         source from the active tab (src/codex-source.js isFocused)
  *   page messages         the user's time zone, whether an approval card is on a page, and, when one was asked for, a
- *                         sample of the conversation layout or a self-check of what the page script found and drew
+ *                         self-check of what the page script found and drew
  *   app-server traffic    which conversations are stopped waiting for the user, and how many of those owe an answer
- *                         (src/approvals.js): the tab dot, the state the Conversations view shows, the count in the
- *                         status bar and a chime, none of which need a tab to be open on the conversation
+ *                         (src/approvals.js): the tab dot, the state the Conversations view shows and a chime, none of
+ *                         which need a tab to be open on the conversation
  */
 const fs = require('fs');
 const path = require('path');
@@ -50,8 +50,8 @@ const TAB_DOTS = { working: '#22c55e', unread: '#ef4444', prompt: '#3b82f6' };
 const TAB_DOT_SIZE = { r: 5.5, gap: 1 };
 /* As long a tab title as Claude Code Extras gives one; the tab bar cuts what does not fit. */
 const TITLE_MAX = 200;
-/* Set once the user has said yes to patching any Codex version. */
-const PATCH_YES_KEY = 'codexPlus.patchedBefore';
+/* Set by "Remove the Patch from Codex" and cleared by "Patch Codex": while it is set nothing patches Codex. */
+const PATCH_REMOVED_KEY = 'codexPlus.patchRemoved';
 let state = { active: false, reason: 'not checked yet', provider: null };
 /*
  * Every panel Codex handed over, whether or not its conversation is known: panel -> {
@@ -89,7 +89,7 @@ function anchorsMissingLine(m) {
       + `${m.composer === false ? ', nor its message box' : ''}`;
   return `A Codex page showed ${m.turns} turn${m.turns === 1 ? '' : 's'} and the page script recognised none of ${what}: `
     + 'this Codex build has probably changed what the additions in its page are attached to. '
-    + '"Codex Plus: Check What the Page Script Found in This Conversation" says which part was not found.';
+    + 'The page self-check at the end of "Codex Plus: Show Status" says which part was not found.';
 }
 
 function statusLines() {
@@ -116,10 +116,6 @@ function statusLines() {
  * so a conversation running in another window or started by `codex exec` is not here (README says so).
  */
 function approvalsOf(thread) { return approvals.of(thread); }
-/** How many answers the user owes across this window, for the status bar. */
-function decideCount() { return approvals.decideCount(); }
-/** Conversations with anything outstanding, whether the user has to answer it or not. */
-function waitingThreads() { return approvals.threads(); }
 /** Told whenever the outstanding set changed, so the views redraw without waiting for the next poll. */
 function onApprovalsChanged(fn) {
   onApprovals.add(fn);
@@ -253,9 +249,9 @@ function postTo(panel, msg) {
    So the outcome is uncertain (the protocol's word for it): the sender keeps the answer and tells the user to look. */
 /*
  * An answer into a conversation shown here, in a tab or in the sidebar: Codex's own route state puts it in the message
- * box as a draft (into an empty box only), and the page script then sends it unless codexPlus.sendAnswers is off and
- * reports what it saw (src/page/codex-extras-page.js takeAnswer). A page with no such script, or one that does not
- * answer in time, leaves the outcome uncertain: the draft may still be there.
+ * box as a draft (into an empty box only), and the page script then sends it and reports what it saw
+ * (src/page/codex-extras-page.js takeAnswer). A page with no such script, or one that does not answer in time, leaves
+ * the outcome uncertain: the draft may still be there.
  */
 const ANSWER_WAIT_MS = 6000;
 const answering = new Map();
@@ -278,11 +274,10 @@ async function deliver(thread, text, { waitMs = ANSWER_WAIT_MS } = {}) {
   if (panel) { try { panel.reveal(undefined, false); } catch (_) { /* typed, just not brought forward */ } }
   if (pagePatchState() && pagePatchState() !== 'patched') return { outcome: 'uncertain' };
   const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  const submit = !deps || deps.settings().sendAnswers !== false;
   const seen = await new Promise((resolve) => {
     const timer = setTimeout(() => { answering.delete(id); resolve(''); }, waitMs);
     answering.set(id, (word) => { clearTimeout(timer); answering.delete(id); resolve(word); });
-    const msg = { type: 'codex-extras-answer', id, text, submit };
+    const msg = { type: 'codex-extras-answer', id, text };
     try {
       if (panel) postTo(panel, msg);
       else state.provider.postMessageToSidebar(msg);
@@ -302,12 +297,9 @@ async function openInSidebar(thread) {
 }
 
 /*
- * The two questions the page in front can be asked, both answered once (src/page/codex-extras-page.js):
- *
- *   sample     the conversation's layout, for writing selectors against what Codex draws at run time. Structure only,
- *              and nothing the conversation says.
- *   selfcheck  how much of Codex's tree the page script found and how much of its own it drew, as counts and flags.
- *              This is what makes the parts drawn in the page checkable without a person looking at them.
+ * The question the page in front can be asked, answered once (src/page/codex-extras-page.js): how much of Codex's tree
+ * the page script found and how much of its own it drew, as counts and flags. This is what makes the parts drawn in the
+ * page checkable without a person looking at them.
  *
  * One question at a time per kind, identified by a nonce so a late answer to an abandoned question is dropped, and the
  * one timer involved is the timeout, cleared as soon as either side finishes.
@@ -377,11 +369,8 @@ async function askPage(kind, { field, doing, noun, busy, failed, timeoutMs = ASK
   return r;
 }
 
-/** { sample } or { error } - the error is a sentence for the user, saying what to do about it. */
-const sampleLayout = (opts = {}) => askPage('sample', { field: 'sample', doing: 'take a sample', noun: 'sample',
-  busy: 'a sample is already being taken', failed: 'take a sample', ...opts });
-
-/** { report } or { error }: what the page in front makes of the conversation it is showing. */
+/** { report } or { error }: what the page in front makes of the conversation it is showing. The error is a sentence for
+    the user, saying what to do about it. */
 const selfCheckPage = (opts = {}) => askPage('selfcheck', { field: 'report', doing: 'answer a self-check',
   noun: 'self-check', busy: 'a self-check is already running', failed: 'finish its self-check', ...opts });
 
@@ -549,7 +538,7 @@ function settle(now) {
  */
 async function refreshPanels() {
   if (!deps || !state.active) return;
-  const { vscode, source, context, planQuestions } = deps;
+  const { vscode, source, context } = deps;
   let list = [];
   try { list = await source.listConversations(); } catch (_) { return; }
   const now = new Map(list.map((c) => [c.sessionId, c]));
@@ -610,15 +599,12 @@ async function refreshPanels() {
       if (title) { try { if (panel.title !== title) panel.title = title; } catch (_) { /* disposed */ } }
       /* Against the rollout's own answer, not against `state`: a turn that stopped on an approval has not finished, and
          `state` reads `prompt` for it, which would otherwise ring the finished-turn chime. */
-      if (deps.settings().chime && was) {
-        if (was.working && c && !c.working) postTo(panel, { type: 'codex-extras-chime', kind: 'done' });
-        else if (planQuestions(thread) > (was.questions || 0)) postTo(panel, { type: 'codex-extras-chime', kind: 'question' });
-      }
+      if (deps.settings().chime && was && was.working && c && !c.working) postTo(panel, { type: 'codex-extras-chime', kind: 'done' });
       if (deps.settings().figures) postTo(panel, figuresOf(c, runningCommands(thread).length) || { type: 'codex-extras-figures', text: '' });
       postTo(panel, view);
       if (whens.has(thread)) postTo(panel, { type: 'codex-extras-user-times', ...whens.get(thread) });
     }
-    if (c) last.set(thread, { state: c.state, working: !!c.working, questions: planQuestions(thread) });
+    if (c) last.set(thread, { state: c.state, working: !!c.working });
   }
 }
 
@@ -750,38 +736,22 @@ function installHooks() {
   if (globalThis.__codexExtrasProvider) { state.provider = globalThis.__codexExtrasProvider; state.active = true; state.reason = 'connected'; }
 }
 
+/*
+ * `mode` is 'on' or 'off' (extension.js settings): off while the master switch is off or after "Remove the Patch from
+ * Codex", on otherwise. A Codex that carries an older copy of the patch gets this build's (`refresh`), and a clean one
+ * gets the patch, both without asking.
+ */
 async function ensurePatched(vscode, context, log, mode) {
   const dir = codexPath(vscode);
   if (!dir) { state.reason = 'the Codex extension is not installed'; return; }
   const states = targets.map((t) => t.status(dir));
   if (states.every((s) => s === 'patched')) { state.reason = state.active ? 'connected' : 'patched; reload to connect'; return; }
-  if (mode === 'off') { state.reason = 'turned off (codexPlus.patchCodex)'; return; }
-  const version = (vscode.extensions.getExtension('openai.chatgpt').packageJSON || {}).version || '';
-  /*
-   * Every target still carries a mark of this extension's, just not this build's: Codex is patched and what is in it is
-   * an older copy of the same thing. Write the new copy without asking - the decision to patch this Codex was already
-   * made, and leaving the old copy in place is what the stale state is. A target gone back to clean (the remove
-   * command, or a Codex update into a fresh directory) is a fresh decision and goes through the question below.
-   */
-  const refresh = states.every((s) => s === 'patched' || s === 'outdated');
-  /* Asked once: a yes to any Codex version holds for every later one, so an update of Codex does not ask again. A no
-     holds for the version it was given for. Either way the patch going missing (a failed refresh puts every target
-     back) is not a reason to ask again. */
-  const key = `codexPlus.patchAsked:${version}`;
-  const answered = context.globalState.get(key);
-  const yesBefore = context.globalState.get(PATCH_YES_KEY) === true;
-  if (mode === 'ask' && !refresh && answered === 'no') { state.reason = 'not patched: declined for this Codex version'; return; }
-  if (mode === 'ask' && !refresh && answered !== 'yes' && !yesBefore) {
-    const go = 'Patch Codex';
-    const pick = await vscode.window.showInformationMessage(`Patch the Codex extension ${version}?`, {
-      detail: 'It adds status dots to Codex tabs, opening a conversation in the sidebar, answers into a conversation\'s '
-        + 'message box, chimes, a line with each conversation\'s last turn figures, a time on every message and reply, '
-        + 'a list of your own messages on the right edge, and your own messages marked out. Codex\'s files are kept and '
-        + 'put back by "Codex Plus: Remove the Patch from Codex" or on uninstall. A window reload applies it.' }, go, 'Not now');
-    await context.globalState.update(key, pick === go ? 'yes' : 'no');
-    if (pick === go) await context.globalState.update(PATCH_YES_KEY, true);
-    if (pick !== go) { state.reason = 'not patched: declined for this Codex version'; return; }
+  if (mode === 'off') {
+    state.reason = context.globalState.get(PATCH_REMOVED_KEY) === true
+      ? 'removed by "Remove the Patch from Codex"; "Patch Codex" puts it back' : 'the additions are off (codexPlus.enabled)';
+    return;
   }
+  const refresh = states.every((s) => s === 'patched' || s === 'outdated');
   const results = [];
   for (const t of targets) {
     try { results.push([t.name, t.apply(dir)]); } catch (e) { results.push([t.name, { current: false, message: e.message }]); }
@@ -868,6 +838,6 @@ function activate(context, opts) {
 
 module.exports = { activate, ensurePatched, statusLines, openInSidebar, canType, canDeliver, deliver, sidebarThread, panelThreads, shownIn,
   nowShowing, revealPanel, removePatch,
-  figuresOf, safeColor, viewOf, sampleLayout, selfCheckPage, selfCheckLines, installHooks, refreshPanels, approvalsOf,
-  decideCount, waitingThreads, onApprovalsChanged, offerReloadIfStale, sidebarShowing, onSidebarChanged, runningCommands, _state: () => state, _registry: registry, _approvals: approvals,
-  TAB_DOTS, ASK_MS, PATCH_YES_KEY };
+  figuresOf, safeColor, viewOf, selfCheckPage, selfCheckLines, installHooks, refreshPanels, approvalsOf,
+  onApprovalsChanged, offerReloadIfStale, sidebarShowing, onSidebarChanged, runningCommands, _state: () => state, _registry: registry, _approvals: approvals,
+  TAB_DOTS, ASK_MS, PATCH_REMOVED_KEY };

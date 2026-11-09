@@ -4,8 +4,8 @@
 
 'use strict';
 /*
- * The sample of the conversation layout: what the page script sends when the host asks for one and what it leaves
- * out, the request and reply across the patch, where the file lands, and the command's answer when there is no patch.
+ * The sample of the conversation layout: what the page script sends when it is asked for one, and what it leaves out.
+ * The render check (test/render) asks for it to write down the layout of the page it drew.
  *
  * The page side is checked by running the real script, the same file the patch copies into Codex's webview folder, in
  * a stand-in page whose DOM is written here. That page holds nine things the sample must not carry: a sentence of
@@ -15,8 +15,6 @@
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
-const fake = require('../fake-vscode');
-const fixture = require('../fixture');
 
 const THREAD = '01a1b8f2-fd2b-7e60-9ffc-16e5cb642e31';
 /* Everything a real conversation would hold that the sample must leave behind. */
@@ -120,10 +118,7 @@ function flatten(node, out = []) {
   return out;
 }
 
-module.exports = async ({ ok, bad, eq, tmp, root }) => {
-  const { vscode, control } = fake.create();
-  fake.install(vscode);
-
+module.exports = async ({ ok, bad, eq, root }) => {
   /* ── the page side: the real script, a stand-in page, and the reply read apart ── */
   const ask = pageUnder(root);
   const reply = ask(conversationPage());
@@ -180,77 +175,4 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
   eq([count, wide.sampled], [MAX_NODES, MAX_NODES], 'more elements than the limit are cut at it');
   eq(wide.tree.unsampled, { groups: extra + 1, elements: extra + 1 },
     'and what the budget ran out before reaching is counted, so the sample says how much it left out');
-
-  /* ── where the file lands ── */
-  const dom = require('../../src/dom-sample');
-  const gs = tmp('global-storage');
-  const dir = path.join(gs, 'made-by-the-command');
-  const file = dom.save({ dir, date: new Date(2026, 10, 8, 14, 3, 9), codexVersion: '26.1021.22027', sample: s });
-  eq([path.basename(file), file.startsWith(gs + path.sep)], ['conversation-layout-20261108-140309.json', true],
-    'the file is named by the second it was taken in, under the directory it was given');
-  const back = JSON.parse(fs.readFileSync(file, 'utf8'));
-  eq([back.format, back.codexVersion, typeof back.takenAt, back.sample.root.fromScroller, back.sample.tree.kids.length],
-    [1, '26.1021.22027', 'string', true, 4], 'and it reads back as a fixture: format, when, which Codex, and the sample itself');
-
-  /* ── the request and reply across the patch ── */
-  delete require.cache[require.resolve('../../src/patching')];
-  const patching = require('../../src/patching');
-  eq(/Patch Codex/.test((await patching.sampleLayout()).error || ''), true,
-    'with no patch in effect the page cannot be asked, and the answer says which command puts it in place');
-  const sent = [];
-  const provider = { postMessageToWebview: (w, m) => sent.push(m) };
-  const panel = { webview: {}, active: false, reveal() {}, onDidDispose() {}, iconPath: null };
-  patching.installHooks();
-  globalThis.__codexExtrasPanel(panel, THREAD, provider);
-  eq(/in front/.test((await patching.sampleLayout()).error || ''), true,
-    'with the patch but no Codex tab in front, it says to bring one forward rather than sampling the wrong page');
-  panel.active = true;
-  const wanted = patching.sampleLayout();
-  const request = sent[sent.length - 1];
-  eq([request.type, typeof request.id], ['codex-extras-sample', 'string'], 'the request goes to the panel in front, with a nonce');
-  globalThis.__codexExtrasMessage(panel.webview, { kind: 'sample', id: request.id, sample: s }, provider);
-  eq((await wanted).sample.messageBlocks.count, 7, 'and the page\'s answer to that nonce is what comes back');
-  const stale = patching.sampleLayout({ timeoutMs: 60 });
-  globalThis.__codexExtrasMessage(panel.webview, { kind: 'sample', id: 'a-nonce-of-an-older-request', sample: s }, provider);
-  eq(/did not answer/.test((await stale).error || ''), true, 'an answer carrying another request\'s nonce is dropped, and that request times out');
-  const refused = patching.sampleLayout({ timeoutMs: 2000 });
-  globalThis.__codexExtrasMessage(panel.webview, { kind: 'sample', id: sent[sent.length - 1].id, error: 'the page has no body yet' }, provider);
-  eq((await refused).error, 'Codex\'s page could not take a sample: the page has no body yet', 'a page that could not sample says so');
-
-  /*
-   * A window whose Codex page still carries an older page script than this extension's. A page runs the script it was
-   * built with, so such a page answers nothing at all, and the reason comes from reading the file rather than from
-   * waiting for a reply that will not arrive.
-   */
-  const codexDir = tmp('codex-of-this-window');
-  fs.mkdirSync(path.join(codexDir, 'webview'), { recursive: true });
-  fs.writeFileSync(path.join(codexDir, 'webview', 'index.html'), '<!-- CODEX-EXTRAS-PAGE v1-0123456789ab -->\n<html></html>\n');
-  control.state.extensions.set('openai.chatgpt', { extensionPath: codexDir, packageJSON: { version: '26.1021.22027' } });
-  patching.activate({ subscriptions: [], globalStorageUri: vscode.Uri.file(tmp('gs')), globalState: fake.memento() }, {
-    vscode, log: () => {}, settings: () => ({ patchCodex: 'off', chime: false, figures: false }), planQuestions: () => 0,
-    source: { onDidChangeConversations: () => ({ dispose() {} }), _focus() {}, listConversations: async () => [], logo: null },
-    context: { globalStorageUri: vscode.Uri.file(tmp('gs')) } });
-  eq(/an older version of this extension's page script/.test((await patching.sampleLayout()).error || ''), true,
-    'a page left on an older page script is named as the reason, instead of the request being waited out');
-
-  /* ── the command itself, in a window where Codex is not patched: it writes nothing and says why ── */
-  for (const k of Object.keys(require.cache)) if (k.startsWith(root + path.sep) && !k.includes(`${path.sep}test${path.sep}`)) delete require.cache[k];
-  vscode.workspace.isTrusted = true;
-  vscode.workspace.onDidGrantWorkspaceTrust = () => ({ dispose() {} });
-  const home = tmp('home');
-  fixture.codexHome(home, [{ title: 'One', cwd: home, turns: [{}] }]);
-  control.state.config = { codexHome: home, installWorkPlanPlugin: 'never', reopenDroppedTabs: false, patchCodex: 'off' };
-  const ext = require(path.join(root, 'extension.js'));
-  const subs = [];
-  const storage = tmp('storage-of-the-command');
-  await ext.activate({ subscriptions: subs, workspaceState: fake.memento(), globalState: fake.memento(),
-    globalStorageUri: vscode.Uri.file(storage), extensionPath: root });
-  const before = control.state.said.length;
-  await control.state.handlers['codexPlus.sampleConversationDom']();
-  const said = control.state.said.slice(before);
-  const written = fs.readdirSync(storage).filter((f) => f.startsWith(dom.PREFIX));
-  eq([said.length, /patch to Codex is not in effect/.test((said[0] || {}).message || ''), written],
-    [1, true, []], 'the command writes no file without the patch, and says in one sentence what to do about it');
-  for (const d of subs) { try { d.dispose(); } catch (_) { /* gone */ } }
-  ext.deactivate();
 };

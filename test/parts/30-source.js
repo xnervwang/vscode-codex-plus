@@ -227,7 +227,7 @@ module.exports = async ({ ok, bad, eq, tmp }) => {
     } finally { source.dispose(); }
 
     /* ── plans of conversations that are gone are swept, recent ones and live ones kept ── */
-    const { sweepOrphans, planQuestions } = require('../../src/workplan');
+    const { sweepOrphans } = require('../../src/workplan');
     const sweepDir = tmp('sweep');
     const oldMs = Date.now() - 30 * 86400e3;
     const ids = { live: idle.id, dead: '0dead000-0000-7000-8000-000000000000', fresh: '0f000000-0000-7000-8000-000000000000' };
@@ -274,8 +274,6 @@ module.exports = async ({ ok, bad, eq, tmp }) => {
       eq([r2.deleted, fs.readdirSync(dir2).sort()], [1, [NAMED, UNNAMED, ARCHIVED].map((id) => `${id}.json`).sort()],
         'a conversation whose rollout is still in sessions/ or archived_sessions/ keeps its plan; only one with none anywhere loses it');
     }
-    eq(planQuestions([{ title: 'a', state: 'waiting', waitingOn: 'user', question: 'Q?' }, { title: 'b', state: 'todo' }]).map((q) => q.question), ['Q?'],
-      'planQuestions() finds the rows that wait on the user, for the chime');
 
     /* ── session list ── */
     const { group, dateSpan, looksLikeId, SessionsProvider } = require('../../src/sessions-view');
@@ -291,7 +289,7 @@ module.exports = async ({ ok, bad, eq, tmp }) => {
     eq(dateSpan(t0, t0 + 11 * day, t0 + 22 * day), '11d · 09/05→09/16', 'the date span reads like the session list\'s');
     eq([looksLikeId('69f9'), looksLikeId('69f'), looksLikeId('fix bug')], [true, false, false], 'four hex characters search the id');
     const provider = new SessionsProvider(vscode, { memory: { openThreads: () => [], recentlyClosed: () => [], frontAt: () => 0 }, memento: fake.memento(),
-      settings: () => ({ sessionsInWorkspaceOnly: false, recentClosedSessions: 10, hideBackgroundSessions: true }), stateOf: () => null, reader: inWorker });
+      settings: () => ({ recentClosedSessions: 10, hideBackgroundSessions: true }), stateOf: () => null, reader: inWorker });
     provider.refresh();
     eq(provider.getChildren().map((e) => e.group.key), ['open', 'ungrouped', 'archived'], 'the session list draws from the reader\'s snapshot');
 

@@ -464,18 +464,6 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
   eq((await refused).error, 'Codex\'s page could not finish its self-check: the page has no body yet',
     'and a page that could not run one says so in the same sentence as the reason');
   /*
-   * The two questions are asked over one channel, so an answer to one must never settle the other. Both are left
-   * outstanding at once and answered in the wrong order.
-   */
-  const bothSample = patching.sampleLayout({ timeoutMs: 2000 });
-  const bothCheck = patching.selfCheckPage({ timeoutMs: 2000 });
-  const checkId = sent[sent.length - 1].id, sampleId = sent[sent.length - 2].id;
-  globalThis.__codexExtrasMessage(panel.webview, { kind: 'selfcheck', id: checkId, report: r }, provider);
-  globalThis.__codexExtrasMessage(panel.webview, { kind: 'sample', id: sampleId, sample }, provider);
-  eq([(await bothCheck).report.codex.turns, (await bothSample).sample.root.fromScroller], [r.codex.turns, true],
-    'a self-check and a sample outstanding together are each settled by their own answer, in whichever order those come');
-
-  /*
    * A window whose Codex page carries an older copy of the page script. Such a page has no self-check in it at all, so
    * the reason comes from reading the file rather than from waiting out a reply that cannot arrive.
    */
@@ -484,7 +472,7 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
   fs.writeFileSync(path.join(codexDir, 'webview', 'index.html'), '<!-- CODEX-EXTRAS-PAGE v1-0123456789ab -->\n<html></html>\n');
   control.state.extensions.set('openai.chatgpt', { extensionPath: codexDir, packageJSON: { version: '26.1021.22027' } });
   patching.activate({ subscriptions: [], globalStorageUri: vscode.Uri.file(tmp('gs')), globalState: fake.memento() }, {
-    vscode, log: () => {}, settings: () => ({ patchCodex: 'off', chime: false, figures: false }), planQuestions: () => 0,
+    vscode, log: () => {}, settings: () => ({ patchCodex: 'off', chime: false, figures: false }),
     source: { onDidChangeConversations: () => ({ dispose() {} }), _focus() {}, listConversations: async () => [], logo: null },
     context: { globalStorageUri: vscode.Uri.file(tmp('gs')) } });
   const old = await patching.selfCheckPage();
@@ -492,16 +480,17 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
     'a page left on an older page script is named as the reason, instead of the request being waited out');
   eq(patching.selfCheckLines(old).length, 1, 'and that comes out as the one line, not as a report of zeroes');
 
-  /* ── the two places it comes out, in a window where Codex is not patched ── */
+  /* ── where it comes out: the end of Show Status, in a window where Codex is not patched ── */
   for (const k of Object.keys(require.cache)) if (k.startsWith(root + path.sep) && !k.includes(`${path.sep}test${path.sep}`)) delete require.cache[k];
   vscode.workspace.isTrusted = true;
   vscode.workspace.onDidGrantWorkspaceTrust = () => ({ dispose() {} });
   const home = tmp('home');
   fixture.codexHome(home, [{ title: 'One', cwd: home, turns: [{}] }]);
-  control.state.config = { codexHome: home, installWorkPlanPlugin: 'never', reopenDroppedTabs: false, patchCodex: 'off' };
+  process.env.CODEX_HOME = home;
+  control.state.config = { reopenDroppedTabs: false };
   const ext = require(path.join(root, 'extension.js'));
   const subs = [];
-  await ext.activate({ subscriptions: subs, workspaceState: fake.memento(), globalState: fake.memento(),
+  await ext.activate({ subscriptions: subs, workspaceState: fake.memento(), globalState: fake.memento({ 'codexPlus.patchRemoved': true }),
     globalStorageUri: vscode.Uri.file(tmp('storage')), extensionPath: root });
 
   control.state.log.length = 0;
@@ -509,16 +498,6 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
   eq(/Page self-check: the patch to Codex is not in effect/.test(control.state.log.join('\n')), true,
     'Show Status ends with the self-check, and in a window with no patch that is the one line rather than an error');
 
-  control.state.log.length = 0;
-  const before = control.state.said.length;
-  await control.state.handlers['codexPlus.pageSelfCheck']();
-  const said = control.state.said.slice(before);
-  eq([/Page self-check:/.test(control.state.log.join('\n')), said.length, (said[0] || {}).buttons],
-    [true, 1, ['Copy']], 'and the command of its own writes the same lines to the output panel and offers to copy them');
-  /* The lines go to the clipboard whole, which is the point of the command: one paste carries the answer back. */
-  control.answer('Codex Plus:', 'Copy');
-  await control.state.handlers['codexPlus.pageSelfCheck']();
-  eq(/^Page self-check:/.test(control.state.clipboard), true, 'and copies them when the user asks for that');
   for (const d of subs) { try { d.dispose(); } catch (_) { /* gone */ } }
   ext.deactivate();
 };

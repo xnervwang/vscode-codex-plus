@@ -24,7 +24,8 @@ async function run(root, tmp, { core = 'accept', trusted = true, config = {}, ta
   const home = tmp('home');
   fixture.codexHome(home, [{ title: 'One', cwd: home, turns: [{}] }]);
   if (configToml) fs.writeFileSync(path.join(home, 'config.toml'), configToml);
-  control.state.config = { codexHome: home, installWorkPlanPlugin: 'never', reopenDroppedTabs: false, patchCodex: 'off', ...config };
+  process.env.CODEX_HOME = home;
+  control.state.config = { reopenDroppedTabs: false, ...config };
   const registered = [];
   if (core) {
     const registerSource = (s) => {
@@ -36,7 +37,7 @@ async function run(root, tmp, { core = 'accept', trusted = true, config = {}, ta
   }
   const ext = require(path.join(root, 'extension.js'));
   const subs = [];
-  const globalState = fake.memento();
+  const globalState = fake.memento({ 'codexPlus.patchRemoved': true });
   const context = { subscriptions: subs, workspaceState: fake.memento(), globalState, globalStorageUri: vscode.Uri.file(tmp('gs')), extensionPath: root };
   if (logDir) context.logUri = vscode.Uri.file(logDir);
   await ext.activate(context);
@@ -86,24 +87,21 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
   eq(hosted.state.said.length, 0, 'nothing is said when it is taken');
 
   /*
-   * The status bar count of conversations stopped waiting for permission, which is hidden when there are none. The
-   * input goes through the hook the patch calls, so this covers the whole way from an app-server request to the
-   * status bar.
+   * A conversation stopped waiting for permission is said where Claude Code says one is: its state in Conversations and
+   * the dot on its tab. Nothing goes in the status bar, which Claude Code leaves alone too. The input goes through the
+   * hook the patch calls, so this covers the whole way from an app-server request.
    */
   const waiting = await run(root, tmp, { probe: async ({ control, home }) => {
     const id = fs.readdirSync(path.join(home, 'sessions'), { recursive: true }).filter((f) => String(f).endsWith('.jsonl'))[0];
     const thread = /([0-9a-f-]{36})\.jsonl$/.exec(String(id).replace(/\\/g, '/'))[1];
     globalThis.__codexExtrasAppServer('request', { id: 'q1', method: 'item/commandExecution/requestApproval', params: { threadId: thread } });
-    const shown = [...control.state.status].reverse().find((s) => s.shown) || null;
+    const owed = require(path.join(root, 'src', 'patching.js')).approvalsOf(thread).decide;
+    const shown = control.state.status.filter((s) => s.shown).length;
     globalThis.__codexExtrasAppServer('answer', { id: 'q1' });
-    const after = [...control.state.status].reverse().find((s) => s.shown) || null;
-    return { text: shown && shown.text, command: shown && shown.command, tooltip: shown && shown.tooltip,
-      hiddenAgain: !(after && after.shown) };
+    return { owed, shown };
   } });
-  eq([waiting.probed.text, waiting.probed.command, /One/.test(waiting.probed.tooltip || '')],
-    ['$(bell-dot) 1 to approve', 'codexPlus.goToWaiting', true],
-    'a conversation waiting for permission puts a count in the status bar, naming it on hover and going to it when clicked');
-  eq(waiting.probed.hiddenAgain, true, 'and the count goes once the request is answered, rather than sitting there at nought');
+  eq([waiting.probed.owed, waiting.probed.shown], [1, 0],
+    'a conversation waiting for permission is counted as owing an answer, and nothing is put in the status bar for it');
 
   /* How long Codex's pages took to open: read from the Codex.log beside this extension's own log folder, by its own
      command and in Show Status. */
@@ -178,56 +176,64 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
   const title = (pkg.contributes.menus['view/title'] || []).filter((m) => /codexPlus\.sessions/.test(m.when || ''));
   const onBar = title.filter((m) => /^navigation/.test(m.group || ''));
   const byCommand = new Map(pkg.contributes.commands.map((c) => [c.command, c]));
-  eq(onBar.length <= 4, true, `at most four buttons sit on the title bar, the rest in its ... menu (there are ${onBar.length})`);
   eq(onBar.sort((a, b) => a.group.localeCompare(b.group)).map((m) => m.command),
-    ['codexPlus.newInTab', 'codexPlus.newInSidebar', 'codexPlus.findThread', 'codexPlus.refreshSessions'],
-    'the two for opening a conversation come first, then search and refresh');
+    ['codexPlus.newInTab', 'codexPlus.newInSidebar', 'codexPlus.findThread'],
+    'the bar holds the two for opening a conversation, then search: the list redraws itself, so there is no Refresh');
   eq(onBar.filter((m) => !byCommand.get(m.command) || !byCommand.get(m.command).icon).map((m) => m.command), [],
     'each of them has an icon, or it would show as a word on the bar');
-  eq(title.filter((m) => !/^navigation/.test(m.group || '')).map((m) => m.command),
-    ['codexPlus.openSettings'], 'the ... menu holds the settings, which are not an everyday action');
+  eq(title.filter((m) => !/^navigation/.test(m.group || '')).map((m) => m.command), [],
+    'and its ... menu holds nothing of this extension\'s; Settings is in the command palette');
   const menus = [].concat(...Object.values(pkg.contributes.menus)).map((m) => m.command);
   eq(menus.filter((c) => !byCommand.has(c)), [], 'every command a menu names is declared');
 
   /*
-   * The tab bar's button starts a conversation and never raises one that is open: before this it opened the one last in
-   * front, which with a single Codex tab already in front only moved the focus and looked like nothing happened. In a
-   * tab it opens Codex's new-conversation route itself, naming the group in front, because Codex's own command asks for
-   * the group of the text file last focused and so can put the conversation in a split.
+   * The tab bar's button starts a conversation in a tab and never raises one that is open: before this it opened the one
+   * last in front, which with a single Codex tab already in front only moved the focus and looked like nothing
+   * happened. It opens Codex's new-conversation route itself, naming the editor group Claude Code's own Open command
+   * would pick, because Codex's own command asks for the group of the text file last focused and so can put the
+   * conversation in a split. Codex's own button beside it opens the sidebar.
    */
   {
-    const w = await run(root, tmp, { config: { openButtonTarget: 'tab' }, takesRoute: true });
+    const w = await run(root, tmp, { takesRoute: true });
     const before = w.state.commands.length;
     await w.state.handlers['codexPlus.openCodex']();
     const ran = w.state.commands.slice(before);
     const [cmd, uri, viewType, options] = ran[0] || [];
     eq([ran.length, cmd, uri && uri.path, viewType, options && options.viewColumn, options && options.preview],
       [1, 'vscode.openWith', '/extension/panel/new', 'chatgpt.conversationEditor', 1, false],
-      'in a tab it opens the new-conversation route itself, in the first editor group, and asks Codex for nothing more');
+      'in a window of one empty group it opens the new-conversation route itself in that group, and asks Codex for nothing more');
   }
   {
-    // A split's narrow half is the group in front when its title bar button is pressed, so the group is a setting.
-    const w = await run(root, tmp, { config: { openButtonTarget: 'tab', newConversationGroup: 'active' }, takesRoute: true });
-    const before = w.state.commands.length;
-    await w.state.handlers['codexPlus.openCodex']();
-    const options = (w.state.commands.slice(before)[0] || [])[3];
-    eq(options && options.viewColumn, -1, 'set to the group in front, it names that group instead of the first');
-  }
-  {
-    const w = await run(root, tmp, { config: { openButtonTarget: 'tab' } });
+    const w = await run(root, tmp);
     const before = w.state.commands.length;
     await w.state.handlers['codexPlus.openCodex']();
     eq(w.state.commands.slice(before).map((c) => c[0]), ['vscode.openWith', 'chatgpt.newCodexPanel'],
       'when the route leaves no conversation tab, Codex\'s own command is asked instead');
   }
   {
-    const w = await run(root, tmp, { config: { openButtonTarget: 'sidebar' } });
-    const before = w.state.commands.length;
-    await w.state.handlers['codexPlus.openCodex']();
-    eq(w.state.commands.slice(before).map((c) => c[0]), ['chatgpt.openSidebar'],
-      'set to the sidebar it opens Codex\'s sidebar and no tab');
+    /* The group choice on its own, against the tab groups Claude Code's choice is made from. */
+    const tabsMod = require(path.join(root, 'src', 'codex-tabs.js'));
+    const { vscode, control } = fake.create();
+    const file = control.fileTab('/work/a.js'), codex = control.codexTab('01a1b8f2-fd2b-7e60-9ffc-16e5cb642e31');
+    const layout = (...groups) => {
+      control.groups.length = 0;
+      groups.forEach(([tabs, active], i) => control.groups.push({ viewColumn: i + 1, tabs, activeTab: tabs[0] || null, isActive: !!active }));
+      control.state.commands.length = 0;
+    };
+    layout([[file], true], [[file, codex]], [[codex]]);
+    eq(await tabsMod.codexGroup(vscode), 3, 'a group holding only Codex tabs is taken before a mixed one, and before the group in front');
+    layout([[file], true], [[file, codex]]);
+    eq(await tabsMod.codexGroup(vscode), 2, 'failing that, a group holding any Codex tab');
+    layout([[file, codex]], [[codex], true], [[codex]]);
+    eq(await tabsMod.codexGroup(vscode), 2, 'and of several such groups, the one in front');
+    layout([[file], true]);
+    eq([await tabsMod.codexGroup(vscode), control.state.commands.map((c) => c[0])], [-1, ['workbench.action.newGroupRight']],
+      'with no Codex tab and the one group holding a file, a new group is opened to the right and the tab goes in it');
+    layout([[], true], [[file]]);
+    control.state.config = { openSideBySideDirection: 'down' };
+    eq([await tabsMod.codexGroup(vscode), control.state.commands.map((c) => c[0])], [-1, ['workbench.action.newGroupBelow']],
+      'and below instead when the editor opens side by side downwards, even beside an empty group of two');
   }
-
   /*
    * Resume in Sidebar and New in Sidebar go through Codex's own URI handler, which focuses its sidebar and navigates it,
    * so neither needs the patch. The link uses this editor's own scheme. When Codex does not take it, a conversation

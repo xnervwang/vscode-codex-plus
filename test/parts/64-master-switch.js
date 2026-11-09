@@ -10,7 +10,8 @@
  *                      around Codex. Its whole point is what it does not touch: the settings of the things it turns
  *                      off keep their values, and an applied patch stays in Codex's files.
  *   the plugin         whether Codex loads the work plan plugin, which is a state apart from whether it is installed.
- *                      Read out of config.toml and written through the app-server's own config write.
+ *                      Read out of config.toml and written through the app-server's own config write. Stop Loading
+ *                      turns it off, and the install command turns it back on (test/parts/22-plugin-update.js).
  *
  * The first is checked through activate() against a stand-in VS Code, since the switch is only real if the settings
  * every part reads come out of it already applied. What the app-server does with the second's write is not checked here
@@ -33,7 +34,8 @@ async function windowWith(root, tmp, config) {
   vscode.workspace.onDidGrantWorkspaceTrust = () => ({ dispose() {} });
   const home = tmp('home');
   fixture.codexHome(home, [{ title: 'One', cwd: home, turns: [{}] }]);
-  control.state.config = { codexHome: home, installWorkPlanPlugin: 'never', reopenDroppedTabs: false, ...config };
+  process.env.CODEX_HOME = home;
+  control.state.config = { reopenDroppedTabs: false, ...config };
   /* The settings an update writes have to be read back by the next get, or a command that throws the switch would read
      as having done nothing. */
   vscode.workspace.getConfiguration = (section) => ({
@@ -73,13 +75,13 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
    * What the switch covers, and what it does not. Read through activate(), because the switch only works if it has
    * already been applied by the time any part asks: the one place that happens is settings().
    */
-  const off = await windowWith(root, tmp, { enabled: false, patchCodex: 'on', chime: true, turnFigures: true,
+  const off = await windowWith(root, tmp, { enabled: false, chime: true, turnFigures: true,
     timestamps: true, conversationNavigation: true, userMessageColor: '#90EE90', userMessageEdge: true,
-    waitingInStatusBar: true, workPlan: true, hideBackgroundSessions: true });
+    workPlan: true, hideBackgroundSessions: true });
   const gated = off.ext._settings();
   eq([gated.enabled, gated.timestamps, gated.conversationNavigation, gated.userMessageColor, gated.userMessageEdge,
-    gated.chime, gated.figures, gated.waitingInStatusBar],
-  [false, false, false, '', false, false, false, false],
+    gated.chime, gated.figures],
+  [false, false, false, '', false, false, false],
     'with it off, every part that asks for one of the additions is told it is off');
   eq(gated.patchCodex, 'off',
     'and the patch is neither applied nor kept up to date, which is not the same as being taken out of Codex');
@@ -93,13 +95,12 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
 
   /* The same table with the switch on, so that the one above is read as the switch working and not as the settings
      having been off anyway. */
-  const lit0 = await windowWith(root, tmp, { enabled: true, patchCodex: 'on', chime: true, turnFigures: true,
-    timestamps: true, conversationNavigation: true, userMessageColor: '#90EE90', userMessageEdge: true,
-    waitingInStatusBar: true });
+  const lit0 = await windowWith(root, tmp, { enabled: true, chime: true, turnFigures: true,
+    timestamps: true, conversationNavigation: true, userMessageColor: '#90EE90', userMessageEdge: true });
   const open = lit0.ext._settings();
   eq([open.timestamps, open.conversationNavigation, open.userMessageColor, open.userMessageEdge, open.chime,
-    open.figures, open.waitingInStatusBar, open.patchCodex],
-  [true, true, '#90EE90', true, true, true, true, 'on'],
+    open.figures, open.patchCodex],
+  [true, true, '#90EE90', true, true, true, 'on'],
     'and with it on each of them reads as that setting says, the switch adding nothing of its own');
   lit0.stop();
 
@@ -108,13 +109,12 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
    * rather than every default - which is the reason it is a setting of its own and not a command that writes six.
    */
   const mine = { enabled: true, chime: false, timestamps: false, conversationNavigation: true,
-    userMessageColor: 'lightgreen', userMessageEdge: false, patchCodex: 'off' };
+    userMessageColor: 'lightgreen', userMessageEdge: false };
   const w = await windowWith(root, tmp, { ...mine });
   await w.control.state.handlers['codexPlus.turnOff']();
   eq(w.control.state.config.enabled, false, 'Turn Off writes the one setting');
-  eq([w.control.state.config.chime, w.control.state.config.timestamps, w.control.state.config.userMessageColor,
-    w.control.state.config.patchCodex],
-  [false, false, 'lightgreen', 'off'], 'and writes over none of the settings of the things it turned off');
+  eq([w.control.state.config.chime, w.control.state.config.timestamps, w.control.state.config.userMessageColor],
+  [false, false, 'lightgreen'], 'and writes over none of the settings of the things it turned off');
   await w.control.state.handlers['codexPlus.turnOn']();
   eq(w.control.state.config.enabled, true, 'Turn On writes it back');
   const back = Object.fromEntries(Object.keys(mine).map((k) => [k, w.control.state.config[k]]));
@@ -128,6 +128,12 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
   await w.control.state.handlers['codexPlus.applyPatch']();
   eq(w.control.state.config.enabled, true,
     'and asking for the patch turns them back on, since the patch is of no use to anything else');
+  /* Remove the Patch is remembered as Claude Code Plus remembers its Remove, until Patch Codex is run again. */
+  await w.control.state.handlers['codexPlus.removePatch']();
+  const afterRemove = w.ext._settings().patchCodex;
+  await w.control.state.handlers['codexPlus.applyPatch']();
+  eq([afterRemove, w.ext._settings().patchCodex], ['off', 'on'],
+    'after Remove the Patch nothing patches Codex, with the additions still on, until Patch Codex is run');
   w.stop();
 
   /* ── the switch reaches the pages and the tabs, which is the half of it that is not a setting ── */
@@ -150,7 +156,7 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
   patching.installHooks();
   globalThis.__codexExtrasPanel(panel, THREAD, provider);
   patching.activate({ subscriptions: [], globalStorageUri: vscode.Uri.file(tmp('gs')), globalState: fake.memento() }, {
-    vscode, log: () => {}, planQuestions: () => 0,
+    vscode, log: () => {},
     settings: () => (on
       ? { enabled: true, patchCodex: 'off', chime: true, figures: true, timestamps: true, conversationNavigation: true,
         userMessageColor: 'lightgreen', userMessageEdge: true }
@@ -205,7 +211,7 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
     mergeStrategy: 'upsert' }], 'the write is one key of one section, upserted, so the rest of config.toml stands');
   eq(install.pluginEnabledEdits(true)[0].value, true, 'and the same key the other way to have Codex load it again');
 
-  for (const name of ['codexPlus.stopLoadingWorkPlanPlugin', 'codexPlus.loadWorkPlanPlugin']) {
+  for (const name of ['codexPlus.stopLoadingWorkPlanPlugin', 'codexPlus.installWorkPlanPlugin']) {
     const c = pkg.contributes.commands.find((x) => x.command === name);
     if (c) ok(`${name} is declared, as "${c.title}"`);
     else bad(`${name} is not declared`);
@@ -214,7 +220,7 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
     true, 'and the one that stops it says in its title that the plugin stays where it is');
 
   /* Show Status tells the two states apart, which is the whole reason for reading config.toml. */
-  const skipped = await windowWith(root, tmp, { enabled: true, patchCodex: 'off' });
+  const skipped = await windowWith(root, tmp, { enabled: false });
   const cache = path.join(skipped.home, 'plugins', 'cache', install.MARKETPLACE, install.PLUGIN, '9.9.9', '.codex-plugin');
   fs.mkdirSync(cache, { recursive: true });
   fs.writeFileSync(path.join(skipped.home, 'config.toml'), `${SECTION}\nenabled = false\n`);

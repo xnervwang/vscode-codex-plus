@@ -42,15 +42,15 @@ module.exports = async ({ eq, note, tmp, root }) => {
   fs.mkdirSync(plans, { recursive: true });
   fs.writeFileSync(path.join(plans, asking.id + '.json'), JSON.stringify({ nodes: [{ title: 'Merge', state: 'waiting', waitingOn: 'user', question: 'Merge it?' }] }));
   vscode.workspace.workspaceFolders = [{ uri: vscode.Uri.file(ws) }];
+  process.env.CODEX_HOME = home;
   Object.assign(control.state.config, {
-    'codexPlus.codexHome': home, 'codexPlus.installWorkPlanPlugin': 'never', 'codexPlus.reopenDroppedTabs': false,
-    'codexPlus.patchCodex': 'off', 'agentPlus.workPlanView': true, 'agentPlus.conversationsView': true,
+    'codexPlus.reopenDroppedTabs': false, 'agentPlus.workPlanView': true, 'agentPlus.conversationsView': true,
   });
   const corePkg = JSON.parse(fs.readFileSync(path.join(core, 'package.json'), 'utf8'));
   const selfPkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
   const coreEntry = { id: 'xnervwang.agent-plus', packageJSON: corePkg, isActive: false, exports: undefined, extensionPath: core };
   control.state.extensions = [coreEntry, { id: 'xnervwang.codex-plus', packageJSON: selfPkg, extensionPath: root }];
-  const context = (name) => ({ subscriptions: [], globalState: fake.memento(), workspaceState: fake.memento(),
+  const context = (name) => ({ subscriptions: [], globalState: fake.memento({ 'codexPlus.patchRemoved': true }), workspaceState: fake.memento(),
     globalStorageUri: vscode.Uri.file(tmp(name)), extensionPath: name === 'core' ? core : root });
   const coreContext = context('core'), selfContext = context('codex');
   try {

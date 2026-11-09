@@ -111,11 +111,12 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
   vscode.workspace.onDidGrantWorkspaceTrust = () => ({ dispose() {} });
   const home = tmp('home');
   fixture.codexHome(home, [{ title: 'One', cwd: home, turns: [{}] }]);
-  control.state.config = { codexHome: home, installWorkPlanPlugin: 'never', reopenDroppedTabs: false, patchCodex: 'off' };
+  process.env.CODEX_HOME = home;
+  control.state.config = { reopenDroppedTabs: false };
   control.state.extensions.set('openai.chatgpt', { extensionPath: tmp('codex'), packageJSON: { version: UNRECORDED } });
   const ext = require(path.join(root, 'extension.js'));
   const subs = [];
-  await ext.activate({ subscriptions: subs, workspaceState: fake.memento(), globalState: fake.memento(),
+  await ext.activate({ subscriptions: subs, workspaceState: fake.memento(), globalState: fake.memento({ 'codexPlus.patchRemoved': true }),
     globalStorageUri: vscode.Uri.file(tmp('storage')), extensionPath: root });
   const told = control.state.log.filter((l) => l.includes(UNRECORDED) && l.includes('verified against'));
   const dialogs = control.state.said.filter((s) => String(s.message).includes(UNRECORDED));

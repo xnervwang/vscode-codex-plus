@@ -36,7 +36,7 @@ async function windowWith(root, tmp, { clean = false, active = true, connected =
   const patching = require(path.join(root, 'src', 'patching'));
   const subs = [];
   patching.activate({ subscriptions: subs, globalStorageUri: vscode.Uri.file(tmp('gs')), globalState: fake.memento() }, {
-    vscode, log: () => {}, settings: () => ({ patchCodex, chime: false, figures: false }), planQuestions: () => 0,
+    vscode, log: () => {}, settings: () => ({ patchCodex, chime: false, figures: false }),
     source: { onDidChangeConversations: () => ({ dispose() {} }), _focus() {}, listConversations: async () => [], logo: null },
     context: { globalStorageUri: vscode.Uri.file(tmp('gs2')) } });
   await new Promise((r) => setImmediate(r));

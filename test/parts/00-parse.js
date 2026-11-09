@@ -50,12 +50,16 @@ module.exports = ({ ok, bad, eq, root }) => {
   eq(/claudeCodeExtras|codexPlus\.(standalone|hosted|answer"|sessionsHosted|conversations")/.test(JSON.stringify(c)), false, 'nothing names the old host or the standalone views');
   const open = c.commands.find((x) => x.command === 'codexPlus.openCodex');
   eq([c.menus['editor/title'], open && open.icon, ['codex-light.svg', 'codex-dark.svg'].every((f) => fs.existsSync(path.join(root, 'images', f)))],
-    [[{ command: 'codexPlus.openCodex', group: 'navigation' },
-      { command: 'codexPlus.sessionInfo', when: "activeCustomEditorId == 'chatgpt.conversationEditor'", group: 'navigation' }],
-    { light: 'images/codex-light.svg', dark: 'images/codex-dark.svg' }, true],
-    'the tab bar has the Codex button, with its icons, and the session information button while a Codex conversation is in front');
-  const target = c.configuration.properties['codexPlus.openButtonTarget'];
-  eq([target.enum, target.default], [['tab', 'sidebar'], 'tab'], 'the button opens a tab unless set to the sidebar');
+    [[{ command: 'codexPlus.openCodex', group: 'navigation' }], { light: 'images/codex-light.svg', dark: 'images/codex-dark.svg' }, true],
+    'the tab bar has the one Codex button, with its icons, and nothing else of this extension\'s');
+  /* What the Claude side has no counterpart of, and so is not here either. */
+  const trimmed = ['goToWaiting', 'refreshSessions', 'copyThreadId', 'loadWorkPlanPlugin', 'sampleConversationDom', 'pageSelfCheck']
+    .map((n) => 'codexPlus.' + n);
+  eq(trimmed.filter((g) => commands.includes(g) || JSON.stringify(c.menus).includes(`"${g}"`)), [],
+    'no status bar count, Refresh, Copy Thread ID, Load the plugin, layout sample or page self-check command is declared');
+  eq(['waitingInStatusBar', 'sessionsInWorkspaceOnly', 'newConversationGroup', 'sendAnswers', 'codexHome', 'openButtonTarget',
+    'installWorkPlanPlugin', 'patchCodex'].map((k) => 'codexPlus.' + k).filter((k) => k in c.configuration.properties), [],
+  'and none of the settings for things Claude Code and Claude Code Plus do one fixed way');
   eq(['icon.png', 'icon.svg'].every((f) => fs.existsSync(path.join(root, 'images', f))) && pkg.icon === 'images/icon.png', true, 'the marketplace icon is there');
   const header = /^(\/\/|#) BSD 3-Clause License\n\1 Copyright \(c\) 2026, Xnerv Wang\n\1 All rights reserved\./;
   const missing = [];

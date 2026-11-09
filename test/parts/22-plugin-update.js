@@ -7,9 +7,10 @@
  * Whether the plugin in Codex's cache is the one this extension carries, which turns on its files and not on its
  * version: the version goes up only at a release, and the hooks change between releases.
  *
- * The start-up decision is run as activation runs it, against a stand-in codex program whose app-server does what
- * Codex's does with an install, which is to copy the staged plugin into its cache, and writes down every request it was
- * sent. Whether the extension installed is read from that list.
+ * The start-up install is run as activation runs it, without asking, against a stand-in codex program whose app-server
+ * does what Codex's does with an install, which is to copy the staged plugin into its cache, and writes down every
+ * request it was sent. Whether the extension installed, and what it told Codex about loading the plugin, is read from
+ * that list.
  */
 const fs = require('fs');
 const path = require('path');
@@ -34,7 +35,7 @@ process.stdin.on('data', (d) => {
     if (!line.trim()) continue;
     const msg = JSON.parse(line);
     if (msg.id === undefined) continue;
-    fs.appendFileSync(log, JSON.stringify({ method: msg.method }) + '\\n');
+    fs.appendFileSync(log, JSON.stringify({ method: msg.method, edits: (msg.params && msg.params.edits) || null }) + '\\n');
     if (msg.method === 'marketplace/add') answer(msg.id, { installedRoot: msg.params.source });
     else if (msg.method === 'plugin/install') {
       const stage = path.dirname(path.dirname(path.dirname(msg.params.marketplacePath)));
@@ -106,17 +107,17 @@ module.exports = async ({ note, eq, tmp, root }) => {
   for (const k of Object.keys(require.cache)) if (k.startsWith(root + path.sep) && !k.includes(`${path.sep}test${path.sep}`)) delete require.cache[k];
   const codexHome = tmp('home-for-start-up');
   fixture.codexHome(codexHome, [{ title: 'One', cwd: codexHome, turns: [{}] }]);
-  control.state.config = { codexHome, installWorkPlanPlugin: 'never', reopenDroppedTabs: false, patchCodex: 'off', cliExecutable: codex };
+  process.env.CODEX_HOME = codexHome;
+  control.state.config = { reopenDroppedTabs: false, cliExecutable: codex };
   control.state.extensions.set('xnervwang.agent-plus', { isActive: true, exports: { agentPlus: { protocol: 1, accepts: [1], features: [],
     registerSource: () => ({ accepted: true, code: '', reason: '', registration: { dispose() {} } }) } } });
   const ext = require(path.join(root, 'extension.js'));
   const pi = require(path.join(root, 'src', 'plugin-install.js'));
   const subs = [];
-  const context = { subscriptions: subs, workspaceState: fake.memento(), globalState: fake.memento(),
+  const context = { subscriptions: subs, workspaceState: fake.memento(), globalState: fake.memento({ 'codexPlus.patchRemoved': true }),
     globalStorageUri: vscode.Uri.file(tmp('gs')), extensionPath: root };
   await ext.activate(context);
   vscode.workspace.isTrusted = true;
-  control.state.config.installWorkPlanPlugin = 'auto';
   const requests = path.join(codexHome, 'fake-codex-requests.jsonl');
   const installs = () => {
     let text = '';
@@ -124,7 +125,7 @@ module.exports = async ({ note, eq, tmp, root }) => {
     return text.split('\n').filter((l) => l.includes('"plugin/install"')).length;
   };
   const said = [];
-  const offer = () => ext._offerPlugin(context, (m) => said.push(m));
+  const offer = () => ext._ensurePlugin(context, (m) => said.push(m));
   try {
     await offer();
     eq([installs(), pi.installState(codexHome).why], [1, 'current'], 'with nothing in Codex, starting up installs the plugin');
@@ -144,6 +145,22 @@ module.exports = async ({ note, eq, tmp, root }) => {
     await offer();
     eq([installs() - old, pi.installState(codexHome).why], [1, 'current'],
       'a copy installed by a build that recorded no digest is installed again too');
+
+    /*
+     * Whether Codex loads it. A user who ran Stop Loading keeps it not loaded through the install at start-up, and the
+     * install command is what loads it again, as Claude Code Plus's install command registers its plugin again.
+     */
+    const loadWrites = () => fs.readFileSync(requests, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l))
+      .filter((r) => r.method === 'config/batchWrite' && (r.edits || []).some((e) => /\.enabled$/.test(e.keyPath)))
+      .map((r) => r.edits.find((e) => /\.enabled$/.test(e.keyPath)).value);
+    fs.writeFileSync(path.join(codexHome, 'config.toml'), `[plugins."${pi.PLUGIN_ID}"]\nenabled = false\n`);
+    fs.writeFileSync(path.join(install.cacheDir(codexHome), want, install.DIGEST_FILE), 'an older set of files\n');
+    const writesBefore = loadWrites().length;
+    await offer();
+    eq([pi.installState(codexHome).why, loadWrites().slice(writesBefore)], ['current', [false]],
+      'starting up installs over a plugin Codex was told not to load and tells Codex to keep not loading it');
+    await control.state.handlers['codexPlus.installWorkPlanPlugin']();
+    eq(loadWrites().slice(-1), [true], 'and the install command tells Codex to load it again');
   } finally {
     for (const d of subs) { try { d.dispose(); } catch (_) { /* gone */ } }
     ext.deactivate();

@@ -123,35 +123,35 @@ module.exports = async ({ ok, bad, note, eq, tmp }) => {
   patching._approvals.clear();
   const context = { subscriptions: [], globalStorageUri: vscode.Uri.file(tmp('gs')), globalState: fake.memento() };
   patching.activate(context, {
-    vscode, log: () => {}, settings: () => ({ patchCodex: 'off', chime: true, figures: false }), planQuestions: () => 0,
+    vscode, log: () => {}, settings: () => ({ patchCodex: 'off', chime: true, figures: false }),
     source: { onDidChangeConversations: () => ({ dispose() {} }), _focus: () => {}, logo: null,
       listConversations: async () => conversations },
     context: { globalStorageUri: vscode.Uri.file(tmp('gs2')) },
   });
-  patching.onApprovalsChanged(() => changes.push(patching.decideCount()));
+  patching.onApprovalsChanged(() => changes.push(patching._approvals.decideCount()));
   const webview = {};
   const panel = { webview, reveal() {}, onDidDispose(fn) { this.dispose = fn; }, iconPath: null };
   globalThis.__codexExtrasPanel(panel, THREAD, provider);
 
   globalThis.__codexExtrasAppServer('request', { id: 7, method: 'item/commandExecution/requestApproval', params: { threadId: THREAD } });
-  eq([patching.decideCount(), patching.approvalsOf(THREAD), changes], [1, { decide: 1, soon: 0 }, [1]],
+  eq([patching._approvals.decideCount(), patching.approvalsOf(THREAD), changes], [1, { decide: 1, soon: 0 }, [1]],
     'a request through the hook is on the books at once, and the views are told rather than left to the next poll');
   globalThis.__codexExtrasAppServer('request', { id: 8, method: 'item/started', params: { threadId: THREAD } });
   eq(changes.length, 1, 'a message that is not a request waiting on anybody tells nobody anything');
   globalThis.__codexExtrasAppServer('answer', { id: 7 });
-  eq([patching.decideCount(), changes], [0, [1, 0]], 'the answer this window sent takes it off the books');
+  eq([patching._approvals.decideCount(), changes], [0, [1, 0]], 'the answer this window sent takes it off the books');
 
   globalThis.__codexExtrasAppServer('request', { id: 9, method: 'item/fileChange/requestApproval', params: { threadId: THREAD } });
   globalThis.__codexExtrasAppServer('notification', { method: 'serverRequest/resolved', params: { requestId: 9 } });
-  eq(patching.decideCount(), 0, 'and so does the notification saying somebody else answered it');
+  eq(patching._approvals.decideCount(), 0, 'and so does the notification saying somebody else answered it');
   globalThis.__codexExtrasAppServer('request', { id: 10, method: 'item/fileChange/requestApproval', params: { threadId: THREAD } });
   globalThis.__codexExtrasAppServer('notification', { method: 'item/completed', params: { requestId: 10 } });
-  eq(patching.decideCount(), 1, 'while any other notification leaves it where it was');
+  eq(patching._approvals.decideCount(), 1, 'while any other notification leaves it where it was');
 
   /* A closed tab does not end the wait: the host side never needed one. */
   chimes.length = 0;
   panel.dispose();
-  eq([patching.decideCount(), patching.panelThreads().includes(THREAD)], [1, false],
+  eq([patching._approvals.decideCount(), patching.panelThreads().includes(THREAD)], [1, false],
     'closing the conversation\'s tab leaves the request owed, since this side reads it from the app-server and not from a page');
   globalThis.__codexExtrasAppServer('answer', { id: 10 });
 
@@ -205,16 +205,16 @@ module.exports = async ({ ok, bad, note, eq, tmp }) => {
   /* ── what a page reports, and which conversation it is taken to be about ── */
   const sidebarPage = {};
   globalThis.__codexExtrasMessage(fresh.webview, { kind: 'approval', on: true }, provider);
-  eq([patching.approvalsOf(THREAD).decide, patching.decideCount()], [1, 1],
+  eq([patching.approvalsOf(THREAD).decide, patching._approvals.decideCount()], [1, 1],
     'a page saying a card is up is taken to be about the conversation whose panel that page belongs to');
   globalThis.__codexExtrasMessage(fresh.webview, { kind: 'approval', on: false }, provider);
-  eq(patching.decideCount(), 0, 'and the card going off that page ends it');
+  eq(patching._approvals.decideCount(), 0, 'and the card going off that page ends it');
   globalThis.__codexExtrasBroadcast('thread-stream-following-changed', { conversationId: OTHER, following: true });
   globalThis.__codexExtrasMessage(sidebarPage, { kind: 'approval', on: true }, provider);
-  eq([patching.approvalsOf(OTHER).decide, patching.waitingThreads()], [1, [OTHER]],
+  eq([patching.approvalsOf(OTHER).decide, patching._approvals.threads()], [1, [OTHER]],
     'a page with no panel of its own is the sidebar, so its card is about the conversation the sidebar last went to');
   globalThis.__codexExtrasMessage(sidebarPage, { kind: 'approval', on: false }, provider);
-  eq(patching.decideCount(), 0, 'which ends the same way');
+  eq(patching._approvals.decideCount(), 0, 'which ends the same way');
 
   const line = patching.statusLines().filter((l) => l.startsWith('Waiting for you'))[0];
   eq(line, 'Waiting for you: nothing', 'the status command says so when nothing is waiting');

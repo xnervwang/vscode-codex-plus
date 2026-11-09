@@ -66,18 +66,17 @@ module.exports = async ({ ok, bad, eq, tmp }) => {
   const outsideB = path.join(base, 'other2');
   const threads = [thread(1, inside), thread(2, outsideA), thread(3, outsideB)];
   vscode.workspace.workspaceFolders = [{ uri: vscode.Uri.file(linked ? path.join(link, 'ws') : path.join(base, 'ws')) }];
-  let workspaceOnly = true;
   const provider = new SessionsProvider(vscode, { memory: stubMemory(), memento: fake.memento(), reader: stubReader(threads),
-    stateOf: () => null, settings: () => ({ sessionsInWorkspaceOnly: workspaceOnly, recentClosedSessions: 10, hideBackgroundSessions: true }) });
+    stateOf: () => null, settings: () => ({ recentClosedSessions: 10, hideBackgroundSessions: true }) });
   provider.refresh();
   const ungrouped = provider.groups.find((g) => g.key === 'ungrouped');
   eq([ungrouped.threads.map((t) => t.title), provider.groups.some((g) => g.threads.some((t) => t.title === 't2' || t.title === 't3'))],
     [['t1'], false], 'the conversation in this workspace is listed even though its folder is the one behind the link, and those of other folders are not');
   eq(provider.getChildren().map((r) => r.group.label).includes('Other folders'), false, 'and there is no group for other folders');
-  workspaceOnly = false;
+  vscode.workspace.workspaceFolders = [];
   provider.refresh();
-  eq(provider.groups.find((g) => g.key === 'ungrouped').threads.length, 3, 'with the filter off every conversation is listed with the rest');
-  workspaceOnly = true;
+  eq(provider.groups.find((g) => g.key === 'ungrouped').threads.length, 3, 'a window with no folder open lists every conversation');
+  vscode.workspace.workspaceFolders = [{ uri: vscode.Uri.file(linked ? path.join(link, 'ws') : path.join(base, 'ws')) }];
 
   /* ── the tab URIs Codex really uses ── */
   const uri = (p) => vscode.Uri.from({ scheme: 'openai-codex', authority: 'route', path: p });
@@ -161,7 +160,7 @@ module.exports = async ({ ok, bad, eq, tmp }) => {
 
   /* ── an empty open group says so; no group carries a nought ── */
   const bare = new SessionsProvider(vscode, { memory: stubMemory(), memento: fake.memento(), reader: stubReader([thread(1, inside)]),
-    stateOf: () => null, settings: () => ({ sessionsInWorkspaceOnly: false, recentClosedSessions: 10, hideBackgroundSessions: true }) });
+    stateOf: () => null, settings: () => ({ recentClosedSessions: 10, hideBackgroundSessions: true }) });
   bare.refresh();
   const openRow = bare.getChildren()[0];
   const openItem = bare.getTreeItem(openRow);
@@ -173,11 +172,11 @@ module.exports = async ({ ok, bad, eq, tmp }) => {
 
   /* ── a conversation the user has not read gets no dot, and asks for one when its group opens ── */
   const asked = [];
-  const old = thread(7, outsideA, { updatedMs: 50 });
+  const old = thread(7, inside, { updatedMs: 50 });
   const unreadReader = { ...stubReader([thread(1, inside), old]), state: (id) => (id === ID(1) ? { working: false } : null) };
   const lazy = new SessionsProvider(vscode, { memory: stubMemory(), memento: fake.memento(), reader: unreadReader,
     stateOf: () => ({ state: 'idle' }), wantState: (ids) => asked.push(...ids),
-    settings: () => ({ sessionsInWorkspaceOnly: false, recentClosedSessions: 10, hideBackgroundSessions: true }) });
+    settings: () => ({ recentClosedSessions: 10, hideBackgroundSessions: true }) });
   lazy.refresh();
   const groupRow = lazy.getChildren().find((r) => r.group.key === 'ungrouped');
   const kids = lazy.getChildren(groupRow);
@@ -202,7 +201,7 @@ module.exports = async ({ ok, bad, eq, tmp }) => {
   eq([arch.threads.length, arch.expanded], [1, false], 'Archived sessions holds the archived ones and starts closed');
   const archProvider = new SessionsProvider(vscode, { memory: stubMemory(), memento: fake.memento(),
     reader: stubReader([thread(5, inside, { archived: true })]), stateOf: () => null,
-    settings: () => ({ sessionsInWorkspaceOnly: false, recentClosedSessions: 10, hideBackgroundSessions: true }) });
+    settings: () => ({ recentClosedSessions: 10, hideBackgroundSessions: true }) });
   archProvider.refresh();
   const archRow = archProvider.getChildren().find((r) => r.group.key === 'archived');
   eq(archProvider.getTreeItem(archProvider.getChildren(archRow)[0]).contextValue, 'codexPlusThreadArchived',
@@ -228,7 +227,7 @@ module.exports = async ({ ok, bad, eq, tmp }) => {
     const view = { visible: true, onDidChangeVisibility: (fn) => { hear = fn; return { dispose() {} }; } };
     globalThis.__codexExtrasMessage({}, { kind: 'tz', timeZone: 'UTC' }, { sidebarView: view, sidebarViews: [] });
     patching.activate({ subscriptions: [], globalStorageUri: vscode.Uri.file(tmp('gs')), globalState: fake.memento() }, {
-      vscode, log: () => {}, settings: () => ({ patchCodex: 'off', chime: false, figures: false }), planQuestions: () => 0,
+      vscode, log: () => {}, settings: () => ({ patchCodex: 'off', chime: false, figures: false }),
       source: { onDidChangeConversations: () => ({ dispose() {} }), _focus() {}, listConversations: async () => [], logo: null },
       context: { globalStorageUri: vscode.Uri.file(tmp('gs2')) } });
     let redraws = 0;
@@ -241,7 +240,7 @@ module.exports = async ({ ok, bad, eq, tmp }) => {
     eq([patching.sidebarShowing(), redraws], ['', 2], 'a sidebar that is hidden shows nothing, which its own visibility event says');
     view.visible = true;
     const listing = new SessionsProvider(vscode, { memory: stubMemory(), memento: fake.memento(), reader: stubReader([t1, t2]),
-      settings: () => ({ sessionsInWorkspaceOnly: false, hideBackgroundSessions: true, recentClosedSessions: 10 }),
+      settings: () => ({ hideBackgroundSessions: true, recentClosedSessions: 10 }),
       stateOf: () => null, sidebarShowing: () => patching.sidebarShowing() });
     listing.refresh();
     const open = listing.getChildren(listing.getChildren()[0]);

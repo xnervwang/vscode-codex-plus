@@ -238,9 +238,17 @@ function writeHookSettings(home, values) {
   fs.renameSync(tmp, file);
 }
 
-/** Install or upgrade the plugin into `home`. Resolves to { version, marketplace, python }. */
-async function install({ binary, home, stage, source = SOURCE, python = SHIPPED_PYTHON }) {
+/*
+ * Install or upgrade the plugin into `home`. Resolves to { version, marketplace, python, loaded }.
+ *
+ * `load` says what becomes of whether Codex loads it: true has Codex load it (the install command, which is also the way
+ * back from "Stop Loading"); 'keep' leaves a plugin the user set not to be loaded as it was (the install at start-up).
+ * Either is written after plugin/install, in the same app-server, so the outcome does not depend on what Codex's install
+ * does with the key. `loaded` is false only when it was kept off.
+ */
+async function install({ binary, home, stage, source = SOURCE, python = SHIPPED_PYTHON, load = true }) {
   const manifest = stageMarketplace(stage, source, python);
+  const keepOff = load === 'keep' && pluginLoadState(home) === 'not loaded';
   return withAppServer(binary, home, async (server) => {
     const added = await server.request('marketplace/add', { source: stage });
     if (added && added.installedRoot && path.resolve(added.installedRoot) !== path.resolve(fs.realpathSync(stage))
@@ -250,7 +258,12 @@ async function install({ binary, home, stage, source = SOURCE, python = SHIPPED_
       await server.request('marketplace/add', { source: stage });
     }
     await server.request('plugin/install', { marketplacePath: manifest, pluginName: PLUGIN });
-    return { version: pluginVersion(source), marketplace: stage, python };
+    if (load === true || keepOff) {
+      const r = await server.request('config/batchWrite', { edits: pluginEnabledEdits(!keepOff), filePath: null,
+        expectedVersion: null, reloadUserConfig: true });
+      if (r && r.status === 'okOverridden') throw new Error('Another config layer overrides whether this plugin is loaded.');
+    }
+    return { version: pluginVersion(source), marketplace: stage, python, loaded: !keepOff };
   });
 }
 

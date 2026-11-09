@@ -351,7 +351,6 @@
     var look = function () {
       var el = composerEditor(), have = el ? squash(el.textContent) : '';
       if (el && want && have === want) {
-        if (!m.submit) { reply('drafted'); return; }
         pressEnter(el, false);
         setTimeout(function () {
           if (!holds()) { reply('submitted'); return; }

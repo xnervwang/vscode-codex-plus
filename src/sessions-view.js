@@ -15,8 +15,8 @@
  * The group names are Claude Code's, so that both lists read the same way. Each carries its count; an empty one is
  * left out, except Open sessions, which says there is none.
  *
- * Like Claude Code's list, it holds this workspace's conversations only (codexPlus.sessionsInWorkspaceOnly). The
- * workspace filter compares real paths (src/folders.js): the same directory reached through a symbolic link used to
+ * Like Claude Code's list, it holds this workspace's conversations only, and every conversation in a window with no
+ * folder open. The workspace filter compares real paths (src/folders.js): the same directory reached through a symbolic link used to
  * match nothing, and the whole view came up empty with no reason shown.
  *
  * Grouping, sorting and filtering are arithmetic over the snapshot already in memory, and read no file of their own.
@@ -150,7 +150,7 @@ class SessionsProvider {
      * thread's cwd as /local/home/<user>/..., the same directory through a symbolic link. The memo lasts this pass
      * only, so a folder created or moved since is resolved again next time.
      */
-    const cwdFilter = this.settings().sessionsInWorkspaceOnly && folders.length ? folderTest(folders, new Map()) : null;
+    const cwdFilter = folders.length ? folderTest(folders, new Map()) : null;
     try { this.sidebarNow = this.sidebarShowing() || ''; } catch (_) { this.sidebarNow = ''; }
     this.groups = group(this.threads, {
       sidebar: this.sidebarNow,

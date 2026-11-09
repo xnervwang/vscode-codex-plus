@@ -401,7 +401,7 @@ module.exports = async ({ ok, bad, eq, note, tmp, root }) => {
   patching.installHooks();
   globalThis.__codexExtrasPanel(panel, SECRETS['a thread id'], provider);
   patching.activate({ subscriptions: [], globalStorageUri: vscode.Uri.file(tmp('gs')), globalState: fake.memento() }, {
-    vscode, log: () => {}, planQuestions: () => 0,
+    vscode, log: () => {},
     settings: () => ({ patchCodex: 'off', chime: false, figures: false, timestamps: true, conversationNavigation: false,
       userMessageColor: 'lightgreen', userMessageEdge: true }),
     userTimes: async (id) => ({ times: id === SECRETS['a thread id'] ? [111, 222] : null }),

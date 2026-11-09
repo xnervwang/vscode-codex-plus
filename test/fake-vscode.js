@@ -129,9 +129,9 @@ function install(vscode) {
   Module._load = function (request, ...rest) { return request === 'vscode' ? vscode : orig.call(this, request, ...rest); };
 }
 
-/** A Memento kept in memory. */
-function memento() {
-  const m = new Map();
+/** A Memento kept in memory, holding `init` to begin with. */
+function memento(init = {}) {
+  const m = new Map(Object.entries(init));
   return { get: (k, d) => (m.has(k) ? m.get(k) : d), update: async (k, v) => { m.set(k, v); }, keys: () => [...m.keys()] };
 }
 

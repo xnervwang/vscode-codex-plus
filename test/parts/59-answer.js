@@ -46,7 +46,7 @@ module.exports = async ({ eq, tmp, root }) => {
   /* ── the page ── */
   {
     const p = page(root, { onKey: (e, el) => { if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey) el.textContent = ''; } });
-    p.send({ type: 'codex-extras-answer', id: 'a1', text: ANSWER, submit: true });
+    p.send({ type: 'codex-extras-answer', id: 'a1', text: ANSWER });
     for (let i = 0; i < 3; i++) p.dom.runTimers();
     eq(p.replies().length, 0, 'while the draft has not appeared yet, the page waits');
     p.editor.textContent = ANSWER.replace(', and', ',\n and');
@@ -58,30 +58,25 @@ module.exports = async ({ eq, tmp, root }) => {
   }
   {
     const p = page(root, { holds: ANSWER, onKey: (e, el) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) el.textContent = ''; } });
-    p.send({ type: 'codex-extras-answer', id: 'a2', text: ANSWER, submit: true });
+    p.send({ type: 'codex-extras-answer', id: 'a2', text: ANSWER });
     const r = p.settle();
     eq([r && r.outcome, (p.editor.dispatched || []).map((e) => !!(e.ctrlKey || e.metaKey))], ['submitted', [false, true]],
       'a box that wants a modified Enter, as Codex\'s own setting can ask, gets one after the plain Enter did nothing');
   }
   {
     const p = page(root, { holds: ANSWER });
-    p.send({ type: 'codex-extras-answer', id: 'a3', text: ANSWER, submit: true });
+    p.send({ type: 'codex-extras-answer', id: 'a3', text: ANSWER });
     eq((p.settle() || {}).outcome, 'drafted', 'a box that keeps the text through both is reported as drafted, for the user to send');
   }
   {
-    const p = page(root, { holds: ANSWER });
-    p.send({ type: 'codex-extras-answer', id: 'a4', text: ANSWER, submit: false });
-    eq([(p.settle() || {}).outcome, (p.editor.dispatched || []).length], ['drafted', 0], 'with sending turned off it presses nothing and says drafted');
-  }
-  {
     const p = page(root, { holds: 'a draft of my own' });
-    p.send({ type: 'codex-extras-answer', id: 'a5', text: ANSWER, submit: true });
+    p.send({ type: 'codex-extras-answer', id: 'a5', text: ANSWER });
     eq([(p.settle() || {}).outcome, (p.editor.dispatched || []).length], ['occupied', 0],
       'a box that holds something else, which Codex does not overwrite, is reported as occupied and nothing is pressed');
   }
   {
     const p = page(root, { box: false });
-    p.send({ type: 'codex-extras-answer', id: 'a6', text: ANSWER, submit: true });
+    p.send({ type: 'codex-extras-answer', id: 'a6', text: ANSWER });
     eq((p.settle() || {}).outcome, 'noComposer', 'a page with no message box says so');
   }
 
@@ -91,9 +86,8 @@ module.exports = async ({ eq, tmp, root }) => {
   delete require.cache[require.resolve('../../src/patching')];
   const patching = require('../../src/patching');
   patching.installHooks();
-  let send = true;
   patching.activate({ subscriptions: [], globalStorageUri: vscode.Uri.file(tmp('gs')), globalState: fake.memento() }, {
-    vscode, log: () => {}, settings: () => ({ patchCodex: 'off', chime: false, figures: false, sendAnswers: send }), planQuestions: () => 0,
+    vscode, log: () => {}, settings: () => ({ patchCodex: 'off', chime: false, figures: false }),
     source: { onDidChangeConversations: () => ({ dispose() {} }), _focus() {}, listConversations: async () => [], logo: null },
     context: { globalStorageUri: vscode.Uri.file(tmp('gs2')) } });
   const THREAD = '019a6a10-0000-7000-8000-0000000000a1';
@@ -106,11 +100,11 @@ module.exports = async ({ eq, tmp, root }) => {
     navigateToRoute: (p, st) => asked.push(['sidebar route', p, st && st.prefillPromptOnlyIfEmpty]),
     postMessageToWebview: (webview, msg) => {
       if (msg.type !== 'codex-extras-answer') return;
-      asked.push(['page', msg.submit]);
+      asked.push(['page', msg.text === ANSWER]);
       setImmediate(() => globalThis.__codexExtrasMessage(webview, { kind: 'answer', id: msg.id, outcome: says }, provider));
     },
     postMessageToSidebar: (msg) => {
-      asked.push(['sidebar page', msg.submit]);
+      asked.push(['sidebar page', msg.text === ANSWER]);
       setImmediate(() => globalThis.__codexExtrasMessage({}, { kind: 'answer', id: msg.id, outcome: says }, provider));
     },
   };
@@ -121,12 +115,6 @@ module.exports = async ({ eq, tmp, root }) => {
   eq(outcomes.map((o) => o.outcome), ['submitted', 'drafted', 'notReceived', 'uncertain'],
     'what the page saw becomes the outcome: sent, left as a draft, refused because the box held a draft, or uncertain');
   eq(/already holds a draft of yours/.test(outcomes[2].reason || ''), true, 'and a refusal says why');
-  send = false;
-  says = 'drafted';
-  asked.length = 0;
-  await patching.deliver(THREAD, ANSWER);
-  eq(asked, [['panel', 'navigate-to-route'], ['page', false]], 'with codexPlus.sendAnswers off the page is told not to send');
-  send = true;
 
   /* A conversation shown only in Codex's sidebar takes it too, through Codex's own route and the sidebar's page. */
   const SIDE = '019a6a10-0000-7000-8000-0000000000a2';

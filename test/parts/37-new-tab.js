@@ -126,7 +126,7 @@ module.exports = async ({ eq, note, tmp }) => {
   const context = { subscriptions: [], globalState: fake.memento(), globalStorageUri: vscode.Uri.file(tmp('gs')) };
   patching.installHooks();
   patching._approvals.clear();
-  patching.activate(context, { vscode, log: () => {}, source, context, planQuestions: () => 0,
+  patching.activate(context, { vscode, log: () => {}, source, context,
     settings: () => ({ patchCodex: 'off', chime: true, figures: false, enabled: true, timestamps: true }) });
   const panelOf = (id) => ({ webview: { id }, visible: false, viewColumn: undefined, active: false, iconPath: null,
     reveal() { this.revealed = (this.revealed || 0) + 1; }, onDidDispose(fn) { this.dispose = fn; } });
@@ -150,7 +150,7 @@ module.exports = async ({ eq, note, tmp }) => {
   eq([patching.panelThreads(), patching.canDeliver(NEW)], [[], false],
     'a prewarmed thread is not the tab\'s conversation while nobody has typed into it: Codex has not listed it');
   say(one.webview, true);
-  eq([patching.approvalsOf(SIDEBAR).decide, patching.decideCount()], [0, 0],
+  eq([patching.approvalsOf(SIDEBAR).decide, patching._approvals.decideCount()], [0, 0],
     'and a card its page shows meanwhile is not put on the conversation the sidebar last went to');
   say(one.webview, false);
 
@@ -165,8 +165,8 @@ module.exports = async ({ eq, note, tmp }) => {
     'so an answer for it goes into that tab, and its page, which here never answers, leaves it uncertain');
   globalThis.__codexExtrasAppServer('request', { id: 41, method: 'item/commandExecution/requestApproval', params: { threadId: NEW } });
   say(one.webview, true);
-  eq([patching.waitingThreads(), patching.decideCount(), patching.approvalsOf(SIDEBAR).decide], [[NEW], 1, 0],
-    'its approval card counts for its own conversation only: one request waiting is one in the status bar');
+  eq([patching._approvals.threads(), patching._approvals.decideCount(), patching.approvalsOf(SIDEBAR).decide], [[NEW], 1, 0],
+    'its approval card counts for its own conversation only: one request waiting is one answer owed');
   globalThis.__codexExtrasAppServer('answer', { id: 41 });
   say(one.webview, false);
 
@@ -254,7 +254,7 @@ module.exports = async ({ eq, note, tmp }) => {
   callOther(diff, { title: 'Codex Diff', initialRoute: '/diff' }, provider);
   eq(patching._registry.get(diff) && patching._registry.get(diff).route, '/diff', 'Codex\'s other panels are handed over too');
   say(diff.webview, true);
-  eq([patching.approvalsOf(SIDEBAR).decide, patching.decideCount()], [0, 0], 'so a page of theirs is never taken for the sidebar\'s');
+  eq([patching.approvalsOf(SIDEBAR).decide, patching._approvals.decideCount()], [0, 0], 'so a page of theirs is never taken for the sidebar\'s');
   say(diff.webview, false);
   const sidebarPage = { id: 'sidebar' };
   say(sidebarPage, true);

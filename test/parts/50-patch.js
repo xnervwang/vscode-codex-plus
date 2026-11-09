@@ -71,8 +71,8 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
 
     /*
      * A build of this extension that changes what the patch writes leaves Codex carrying an older copy of it. That is
-     * the state the refresh is for: it goes in without asking again, although this Codex version was already asked
-     * about and answered. A Codex gone back to clean is a fresh decision and stays with the answer already given.
+     * the state the refresh is for, and a clean Codex is patched the same way: at start-up, with no question put, as
+     * Claude Code Plus patches Claude Code. "Remove the Patch from Codex" is remembered, and while it is nothing patches.
      */
     const stale = tmp('codex-stale');
     fs.mkdirSync(path.join(stale, 'out'));
@@ -92,36 +92,31 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
 
     const codexVersion = '26.1021.22027';
     control.state.extensions.set('openai.chatgpt', { extensionPath: stale, packageJSON: { version: codexVersion } });
-    const key = `codexPlus.patchAsked:${codexVersion}`;
-    const asked = fake.memento();
-    await asked.update(key, 'no');
+    const memo = fake.memento();
     control.state.said.length = 0;
-    await patching.ensurePatched(vscode, { globalState: asked }, () => {}, 'ask');
+    await patching.ensurePatched(vscode, { globalState: memo }, () => {}, 'on');
     const refreshed = control.state.said.map((s) => s.message).join('\n');
-    eq([targets.map((t) => t.status(stale)), refreshed.includes('Patch the Codex extension'), refreshed.includes('Reload the window')],
-      [['patched', 'patched'], false, true],
+    eq([targets.map((t) => t.status(stale)), control.state.said.length, refreshed.includes('Reload the window')],
+      [['patched', 'patched'], 1, true],
       'so it is brought up to this build with no question put, and only a reload is asked for');
 
-    /* Back to clean, which is also what a failed refresh leaves: the answer given for this Codex version decides. */
-    const fromClean = async (answer, reply) => {
+    const fromClean = async (mode, removed) => {
       [...targets].reverse().forEach((t) => t.restore(stale));
-      await asked.update(key, answer);
+      await memo.update(patching.PATCH_REMOVED_KEY, removed);
       control.state.said.length = 0;
-      control.state.answers = reply ? [['Patch the Codex extension', reply]] : [];
-      await patching.ensurePatched(vscode, { globalState: asked }, () => {}, 'ask');
-      const said = control.state.said.map((m) => m.message);
-      return { status: targets.map((t) => t.status(stale)), asked: said.some((m) => m.includes('Patch the Codex extension')), stored: asked.get(key) };
+      await patching.ensurePatched(vscode, { globalState: memo }, () => {}, mode);
+      return { status: targets.map((t) => t.status(stale)), said: control.state.said.map((m) => m.message),
+        reason: patching._state().reason };
     };
-    eq(await fromClean('yes'), { status: ['patched', 'patched'], asked: false, stored: 'yes' },
-      'a yes given for this version patches it again without asking');
-    eq(await fromClean('no'), { status: ['clean', 'clean'], asked: false, stored: 'no' }, 'a no stays a no');
-    eq(await fromClean(true, 'Patch Codex'), { status: ['patched', 'patched'], asked: true, stored: 'yes' },
-      'what an older build stored, which says only that it asked, is asked again, and the answer is the one kept');
-    eq(await fromClean(undefined), { status: ['patched', 'patched'], asked: false, stored: undefined },
-      'once the user has said yes to patching any Codex version, a later one is patched without asking');
-    await asked.update(patching.PATCH_YES_KEY, undefined);
-    eq((await fromClean(undefined, 'Not now')).stored, 'no', 'and, with no yes before, declining is kept as a no');
-    control.state.answers = [];
+    const fresh = await fromClean('on', undefined);
+    eq([fresh.status, fresh.said.length, /Reload the window/.test(fresh.said[0] || '')], [['patched', 'patched'], 1, true],
+      'a clean Codex is patched without asking, and the only thing said is to reload');
+    const removed = await fromClean('off', true);
+    eq([removed.status, removed.said, /Remove the Patch from Codex/.test(removed.reason)], [['clean', 'clean'], [], true],
+      'after Remove the Patch it stays clean, saying nothing, and the status names the command that removed it');
+    const switchedOff = await fromClean('off', undefined);
+    eq([switchedOff.status, /codexPlus\.enabled/.test(switchedOff.reason)], [['clean', 'clean'], true],
+      'and with the additions switched off it is left clean too, for that reason');
 
     /*
      * The uninstall hook puts back the Codex beside the copy of this extension being uninstalled, and the Codex of any
@@ -226,7 +221,7 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
   patching.activate({ subscriptions: [], globalStorageUri: vscode.Uri.file(tmp('gs')), globalState: fake.memento() }, {
     vscode, log: () => {}, source: { onDidChangeConversations: () => ({ dispose() {} }), _focus: (id) => focused.push(id),
       listConversations: async () => [], logo: null }, settings: () => ({ patchCodex: 'off', chime: true, figures: true }),
-    planQuestions: () => 0, context: { globalStorageUri: vscode.Uri.file(tmp('gs2')) } });
+    context: { globalStorageUri: vscode.Uri.file(tmp('gs2')) } });
   eq(patching.canDeliver(thread), false, 'before Codex hands over a panel, nothing can be typed');
   globalThis.__codexExtrasPanel(panel, thread, provider);
   eq(patching.canDeliver(thread), true, 'once its panel is handed over, that conversation can take an answer');

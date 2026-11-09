@@ -43,6 +43,9 @@ const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-extras-check-'));
 let n = 0;
 /** A fresh empty directory for one check, removed with the rest when the suite ends. */
 const tmp = (name = 'd') => { const d = path.join(scratch, `${++n}-${name}`); fs.mkdirSync(d, { recursive: true }); return d; };
+/* The extension reads its Codex home from CODEX_HOME alone. A part sets it to a home of its own before activating, and
+   this one stands in otherwise, so nothing the suite starts can reach the user's own ~/.codex. */
+process.env.CODEX_HOME = tmp('default-codex-home');
 
 const only = process.argv[2] || '';
 (async () => {

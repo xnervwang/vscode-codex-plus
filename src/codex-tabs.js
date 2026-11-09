@@ -100,12 +100,37 @@ function newPanelUri(vscode) {
 }
 
 /*
- * Open a new Codex conversation in a tab. `group` is 'main' for the first editor group, the wide one a split is made
- * from, or 'active' for the group the title bar button was pressed in, which with a split open is the narrow half.
- * Naming the first group keeps a conversation out of that half. False when Codex did not take the route.
+ * The editor group a new Codex tab goes in, chosen the way Claude Code 2.1.319 chooses one for a new Claude tab from
+ * its Open command (createPanel with no column), with Codex tabs where it counts Claude tabs:
+ *
+ *   1. a group holding only Codex tabs, the active one first;
+ *   2. else a group holding any Codex tab, the active one first;
+ *   3. else the only group, when the window has one and it is empty;
+ *   4. else a new group beside the others (to the right, or below when workbench.editor.openSideBySideDirection says
+ *      down), which is then the active one.
+ *
+ * Claude Code also locks the group it starts; this does not. Resolves to a viewColumn.
  */
-async function openNewInTab(vscode, { group = 'main' } = {}) {
-  const viewColumn = group === 'active' ? vscode.ViewColumn.Active : vscode.ViewColumn.One;
+async function codexGroup(vscode) {
+  const groups = vscode.window.tabGroups.all.map((g) => {
+    const codex = (g.tabs || []).filter((t) => isCodexTab(vscode, t)).length;
+    return { viewColumn: g.viewColumn, isActive: !!g.isActive, codex, other: (g.tabs || []).length - codex };
+  });
+  const pick = (test) => (groups.find((g) => g.isActive && test(g)) || groups.find(test) || {}).viewColumn;
+  const found = pick((g) => g.codex > 0 && g.other === 0) || pick((g) => g.codex > 0);
+  if (found) return found;
+  if (groups.length === 1 && !groups[0].codex && !groups[0].other) return groups[0].viewColumn;
+  const editor = vscode.workspace.getConfiguration('workbench.editor');
+  const down = editor && typeof editor.get === 'function' && editor.get('openSideBySideDirection') === 'down';
+  try {
+    await vscode.commands.executeCommand(down ? 'workbench.action.newGroupBelow' : 'workbench.action.newGroupRight');
+  } catch (_) { /* opened in the group in front instead */ }
+  return vscode.ViewColumn.Active;
+}
+
+/* Open a new Codex conversation in a tab, in codexGroup's group. False when Codex did not take the route. */
+async function openNewInTab(vscode) {
+  const viewColumn = await codexGroup(vscode);
   await vscode.commands.executeCommand('vscode.openWith', newPanelUri(vscode), VIEW_TYPE,
     { viewColumn, preserveFocus: false, preview: false });
   const tab = vscode.window.tabGroups.activeTabGroup;
@@ -138,4 +163,4 @@ async function openRouteInSidebar(vscode, route) {
 const threadRoute = (id) => `/local/${encodeURIComponent(String(id))}`;
 
 module.exports = { sidebarRouteUri, openRouteInSidebar, threadRoute, VIEW_TYPE, SCHEME, AUTHORITY, NEW_PANEL_PATH, isCodexViewType, isCodexTab, tabShape, threadOfUri, threadOfTab, codexTabs,
-  activeThread, threadUri, newPanelUri, openInTab, openNewInTab };
+  activeThread, threadUri, newPanelUri, openInTab, openNewInTab, codexGroup };

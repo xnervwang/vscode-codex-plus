@@ -24,11 +24,9 @@ const { createCodexSource } = require('./src/codex-source');
 const { createSeen } = require('./src/seen');
 const { CodexReader } = require('./src/codex-reader');
 const hostLink = require('./src/host-link');
-const { readPlan, planQuestions } = require('./src/workplan');
 const { TabMemory } = require('./src/tab-memory');
 const { SessionsProvider, COLORS, looksLikeId } = require('./src/sessions-view');
 const patching = require('./src/patching');
-const domSample = require('./src/dom-sample');
 const supported = require('./src/supported');
 const pythonRuntime = require('./src/python-runtime');
 const { folderTest } = require('./src/folders');
@@ -38,6 +36,8 @@ const codexConfig = require('./src/codex-config');
 const CONFIG = 'codexPlus';
 let log = null;
 let reader = null;
+/* The memento that remembers "Remove the Patch" (patching.PATCH_REMOVED_KEY) until "Patch Codex" is run again. */
+let memento = null;
 
 function cfg() { return vscode.workspace.getConfiguration(CONFIG); }
 
@@ -48,25 +48,26 @@ function cfg() { return vscode.workspace.getConfiguration(CONFIG); }
  * turning everything off and on again gives back the choices the user had made rather than every default. Everything
  * it covers is read through it here, which is why nothing else in the extension has to ask about it.
  *
- * What it does not cover: the work plan, the session list, and where a new conversation opens. Those are not of a piece
- * with the rest - a work plan the model is keeping is not an adornment to be switched off by the command that stops a
- * chime - and the README says as much.
+ * What it does not cover: the work plan and the session list. Those are not of a piece with the rest - a work plan the
+ * model is keeping is not an adornment to be switched off by the command that stops a chime - and the README says as
+ * much.
  *
- * `patchCodex` reading 'off' stops the patch being applied or kept up to date. It does not take an applied patch out of
- * Codex's files: that is `Codex Plus: Remove the Patch from Codex`, and the two are different acts.
+ * `patchCodex` is 'on' or 'off' and is not a setting: Codex is patched at start-up unless the switch is off or the user
+ * ran "Remove the Patch from Codex", which holds until they run "Patch Codex". 'off' stops the patch being applied or
+ * kept up to date; with the switch off it does not take an applied patch out of Codex's files, which only the remove
+ * command does.
  */
 function settings() {
   const c = cfg();
   const on = c.get('enabled', true);
+  const removed = !!(memento && memento.get(patching.PATCH_REMOVED_KEY) === true);
   return {
     enabled: on,
     workPlan: c.get('workPlan', true),
     hideBackgroundSessions: c.get('hideBackgroundSessions', true),
-    sessionsInWorkspaceOnly: c.get('sessionsInWorkspaceOnly', true),
     recentClosedSessions: c.get('recentClosedSessions', 10),
     reopenDroppedTabs: c.get('reopenDroppedTabs', true),
-    installPlugin: c.get('installWorkPlanPlugin', 'ask'),
-    patchCodex: on ? c.get('patchCodex', 'ask') : 'off',
+    patchCodex: on && !removed ? 'on' : 'off',
     chime: on && c.get('chime', true),
     figures: on && c.get('turnFigures', true),
     timestamps: on && c.get('timestamps', true),
@@ -74,15 +75,9 @@ function settings() {
     userMessageColor: on ? c.get('userMessageColor', '') : '',
     userMessageEdge: on && c.get('userMessageEdge', true),
     lowContextOutline: on && c.get('lowContextOutline', true),
-    waitingInStatusBar: on && c.get('waitingInStatusBar', true),
-    sendAnswers: c.get('sendAnswers', true),
   };
 }
 const trusted = () => vscode.workspace.isTrusted !== false;
-
-function applyCodexHome() {
-  files.setCodexHome(String(cfg().get('codexHome') || '').trim());
-}
 
 /** The version of Codex's own extension, or '' when it is not installed. */
 function codexVersion() {
@@ -118,7 +113,7 @@ function writeHookSettings(context) {
 async function activate(context) {
   log = vscode.window.createOutputChannel('Codex Plus');
   context.subscriptions.push(log);
-  applyCodexHome();
+  memento = context.globalState;
   const say = (m) => log.appendLine(`${new Date().toISOString()} ${m}`);
   /* Said once, in the log only: an unrecorded Codex is a thing to know, not a thing to interrupt anyone about. */
   { const line = supported.noticeLine(codexVersion()); if (line) say(line); }
@@ -157,28 +152,6 @@ async function activate(context) {
   context.subscriptions.push(source.onDidChangeConversations(redrawSessions), memory.onDidChange(() => sessionsProvider.refresh()),
     patching.onSidebarChanged(() => sessionsProvider.refresh()));
 
-  /*
-   * How many conversations are stopped waiting for an answer, in the status bar: shown only while there is one, since
-   * the point of it is the moment the user is away from the Codex tab. Only this window's conversations are counted -
-   * its Codex app-server is its own (README, "What it cannot see").
-   */
-  const waitingItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
-  waitingItem.command = `${CONFIG}.goToWaiting`;
-  context.subscriptions.push(waitingItem);
-  const drawWaiting = () => {
-    let n = 0, threads = [];
-    try { n = patching.decideCount(); threads = patching.waitingThreads(); } catch (_) { n = 0; }
-    if (!n || !settings().waitingInStatusBar) { waitingItem.hide(); return; }
-    /* Not "to decide": Agent Plus has its own "N to decide" item, which counts the plans' questions. */
-    waitingItem.text = `$(bell-dot) ${n} to approve`;
-    const named = threads.filter((t) => patching.approvalsOf(t).decide)
-      .map((t) => `- ${(reader.thread(t) || {}).title || t}`);
-    waitingItem.tooltip = `Codex is waiting for you in:\n${named.join('\n')}`;
-    waitingItem.show();
-  };
-  context.subscriptions.push(patching.onApprovalsChanged(drawWaiting), source.onDidChangeConversations(drawWaiting));
-  drawWaiting();
-
   /* ── Agent Plus draws the rest ── */
   const link = await hostLink.link(vscode, source, { log: say, memento: context.globalState });
   if (link.registered) {
@@ -188,8 +161,7 @@ async function activate(context) {
   redrawSessions();
 
   context.subscriptions.push(vscode.workspace.onDidChangeConfiguration((e) => {
-    if (e.affectsConfiguration(`${CONFIG}.codexHome`)) { applyCodexHome(); source._poll(); }
-    if (e.affectsConfiguration(CONFIG)) { writeHookSettings(context); sessionsProvider.refresh(); drawWaiting(); }
+    if (e.affectsConfiguration(CONFIG)) { writeHookSettings(context); sessionsProvider.refresh(); }
     /* The time stamps, the message list and the colours live in Codex's page, and this is how a change to one of them
        gets there: the same redraw the figures use, rather than a watcher of its own. The master switch is in the list
        because it decides all three, and a page has to be told when it goes either way. */
@@ -215,14 +187,19 @@ async function activate(context) {
   const opens = openTimes.createOpenTimes(openTimes.whereLogs(context.logUri && context.logUri.fsPath));
   registerCommands(context, { source, memory, sessionsProvider, say, link, userTimes, opens, sessionInfoRows });
 
+  /* Delayed start-up work is cancelled with the extension, so a window that closes within the delay starts none of it. */
+  const later = (fn, ms) => {
+    const t = setTimeout(fn, ms);
+    context.subscriptions.push({ dispose: () => clearTimeout(t) });
+  };
   /* Everything that writes waits for a trusted workspace. */
   let wrote = false;
   const whenTrusted = () => {
     if (wrote || !trusted()) return;
     wrote = true;
     writeHookSettings(context);
-    setTimeout(() => offerPlugin(context, say), 3000);
-    setTimeout(() => {
+    later(() => ensurePlugin(context, say), 3000);
+    later(() => {
       reader.request('sweep', { home: files.codexHome() }).then((r) => {
         if (r.deleted) say(`removed ${r.deleted} plan file(s) of conversations that no longer exist`);
         else if (r.why) say(`plan cleanup: ${r.why}`);
@@ -230,8 +207,7 @@ async function activate(context) {
     }, 60000);
     try {
       patching.activate(context, { vscode, log: say, codexProgram, source, context, settings, onTimeZone: reportTimeZone,
-        userTimes, planQuestions: (id) => planQuestions((readPlan(id) || {}).nodes).length,
-        sessionInfo: (id) => sessionInfoRows(id),
+        userTimes, sessionInfo: (id) => sessionInfoRows(id),
         copy: async (value, label) => { await vscode.env.clipboard.writeText(value); vscode.window.setStatusBarMessage(`Copied ${label}`, 3000); },
         toggleChime: () => cfg().update('chime', !cfg().get('chime', true), vscode.ConfigurationTarget.Global) });
     } catch (e) { say(`patching: ${e.message}`); }
@@ -240,21 +216,21 @@ async function activate(context) {
   if (!wrote && typeof vscode.workspace.onDidGrantWorkspaceTrust === 'function') {
     context.subscriptions.push(vscode.workspace.onDidGrantWorkspaceTrust(whenTrusted));
   }
-  setTimeout(async () => {
+  later(async () => {
     const reopened = await memory.reopenDropped({ enabled: settings().reopenDroppedTabs });
     if (reopened.length) say(`reopened ${reopened.length} Codex tab(s) VS Code did not restore`);
   }, 8000);
 }
 
 /*
- * A new Codex conversation in a tab. Codex's own chatgpt.newCodexPanel asks for the group of the text file last
- * focused, which puts the conversation in a split when that file is not where the user is looking; opening its route
- * here names the group instead: the first group, or the group in front when the setting says so. Codex's command is
- * the fallback, in case it stops taking the route.
+ * A new Codex conversation in a tab, in the editor group Claude Code's own Open command would pick for one of its tabs
+ * (src/codex-tabs.js codexGroup). Codex's own chatgpt.newCodexPanel asks for the group of the text file last focused,
+ * which puts the conversation in a split the user was not looking at. Codex's command is the fallback, in case it stops
+ * taking the route.
  */
 async function newConversationInTab(say) {
   try {
-    if (await tabs.openNewInTab(vscode, { group: cfg().get('newConversationGroup', 'main') })) return;
+    if (await tabs.openNewInTab(vscode)) return;
     say('Codex did not open a conversation for its new-panel route; asking Codex itself');
   } catch (e) {
     say(`opening a new conversation: ${e.message}`);
@@ -313,20 +289,6 @@ function registerCommands(context, { source, memory, sessionsProvider, say, link
     log.show(true);
   });
   /*
-   * The same self-check on its own, for pasting back: the parts drawn inside Codex's page are the ones nothing but a
-   * person looking at them could confirm, and this is how they report themselves instead.
-   */
-  reg('pageSelfCheck', async () => {
-    const answer = await patching.selfCheckPage();
-    const lines = patching.selfCheckLines(answer);
-    log.appendLine(lines.join('\n'));
-    log.show(true);
-    const copy = 'Copy';
-    const pick = await vscode.window.showInformationMessage(answer.error
-      ? `Codex Plus: ${answer.error}` : 'Codex Plus: the page self-check is in the output panel.', copy);
-    if (pick === copy) await vscode.env.clipboard.writeText(lines.join('\n'));
-  });
-  /*
    * The master switch: one act for all the additions at once, rather than six settings to find.
    *
    * It writes the one setting the others are read through (settings()), so the user's own choices among them survive
@@ -355,9 +317,7 @@ function registerCommands(context, { source, memory, sessionsProvider, say, link
       await vscode.workspace.getConfiguration(CONFIG).update('enabled', true, vscode.ConfigurationTarget.Global);
       say('the additions were off; turned back on, since the patch is only of use to them');
     }
-    await context.globalState.update(`codexPlus.patchAsked:${(vscode.extensions.getExtension('openai.chatgpt') || { packageJSON: {} }).packageJSON.version}`, 'yes');
-    await context.globalState.update(patching.PATCH_YES_KEY, true);
-    await vscode.workspace.getConfiguration(CONFIG).update('patchCodex', 'on', vscode.ConfigurationTarget.Global);
+    await context.globalState.update(patching.PATCH_REMOVED_KEY, false);
     vscode.window.showInformationMessage('Codex will be patched now; reload the window when asked.');
     /* Only the patching itself: activation already wired the hooks and the listeners, and wiring them again would
        redraw every panel once more on each change for every time this command has run. */
@@ -365,50 +325,15 @@ function registerCommands(context, { source, memory, sessionsProvider, say, link
   });
   reg('removePatch', async () => {
     if (restricted()) return;
+    /* Remembered before the files are put back, and kept until "Patch Codex" is run: every start-up patches Codex
+       otherwise. */
+    await context.globalState.update(patching.PATCH_REMOVED_KEY, true);
     const lines = patching.removePatch(vscode);
-    await vscode.workspace.getConfiguration(CONFIG).update('patchCodex', 'off', vscode.ConfigurationTarget.Global);
     say(lines.join('\n'));
     const reload = 'Reload Window';
     if (await vscode.window.showInformationMessage('Codex\'s own files are back. Reload the window to run them.', reload) === reload) {
       await vscode.commands.executeCommand('workbench.action.reloadWindow');
     }
-  });
-  /*
-   * A sample of the Codex conversation in front, for working out which elements to hang a time tick, in-conversation
-   * navigation or a colour on: those are drawn at run time and no class name of theirs can be read off Codex's files.
-   * The sample is shape only, and the file holds exactly what the page sent.
-   */
-  reg('sampleConversationDom', async () => {
-    if (restricted()) return;
-    const r = await patching.sampleLayout();
-    if (r.error) { vscode.window.showWarningMessage(`Codex Plus: ${r.error}`); return; }
-    const codex = vscode.extensions.getExtension('openai.chatgpt');
-    let file;
-    try {
-      file = domSample.save({ dir: context.globalStorageUri.fsPath, sample: r.sample,
-        codexVersion: ((codex && codex.packageJSON) || {}).version || '' });
-    } catch (e) { vscode.window.showErrorMessage(`Codex Plus: the sample could not be written: ${e.message}`); return; }
-    say(`conversation layout sample written to ${file}`);
-    const copy = 'Copy Path';
-    const pick = await vscode.window.showInformationMessage(`Codex Plus: the conversation layout sample is at ${file}`, copy);
-    if (pick === copy) await vscode.env.clipboard.writeText(file);
-  });
-  /*
-   * The conversation Codex is waiting on, from the status bar. With more than one it asks which, rather than picking
-   * one the count in the status bar did not single out.
-   */
-  reg('goToWaiting', async () => {
-    const waiting = patching.waitingThreads().filter((t) => patching.approvalsOf(t).decide);
-    if (!waiting.length) { vscode.window.showInformationMessage('Codex Plus: no Codex conversation in this window is waiting for you.'); return; }
-    let id = waiting[0];
-    if (waiting.length > 1) {
-      const pick = await vscode.window.showQuickPick(waiting.map((t) => ({ label: (reader.thread(t) || {}).title || t, description: t, id: t })),
-        { placeHolder: 'Which conversation Codex is waiting on' });
-      if (!pick) return;
-      id = pick.id;
-    }
-    if (!tabs.codexTabs(vscode).some((t) => t.thread === id) && patching.revealPanel(id)) return;
-    await source.reveal(id, null);
   });
   reg('showOpenTimes', async () => {
     const spans = await opens.read().catch(() => []);
@@ -426,6 +351,8 @@ function registerCommands(context, { source, memory, sessionsProvider, say, link
     if (pick && pick.thread) await tabs.openInTab(vscode, pick.thread);
   });
   reg('openSettings', () => vscode.commands.executeCommand('workbench.action.openSettings', '@ext:xnervwang.codex-plus'));
+  /* The command is also the way back after "Stop Loading": it tells Codex to load the plugin again, as Claude Code Plus's
+     install command registers its plugin again. */
   reg('installWorkPlanPlugin', () => (restricted() ? undefined : installPlugin(context, say, { interactive: true })));
   reg('downloadPython', async () => {
     if (restricted()) return;
@@ -435,25 +362,20 @@ function registerCommands(context, { source, memory, sessionsProvider, say, link
   /*
    * The step between keeping the plugin and removing it: Codex holds it, with its marketplace entry and the trust given
    * to its hooks, and is told not to load it. Removing it instead takes all three away, so getting back from that means
-   * installing and trusting again.
-   *
-   * Both directions are commands, since the only other way back would be to install over it and trust its hooks afresh.
+   * installing and trusting again. The install command undoes it; the install at start-up leaves it as it is.
    */
-  const loadPlugin = async (on) => {
+  reg('stopLoadingWorkPlanPlugin', async () => {
     if (restricted()) return;
     const binary = codexProgram();
     if (!binary) { vscode.window.showErrorMessage('The codex program of the Codex extension was not found.'); return; }
     try {
-      await install.setPluginEnabled({ binary, home: files.codexHome(), enabled: on });
-      say(`Codex is now set to ${on ? 'load' : 'skip'} the work plan plugin in ${files.codexHome()}`);
-      vscode.window.showInformationMessage(on
-        ? 'Codex Plus: Codex will load the work plan plugin again. Open a new conversation for it to take effect.'
-        : 'Codex Plus: Codex will not load the work plan plugin. It stays installed, with its hooks still trusted; '
-          + '"Load the Work Plan Plugin in Codex" turns it back on.');
+      await install.setPluginEnabled({ binary, home: files.codexHome(), enabled: false });
+      say(`Codex is now set to skip the work plan plugin in ${files.codexHome()}`);
+      vscode.window.showInformationMessage('Codex Plus: Codex will not load the work plan plugin. It stays installed, with its '
+        + 'hooks still trusted; "Install the Work Plan Plugin into Codex" has it loaded again.');
     } catch (e) { vscode.window.showErrorMessage(`Could not change whether Codex loads the plugin: ${e.message}`); }
-  };
-  reg('stopLoadingWorkPlanPlugin', () => loadPlugin(false));
-  reg('loadWorkPlanPlugin', () => loadPlugin(true));
+  });
+  /* Kept as a command because the uninstall hook leaves the plugin and the plans in Codex (uninstall.js). */
   reg('removeWorkPlanPlugin', async () => {
     if (restricted()) return;
     const binary = codexProgram();
@@ -467,7 +389,6 @@ function registerCommands(context, { source, memory, sessionsProvider, say, link
       vscode.window.showInformationMessage(kept ? `Removed. The plans were copied to ${kept}.` : 'Removed.');
     } catch (e) { vscode.window.showErrorMessage(`Could not remove the plugin: ${e.message}`); }
   });
-  reg('refreshSessions', () => { source._poll(); sessionsProvider.refresh(); });
   reg('newInTab', () => newConversationInTab(say));
   reg('newInSidebar', async () => {
     if (await tabs.openRouteInSidebar(vscode, '/')) return;
@@ -475,14 +396,11 @@ function registerCommands(context, { source, memory, sessionsProvider, say, link
     try { await vscode.commands.executeCommand('chatgpt.newChat'); } catch (_) { /* the shortcut is not enabled in every build */ }
   });
   /*
-   * The tab bar's button: a new Codex conversation in a tab, or Codex's sidebar, as the setting says. It never raises a
-   * conversation that is already open: the session list is where an existing one is picked, and a button that sometimes
-   * only moved the focus read as doing nothing.
+   * The tab bar's button: a new Codex conversation in a tab. Codex's own button beside it opens its sidebar. It never
+   * raises a conversation that is already open: the session list is where an existing one is picked, and a button that
+   * sometimes only moved the focus read as doing nothing.
    */
-  reg('openCodex', async () => {
-    if (cfg().get('openButtonTarget', 'tab') === 'sidebar') { await vscode.commands.executeCommand('chatgpt.openSidebar'); return; }
-    await newConversationInTab(say);
-  });
+  reg('openCodex', () => newConversationInTab(say));
   reg('openThreadInTab', async (arg) => {
     const id = threadArg(arg);
     if (!id) return;
@@ -498,10 +416,6 @@ function registerCommands(context, { source, memory, sessionsProvider, say, link
     vscode.window.showInformationMessage('Codex did not take the link that opens a conversation in its sidebar, so it was opened in a tab instead.');
     await tabs.openInTab(vscode, id);
   });
-  reg('copyThreadId', async (arg) => {
-    const id = threadArg(arg);
-    if (id) { await vscode.env.clipboard.writeText(id); vscode.window.setStatusBarMessage(`Copied ${id}`, 3000); }
-  });
   reg('setTitleColor', async (arg) => {
     const id = threadArg(arg);
     if (!id) return;
@@ -511,7 +425,7 @@ function registerCommands(context, { source, memory, sessionsProvider, say, link
   reg('findThread', async () => {
     /* The same conversations the list holds: this workspace's, as the Codex sessions view filters them. */
     const folders = (vscode.workspace.workspaceFolders || []).map((f) => f.uri.fsPath);
-    const inWorkspace = settings().sessionsInWorkspaceOnly && folders.length ? folderTest(folders, new Map()) : null;
+    const inWorkspace = folders.length ? folderTest(folders, new Map()) : null;
     const threads = (reader.threads() || []).filter((t) => (t.kind === 'user' || !settings().hideBackgroundSessions)
       && (!inWorkspace || inWorkspace(t.cwd)));
     const qp = vscode.window.createQuickPick();
@@ -557,31 +471,17 @@ function registerCommands(context, { source, memory, sessionsProvider, say, link
 }
 
 /*
- * The plugin is offered once per Codex home and per set of its files; after that it is the user's commands that install
- * or remove it. A plugin whose files changed under the same version is an upgrade like any other.
+ * At start-up the plugin is installed without asking whenever Codex does not hold it as this extension carries it, as
+ * Claude Code Plus registers its own (syncPlugin(false)): missing, another version, or other files under the same
+ * version. Codex still asks the user to trust its hooks, which is trustPlugin's dialog. A plugin the user told Codex not
+ * to load stays not loaded through such an install; the install command is what loads it again.
  */
-async function offerPlugin(context, say) {
+async function ensurePlugin(context, say) {
   if (!trusted() || !cfg().get('workPlan', true)) return;
-  const home = files.codexHome();
-  const st = install.installState(home);
+  const st = install.installState(files.codexHome());
   if (st.current) { await trustPlugin(say, { interactive: false }); return; }
   say(`work plan plugin in Codex: ${st.why} (${st.versions.join(', ') || 'none'}; this extension carries ${st.want})`);
-  const mode = settings().installPlugin;
-  if (mode === 'never') return;
-  if (mode === 'ask') {
-    const key = `codexPlus.offered:${home}:${st.want}:${st.digest}`;
-    if (context.globalState.get(key)) return;
-    await context.globalState.update(key, true);
-    const have = st.versions;
-    const go = have.length ? 'Upgrade' : 'Install';
-    const pick = await vscode.window.showInformationMessage(
-      !have.length ? 'Install the work plan plugin into Codex?'
-        : have.includes(st.want) ? `The Codex work plan plugin ${st.want} in Codex is not the one this extension carries.`
-          : `The Codex work plan plugin ${have.join(', ')} is older than ${st.want}.`,
-      { detail: `It adds a skill, hooks and a small MCP server to ${home}. Codex asks you to trust the hooks afterwards.` }, go, 'Not now');
-    if (pick !== go) return;
-  }
-  await installPlugin(context, say, { interactive: mode === 'ask' });
+  await installPlugin(context, say, { interactive: false });
 }
 
 /*
@@ -629,8 +529,8 @@ async function installPlugin(context, say, { interactive }) {
     say(python ? `work plan hooks will run with Python ${python.version} (${python.launcher.join(' ')})`
       : `no Python 3.7 or later was found (tried ${pythonRuntime.pythons(context.globalStorageUri.fsPath).map((l) => l.join(' ')).join(', ')});`
         + ' the plugin goes in without its hooks, MCP server and skill');
-    const r = await install.install({ binary, home: files.codexHome(), stage, python });
-    say(`installed work plan plugin ${r.version} into ${files.codexHome()}`);
+    const r = await install.install({ binary, home: files.codexHome(), stage, python, load: interactive ? true : 'keep' });
+    say(`installed work plan plugin ${r.version} into ${files.codexHome()}${r.loaded === false ? '; Codex is still set not to load it' : ''}`);
     writeHookSettings(context);
     await trustPlugin(say, { interactive: true });
   } catch (e) {
@@ -679,5 +579,5 @@ function deactivate() { files.closeAll(); }
 
 /* `_settings` is for the checks: the master switch is only real if what every part reads comes out of settings() with
    it already applied, and that is a table to be read rather than inferred from what the extension then did.
-   `_offerPlugin` is the start-up decision to install the plugin, which activation only makes after a delay. */
-module.exports = { activate, deactivate, _settings: settings, _offerPlugin: offerPlugin };
+   `_ensurePlugin` is the start-up install of the plugin, which activation only runs after a delay. */
+module.exports = { activate, deactivate, _settings: settings, _ensurePlugin: ensurePlugin };

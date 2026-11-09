@@ -57,7 +57,7 @@ module.exports = async ({ eq, tmp, root }) => {
     const THREAD = '019a6a10-0000-7000-8000-0000000000c1';
     let conversations = [{ sessionId: THREAD, title: 'Fix the flaky retry test', state: 'idle', working: false }];
     patching.activate({ subscriptions: [], globalStorageUri: vscode.Uri.file(tmp('gs')), globalState: fake.memento() }, {
-      vscode, log: () => {}, settings: () => ({ patchCodex: 'off', chime: false, figures: false }), planQuestions: () => 0,
+      vscode, log: () => {}, settings: () => ({ patchCodex: 'off', chime: false, figures: false }),
       source: { onDidChangeConversations: () => ({ dispose() {} }), _focus() {}, listConversations: async () => conversations, logo: null },
       context: { globalStorageUri: vscode.Uri.file(tmp('gs2')) } });
     const panel = { webview: {}, title: 'Codex', reveal() {}, onDidDispose() {}, iconPath: null };

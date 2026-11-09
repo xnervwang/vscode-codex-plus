@@ -89,7 +89,7 @@ module.exports = async ({ eq, tmp, root }) => {
   const copied = [];
   let toggled = 0;
   patching.activate({ subscriptions: [], globalStorageUri: vscode.Uri.file(tmp('gs')), globalState: fake.memento() }, {
-    vscode, log: () => {}, settings: () => ({ patchCodex: 'off', chime: true, figures: false }), planQuestions: () => 0,
+    vscode, log: () => {}, settings: () => ({ patchCodex: 'off', chime: true, figures: false }),
     source: { onDidChangeConversations: () => ({ dispose() {} }), _focus() {}, listConversations: async () => [], logo: null },
     context: { globalStorageUri: vscode.Uri.file(tmp('gs2')) },
     sessionInfo: async (id) => [{ label: 'Thread id', value: id }, { label: 'Starting directory', value: SECRET }],

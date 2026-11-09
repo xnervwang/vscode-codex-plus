@@ -84,17 +84,8 @@
         "title": "Codex Plus: Stop Loading the Work Plan Plugin (keeps it installed)"
       },
       {
-        "command": "codexPlus.loadWorkPlanPlugin",
-        "title": "Codex Plus: Load the Work Plan Plugin in Codex"
-      },
-      {
         "command": "codexPlus.removeWorkPlanPlugin",
         "title": "Codex Plus: Remove the Work Plan Plugin from Codex"
-      },
-      {
-        "command": "codexPlus.refreshSessions",
-        "title": "Codex Plus: Refresh Codex Sessions",
-        "icon": "$(refresh)"
       },
       {
         "command": "codexPlus.newInTab",
@@ -123,10 +114,6 @@
         "title": "Codex Plus: Resume in Sidebar"
       },
       {
-        "command": "codexPlus.copyThreadId",
-        "title": "Codex Plus: Copy Thread ID"
-      },
-      {
         "command": "codexPlus.setTitleColor",
         "title": "Codex Plus: Text Color..."
       },
@@ -153,24 +140,12 @@
         "title": "Codex Plus: Remove the Patch from Codex (restore original files)"
       },
       {
-        "command": "codexPlus.sampleConversationDom",
-        "title": "Codex Plus: Sample the Conversation Layout"
-      },
-      {
-        "command": "codexPlus.pageSelfCheck",
-        "title": "Codex Plus: Check What the Page Script Found in This Conversation"
-      },
-      {
         "command": "codexPlus.showOpenTimes",
         "title": "Codex Plus: Show How Long Opening a Codex Page Took"
       },
       {
         "command": "codexPlus.showRunningCommands",
         "title": "Codex Plus: Show the Commands Codex Is Still Running"
-      },
-      {
-        "command": "codexPlus.goToWaiting",
-        "title": "Codex Plus: Go to the Conversation Waiting for You"
       }
     ],
     "viewsContainers": {
@@ -207,16 +182,6 @@
           "command": "codexPlus.findThread",
           "when": "view == codexPlus.sessions",
           "group": "navigation@2"
-        },
-        {
-          "command": "codexPlus.refreshSessions",
-          "when": "view == codexPlus.sessions",
-          "group": "navigation@3"
-        },
-        {
-          "command": "codexPlus.openSettings",
-          "when": "view == codexPlus.sessions",
-          "group": "9_settings@1"
         }
       ],
       "view/item/context": [
@@ -229,11 +194,6 @@
           "command": "codexPlus.openThreadInSidebar",
           "when": "view == codexPlus.sessions && viewItem =~ /^codexPlusThread/",
           "group": "1_open@2"
-        },
-        {
-          "command": "codexPlus.copyThreadId",
-          "when": "view == codexPlus.sessions && viewItem =~ /^codexPlusThread/",
-          "group": "2_info@1"
         },
         {
           "command": "codexPlus.sessionInfo",
@@ -261,10 +221,6 @@
           "when": "false"
         },
         {
-          "command": "codexPlus.copyThreadId",
-          "when": "false"
-        },
-        {
           "command": "codexPlus.setTitleColor",
           "when": "false"
         },
@@ -277,57 +233,26 @@
         {
           "command": "codexPlus.openCodex",
           "group": "navigation"
-        },
-        {
-          "command": "codexPlus.sessionInfo",
-          "when": "activeCustomEditorId == 'chatgpt.conversationEditor'",
-          "group": "navigation"
         }
       ]
     },
     "configuration": {
       "title": "Codex Plus",
       "properties": {
-        "codexPlus.codexHome": {
-          "type": "string",
-          "default": "",
-          "markdownDescription": "The Codex home directory to read and to install the work plan plugin into. Empty uses `CODEX_HOME` when it is set, otherwise `~/.codex`.",
-          "scope": "machine"
-        },
         "codexPlus.enabled": {
           "type": "boolean",
           "default": true,
-          "markdownDescription": "The master switch over the additions this extension makes to Codex: the time on each message, the list of your own messages, their colouring, the chimes, the figures strip, the dot on a tab's logo and the count in the status bar, and whether Codex is patched at all. Off leaves each of their own settings as you had it, and turns them back on as they were.\n\nIt does **not** take an applied patch out of Codex's files. The patch stays where it is and nothing is drawn through it; `Codex Plus: Remove the Patch from Codex` is what puts Codex's own files back.\n\nThe work plan and the Codex session list are not covered by it, and have their own settings."
+          "markdownDescription": "The master switch over the additions this extension makes to Codex: the time on each message, the list of your own messages, their colouring, the chimes, the figures strip and the dot on a tab's logo, and whether Codex is patched at all. Off leaves each of their own settings as you had it, and turns them back on as they were.\n\nIt does **not** take an applied patch out of Codex's files. The patch stays where it is and nothing is drawn through it; `Codex Plus: Remove the Patch from Codex` is what puts Codex's own files back.\n\nThe work plan and the Codex session list are not covered by it, and have their own settings."
         },
         "codexPlus.workPlan": {
           "type": "boolean",
           "default": true,
           "markdownDescription": "Keep a work plan for each Codex conversation: the open rows put in front of the model every turn, and the reminders at the end of one. Agent Plus draws the plans. Off makes the hooks say nothing and refuse to change a plan, and no Codex plan is shown."
         },
-        "codexPlus.installWorkPlanPlugin": {
-          "type": "string",
-          "default": "ask",
-          "markdownDescription": "Whether to install the work plan plugin into Codex when it is missing or is not the one this extension ships: another version, or other files under the same version.",
-          "enum": [
-            "ask",
-            "auto",
-            "never"
-          ],
-          "enumDescriptions": [
-            "Ask once per Codex home and set of plugin files",
-            "Install without asking; Codex still asks you to trust its hooks",
-            "Never install it; use the command"
-          ]
-        },
         "codexPlus.sessionList": {
           "type": "boolean",
           "default": true,
           "markdownDescription": "Show the **Codex sessions** view in the Codex Plus sidebar: the conversations open in this window, recently closed ones, and the rest by Codex's own sections."
-        },
-        "codexPlus.sessionsInWorkspaceOnly": {
-          "type": "boolean",
-          "default": true,
-          "markdownDescription": "List only conversations started in this window's workspace folders, or folders under them, in Codex sessions and in Find, as Claude Code's own list does (open and recently closed ones are always listed). Off lists every conversation."
         },
         "codexPlus.hideBackgroundSessions": {
           "type": "boolean",
@@ -345,32 +270,6 @@
           "type": "boolean",
           "default": true,
           "markdownDescription": "Reopen the Codex tabs that were open when the window closed but that VS Code did not restore, as can happen after the window lost its remote connection. Tabs you closed while connected stay closed."
-        },
-        "codexPlus.newConversationGroup": {
-          "type": "string",
-          "enum": [
-            "main",
-            "active"
-          ],
-          "enumDescriptions": [
-            "The first editor group, the one a split is made from",
-            "The group the button was pressed in, which with a split open is the half you pressed it in"
-          ],
-          "default": "main",
-          "markdownDescription": "Which editor group a new Codex conversation opens in."
-        },
-        "codexPlus.openButtonTarget": {
-          "type": "string",
-          "enum": [
-            "tab",
-            "sidebar"
-          ],
-          "enumDescriptions": [
-            "A new Codex conversation in a tab",
-            "Codex's sidebar"
-          ],
-          "default": "tab",
-          "markdownDescription": "What the Codex button on the tab bar opens."
         },
         "codexPlus.tellCodexYourTimeZone": {
           "type": "boolean",
@@ -394,30 +293,10 @@
           "default": "",
           "markdownDescription": "A regular expression (Python syntax) tested on the latest reply. A match silences the reminders around a compaction, for conversations relaying another model's replies word for word."
         },
-        "codexPlus.patchCodex": {
-          "type": "string",
-          "default": "ask",
-          "markdownDescription": "Whether to patch the Codex extension's own files for the additions that need it: status dots on Codex tabs, opening a given conversation in the sidebar, answers put into a conversation's message box, chimes, the line of turn figures, message and reply times, the list of your own messages down the right edge, and the colouring of your own messages. Codex's originals are kept beside them and put back by **Codex Plus: Remove the Patch from Codex** or on uninstall.",
-          "enum": [
-            "ask",
-            "on",
-            "off"
-          ],
-          "enumDescriptions": [
-            "Ask once per Codex version",
-            "Patch without asking",
-            "Leave Codex's files alone"
-          ]
-        },
         "codexPlus.chime": {
           "type": "boolean",
           "default": true,
-          "markdownDescription": "With the patch: a short sound in a Codex tab when a turn there finishes, when its work plan asks you something, or when it stops for your permission. Three notes is the permission one. A conversation with no tab open in this window cannot make a sound, since the sound is made in the tab's page."
-        },
-        "codexPlus.waitingInStatusBar": {
-          "type": "boolean",
-          "default": true,
-          "markdownDescription": "With the patch: a count in the status bar while Codex is stopped waiting for your permission, in any conversation of **this window**. Clicking it goes to that conversation. Hidden when there is none."
+          "markdownDescription": "With the patch: a short sound in a Codex tab when a turn there finishes, or when it stops for your permission or for an answer to a question it asked. Three notes is the permission one. A conversation with no tab open in this window cannot make a sound, since the sound is made in the tab's page."
         },
         "codexPlus.turnFigures": {
           "type": "boolean",
@@ -443,11 +322,6 @@
           "type": "boolean",
           "default": true,
           "markdownDescription": "With the patch: a bar down the leading edge of **your own messages** in a Codex conversation, in the theme's focus colour. Off leaves Codex's own bubble as it is."
-        },
-        "codexPlus.sendAnswers": {
-          "type": "boolean",
-          "default": true,
-          "markdownDescription": "With the patch: an answer from Agent Plus's Answer view is sent into the conversation, as pressing Enter in Codex's message box would; while a turn is running Codex queues it or steers the turn with it, as with anything you send then. Off leaves it in the message box as a draft for you to send. Either way it goes in only when the box is empty."
         },
         "codexPlus.lowContextOutline": {
           "type": "boolean",
