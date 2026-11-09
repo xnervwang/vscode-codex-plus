@@ -12,7 +12,7 @@
  * route, and restores its own tabs by opening the same URI with the same view type - which is what openInTab does.
  *
  * Not every Codex conversation tab names its thread. Codex opens a new one at openai-codex://route/extension/panel/new
- * and that URI never changes, so a conversation the reader started with Codex's own New button has no id in its tab for
+ * and that URI never changes, so a conversation the user started with Codex's own New button has no id in its tab for
  * as long as the tab lives. The id for those comes from the patch, which is handed each panel with its thread
  * (src/patching.js panelThreads); from the URI alone such a tab is indistinguishable from an empty one.
  */
@@ -53,8 +53,8 @@ function isCodexTab(vscode, tab) {
 }
 
 /*
- * What a tab looks like, for the log line about a Codex tab whose thread could not be read. The URI's query is left
- * out: Codex puts route state in it, which can carry what the reader typed.
+ * A tab described for the log line about a Codex tab whose thread could not be read. The URI's query is left
+ * out: Codex puts route state in it, which can carry what the user typed.
  */
 function tabShape(tab) {
   const input = tab && tab.input;
@@ -91,8 +91,8 @@ function threadUri(vscode, thread) {
 /*
  * The route Codex opens a new conversation with. Codex's own createNewPanel() builds the same URI and hands it to
  * vscode.openWith asking for `window.activeTextEditor?.viewColumn`, which is the group of whichever text file was last
- * focused rather than the group in front, so a new conversation can land in a split the reader was not looking at.
- * Opening it here instead lets the column be stated.
+ * focused rather than the group in front, so a new conversation can land in a split the user was not looking at.
+ * Opening the route here instead means the column can be given explicitly.
  */
 function newPanelUri(vscode) {
   return vscode.Uri.from({ scheme: SCHEME, authority: AUTHORITY, path: NEW_PANEL_PATH });
@@ -100,9 +100,8 @@ function newPanelUri(vscode) {
 
 /*
  * Open a new Codex conversation in a tab. `group` is 'main' for the first editor group, the wide one a split is made
- * from, or 'active' for the group in front. The group in front is the one the title bar button was pressed in, which
- * with a split open is the narrow half; naming the first group keeps a conversation out of it. False when Codex did
- * not take the route.
+ * from, or 'active' for the group the title bar button was pressed in, which with a split open is the narrow half.
+ * Naming the first group keeps a conversation out of that half. False when Codex did not take the route.
  */
 async function openNewInTab(vscode, { group = 'main' } = {}) {
   const viewColumn = group === 'active' ? vscode.ViewColumn.Active : vscode.ViewColumn.One;

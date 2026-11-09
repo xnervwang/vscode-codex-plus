@@ -6,16 +6,16 @@
 /*
  * Whether a conversation's starting directory is in this window's workspace, comparing real paths.
  *
- * Same shape as folderTest() in Agent Work Plan's src/folders.js, which cannot be required from here: the two are
- * separate extensions. It differs in two ways that matter for Codex's threads:
+ * Same shape as folderTest() in Agent Work Plan's src/folders.js, which cannot be required from here because the two
+ * are separate extensions. Two differences matter for Codex's threads:
  *
  *   - a directory that no longer exists still resolves, through the nearest ancestor that does, so a conversation
  *     started in a folder since deleted is still placed in the workspace that held it
  *   - names are folded on darwin as well as win32
  *
- * Why real paths at all: VS Code reports this machine's workspace folder as /home/<user>/... while Codex records the
- * thread's cwd as /local/home/<user>/..., because /home/<user> is a symbolic link. Comparing the strings puts every
- * conversation outside the workspace and leaves the session list empty.
+ * The paths have to be resolved because VS Code reports this machine's workspace folder as /home/<user>/... while
+ * Codex records the thread's cwd as /local/home/<user>/..., /home/<user> being a symbolic link. Comparing the strings
+ * puts every conversation outside the workspace and leaves the session list empty.
  */
 const fs = require('fs');
 const path = require('path');
@@ -44,8 +44,8 @@ function realPath(p) {
 
 /*
  * A test for "is this directory one of `folders` or under one". With a `memo`, each path is resolved once: the test is
- * asked about the folder of every conversation on every pass, and resolving one is a system call per level of it. The
- * caller owns the memo and so decides how long an answer stays good for.
+ * asked about the folder of every conversation on every pass, and resolving one is a system call per level of it. How
+ * long a resolved answer stays good for is up to whoever passes the memo in.
  */
 function folderTest(folders, memo) {
   const resolve = memo

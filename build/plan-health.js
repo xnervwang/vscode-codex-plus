@@ -16,19 +16,18 @@
  *   - `waiting` rows that do not say who they wait on;
  *   - questions with more than one question mark.
  *
- * It is a developer's measuring tape, not part of the extension: it is here in build/, which build/pack.sh does not
- * copy, so it stays out of the .vsix. What a reader's machine does with their plans is the extension's business; how
- * well the nudges are working is this repository's.
+ * It is not part of the extension. It lives in build/, which build/pack.sh does not copy, so it stays out of the
+ * .vsix.
  *
- * WHETHER A CONVERSATION IS RUNNING A TURN is read from Codex's own rollout, through src/codex-files.js and the same
- * two-hour cutoff the conversation list uses (STALE_WORKING_MS). Deliberately not a second copy of that rule: the
- * numbers printed here are compared against what the list shows, so a script with its own idea of "working" would
- * produce disagreements that are about the script rather than about the plans.
+ * Whether a conversation is running a turn comes from Codex's own rollout, through src/codex-files.js and the same
+ * two-hour cutoff the conversation list uses (STALE_WORKING_MS), rather than from a second copy of that rule: the
+ * numbers printed here get compared against what the list shows, and a script with its own idea of "working" would
+ * disagree with the list for reasons that have nothing to do with the plans.
  *
  * The claude-code-extras counterpart has to ask a 241 MB binary (`claude agents --json`) and leaves these counts out
- * when it is not there. Codex writes the same fact to a file, so the only conversation that cannot be judged here is one
- * whose rollout has been deleted, or compressed by a Codex older than this Node's zstd. Those are counted on their own
- * line rather than assumed idle, which would inflate the number this script exists to watch.
+ * when it is not there. Codex writes the same fact to a file, so the only conversation that cannot be judged here is
+ * one whose rollout has been deleted, or compressed by a Codex older than this Node's zstd. Those are counted on
+ * their own line rather than assumed idle.
  */
 const fs = require('fs');
 const path = require('path');

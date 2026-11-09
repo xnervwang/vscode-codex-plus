@@ -6,14 +6,14 @@
 /*
  * build/plan-health.js, the developer's count of stale and incomplete work plan rows.
  *
- * It is checked against a stand-in CODEX_HOME holding one plan per case, because every number it prints is a claim
- * about a conversation's state that cannot be read off the plan file alone. The cases that matter are the three ways a
- * `doing` row can stand - its conversation is running a turn, it is not, or its rollout is gone and nothing can be said
- * - and the one that is easiest to get wrong: a conversation whose rollout says a turn started and then went quiet for
- * hours, which the conversation list calls idle and so must this.
+ * It is checked against a stand-in CODEX_HOME holding one plan per case, since each number it prints depends on a
+ * conversation's state, which the plan file alone does not give. The cases are the three ways a `doing` row can
+ * stand, with its conversation running a turn, not running one, or its rollout gone so that nothing can be said,
+ * plus the one that is easiest to get wrong: a conversation whose rollout says a turn started and then went quiet
+ * for hours, which the conversation list calls idle and so must this.
  *
- * Also checked here: that the script stays out of the .vsix. It reads a person's plans, so shipping it would put a tool
- * for working on this repository onto the machine of somebody only using it.
+ * There is also a check that the script stays out of the .vsix, since it reads a person's plans and belongs only on
+ * a machine this repository is worked on.
  */
 const fs = require('fs');
 const path = require('path');
@@ -85,7 +85,7 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
   eq(r.home, home, 'the measurement says which CODEX_HOME it read');
 
   /*
-   * The quiet conversation is the one case where the plan and the rollout disagree about what is happening.
+   * The quiet conversation is the case where the plan and the rollout disagree about what is happening.
    *
    * An empty thread list is passed on purpose: that is what a Node without node:sqlite leaves, and it sends rolloutOf
    * down its other path, walking CODEX_HOME for the rollout instead of reading its recorded location. So these four

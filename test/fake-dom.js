@@ -9,9 +9,9 @@
  * class list, a style object, children, a tiny selector engine, events, and the three measurements it takes
  * (getBoundingClientRect, scrollIntoView, scrollTo).
  *
- * Two things are under the test's control rather than the clock's, because both are where this kind of script goes
- * wrong: the timers (so a debounce can be stepped through) and the mutation observer (so the records it is handed can
- * be chosen, including records that are the script's own writing coming back).
+ * The timers and the mutation observer are driven by the test instead of by the clock, since that is where this kind
+ * of script goes wrong: the timers so a debounce can be stepped through, the observer so the records it is handed can
+ * be chosen, including the records the script's own writes generate).
  *
  * The selector engine takes a comma-separated list of selectors, each a chain of `tag`, `*`, `.class`,
  * `[attr]`/`[attr="value"]` and `:not(...)` pieces joined by spaces for descendant, which is every selector that

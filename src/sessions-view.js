@@ -13,16 +13,16 @@
  *   Archived sessions     Codex's archived threads of this workspace (collapsed)
  *   Other folders         everything the workspace filter left out, by the folder it started in (collapsed)
  *
- * The group names are Claude Code's, so one reader reads both lists. Each carries its count; an empty one is left out,
- * except Open sessions, which says there is none.
+ * The group names are Claude Code's, so that both lists read the same way. Each carries its count; an empty one is
+ * left out, except Open sessions, which says there is none.
  *
- * Other folders is why nothing is ever silently missing: the workspace filter hides rather than drops. That filter
- * compares real paths (src/folders.js) - the same directory reached through a symbolic link used to match nothing, and
- * the whole view came up empty with no reason shown.
+ * The workspace filter hides rather than drops, and Other folders holds what it hid, so no conversation disappears
+ * from the view. That filter compares real paths (src/folders.js): the same directory reached through a symbolic link
+ * used to match nothing, and the whole view came up empty with no reason shown.
  *
- * What it costs: grouping, sorting and filtering are arithmetic over the snapshot already in memory, with no file read
- * of their own. Conversations the reader skipped carry no status dot until their group is expanded, which is the only
- * moment their rollout is asked for, on the poll that was due anyway (getChildren, ask).
+ * Grouping, sorting and filtering are arithmetic over the snapshot already in memory, and read no file of their own.
+ * Conversations the user skipped carry no status dot until their group is expanded, which is the only moment their
+ * rollout is asked for, and the answer comes back on the next scheduled poll (getChildren, ask).
  *
  * Threads Codex started by itself - sub-agents, the reviews of approval requests - and `codex exec` runs are left out
  * unless codexExtras.hideBackgroundSessions is off, when they are listed under Background. Clicking a conversation opens
@@ -46,7 +46,7 @@ const STATE_LOOK = {
   unread: { icon: 'circle-filled', color: 'charts.red', word: 'replied, not read' },
   idle: { icon: 'circle-outline', color: 'descriptionForeground', word: 'idle' },
   prompt: { icon: 'bell-dot', color: 'charts.orange', word: 'waiting for you' },
-  /* No dot: the reader has not read this rollout, so whether a turn is running there is not known. */
+  /* No dot: the user has not read this rollout, so whether a turn is running there is not known. */
   unknown: { icon: 'blank', color: 'descriptionForeground', word: 'not read' },
 };
 
@@ -134,7 +134,7 @@ class SessionsProvider {
     this.memento = memento;
     this.settings = settings;
     this.stateOf = stateOf;
-    /* Asks for the rollout state of conversations the reader has not read, on the next poll it was going to make
+    /* Asks for the rollout state of conversations the user has not read, on the next poll it was going to make
        anyway. Called when a group is expanded, which is the only time those rows are on screen. */
     this.wantState = wantState;
     this.emitter = new vscode.EventEmitter();
@@ -184,8 +184,8 @@ class SessionsProvider {
 
   /*
    * VS Code asks for a group's children only once it is expanded, so this is where the rollout state of conversations
-   * the reader skipped is asked for: nothing is read for a group nobody opened, and the answer rides the poll that was
-   * due anyway rather than a timer of its own.
+   * the user skipped is asked for. Nothing is read for a group nobody opened, and the answer arrives on the poll that
+   * was due anyway rather than on a timer of its own.
    */
   getChildren(element) {
     if (!element) return this.groups.filter((g) => g.threads.length || g.key === 'open').map((g) => ({ kind: 'group', group: g }));
@@ -206,7 +206,7 @@ class SessionsProvider {
     return [];
   }
 
-  /** Ask for the state of those of `threads` the reader has not read. */
+  /** Ask for the state of those of `threads` the user has not read. */
   ask(threads) {
     const want = threads.filter((t) => t && t.id && !this.reader.state(t.id)).map((t) => t.id);
     if (want.length) { try { this.wantState(want); } catch (_) { /* the rows show no dot, which is what they already do */ } }
@@ -246,7 +246,7 @@ class SessionsProvider {
     }
     const t = element.thread;
     const conv = this.stateOf(t.id);
-    /* A conversation whose rollout the reader has not read gets no status dot rather than a wrong one: not read is not
+    /* A conversation whose rollout the user has not read gets no status dot rather than a wrong one: not read is not
        the same as idle, and reading every old rollout to colour a dot is what the window must not pay for. */
     const look = this.reader.state(t.id) ? (STATE_LOOK[(conv && conv.state) || 'idle'] || STATE_LOOK.idle) : STATE_LOOK.unknown;
     const item = new vscode.TreeItem(t.title || '(untitled)', vscode.TreeItemCollapsibleState.None);

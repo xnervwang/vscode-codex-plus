@@ -31,8 +31,8 @@ class CodexReader {
     this.closed = false;
     this.listeners = new Set();
     /*
-     * Rollout states read because something asked for them, for threads too old for a snapshot to cover (the history
-     * group's rows). Kept against the thread's last-updated time, so one is used only while that thread has not moved,
+     * Rollout states read on request, for threads too old for a snapshot to cover (the history group's rows). Each is
+     * stored with the thread's last-updated time and used only while that time is unchanged,
      * and the caller need not ask again on every pass.
      */
     this.held = new Map();
@@ -142,7 +142,7 @@ class CodexReader {
   thread(id) { return (this.snap && this.snap.byId.get(id)) || null; }
   unread() { return this.snap ? this.snap.unread : new Map(); }
   sections() { return this.snap ? this.snap.sections : new Map(); }
-  /* The snapshot's state, else one read on request while that thread has not moved since. */
+  /* The snapshot's state, else one read on request while that thread's last-updated time is unchanged. */
   state(id) {
     const direct = this.snap && this.snap.states[id];
     if (direct) return direct;

@@ -62,8 +62,9 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
   eq(hosted.state.said.length, 0, 'nothing is said when it is taken');
 
   /*
-   * The count of conversations stopped waiting for permission, which appears only while there is one. Fed through the
-   * hook the patch calls, so what is checked is the whole way from an app-server request to the status bar.
+   * The status bar count of conversations stopped waiting for permission, which is hidden when there are none. The
+   * input goes through the hook the patch calls, so this covers the whole way from an app-server request to the
+   * status bar.
    */
   const waiting = await run(root, tmp, { probe: async ({ control, home }) => {
     const id = fs.readdirSync(path.join(home, 'sessions'), { recursive: true }).filter((f) => String(f).endsWith('.jsonl'))[0];

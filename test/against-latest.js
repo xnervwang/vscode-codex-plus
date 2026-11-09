@@ -76,9 +76,8 @@ async function newest() {
     const p = page.patchSource(fs.readFileSync(page.targetFile(dir), 'utf8'));
     if (p.error) { failed++; console.log(`FAIL  page: ${p.error}`); } else console.log('ok    page: the script tag goes in ahead of the entry script');
     /*
-     * Said rather than failed: the edits matching a build is not the whole of what "verified" claims, and only a
-     * machine with that Codex installed can establish the rest (src/supported.js). This is the notice that there is
-     * something to check, not the check.
+     * This prints rather than fails. The edits matching a build is not the whole of what "verified" claims, and only
+     * a machine with that Codex installed can establish the rest (src/supported.js).
      */
     console.log(supported.verified(version)
       ? `ok    record: ${version} is in src/supported-versions.json`

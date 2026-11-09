@@ -5,12 +5,12 @@
 'use strict';
 /*
  * Where a sample of the conversation layout is written: this extension's own global storage, one file per sample, named
- * by the second it was taken in the reader's own clock. Nothing of the conversation is in one - the page sends shape and
- * no content (src/page/codex-extras-page.js) - and the file is meant to be read back as a fixture when selectors are
- * written for what Codex draws.
+ * by the second it was taken in local time. A sample holds no conversation content, since the page sends shape only
+ * (src/page/codex-extras-page.js), and the file is meant to be read back as a fixture when selectors are written for
+ * what Codex draws.
  *
- * `format` is the number to raise when a later version of the page script sends a differently shaped sample, so a file
- * found on disk says which reader it was written for.
+ * `format` is incremented when a later version of the page script sends a differently shaped sample, so a file found
+ * on disk says which shape it holds.
  */
 const fs = require('fs');
 const path = require('path');

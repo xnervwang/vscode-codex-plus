@@ -60,26 +60,26 @@ const HOOK_COMMAND = /^python3 (".+")$/;
 const quote = (w) => (/^[\w@%+=:,./\\-]+$/.test(w) ? w : `"${w.replace(/"/g, '')}"`);
 
 /**
- * Fit a staged copy of the plugin to one Python, in place. Returns what was done, for the log.
+ * Rewrite a staged copy of the plugin to use one Python. Returns a description of what it did, for the log.
  *
- * With `python3` nothing is written: that is what the plugin already says, and rewriting it to the same thing would
- * change the plugin's file hashes, which is what Codex asks the reader to trust - so every install would ask again.
+ * With `python3` nothing is written, because that is what the plugin already says. Rewriting it to the same thing
+ * would change the plugin's file hashes, which is what Codex asks the user to trust, so every install would ask again.
  *
- * With another Python, the three places that start it are pointed at the one that was found.
+ * With any other Python, the three places that start it are rewritten to use the one that was found.
  *
- * A hook command is a shell line - the `$PLUGIN_ROOT` in it has to be expanded by something - so it gets the words a
- * person would type (`py -3`, `python`) rather than the interpreter's path. A bare name needs no quoting and so runs
- * whichever shell Codex uses, while a quoted path does not: PowerShell, which Codex uses on Windows, needs `&` in front
- * of one, and there is no single spelling that runs in both it and a POSIX shell. The shipped command already resolves
- * `python3` through PATH, so this keeps that property rather than taking on a new one. The only launcher with no name
- * to use is a Python downloaded by this extension, which is a path and is quoted; plan_path.launcher_quoted marks that
- * same case for the row command.
+ * A hook command is a shell line, since the `$PLUGIN_ROOT` in it needs a shell to expand it, so it gets the words
+ * a person would type (`py -3`, `python`) rather than the interpreter's path. A bare name needs no quoting and runs
+ * under whichever shell Codex uses; a quoted path does not, because PowerShell, which Codex uses on Windows, needs `&`
+ * in front of one, and no single spelling runs in both it and a POSIX shell. The shipped command already resolves
+ * `python3` through PATH, and keeping to a bare name keeps it that way. The only launcher with no name to use is a
+ * Python downloaded by this extension, which is a path and is quoted; plan_path.launcher_quoted marks that same case
+ * for the row command.
  *
  * The MCP server does get the full path, since Codex starts it as a program with its arguments rather than as a line
  * for a shell, and hooks/launcher.json gets the launcher words, which is what the model is told to type
  * (plan_path.py launcher, row_command).
  *
- * With no Python at all the copy keeps neither hooks, nor MCP server, nor skill. Hooks that cannot start would put an
+ * With no Python at all the copy keeps no hooks, no MCP server and no skill. Hooks that cannot start would put an
  * error in the conversation every turn, and the skill would have the model run a command that cannot start.
  */
 function fitHooks(dir, python) {

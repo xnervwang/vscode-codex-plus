@@ -4,13 +4,13 @@
 
 'use strict';
 /*
- * Conversations stopped waiting for the reader: which requests count as waiting for a person and which Codex answers
- * by itself, what finishes one, the net under a request nothing ever answers, and the hook the patch calls.
+ * Conversations stopped waiting for the user: which requests count as waiting for a person and which Codex answers
+ * by itself, what finishes one, what clears a request nothing ever answers, and the hook the patch calls.
  *
- * The classification is held to Codex's own, which is readable in its bundle: the five methods its approval tracker
- * keys by request id, and the two its countdown coordinator takes over except in the cases it hands back. Where a real
- * Codex is installed here, the method names are looked for in its pristine bundle as well, so a renamed method is
- * caught rather than quietly classified as something that does not wait.
+ * The classification is checked against Codex's own, which is readable in its bundle: the five methods its approval
+ * tracker keys by request id, and the two its countdown coordinator takes over except in the cases it hands back.
+ * Where a real Codex is installed here, the method names are looked for in its pristine bundle as well, so a renamed
+ * method is caught rather than quietly classified as something that does not wait.
  */
 const fs = require('fs');
 const path = require('path');
@@ -41,7 +41,7 @@ module.exports = async ({ ok, bad, note, eq, tmp }) => {
   fake.install(vscode);
   const { createApprovals, waitOf, APPROVALS, ASKS, COUNTDOWN_MS } = require('../../src/approvals');
 
-  /* ── which requests wait, and which of those the reader has to answer ── */
+  /* ── which requests wait, and which of those the user has to answer ── */
   const ask = (method, params) => waitOf({ id: 1, method, params });
   for (const [method, where] of Object.entries(APPROVALS)) {
     eq(ask(method, { [where]: THREAD, turnId: 't1' }), { thread: THREAD, method, decides: true },

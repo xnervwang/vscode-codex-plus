@@ -4,13 +4,13 @@
 
 'use strict';
 /*
- * The sample of the conversation layout: what the page script sends when the host asks for one, what it refuses to send,
- * the request and reply across the patch, where the file lands, and the command's answer when there is no patch.
+ * The sample of the conversation layout: what the page script sends when the host asks for one and what it leaves
+ * out, the request and reply across the patch, where the file lands, and the command's answer when there is no patch.
  *
- * The page side is checked by running the real script - the same file the patch copies into Codex's webview folder - in a
- * stand-in page whose DOM is written here. That page is planted with everything the sample must not carry: a sentence of
- * conversation, a tooltip, a label, a link, an image source, an input value, an alt text, a data-* value and a thread id.
- * Each is then looked for in the whole reply, by hand, one at a time.
+ * The page side is checked by running the real script, the same file the patch copies into Codex's webview folder, in
+ * a stand-in page whose DOM is written here. That page holds nine things the sample must not carry: a sentence of
+ * conversation, a tooltip, a label, a link, an image source, an input value, an alt text, a data-* value and a thread
+ * id. Each is searched for in the whole reply.
  */
 const fs = require('fs');
 const path = require('path');
@@ -219,7 +219,8 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
 
   /*
    * A window whose Codex page still carries an older page script than this extension's. A page runs the script it was
-   * built with, so such a page answers nothing at all; the reason is read off the file instead of waited out.
+   * built with, so such a page answers nothing at all, and the reason comes from reading the file rather than from
+   * waiting for a reply that will not arrive.
    */
   const codexDir = tmp('codex-of-this-window');
   fs.mkdirSync(path.join(codexDir, 'webview'), { recursive: true });

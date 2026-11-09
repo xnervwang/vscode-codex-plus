@@ -14,19 +14,19 @@
  *   the provider          open a conversation in Codex's sidebar (navigateToRoute), and post to a panel
  *   each panel + thread   a dot on that tab's logo: green while a turn runs, red when one finished and is not read;
  *                         an answer from the Conversations tab put into that conversation's message box as a draft
- *                         (route state prefillPrompt, only if the box is empty), which the reader sends with Enter;
+ *                         (route state prefillPrompt, only if the box is empty), which the user sends with Enter;
  *                         a chime when a turn there finishes or its plan asks a question; a strip with the last turn's
  *                         figures and the tool call running now; and the settings the page draws its time stamps, its
- *                         list of the reader's own messages and their colouring from, with the times its rollout gives
+ *                         list of the user's own messages and their colouring from, with the times its rollout gives
  *                         for those messages (src/page/codex-extras-page.js draws all of it, src/user-times.js reads
  *                         the rollout)
  *   window broadcasts     a thread this window starts following in a view that is not one of its tabs is taken to be
  *                         in front in the sidebar (onDidFocus). sidebarThread() is the last such thread, and nothing
- *                         is reported after it: whether the reader is still looking at the sidebar is the source's to
- *                         work out from the active tab (src/codex-source.js isFocused)
- *   page messages         the reader's time zone, whether an approval card is on a page's screen, and a sample of the
+ *                         is reported after it; whether the user is still looking at the sidebar is worked out by the
+ *                         source from the active tab (src/codex-source.js isFocused)
+ *   page messages         the user's time zone, whether an approval card is on a page, and a sample of the
  *                         conversation layout when one was asked for
- *   app-server traffic    which conversations are stopped waiting for the reader, and how many of those owe an answer
+ *   app-server traffic    which conversations are stopped waiting for the user, and how many of those owe an answer
  *                         (src/approvals.js): the tab dot, the state the Conversations view shows, the count in the
  *                         status bar and a chime, none of which need a tab to be open on the conversation
  */
@@ -45,7 +45,7 @@ let last = new Map();
    only ever says a thread started being followed. */
 let sidebar = '';
 const approvals = createApprovals();
-/* How many answers the reader owed at the last redraw, per conversation, so a chime rings on a new one rather than on
+/* How many answers the user owed at the last redraw, per conversation, so a chime rings on a new one rather than on
    every pass while the same request is still waiting. */
 const owed = new Map();
 const onApprovals = new Set();
@@ -70,14 +70,14 @@ function statusLines() {
 }
 
 /*
- * How many answers one conversation owes the reader, and how many requests Codex will answer by itself once its
- * countdown runs out. Only conversations of this window: its app-server is its own, so a conversation running in
- * another window or started by `codex exec` is not here (README says so).
+ * How many answers one conversation needs from the user, and how many requests Codex will answer by itself once its
+ * countdown runs out. This covers only the conversations of this window, since each window runs its own app-server,
+ * so a conversation running in another window or started by `codex exec` is not here (README says so).
  */
 function approvalsOf(thread) { return approvals.of(thread); }
-/** How many answers the reader owes across this window, for the status bar. */
+/** How many answers the user owes across this window, for the status bar. */
 function decideCount() { return approvals.decideCount(); }
-/** Conversations with anything outstanding, whether the reader has to answer it or not. */
+/** Conversations with anything outstanding, whether the user has to answer it or not. */
 function waitingThreads() { return approvals.threads(); }
 /** Told whenever the outstanding set changed, so the views redraw without waiting for the next poll. */
 function onApprovalsChanged(fn) {
@@ -93,7 +93,7 @@ function sidebarThread() { return sidebar; }
 function canDeliver(thread) { return canType() && (panels.get(thread) || new Set()).size > 0; }
 
 /*
- * The threads Codex's own panels in this window show, as it handed each one over. This is the only way to learn the
+ * The threads shown by Codex's own panels in this window, as Codex handed each panel over. This is the only way to learn the
  * thread of a tab Codex opened with its New button: that tab's URI stays /extension/panel/new whatever conversation
  * ends up in it (src/codex-tabs.js). Empty without the patch, and then the tab URIs are all there is.
  */
@@ -163,7 +163,7 @@ const SAMPLE_MS = 5000;
 let pendingSample = null;
 
 /*
- * The conversation panel the reader is looking at: the one reporting itself active, or else the one holding the
+ * The conversation panel the user is looking at: the one reporting itself active, or else the one holding the
  * conversation the active tab names, which is how a tab whose webview is not focused is still found.
  */
 function activePanel() {
@@ -183,7 +183,7 @@ function pagePatchState() {
   return dir && page ? page.status(dir) : '';
 }
 
-/** { sample } or { error } - the error is a sentence for the reader, saying what to do about it. */
+/** { sample } or { error } - the error is a sentence for the user, saying what to do about it. */
 async function sampleLayout({ timeoutMs = SAMPLE_MS } = {}) {
   if (!state.active) {
     return { error: 'the patch to Codex is not in effect, so its page cannot be asked. Run "Codex Extras: Patch Codex" '
@@ -208,7 +208,7 @@ async function sampleLayout({ timeoutMs = SAMPLE_MS } = {}) {
   return r;
 }
 
-/** A CSS colour the reader typed, or '' for anything else: nothing but a colour may reach the page's stylesheet. */
+/** A CSS colour the user typed, or '' for anything else: nothing but a colour may reach the page's stylesheet. */
 function safeColor(value) {
   const v = String(value || '').trim();
   if (/^#[0-9a-fA-F]{3,8}$/.test(v) || /^[a-zA-Z]{3,30}$/.test(v) || /^(rgb|rgba|hsl|hsla)\([0-9.,%\s/deg]+\)$/.test(v)) return v;
@@ -234,11 +234,11 @@ function figuresOf(c) {
 
 /*
  * Redraw what the panels show after the conversations changed: tab dots, figures, a chime on a finished turn, and the
- * settings and message times the page draws its stamps, its list and its colours from.
+ * settings and message times that the page uses for its stamps, its list and its colours.
  *
  * This is also the one place those settings reach a page, so a change to one of them calls this rather than adding a
- * watcher of its own: it runs on a conversation change and when a panel appears, and does no reading a draw of the
- * figures was not already doing.
+ * watcher of its own. It runs on a conversation change and when a panel appears, and reads nothing that drawing the
+ * figures did not already read.
  */
 async function refreshPanels() {
   if (!deps || !state.active) return;
@@ -249,7 +249,7 @@ async function refreshPanels() {
   /* The net under the two signals that end a request. It is weighed against the rollout's own answer rather than
      against `state`, which `prompt` has already won by the time it gets here. */
   if (approvals.prune((t) => { const c = now.get(t); return !!(c && c.working); }).length) approvalsChanged();
-  /* A chime for a conversation that now owes the reader an answer, whether a tab here shows it or not - but the sound
+  /* A chime for a conversation that now owes the user an answer, whether a tab here shows it or not - but the sound
      can only be made in a page, so one with no tab in this window goes unheard (README says so). */
   if (deps.settings().chime) {
     for (const thread of approvals.threads()) {
@@ -345,7 +345,7 @@ function installHooks() {
     }
   };
   /*
-   * Codex's app-server traffic: a request that may be waiting for the reader, the notification that one was answered
+   * Codex's app-server traffic: a request that may be waiting for the user, the notification that one was answered
    * somewhere, and the answer this window sent. The last covers Codex answering one itself when its countdown runs
    * out, which it does by sending a response like any other.
    */

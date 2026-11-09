@@ -6,17 +6,14 @@
 /*
  * The record of Codex builds this extension has been verified against (src/supported-versions.json).
  *
- * Two different things are checked here, and the second is the point of the file.
+ * Two things are checked. The first is the record's own shape, and that the installed build's standing is reported
+ * where the spec says: one line in the log, never a dialog, and a line in the status command.
  *
- * The first is the record's own shape, and that the installed build's standing is reported where the spec says: one
- * line in the log, never a dialog, and a line in the status command.
- *
- * The second is that each entry still describes THIS code. A record is only worth keeping if it cannot quietly fall out
- * of step with what the code depends on, so the three lists in an entry are compared against the places they are read
- * from - the host patch's own rule names, the columns the conversation list queries, and the `data-*` attributes the page
- * script looks for. Adding a dependency on a new column or a new attribute therefore fails here until somebody has
- * checked a build with it and said so in the record. That is the only mechanism that makes "verified" mean anything:
- * without it the record would keep claiming a shape the code had already moved away from, and nothing would say so.
+ * The second is that each entry still describes the code as it stands. The three lists in an entry are compared
+ * against the places they are read from, namely the host patch's own rule names, the columns the conversation list
+ * queries, and the `data-*` attributes the page script looks for. Adding a dependency on a new column or a new
+ * attribute therefore fails here until somebody has checked a build with it and said so in the record. Without that
+ * comparison the record could go on describing a shape the code had already moved away from.
  */
 const fs = require('fs');
 const path = require('path');

@@ -74,7 +74,7 @@ function codexProgram() {
   return codexBinary(ext && ext.extensionPath, configured);
 }
 
-/* What the plugin's hooks read: the few settings that change their behaviour, and the reader's time zone. */
+/* What the plugin's hooks read: the few settings that change their behaviour, and the user's time zone. */
 function writeHookSettings(context) {
   if (!trusted()) return;
   const c = cfg();
@@ -103,7 +103,7 @@ async function activate(context) {
   context.subscriptions.push(reader);
   const source = createCodexSource(vscode, { log: say, reader, patching, trusted, enabled: () => cfg().get('workPlan', true) });
   context.subscriptions.push(source);
-  /* The reader's time zone, as Codex's page reported it through the patch. */
+  /* The user's time zone, as Codex's page reported it through the patch. */
   source.timeZone = () => context.globalState.get('codexExtras.clientTimeZone') || '';
   const reportTimeZone = async (zone) => {
     if (!zone || zone === context.globalState.get('codexExtras.clientTimeZone')) return;
@@ -132,7 +132,7 @@ async function activate(context) {
 
   /*
    * How many conversations are stopped waiting for an answer, in the status bar: shown only while there is one, since
-   * the point of it is the moment the reader is away from the Codex tab. Only this window's conversations are counted -
+   * the point of it is the moment the user is away from the Codex tab. Only this window's conversations are counted -
    * its Codex app-server is its own (README, "What it cannot see").
    */
   const waitingItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
@@ -209,9 +209,9 @@ async function activate(context) {
 
 /*
  * A new Codex conversation in a tab. Codex's own chatgpt.newCodexPanel asks for the group of the text file last
- * focused, which puts the conversation in a split when that file is not where the reader is looking; opening its route
- * here states the group instead, the first one unless the setting says the group in front. Codex's command is the
- * fallback, in case it stops taking the route.
+ * focused, which puts the conversation in a split when that file is not where the user is looking; opening its route
+ * here names the group instead: the first group, or the group in front when the setting says so. Codex's command is
+ * the fallback, in case it stops taking the route.
  */
 async function newConversationInTab(say) {
   try {
@@ -278,7 +278,7 @@ function registerCommands(context, { source, memory, sessionsProvider, say, link
   /*
    * A sample of the Codex conversation in front, for working out which elements to hang a time tick, in-conversation
    * navigation or a colour on: those are drawn at run time and no class name of theirs can be read off Codex's files.
-   * Shape only - the sample carries nothing the conversation says, and the file holds whatever the page sent and no more.
+   * The sample is shape only, and the file holds exactly what the page sent.
    */
   reg('sampleConversationDom', async () => {
     if (restricted()) return;
@@ -296,8 +296,8 @@ function registerCommands(context, { source, memory, sessionsProvider, say, link
     if (pick === copy) await vscode.env.clipboard.writeText(file);
   });
   /*
-   * The conversation Codex is waiting on, from the status bar. With more than one it asks which, so that the count in
-   * the status bar and what this opens can never disagree about which one it meant.
+   * The conversation Codex is waiting on, from the status bar. With more than one it asks which, rather than picking
+   * one the count in the status bar did not single out.
    */
   reg('goToWaiting', async () => {
     const waiting = patching.waitingThreads().filter((t) => patching.approvalsOf(t).decide);
@@ -443,13 +443,13 @@ async function offerPlugin(context, say) {
 
 /*
  * The Python that runs the plugin's hooks, looked for every time the plugin is staged rather than remembered: the
- * reader may have installed one, or removed one, since the last install.
+ * user may have installed one, or removed one, since the last install.
  */
 function findPython(context) {
   return pythonRuntime.findPython(undefined, pythonRuntime.pythons(context.globalStorageUri.fsPath));
 }
 
-/* Eleven megabytes from python.org, and only ever from a command or a button the reader pressed. */
+/* Eleven megabytes from python.org, and only ever from a command or a button the user pressed. */
 async function downloadPython(context, say) {
   const storage = context.globalStorageUri.fsPath;
   if (!pythonRuntime.build()) {
@@ -473,8 +473,8 @@ async function installPlugin(context, say, { interactive }) {
     let python = await findPython(context);
     /*
      * With no Python the plugin still goes in, without its hooks, MCP server or skill (plugin-install fitHooks): the
-     * work plan then stays empty rather than putting a failed hook in every turn. Offering the download here rather
-     * than at activation keeps the fetch tied to something the reader asked for.
+     * work plan then stays empty rather than putting a failed hook in every turn. The download is offered here, in
+     * the install command, so that activation never fetches anything.
      */
     if (!python && interactive && pythonRuntime.build()) {
       const go = 'Download Python';

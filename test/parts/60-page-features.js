@@ -4,10 +4,10 @@
 
 'use strict';
 /*
- * The three additions that reach into what Codex draws: the time on each message and reply block, the list of the
- * reader's own messages on the right edge, and those messages marked out.
+ * The three additions that write into Codex's own tree: the time on each message and reply block, the list of the
+ * user's own messages down the right edge, and the colouring of those messages.
  *
- * Three subjects, in this order:
+ * The checks fall into three groups:
  *
  *   the attributes    Every data-* attribute the page script selects by, checked against a real sample of a Codex
  *                     conversation (test/fixtures/). A Codex release that drops one turns this red, which is the whole
@@ -21,8 +21,8 @@
  *   the host          Reading those times out of a rollout (src/user-times.js), the settings message, and that a panel
  *                     is sent both.
  *
- * The page is also planted with everything it must not send: a message of the reader's, a reply, a tooltip and a thread
- * id. Each is looked for in everything the script posted, one at a time.
+ * The page also holds four things the script must not send: a message of the user's, a reply, a tooltip and a thread
+ * id. Each is searched for in everything the script posted.
  */
 const fs = require('fs');
 const path = require('path');
@@ -87,7 +87,7 @@ function pageUnder(root, dom) {
 }
 
 /*
- * One turn in the shape the sample shows: a date divider on the first turn of a day, the reader's own message inside
+ * One turn in the shape the sample shows: a date divider on the first turn of a day, the user's own message inside
  * [data-local-conversation-user-anchor] with its words in a bubble and Codex's own time in the row of buttons beside
  * it, and the reply inside [data-response-annotation-target] under [data-local-conversation-final-assistant].
  */
@@ -99,7 +99,7 @@ function turn(dom, opts) {
     : [];
   const bubble = el('div', { attrs: { 'data-user-message-bubble': '' }, rect: { top: opts.top || 0, height: 40 },
     kids: [el('p', { kids: [el('span', { texts: [opts.ask] })] })] });
-  /* Codex's own time on the reader's message: a bare span in the hover row, with no attribute of its own. */
+  /* Codex's own time on the user's message: a bare span in the hover row, with no attribute of its own. */
   const beside = el('div', { kids: [el('div', { kids: [
     el('span', { kids: opts.askedAt ? [el('span', { texts: [opts.askedAt] })] : [] }),
     el('button', { attrs: { title: SECRETS['a tooltip'], type: 'button' } }),
@@ -169,7 +169,7 @@ module.exports = async ({ ok, bad, eq, note, tmp, root }) => {
   const made = conversation(dom, [
     { key: 't1', day: DAY, top: 100, ask: SECRETS['a message of the reader\'s'], askedAt: '10:35 PM',
       reply: SECRETS['a reply'], sent: '2026-11-08T22:36:04Z', sentShown: '10:36 PM' },
-    /* No time of Codex's own on the reader's message, and the reply's carried as a count of seconds. */
+    /* No time of Codex's own on the user's message, and the reply's carried as a count of seconds. */
     { key: 't2', top: 400, ask: 'and the tests?', reply: 'All 273 pass.', sent: '1762641600', sentShown: '' },
     /* A sent time in a form the parser does not know. */
     { key: 't3', top: 700, ask: 'ship it', reply: 'Done.', sent: 'the day before yesterday', sentShown: '' },
@@ -190,7 +190,7 @@ module.exports = async ({ ok, bad, eq, note, tmp, root }) => {
     [1, 'the day before yesterday'.length, 'letter', false],
     'the host is told the shape of that time once: its length, the class of its first character, whether it is all digits');
 
-  /* The host's times from the rollout, which is the second source for the reader's own messages. */
+  /* The host's times from the rollout, which is the second source for the user's own messages. */
   const t = (h, m, s) => new Date(2026, 10, 8, h, m, s).getTime();
   page.times([t(22, 35, 10), t(22, 39, 2)]);
   eq([stampText(one.user), stampText(two.user)], ['22:35', null],
@@ -202,7 +202,7 @@ module.exports = async ({ ok, bad, eq, note, tmp, root }) => {
   eq([stampText(one.user), stampText(two.user)], ['22:35', '22:39:02'],
     'a rollout time that disagrees with the clock on that message is dropped for it alone, and the clock stands');
 
-  /* The list of the reader's own messages. */
+  /* The list of the user's own messages. */
   let rows = dom.document.root.querySelectorAll('[data-codex-extras="nav-row"]');
   eq(rows.length, 3, 'the list has one row per message of the reader\'s');
   eq(rows.map((r) => r.textContent), ['22:35rebase onto the release branch before Friday', '22:39:02and the tests?', '22:44:30ship it'],
@@ -244,7 +244,7 @@ module.exports = async ({ ok, bad, eq, note, tmp, root }) => {
   eq(dom.document.head.children.find((k) => k.getAttribute('data-codex-extras') === 'style').textContent.includes('evil.invalid'),
     false, 'a colour that is not a colour never reaches the stylesheet');
 
-  /* The observer: on the one element the reader scrolls, and not fed by this script's own writing. */
+  /* The observer: on the one element the user scrolls, and not fed by this script's own writing. */
   const watching = dom.live();
   eq([watching.length, watching[0].targets[watching[0].targets.length - 1].target === made.scroller,
     watching[0].targets[watching[0].targets.length - 1].options.childList,

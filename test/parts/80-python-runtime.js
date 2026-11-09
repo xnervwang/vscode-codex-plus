@@ -7,19 +7,18 @@
  * src/python-runtime.js - which Python runs the work plan plugin, and fetching one on a Windows machine that has none -
  * together with plugin-install.fitHooks, which is what tells the plugin the answer.
  *
- * NOTHING HERE DOWNLOADS ANYTHING. The fetch and the unpacking are both handed in, so each outcome - a digest that does
- * not match, an unpacking that fails, an archive with no interpreter in it, a transfer that dies - is produced on
- * purpose rather than waited for. What is checked at every one of them is the same thing: that no half-made interpreter
- * is left behind where findPython would go on to pick it up and run it.
+ * Nothing here downloads anything. The fetch and the unpacking are both handed in, so each outcome is produced on
+ * purpose rather than waited for: a digest that does not match, an unpacking that fails, an archive with no
+ * interpreter in it, a transfer that dies. Every one of them is checked for the same thing, that no half-made
+ * interpreter is left behind where findPython would go on to pick it up and run it.
  *
- * THE DOWNLOAD IS NOT RUN IN THIS PROCESS. Which build is offered turns on process.platform, and the only honest way to
- * ask for Windows' answer is a child process that says it is Windows; overwriting platform here would leave it
- * overwritten for every check that follows.
+ * Which build is offered turns on process.platform, so Windows' answer is asked for in a child process that reports
+ * itself as Windows. Overwriting platform in this process would leave it overwritten for every check that follows.
  *
- * And this machine is not Windows, so the download has never been run end to end anywhere. What that leaves unverified
- * is the real network transfer, tar.exe and Expand-Archive, and whether Codex on Windows starts a fitted hook command
- * the way it starts the shipped one. The last of those is probed here as far as it can be: the rewritten command is run
- * as a shell line with a real interpreter path in it.
+ * This machine is not Windows, so the download has never been run end to end anywhere. That leaves the real network
+ * transfer, tar.exe and Expand-Archive, and whether Codex on Windows starts a fitted hook command the way it starts
+ * the shipped one. The last of those is covered as far as it can be here, by running the rewritten command as a shell
+ * line with a real interpreter path in it.
  */
 const cp = require('child_process');
 const fs = require('fs');
@@ -205,9 +204,9 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
     'and a command in a shape it cannot fit stops it, naming the command rather than half-fitting the plugin');
 
   /*
-   * The two halves meeting, as far as a machine that is not Windows can show it: a real interpreter put in by path
-   * rather than by name, the rewritten line run as a shell line the way its own `$PLUGIN_ROOT` implies, and the Python
-   * side reading back the launcher this wrote.
+   * The two sides together, as far as a machine that is not Windows can show it: a real interpreter put in by path
+   * rather than by name, the rewritten line run as a shell line the way its own `$PLUGIN_ROOT` implies, and the
+   * Python side reading back the launcher this wrote.
    */
   if (!found) { ok('no Python here, so the fitted command could not be run'); return; }
   const live = tmp('stage-live');

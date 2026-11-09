@@ -15,12 +15,12 @@
  *   reveal                         bring one to the front: only a tab already in this window
  *   canDeliver, deliverAnswer      typing an answer into one, through the patch to Codex (src/patching.js)
  *
- * What a conversation's state can be told from files alone: `working` while its rollout has a task_started with no
- * task_complete after it, `unread` while Codex's read receipts say so, `idle` otherwise. `prompt` cannot: Codex writes
- * an approval request to no file, so it comes from the patch instead (src/approvals.js), and only for the conversations
- * of this window - one running in another window, or started by `codex exec`, never reports it.
+ * Three of the states come from files: `working` while its rollout has a task_started with no task_complete after it,
+ * `unread` while Codex's read receipts say so, `idle` otherwise. `prompt` does not, because Codex writes an approval
+ * request to a file at all, so it comes from the patch instead (src/approvals.js), and only for the conversations of this
+ * window. One running in another window, or started by `codex exec`, never reports it.
  *
- * Nothing here reads a file of Codex's: src/codex-reader.js has the snapshot its worker thread made.
+ * This module opens none of Codex's files; src/codex-reader.js has the snapshot its worker thread made.
  */
 const path = require('path');
 const files = require('./codex-files');
@@ -48,10 +48,10 @@ function logoOf(vscode, exists = require('fs').existsSync) {
 /*
  * What Codex's files say about one thread, in the protocol's terms. `state` is the rollout state the reader has for it,
  * or null for a thread not touched lately; `now` and `openHere` are passed in so the same answer can be computed in a
- * test. `waiting` is what the patch knows about requests stopped on the reader, which no file says.
+ * test. `waiting` is what the patch knows about requests stopped on the user, which no file records.
  *
- * `prompt` wins over `working`, because a turn stopped on an approval is still a turn its rollout calls running, and
- * what the reader needs to see is that it is their move.
+ * `prompt` wins over `working`: as far as its rollout goes a turn stopped on an approval is still running, but it is
+ * the user who has to act.
  */
 function conversationOf(thread, { unread, openHere, now = Date.now(), state = null, hasPlan = false, waiting = null }) {
   const st = state;
@@ -88,10 +88,10 @@ function conversationOf(thread, { unread, openHere, now = Date.now(), state = nu
 }
 
 /*
- * The conversation of a Codex tab whose URI does not name one, when it cannot be any other: exactly one such tab in
- * this window, and exactly one conversation the patch reports a panel for that no other tab already claims. With two
- * of either it stays '' - which tab holds which conversation is not knowable from outside Codex, and a guess would
- * hang one conversation's work plan on another.
+ * The conversation of a Codex tab whose URI does not name one, in the one case where it is unambiguous: exactly one
+ * such tab in this window, and exactly one conversation the patch reports a panel for that no other tab already
+ * claims. With two of either it stays '', since which tab holds which conversation is not knowable from outside
+ * Codex, and a guess would hang one conversation's work plan on another.
  */
 function unnamedTabThread(vscode, patching) {
   if (!patching || typeof patching.panelThreads !== 'function') return '';
@@ -124,7 +124,7 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
   const delivered = new Set();
   const subs = [];
   /*
-   * Whether the reader has gone somewhere else since Codex's sidebar last came to the front. The sidebar has no signal
+   * Whether the user has gone somewhere else since Codex's sidebar last came to the front. The sidebar has no signal
    * of its own for still being where they are looking: the broadcast behind it (src/patching.js,
    * thread-stream-following-changed) says which conversation it started following and nothing after that, and VS Code
    * tells an extension nothing about which view has keyboard focus. The active editor tab becoming a tab that is not
@@ -151,9 +151,9 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
   }
 
   /*
-   * The conversations open in this window: those their tab's URI names, and those only the patch can name. A tab Codex
-   * opened with its New button keeps the URI /extension/panel/new whatever conversation goes into it, so the URIs alone
-   * miss every conversation the reader started that way (src/codex-tabs.js).
+   * The conversations open in this window: the ones named by their tab's URI, and the ones only the patch can name.
+   * A tab Codex opened with its New button keeps the URI /extension/panel/new whatever conversation goes into it, so
+   * the URIs alone miss every conversation the user started that way (src/codex-tabs.js).
    */
   const openThreads = () => {
     const out = tabs.codexTabs(vscode).map((t) => t.thread);
@@ -176,15 +176,15 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
     log(`a Codex tab does not name its conversation and the patch could not say which it is: ${shape}`);
   }
   /*
-   * Conversations whose rollout state was asked for beyond the ones the reader reads by itself - the rows of a history
-   * group somebody expanded. They ride the poll that was due anyway, so no timer is added, and they stay in the set so
-   * the answer is kept rather than read again every pass.
+   * Conversations whose rollout state was asked for beyond the ones read on every pass: the rows of a history group
+   * somebody expanded. They are read on the next scheduled poll, without a timer of their own, and they stay in
+   * the set so the state is cached rather than read again every pass.
    */
   const wanted = new Set();
   function poll({ force = false } = {}) {
     const extra = [...new Set([...openThreads(), ...wanted])];
     return reader.refresh({ home: files.codexHome(), extra, force }).then((moved) => {
-      // An answered request is dropped: the reader holds that state, so asking again would read the rollout afresh
+      // An answered request is dropped: the reader keeps that state, so asking again would read the rollout afresh
       // every pass for a row that has not changed.
       for (const id of [...wanted]) if (reader.state(id)) wanted.delete(id);
       if (moved) changed.fire();
@@ -193,7 +193,7 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
   /*
    * Ask for the rollout state of conversations the reader passes over, for rows now on screen. One pass is made at
    * once, because the stamp has not moved and the next poll would answer "nothing changed" and read nothing; after
-   * that they ride the ordinary poll. No timer is added.
+   * that the ordinary poll covers them.
    */
   function wantState(ids) {
     let added = false;
@@ -228,8 +228,8 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
     onDidFocus: focused.event,
     /*
      * Whether `sessionId` is still in front: its own tab is the active one, or Codex's sidebar came to the front with
-     * it and the reader has not gone to a tab of something else since. Without that second condition the sidebar would
-     * answer for a conversation the reader left, and the work plan view would be pulled back to it.
+     * it and the user has not gone to a tab of something else since. Without that second condition the sidebar would
+     * answer for a conversation the user left, and the work plan view would be pulled back to it.
      */
     isFocused(sessionId) {
       if (!sessionId) return false;
@@ -288,7 +288,7 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
       if (id && r.outcome !== 'notReceived') delivered.add(id);
       return r;
     },
-    /* For the patch: a conversation came to the front outside an editor tab (Codex's sidebar). The reader acted in the
+    /* For the patch: a conversation came to the front outside an editor tab (Codex's sidebar). The user acted in the
        sidebar to make that happen, so this is where they are looking until a tab says otherwise. */
     _focus(sessionId) {
       if (!sessionId) return;

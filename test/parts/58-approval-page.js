@@ -4,19 +4,19 @@
 
 'use strict';
 /*
- * The page's side of "waiting for your permission": the real file src/page/codex-extras-page.js run in a stand-in page
- * (test/fake-dom.js) built the way a Codex conversation is built - an activity root holding both the element the
- * conversation scrolls and the area above the message box, which is where an approval card is drawn.
+ * The page's side of "waiting for your permission": the real file src/page/codex-extras-page.js run in a stand-in
+ * page (test/fake-dom.js) built the way a Codex conversation is built, with an activity root holding both the element
+ * the conversation scrolls and the area above the message box, which is where an approval card is drawn.
  *
- * The three things that decide whether this works at all, each checked here rather than left to a comment:
+ * Three things have to hold for any of it to work, so each has a check here:
  *
  *   - the selector is Codex's own, `:not()` and all, so a card on a shell page that is not in front is not reported;
  *   - the observer is on the activity root and not on the scroller, since the card appears outside the scroller and an
  *     observer down there would never see it;
- *   - it is not dropped while the page is hidden, which is the case the whole feature is for.
+ *   - it is not dropped while the page is hidden, which is when a tab in the background needs it.
  *
- * The page is planted with what a real approval card would hold - the command, the reason, a thread id - and each is
- * then looked for in everything the page posted, one at a time: all the page may say is a flag.
+ * The page holds what a real approval card would hold, namely the command, the reason and a thread id, and each is
+ * searched for in everything the page posted, since all the page may send is a flag.
  */
 const fs = require('fs');
 const path = require('path');

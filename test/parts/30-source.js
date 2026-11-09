@@ -62,8 +62,8 @@ module.exports = async ({ ok, bad, eq, tmp }) => {
       'and it says what the conversation has spent, read from the token_count record already parsed for the context figure');
 
     /*
-     * A conversation too old for a snapshot to cover, asked for on its own. Without `force` the stamp has not moved,
-     * so the snapshot answers "nothing changed" and reads no rollout - which is why asking has to force one pass.
+     * Asking for one conversation that is too old for a snapshot to cover. Without `force` the stamp has not moved,
+     * so the snapshot answers "nothing changed" and reads no rollout, which is why asking forces one pass.
      */
     await inWorker.refresh({ home });
     const quiet = await inWorker.refresh({ home, extra: [old.id] });
@@ -110,9 +110,9 @@ module.exports = async ({ ok, bad, eq, tmp }) => {
       eq(stale.state, 'idle', 'a turn silent for hours is no longer counted as working');
 
       /*
-       * `prompt` cannot come from a file: Codex writes an approval request to none, so it comes from the patch. It wins
-       * over `working`, because a turn stopped on an approval is still a running turn in its rollout, and what the
-       * reader needs to see is that it is their move.
+       * `prompt` cannot come from a file, since Codex writes an approval request to none, so it comes from the patch.
+       * It wins over `working`: as far as its rollout goes a turn stopped on an approval is still running, but it is
+       * the user who has to act.
        */
       const running = { id: 'w', title: 't', cwd: '/', updatedMs: Date.now() };
       const live = { working: true, lastActivityMs: Date.now() };
@@ -129,9 +129,9 @@ module.exports = async ({ ok, bad, eq, tmp }) => {
       eq([source.isFocused(idle.id), source.isFocused(unread.id), source.isFocused(working.id), source.isFocused('')], [true, true, false, false],
         'isFocused: the active tab, or the thread Codex\'s sidebar follows');
       /*
-       * Agent Work Plan asks a moment after each report, and by then the reader can be somewhere else. The sidebar says
+       * Agent Work Plan asks a moment after each report, and by then the user can be somewhere else. The sidebar says
        * nothing about that, so the active tab becoming a tab that is not Codex's is what ends it: answering true then
-       * would pull the work plan view back to a conversation the reader has left.
+       * would pull the work plan view back to a conversation the user has left.
        */
       source._focus(unread.id);
       control.setTabs([control.fileTab('/w/elsewhere.js')], 0);

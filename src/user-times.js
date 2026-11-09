@@ -4,14 +4,15 @@
 
 'use strict';
 /*
- * When the user's own messages of one conversation were sent, read from its rollout.
+ * The times at which the user's own messages in one conversation were sent, read from its rollout.
  *
- * Why the host reads this at all: Codex's page carries a sent time for a reply on an attribute of its own, and for one
- * of the user's own messages it carries one only as rendered text in a hover row that no stable name reaches. So the
- * page tries that text first and asks for these as its second source (src/page/codex-extras-page.js).
+ * The host reads them because Codex's page carries a sent time for a reply on an attribute of its own, while for one
+ * of the user's own messages it carries one only as rendered text in a hover row with no stable name to select it by.
+ * So the page tries that text first and asks for these as its second source (src/page/codex-extras-page.js).
  *
- * These times are positions in a list, not times of named messages: the page uses them only when it shows exactly as
- * many user messages as there are times here, and shows none otherwise. Nothing of what a message says is read.
+ * The times come back as a list in order, with nothing to tie an entry to a particular message, so the page uses them
+ * only when it shows exactly as many user messages as there are times here, and shows none otherwise. No message text
+ * is read.
  *
  * A rollout is append-only, so a conversation is read once and then only its new bytes: the cache keeps the size the
  * file had, the offset of the first incomplete line and the times found so far. A file that shrank, or one whose first
@@ -20,19 +21,19 @@
 const fs = require('fs');
 const files = require('./codex-files');
 
-/* A rollout larger than this is not read: these times are a convenience, and the reader's thread is shared. */
+/* A rollout larger than this is not read: these times are a convenience, and the user's thread is shared. */
 const MAX_BYTES = 64 << 20;
-/* Past this many the list would be larger than the message carrying it is worth, and no reader scrolls that list. */
+/* Past this many, the list costs more to send than the navigation strip showing it is worth. */
 const MAX_TIMES = 20000;
 const CHUNK = 1 << 20;
 /* How many conversations' reads are remembered. */
 const KEEP = 16;
 
 /*
- * A user-role message Codex wrote itself rather than one the reader typed: its whole text is one XML-ish block, as in
+ * A user-role message Codex wrote itself rather than one the user typed: its whole text is one XML-ish block, as in
  * <environment_context>. Every one of the 40 rollouts read while this was written held exactly one such message and no
- * other, while whether the row carries a `metadata` key does not tell the two apart. A message the reader really did
- * begin with such a tag is counted out here, the counts then differ, and the page shows no times rather than wrong ones.
+ * other, while whether the row carries a `metadata` key does not tell the two apart. A message the user really did
+ * begin with such a tag is counted out here. The counts then differ, and the page shows no times at all.
  */
 const INJECTED = /^\s*<[a-z][a-z0-9_]*>/;
 
@@ -56,7 +57,7 @@ function wholeLines(text) {
 }
 
 /**
- * The times of the reader's own messages among `lines`, appended to `into`. `broken` means a message of theirs carried
+ * The times of the user's own messages among `lines`, appended to `into`. `broken` means a message of theirs carried
  * no readable time, which makes the list one short of what the page would count and so unusable as a whole.
  */
 function timesIn(lines, into = []) {
@@ -93,8 +94,8 @@ function readRange(file, start, end) {
 }
 
 /**
- * The times, oldest first, or null when this rollout cannot stand behind them: it is gone, compressed, too large, one
- * of the messages carried no readable time, or there are more than any list would show.
+ * The times, oldest first, or null when the rollout cannot supply a complete list: it is gone, compressed, too large,
+ * one of the messages carried no readable time, or there are more than any list would show.
  */
 function userTimes(rollout) {
   const file = files.existingRollout(rollout);

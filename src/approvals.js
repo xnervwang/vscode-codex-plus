@@ -4,19 +4,19 @@
 
 'use strict';
 /*
- * Which conversations are stopped waiting for the reader, and which of those really need a decision.
+ * Which conversations are stopped waiting for the user, and which of those really need a decision.
  *
- * Codex's app-server asks its client for an approval as a request, not as a notification, and writes nothing about it to
- * any file: not to the rollout, not to any of its databases, not to its own log. So the one place it can be read is the
- * stream of requests going through the extension host, which the patch hands over (src/host.js, src/patching.js).
+ * Codex's app-server asks its client for an approval as a request, not as a notification, and writes nothing about it
+ * to any file, so the one place it can be read is the stream of requests going through the extension host, which the
+ * patch hands over (src/host.js, src/patching.js).
  *
- * Seven methods stop and wait. Five always wait for the person. The other two Codex answers by itself once a countdown
- * runs out - an empty input, or a declined elicitation - so counting those as something to decide would ring for
- * something that is about to go away on its own. Both are tracked, only the first kind is counted.
+ * Of the seven methods that stop and wait, five always wait for the person. The other two Codex answers by itself once
+ * a countdown runs out, with an empty input or a declined elicitation, so counting those as something to decide would
+ * ring for something about to go away on its own. All seven are tracked; only the five are counted.
  *
- * A request is finished by the answer this window sent, by the notification saying somebody else answered it, or - the
- * net under both - by its conversation no longer running. That last one needs two passes to fire, because the reader's
- * snapshot of a conversation can be a poll behind the request that just arrived.
+ * A request is finished by the answer this window sent, by the notification saying somebody else answered it, or by its
+ * conversation no longer running, which catches the cases the other two miss. That last one needs two passes to fire,
+ * because the reader's snapshot of a conversation can be a poll behind the request that just arrived.
  */
 
 /* The requests that always wait for the person, and the parameter each carries its conversation in. The two
@@ -64,7 +64,7 @@ function waitOf(msg) {
 }
 
 /*
- * The book of what is outstanding.
+ * What is outstanding, per conversation.
  *
  * Request ids are kept as the protocol sent them, the way Codex keeps its own, so an id is matched by the same value
  * that arrived. A conversation can have several outstanding at once; what the page reports is one flag per
@@ -107,23 +107,23 @@ function createApprovals({ now = () => Date.now() } = {}) {
       if (on) { if (!pages.has(thread)) pages.set(thread, { atMs: now(), strikes: 0 }); }
       else pages.delete(thread);
     },
-    /** Drop what a page said about a conversation, for a page that is gone rather than one that said the card went. */
+    /** Drop what a page said about a conversation. For a page that has closed, not for one reporting no card. */
     forgetPage(thread) { pages.delete(thread); },
     /*
-     * One conversation: how many answers it needs from the reader, and how many requests Codex will answer by itself.
+     * One conversation: how many answers it needs from the user, and how many requests Codex will answer by itself.
      * A page's flag counts as one needed answer, and only when no request of this window already says so.
      */
     of(thread) {
       const h = hostOf(thread);
       return { decide: h.decide || (pages.has(thread) ? 1 : 0), soon: h.soon };
     },
-    /** How many answers the reader owes, across every conversation of this window. */
+    /** How many answers the user owes, across every conversation of this window. */
     decideCount() {
       let n = 0;
       for (const t of this.threads()) n += this.of(t).decide;
       return n;
     },
-    /** Every conversation with something outstanding, whether the reader has to answer it or not. */
+    /** Every conversation with something outstanding, whether the user has to answer it or not. */
     threads() {
       const out = [];
       for (const e of pending.values()) if (!out.includes(e.thread)) out.push(e.thread);
@@ -131,8 +131,8 @@ function createApprovals({ now = () => Date.now() } = {}) {
       return out;
     },
     /*
-     * The net: forget what belongs to a conversation that `running` says is no longer going, after two passes. Returns
-     * the conversations it forgot something of, so the caller can redraw them.
+     * Forget what belongs to a conversation that `running` says is no longer going, after two passes. Returns the
+     * conversations that lost an entry, so the caller can redraw them.
      */
     prune(running) {
       const dropped = [];

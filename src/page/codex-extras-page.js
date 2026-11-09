@@ -6,16 +6,17 @@
  * Runs in Codex's page (its sidebar and every conversation tab), added by src/webview-inject.js as a module script
  * ahead of Codex's own, so it runs first.
  *
- *   - The page's time zone goes to the extension host, since this is the one part that runs where the reader is.
+ *   - The page's time zone goes to the extension host, since this is the one part that runs where the user is.
  *   - Whether an approval card is on screen goes to the host as a flag, which is how the conversation Codex's sidebar
  *     is showing is seen as waiting even though it has no tab of its own.
  *   - A chime plays when the host says a turn finished, a plan question appeared, or Codex stopped for permission, for
  *     the conversation shown here.
  *   - The strip shows the figures the host sends for this conversation: the last turn's duration, how much of the
  *     context window is in use, model and effort, and while a turn runs, the tool call in progress and for how long.
- *   - On request, a sample of the conversation layout: its shape and nothing it says.
+ *   - On request, a sample of the conversation layout: element structure only, with no text from it.
  *   - A time on every message and reply block, a list of your own messages on the right edge, and your own messages
- *     marked out. These three reach inside Codex's own tree; the rest is a strip of this script's own beside it.
+ *     marked out. Those three write into Codex's own tree; everything else this script draws sits in a strip of its
+ *     own alongside.
  *
  * Messages to the host are of type "codex-extras", which the patched host hands to this extension; messages from it
  * are of types starting "codex-extras-", which Codex's page ignores.
@@ -62,18 +63,18 @@
    * immediate answer, where the host's arrives on the next request through the message pump.
    *
    * The selector is Codex's own, copied as it stands: Codex uses the same one to decide whether an approval surface is
-   * up (its Escape handler and its keyboard navigation both query this attribute). So this is not a guess at what an
-   * approval card looks like - it is the thing Codex itself calls one. The :not() excludes a card on a page of its
-   * desktop app's shell that is not in front; VS Code's webview has no such attribute, so there it selects nothing
-   * extra, and keeping it means this stays Codex's query rather than a trimmed version of it.
+   * up (its Escape handler and its keyboard navigation both query this attribute), so what matches here is what Codex
+   * itself treats as a card. The :not() excludes a card on a page of its desktop app's shell that is not in front;
+   * VS Code's webview has no such attribute, so there it selects nothing extra, and it is left in so that the query
+   * stays Codex's.
    *
-   * Two things this watcher does differently from the one below, and both matter:
+   * This watcher differs from the one below in two ways:
    *
    *   - It is not the scroller's observer. An approval card is drawn above the message box, outside the element the
    *     conversation scrolls, so the observer down there cannot see it appear. This one is on the activity root, which
    *     is the narrowest element Codex keeps around both the scroller and the message box.
-   *   - It is not dropped while the page is hidden. A tab in the background is exactly when being told matters, and
-   *     Codex's webviews all keep their context when hidden, so the page is still running and the card still appears.
+   *   - It is not dropped while the page is hidden, which is when a tab in the background needs it. Codex's webviews
+   *     keep their context when hidden, so the page is still running and the card still appears.
    */
   var APPROVAL_SEL = '[data-codex-approval-surface]:not([data-app-shell-active-page="false"] *)';
   var ACTIVITY_SEL = '[data-request-input-activity-root]';
@@ -136,19 +137,20 @@
   /*
    * A sample of the conversation layout, taken only when the host asks for one and leaving behind neither a timer nor an
    * observer. Codex's own class names are not known to this script, so nothing here is selected by name: one pass over
-   * the page finds the element the reader actually scrolls, and the sample is the tree under it.
+   * the page finds the element the user actually scrolls, and the sample is the tree under it.
    *
-   * It carries shape, never content. Each element gives its tag, its class names, the NAMES of its attributes, its depth,
-   * how many children it has and its rounded size; each text node gives its length and the shape of its first few
-   * characters (d for a digit, a for a letter, o for anything else), which is enough to tell a timestamp from a sentence
-   * while carrying neither. No attribute value is read, except an id with anything thread-id-shaped masked out, and the
+   * Only shape is sent. Each element gives its tag, its class names, the names of its attributes, its depth, how many
+   * children it has and its rounded size; each text node gives its length and the shape of its first few characters
+   * (d for a digit, a for a letter, o for anything else), which is enough to tell a timestamp from a sentence while
+   * carrying neither. No attribute value is read, except an id with anything thread-id-shaped masked out, and the
    * page's query string is left out altogether since Codex puts route state there and route state can hold what the
-   * reader typed. Siblings one piece of code drew look alike here, so each such group keeps three samples and a count,
+   * user typed. Sibling elements rendered by the same component look alike here, so each such group keeps three
+   * samples and a count,
    * or a long conversation would answer with tens of thousands of nodes.
    */
   var MAX_NODES = 1600, MAX_DEPTH = 24, MAX_TWINS = 3, HEAD = 8, SURVEY_MAX = 6000;
   var UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
-  /* A route segment this long is not a route segment; whatever it is, it is not going into the sample. */
+  /* Anything this long is not a route segment, so it is masked out as well. */
   var LONG = /[^/#?&=]{41,}/g;
   function noIds(s) { return String(s == null ? '' : s).replace(UUID, '<id>').replace(LONG, '<long>'); }
   function shapeOf(t) {
@@ -286,20 +288,18 @@
   /*
    * ── A time on each message, a list of your own messages, and a mark on them ──
    *
-   * This is the only part of the script that reaches inside Codex's own tree, and it reaches in to add: a line of its
-   * own above a message, and class names of its own on the element one of its own rules then styles. Codex's nodes are
-   * read, never moved or removed and never given an inline style of this script's; everything this script adds carries
-   * data-codex-extras, so one query finds all of it again when a setting goes off.
+   * This is the only part of the script that works inside Codex's own tree. It adds two things there: a line of its
+   * own above a message, and class names that one of its own rules then styles. Codex's nodes are only read, and
+   * everything this script adds carries data-codex-extras, so one query finds all of it again when a setting goes off.
    *
    * Codex's elements are found by the data-* attributes it puts on them and never by class name, since its class names
    * are a build's output. Every attribute named in ATTR is checked by test/parts/60-page-features.js against a real
    * sample of a Codex conversation, so a Codex release that drops one turns a check red instead of quietly showing
    * nothing.
    *
-   * Nothing read here leaves the page. A message's opening words are read in the page, shown in the page, and that is
-   * the end of them. The one thing this part posts to the host is the shape of a sent time it could not parse: its
-   * length, the class of its first character and whether it is all digits, which is what writing the next parser needs
-   * and carries nothing of the value.
+   * A message's opening words are read and shown here and go no further. The one thing this part posts to the host is
+   * the shape of a sent time it could not parse: its length, the class of its first character and whether it is all
+   * digits. None of that includes the value itself.
    */
   var ATTR = {
     scroller: 'data-app-action-timeline-scroll',
@@ -384,7 +384,7 @@
 
   var sameMinute = function (a, b) { return Math.floor(a / 60000) === Math.floor(b / 60000); };
   var p2 = function (n) { return (n < 10 ? '0' : '') + n; };
-  /* HH:MM:SS, in the reader's own zone. HH:MM when the source carried no seconds: a zero there would be a time nobody
+  /* HH:MM:SS, in the user's own zone. HH:MM when the source carried no seconds: a zero there would be a time nobody
      wrote, and the stamp is read as a fact about the message. */
   function clockOf(when) {
     if (!when) return '';
@@ -433,11 +433,11 @@
   }
 
   /*
-   * Codex's own time on one of your own messages. Unlike a reply's it carries no attribute of its own: it is a bare span
-   * in the row of buttons beside the message, which no stable name reaches. So it is found by reading instead - the one
-   * text in the message that reads as a clock and is not the message's own words - and only a clock counts, not an
-   * epoch count or a date string, because what is being looked for is something Codex has already rendered for a reader.
-   * Two candidates means it cannot be told which is the time, and then there is none.
+   * The time Codex renders beside a message of the user's. Unlike a reply's it carries no attribute of its own: it is a bare
+   * span in the row of buttons beside the message, with no stable name to select it by. So it is found by reading
+   * instead, as the one text in the message that reads as a clock and is not the message's own words. Only a clock
+   * counts, not an epoch count or a date string, because this is looking for something Codex has already rendered for
+   * display. With two candidates there is no telling which is the time, so none is returned.
    */
   function userWhenInPage(anchor, dayMs) {
     var body = one(anchor, SEL.bubble);
@@ -466,8 +466,8 @@
    * otherwise read as the message's first words.
    *
    * Reading them walks the message's whole subtree, which is costly for a long paste and gives the same answer every
-   * time once the message has been sent - so the answer is kept, weakly, and nothing is held once Codex has taken that
-   * element away. `live` is for the newest message, which can still be arriving.
+   * time once the message has been sent. The answer therefore goes in a WeakMap, which drops it once Codex has taken
+   * that element away. `live` is for the newest message, which can still be arriving.
    */
   var wordCache = (typeof WeakMap === 'function') ? new WeakMap() : null;
   function bodyWords(el, live) {
@@ -548,7 +548,7 @@
      * The host's times line up with the page only when it read exactly as many user messages from the rollout as the
      * page shows. A rollout can hold messages inherited from a conversation this one was forked from, and a page can
      * hold a message the rollout does not have yet, so the two counts really do differ; lining them up by position when
-     * they do would put a time against the wrong message, which is worse than showing none.
+     * they do would put a time against the wrong message.
      */
     var lined = hostWhen && hostWhen.length === users.length ? hostWhen : null;
     for (var j = 0; j < list.length; j++) {
@@ -557,11 +557,10 @@
         var when = e.kind === 'assistant' ? assistantWhen(e.node, e.day) : userWhenInPage(e.node, e.day);
         if (e.kind === 'user' && lined) {
           /*
-           * The rollout's time carries seconds and the clock Codex rendered does not, so the rollout's is the better
-           * of the two - but only where they agree to the minute, which is this one message saying for itself that the
-           * two lists do line up. Where they disagree, or where there is no clock to compare against, what Codex
-           * rendered stands; a page and a rollout that happen to hold the same number of messages without holding the
-           * same messages is exactly the case the count alone cannot see.
+           * The rollout's time carries seconds and the clock Codex rendered does not, so the rollout's is preferred,
+           * but only where the two agree to the minute. That agreement is per-message evidence that the two lists line
+           * up. Where they disagree, or where there is no clock to compare against, what Codex rendered stands: the
+           * count alone cannot see a page and a rollout that hold the same number of messages but not the same ones.
            */
           var host = { ms: lined[e.at], secs: true };
           if (!when || sameMinute(when.ms, host.ms)) when = host;
@@ -592,7 +591,7 @@
     }
   }
 
-  /* A CSS colour the reader typed, or '' for anything else: nothing but a colour may reach the stylesheet. */
+  /* A CSS colour the user typed, or '' for anything else: nothing but a colour may reach the stylesheet. */
   var SAFE_COLOR = /^(?:#[0-9a-fA-F]{3,8}|[a-zA-Z]{3,30}|(?:rgb|rgba|hsl|hsla)\([0-9.,%\s/deg]+\))$/;
 
   var sheet = null, sheetText = '';
@@ -723,8 +722,8 @@
   }
 
   /*
-   * A triangle against a bar, pointing at the edge it goes to - the sign media controls use for first and last. Drawn
-   * rather than taken from a font: a glyph the page's font does not carry draws an empty box with nothing to say why.
+   * A triangle against a bar, pointing at the edge it goes to, as media controls mark first and last. Drawn rather
+   * than taken from a font, because a font without the glyph renders an empty box instead.
    */
   function edgeIcon(toEnd) {
     var NS = 'http://www.w3.org/2000/svg';
@@ -754,8 +753,9 @@
   }
 
   /*
-   * ',' and '.' step between your own messages, but only when the caret is not somewhere text goes. The guard is
-   * deliberately broad: skipping a keystroke is harmless, swallowing one meant for Codex's composer is not.
+   * ',' and '.' step between your own messages, but only when the caret is not somewhere text goes. The guard errs
+   * wide, since the cost of skipping a keystroke is far lower than the cost of swallowing one meant for Codex's
+   * composer.
    */
   function wireKeys() {
     if (keysWired) return;
@@ -891,9 +891,9 @@
   }
 
   /*
-   * One observer, on the one element the reader scrolls. Debounced, because a reply arrives a word at a time; dropped
-   * while the page is hidden; and self-limiting rather than self-feeding, since a pass that finds nothing changed
-   * writes nothing and so starts no further pass.
+   * One observer, on the one element the user scrolls. Debounced, because a reply arrives a word at a time, and
+   * dropped while the page is hidden. It cannot loop on itself: a pass that finds nothing changed writes nothing, so
+   * it starts no further pass.
    *
    * Until Codex has drawn that element there is nothing to observe, so the first observer is on <body> and lasts only
    * until the scroller exists: every pass re-targets, and the body one is dropped the moment there is a scroller.

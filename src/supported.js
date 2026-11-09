@@ -7,14 +7,13 @@
  * Which Codex builds this extension has been verified against, kept in the repository (src/supported-versions.json) so
  * that the answer can be looked up per commit rather than remembered.
  *
- * The question it exists to answer is "was any of this ever run against the Codex I am on". Nothing else here can
- * answer it. Everything this extension does to Codex is fitted to one build's shape: the host patch matches four places
- * in Codex's own bundle by the code around them, the page script hangs its marks on Codex's `data-*` attributes, and the
- * conversation list reads columns out of Codex's state database. Codex ships weekly and none of those three are an API.
+ * It answers one question: was any of this ever run against the Codex I am on. Everything this extension does to
+ * Codex depends on the exact shape of one build. The host patch matches four places in Codex's own bundle by the code
+ * around them, the page script selects elements by Codex's `data-*` attributes, and the conversation list reads columns
+ * out of Codex's state database. Codex ships weekly and none of those three are an API.
  *
- * WHAT AN ENTRY CLAIMS is that somebody ran the checks against that build and they passed - not that the rules merely
- * looked plausible. Each field is a separate claim, because the three failure modes are independent and they fail
- * differently:
+ * An entry means somebody ran the checks against that build and they passed, not that the rules looked plausible. The
+ * fields are recorded separately because the failure modes are independent:
  *
  *   hostEdits      the edits of the host patch, by name, each matching exactly once on a pristine bundle. This one
  *                  fails loudly: the patch is all or nothing, so a rule that stops matching leaves Codex untouched.
@@ -25,13 +24,13 @@
  *   pageAnchors    Codex's own `data-*` attributes the page script finds its way around by. This is the quiet one: an
  *                  attribute that is renamed upstream matches nothing, and the marks simply do not appear.
  *
- * A build that is not listed is NOT a build that is known to be broken, which is why nothing here raises a dialog. The
- * patch refuses rather than half-applies, so the cost of being on an unrecorded build is already covered; what is worth
- * saying is only that no one has checked this one, and the place to say it is the log and the status command.
+ * An unlisted build is not a broken build, so nothing here raises a dialog. The patch refuses rather than
+ * half-applies, which already covers the cost of being on an unrecorded build; all that is left to say is that nobody
+ * has checked this one, and the log and the status command are where it says so.
  *
- * Dates are kept per entry, unlike the same record in claude-code-extras, which deliberately has none. There the file
- * was rewritten from the machine on every run, so a timestamp produced a diff on every commit and nobody read them.
- * This one is written by hand when somebody checks a build, so the date changes only when a claim does.
+ * Dates are kept per entry, unlike the same record in claude-code-extras, which has none: there the file was rewritten
+ * from the machine on every run, so a timestamp produced a diff on every commit and nobody read them. This one is
+ * written by hand when somebody checks a build.
  */
 const fs = require('fs');
 const path = require('path');
@@ -91,8 +90,8 @@ function checkedParts(e) {
 }
 
 /**
- * The lines the status command prints about this. Always at least one: a reader looking at the status wants to know
- * where this build stands, and saying nothing when it is recorded would leave that unanswered.
+ * The lines the status command prints about this. Always at least one, so that the status says where the installed
+ * build stands whether or not it is recorded.
  */
 function statusLines(version, record = read()) {
   const all = versions(record);

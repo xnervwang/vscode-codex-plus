@@ -4,7 +4,7 @@
 
 'use strict';
 /*
- * Which Python runs the work plan plugin's hooks, and getting one when there is none.
+ * Choosing the Python that runs the work plan plugin's hooks, and fetching one where there is none.
  *
  * The hooks and the plugin's MCP server are Python, and they ship as `python3 <script>`. That name is not on every
  * machine: macOS and Linux have it, the python.org installer for Windows provides `python` and the `py` launcher but no
@@ -12,16 +12,16 @@
  * with none, python.org's embeddable build is offered - a zip of a complete interpreter that needs no installer and no
  * administrator, unpacked into this extension's own storage.
  *
- * The plugin is already written for this: plan_path.py reads hooks/launcher.json for the words that start Python, and
- * falls back to python3 when that file is absent. Writing it is plugin-install.fitHooks' job; everything here is about
- * finding or fetching the interpreter, not about telling the plugin which one won.
+ * The plugin is already written for this: plan_path.py reads the launcher command out of hooks/launcher.json, and
+ * falls back to python3 when that file is absent. Writing that file is plugin-install.fitHooks' job; this module only
+ * finds or fetches the interpreter.
  *
- * NOTHING IS FETCHED WITHOUT THE READER SAYING SO. download() is reached from a command, never from activation: it is
- * eleven megabytes from the public internet on a machine whose network this extension knows nothing about.
+ * Nothing is fetched unless the user asks for it. download() is reached from a command, never from activation, since
+ * it is eleven megabytes over the public internet on a machine whose network this extension knows nothing about.
  *
  * The version and the three digests below are copied from claude-code-extras, which pins the same build for the same
- * reason, and they are the only acceptable bytes: a digest that does not match is thrown away whole rather than
- * unpacked, because an interpreter is the one download here that later runs as the reader.
+ * reason. A download whose digest does not match is thrown away whole rather than unpacked, since this interpreter
+ * goes on to run with the user's own privileges.
  */
 const cp = require('child_process');
 const crypto = require('crypto');
@@ -48,9 +48,9 @@ const ASK_PYTHON = 'import sys; print(sys.version_info[0], sys.version_info[1]);
 /**
  * The first Python 3.7 or later that runs, as `{ launcher, executable, version }`, or null.
  *
- * Each candidate is asked for its version AND its own path, rather than just being run: that is what passes over a name
- * that resolves to something which is not an interpreter, and the path is what ends up in the hooks, since a hook is
- * started without a shell and cannot rely on PATH being the same one.
+ * Each candidate is asked for both its version and its own path, rather than just being run. Asking for the version
+ * is what passes over a name that resolves to something which is not an interpreter, and the path is what ends up in
+ * the hooks, since a hook is started without a shell and cannot rely on PATH being the same one.
  */
 async function findPython(run = cp.execFile, candidates = PYTHONS) {
   for (const launcher of candidates) {
@@ -85,8 +85,7 @@ const executable = (storage, b = build()) => path.join(home(storage, b), 'python
 /**
  * The names to try for this machine, with a Python downloaded here added last.
  *
- * Last, not first: somebody who has installed their own Python meant to use it, and an interpreter this extension
- * fetched is the fallback rather than the preference.
+ * It goes last so that an installed Python wins over one this extension fetched.
  */
 function pythons(storage) {
   const b = build();
@@ -127,7 +126,7 @@ function unzip(zip, dir, run = cp.execFile) {
 }
 
 /**
- * Fetch, check and unpack the interpreter. Resolves to `{ ok, said }`; `said` is shown to the reader either way.
+ * Fetch, check and unpack the interpreter. Resolves to `{ ok, said }`; `said` is shown to the user either way.
  *
  * It is built up beside the destination and moved into place only once there is a python.exe in it, so a failure at any
  * step leaves nothing that findPython could pick up and try to run. The temporary names carry the process id because

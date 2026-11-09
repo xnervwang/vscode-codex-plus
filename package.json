@@ -326,7 +326,7 @@
           ],
           "enumDescriptions": [
             "The first editor group, the one a split is made from",
-            "The editor group in front, which with a split open is the half the button was pressed in"
+            "The group the button was pressed in, which with a split open is the half you pressed it in"
           ],
           "default": "main",
           "markdownDescription": "Which editor group a new Codex conversation opens in."
@@ -369,7 +369,7 @@
         "codexExtras.patchCodex": {
           "type": "string",
           "default": "ask",
-          "markdownDescription": "Whether to patch the Codex extension's own files for the additions that need it: status dots on Codex tabs, opening a given conversation in the sidebar, answers put into a conversation's message box, chimes, the line of turn figures, a time on every message and reply block, the list of your own messages on the right edge, and your own messages marked out. Codex's originals are kept beside them and put back by **Codex Extras: Remove the Patch from Codex** or on uninstall.",
+          "markdownDescription": "Whether to patch the Codex extension's own files for the additions that need it: status dots on Codex tabs, opening a given conversation in the sidebar, answers put into a conversation's message box, chimes, the line of turn figures, message and reply times, the list of your own messages down the right edge, and the colouring of your own messages. Codex's originals are kept beside them and put back by **Codex Extras: Remove the Patch from Codex** or on uninstall.",
           "enum": [
             "ask",
             "on",
@@ -399,7 +399,7 @@
         "codexExtras.timestamps": {
           "type": "boolean",
           "default": true,
-          "markdownDescription": "With the patch: the time above every message and every reply block in a Codex conversation, in your own time zone. A reply's time is the one Codex records on it. Your own message's time is the one Codex itself shows on hover, or else the one its rollout gives — and it is left off altogether when the rollout and the page disagree on how many of your messages there are."
+          "markdownDescription": "With the patch: the time above every message and every reply block in a Codex conversation, in your own time zone. For a reply, Codex records the time on the block itself. For one of your own messages, the time comes from the clock Codex shows on hover, or failing that from the conversation's rollout, and is left off altogether when the rollout and the page disagree on how many of your messages there are."
         },
         "codexExtras.conversationNavigation": {
           "type": "boolean",
@@ -409,7 +409,7 @@
         "codexExtras.userMessageColor": {
           "type": "string",
           "default": "",
-          "markdownDescription": "With the patch: the text colour of **your own messages** in a Codex conversation, as a CSS colour — for example `#90EE90`, `lightgreen` or `rgb(144,238,144)`. Leave it empty to keep the colour Codex draws."
+          "markdownDescription": "With the patch: the text colour of **your own messages** in a Codex conversation, as a CSS colour, for example `#90EE90`, `lightgreen` or `rgb(144,238,144)`. Leave it empty to keep Codex's own colour."
         },
         "codexExtras.userMessageEdge": {
           "type": "boolean",

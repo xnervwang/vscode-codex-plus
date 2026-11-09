@@ -4,7 +4,7 @@
 
 'use strict';
 /*
- * Why the session list came up empty in a real window, each cause held to its fix:
+ * The three reasons the session list came up empty in a real window, one check each:
  *
  *   the workspace filter compared path strings, so a workspace reached through a symbolic link matched nothing
  *   a filtered-out conversation was simply absent, with no count and no way back
@@ -186,7 +186,7 @@ module.exports = async ({ ok, bad, eq, tmp }) => {
     'with nothing open the group says so in a row of its own rather than showing a nought');
   eq(bare.getTreeItem(bare.getChildren()[1]).description, '1', 'a group that holds something counts it after its name');
 
-  /* ── a conversation the reader has not read gets no dot, and asks for one when its group opens ── */
+  /* ── a conversation the user has not read gets no dot, and asks for one when its group opens ── */
   const asked = [];
   const old = thread(7, outsideA, { updatedMs: 50 });
   const unreadReader = { ...stubReader([thread(1, inside), old]), state: (id) => (id === ID(1) ? { working: false } : null) };

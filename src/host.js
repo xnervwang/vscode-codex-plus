@@ -18,7 +18,7 @@
  *   page messages           messages of type "codex-extras" from the script this extension adds to Codex's page
  *                           (src/webview-inject.js), which Codex's own switch would otherwise drop as unknown
  *   app-server traffic      the requests Codex's app-server makes of its client, and the answers going back: this is
- *                           the one place an approval request can be read, since it stops and waits for the reader and
+ *                           the one place an approval request can be read, since it stops and waits for the user and
  *                           is written to no file (src/approvals.js). Three places, all unconditional - the two
  *                           coordinators Codex hands these to are each behind a feature switch, so hooking those
  *                           would report nothing whenever a switch is off
@@ -64,7 +64,7 @@ const EDITS = [
   },
   /*
    * Incoming app-server messages, where the request branch and the notification branch sit next to each other, so one
-   * match carries both: a request that may be waiting for the reader, and the notification saying one was answered
+   * match carries both: a request that may be waiting for the user, and the notification saying one was answered
    * (serverRequest/resolved). Anchored on the two branch tests rather than on the method that holds them, which is a
    * name the build is free to change.
    */
@@ -74,7 +74,7 @@ const EDITS = [
     to: (m, msg, body, between) => `if(this.isMcpRequestMessage(${msg})){${call('__codexExtrasAppServer', `"request",${msg}`)};`
       + `${body}${between}${call('__codexExtrasAppServer', `"notification",${msg}`)};`,
   },
-  /* The answer this window sends, which is also how Codex's own countdown answers one for the reader. */
+  /* The answer this window sends, which is also how Codex's own countdown answers one for the user. */
   {
     name: 'app-server answers',
     re: /sendResponse\(([\w$]+),([\w$]+)\)\{/g,
