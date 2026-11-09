@@ -380,7 +380,7 @@
         "codexExtras.tellCodexYourTimeZone": {
           "type": "boolean",
           "default": true,
-          "markdownDescription": "Tell Codex the time zone you read in, when it differs from the machine Codex runs on, so it gives you times in your zone. The zone is the one Codex's page runs in."
+          "markdownDescription": "Tell Codex the time zone you read in, when it differs from the machine Codex runs on, so it gives you times in your zone. The zone is the one Codex's page runs in. Nothing is said while Codex's own page has already told the model that zone in the conversation (it does at the start of every conversation it drives), so this speaks in `codex exec`, the terminal client, sub-agents, and after a compaction or a long stretch of conversation."
         },
         "codexExtras.workPlanOfferMinTurns": {
           "type": "number",

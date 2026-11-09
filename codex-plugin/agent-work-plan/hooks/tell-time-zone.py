@@ -9,6 +9,14 @@ With Remote SSH the model runs on one machine and the person reads on another, o
 can see is this machine's - `date`, file times, logs, the date Codex gives as today - while the panel shows times
 in the reader's zone, so a model that reports "finished at 04:30" is right by a clock the reader never sees.
 
+Codex's own pages already tell the model the user's zone: every turn one of them starts carries a developer message
+`<codex_apps_client_time_context><timezone>...</timezone> <current_date>...</current_date> ...>`, from the same Intl
+call the zone here comes from. So nothing is said while that message, naming the same zone, is in the transcript since
+the last compaction. It is missing from conversations no Codex page started (`codex exec`, the terminal client,
+sub-agent threads), from a conversation compacted since, and from one that has grown far past it, which are the cases
+left for this hook. Codex's message names neither this machine's zone nor the time, so when this hook does speak it
+says more than Codex does.
+
 It is said when the conversation has not been told yet, and again only when something has made the last telling stale
 or far away (see `due`): after a compaction, which summarises it away; when the offset changes, at a daylight-saving
 change or a different client; when either side's date turns over, since "today" then means two different days; and
@@ -129,6 +137,29 @@ def due(told, now_seen):
     return ""
 
 
+CODEX_MARK = "codex_apps_client_time_context"
+CODEX_ZONE = re.compile(CODEX_MARK + r">\s*<timezone>([^<\"\\]+)</timezone>")
+
+
+def codex_told(tail, zone):
+    """Whether Codex's own client time message naming `zone` is in the transcript's tail since the last compaction."""
+    if tail is None:
+        return False
+    for line in tail.lines():
+        if '"compacted"' in line:
+            try:
+                row = json.loads(line)
+            except Exception:
+                row = None
+            if isinstance(row, dict) and row.get("type") == "compacted":
+                return False
+        if CODEX_MARK in line:
+            m = CODEX_ZONE.search(line)
+            if m and m.group(1) == zone:
+                return True
+    return False
+
+
 def told_file(payload, directory=None):
     """What was said last, per conversation, beside where its plan would go; swept with it (SIDE_SUFFIXES in
     src/workplan.js)."""
@@ -188,6 +219,11 @@ def respond(payload, now, directory=None):
                 # The first reading from after the compaction: from here on the context counts as it reads.
                 write_told(path, {k: v for k, v in told.items() if k != "compactedFrom"})
             return ""
+    # Recorded as told either way, so that it is looked for again only when something makes a telling due.
+    if codex_told(tail, zone):
+        if path:
+            write_told(path, dict(now_seen, by="codex"))
+        return ""
     if path:
         write_told(path, now_seen)
     return sentence(zone, *found)
@@ -305,6 +341,29 @@ def selftest():
         check("once a reading from after the compaction is seen, the one from before it no longer reads as zero",
               respond(message, summer + 14 * 3600 + 58 * 60, tmp) != "")
         check("a change of offset says it again", respond(message, winter, tmp) != "")
+
+        # Codex's own client time message, as Codex 0.164's VS Code page has it recorded: a developer message.
+        def codex_says(zone, before=()):
+            lines = list(before) + [json.dumps({"timestamp": "2026-01-01T00:00:00Z", "type": "response_item", "payload": {
+                "type": "message", "role": "developer", "content": [{"type": "input_text", "text":
+                    "<%s><timezone>%s</timezone> <current_date>2026-10-18</current_date> Use this client time context "
+                    "for user-facing dates, times, and schedules instead of the execution host's timezone and current "
+                    "date.</%s>" % (CODEX_MARK, zone, CODEX_MARK)}]}}),
+                json.dumps({"timestamp": "2026-01-01T00:00:01Z", "type": "event_msg", "payload": {
+                    "type": "token_count", "info": {"last_token_usage": {"input_tokens": 20_000}}}})]
+            write("t.jsonl", "\n".join(lines) + "\n")
+        fresh = dict(message, session_id="5e000000-0000-0000-0000-000000000002")
+        codex_says("America/Los_Angeles")
+        check("where Codex's page told the model the same zone, nothing is said", respond(fresh, summer, tmp) == "")
+        check("and nothing on the next message either", respond(fresh, summer + 600, tmp) == "")
+        codex_says("Europe/Paris")
+        check("Codex's message naming another zone does not count",
+              respond(dict(message, session_id="5e000000-0000-0000-0000-000000000003"), summer, tmp) != "")
+        codex_says("America/Los_Angeles", before=())
+        with open(transcript, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps({"timestamp": "2026-01-01T00:00:02Z", "type": "compacted", "payload": {"message": ""}}) + "\n")
+        check("nor does one from before a compaction",
+              respond(dict(message, session_id="5e000000-0000-0000-0000-000000000004"), summer, tmp) != "")
         check("a message with no session id is still told", respond(dict(message, session_id=""), summer, tmp) != "")
         write("config.json", json.dumps({"tellTimeZone": False}))
         check("the setting off says nothing even to a new conversation",
