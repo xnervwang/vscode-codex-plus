@@ -358,6 +358,9 @@ function selfCheckLines(answer) {
   lines.push(`    watcher on ${w.selector || '(nothing)'}, activity root found: ${yesNo(w.activityRootFound)}, `
     + `observing: ${yesNo(w.observing)}`);
   lines.push(`    card selector: ${ap.cardSelector || '?'}`);
+  const cx = r.context || {};
+  lines.push(`  Codex's context meter: ${cx.meterFound ? `found, ${cx.percentUsed}% used` : 'not found (Codex shows it only with its own setting on)'}`
+    + `; outlined at ${cx.outlineAt || 85}% or more: ${cx.outlineSetting === false ? 'turned off' : yesNo(cx.outlined)}`);
   lines.push(`  Figures strip: ${fig.present ? 'in the page' : 'not in the page'}, `
     + `${fig.showing ? 'showing' : 'hidden'}, ${fig.hasText ? 'with text' : 'with no text'}, `
     + `${fig.toolRunning ? 'a tool call running' : 'no tool call running'}`);
@@ -379,7 +382,7 @@ function safeColor(value) {
    the host has not spoken to yet shows what the settings say rather than nothing. */
 function viewOf(s = {}) {
   return { type: 'codex-extras-view', timestamps: s.timestamps !== false, navigation: s.conversationNavigation !== false,
-    userColor: safeColor(s.userMessageColor), userEdge: s.userMessageEdge !== false };
+    userColor: safeColor(s.userMessageColor), userEdge: s.userMessageEdge !== false, lowContext: s.lowContextOutline !== false };
 }
 
 function figuresOf(c) {

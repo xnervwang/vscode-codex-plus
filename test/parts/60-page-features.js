@@ -292,7 +292,7 @@ module.exports = async ({ ok, bad, eq, note, tmp, root }) => {
   eq(dom.live().length, 1, 'and it is watched again when it comes back');
 
   /* Everything off: every mark and every element of this script's goes, and Codex's page is as it was. */
-  page.view({ timestamps: false, navigation: false, userColor: '', userEdge: false });
+  page.view({ timestamps: false, navigation: false, userColor: '', userEdge: false, lowContext: false });
   eq([stampText(one.user), stampText(one.reply), stampText(three.user)], [null, null, null], 'the stamps go when the times go off');
   eq(dom.document.root.querySelectorAll('[data-codex-extras="nav"]').length, 0, 'the rail and the list go when the navigation goes off');
   eq([one.user.className, one.bubble.className], ['', ''], 'and the class names this script put on Codex\'s elements go with them');
@@ -363,9 +363,9 @@ module.exports = async ({ ok, bad, eq, note, tmp, root }) => {
     patching.safeColor('red;background:url(x)'), patching.safeColor('')],
   ['#90EE90', 'lightgreen', 'rgb(144,238,144)', '', ''], 'only a plain CSS colour is passed on to the page');
   eq(patching.viewOf({ timestamps: false, conversationNavigation: true, userMessageColor: ' #abc ', userMessageEdge: false }),
-    { type: 'codex-extras-view', timestamps: false, navigation: true, userColor: '#abc', userEdge: false },
+    { type: 'codex-extras-view', timestamps: false, navigation: true, userColor: '#abc', userEdge: false, lowContext: true },
     'the settings reach the page as one message, with the colour trimmed');
-  eq(patching.viewOf({}), { type: 'codex-extras-view', timestamps: true, navigation: true, userColor: '', userEdge: true },
+  eq(patching.viewOf({}), { type: 'codex-extras-view', timestamps: true, navigation: true, userColor: '', userEdge: true, lowContext: true },
     'and a setting nobody has touched reads as on, the same way the page itself defaults');
 
   const posted = [];

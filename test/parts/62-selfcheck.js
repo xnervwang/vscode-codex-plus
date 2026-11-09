@@ -95,7 +95,20 @@ function rebuild(dom, node, planted, top) {
  * The stand-in page: the sampled scroller, inside the activity root the live page had, inside a body. `planted.all`
  * ends up holding every string the page contains.
  */
-function pageFromSample(dom, sample, { card = false } = {}) {
+/*
+ * Codex's message box with its context meter, which the sample does not hold: the sample starts at the scroller and the
+ * message box sits below it. The meter's shape is the one Codex's own composer-content bundle (26.1021) renders: a span
+ * with role img and an accessible label "Context usage: {percent}%", localised, inside the element marked
+ * data-codex-composer, a name the sample's list of data-* names has.
+ */
+const COMPOSER = 'data-codex-composer';
+function composerWith(dom, label) {
+  return dom.el('div', { attrs: { [COMPOSER]: '' }, kids: [dom.el('span', {
+    class: 'icon-xs inline-flex items-center justify-center align-middle text-codex-description',
+    attrs: { role: 'img', 'aria-label': label } })] });
+}
+
+function pageFromSample(dom, sample, { card = false, meter = '' } = {}) {
   const planted = { all: [], seen: new Set() };
   const scroller = rebuild(dom, sample.tree, planted, { at: 0 });
   const scroll = sample.root.scroll || {};
@@ -105,6 +118,7 @@ function pageFromSample(dom, sample, { card = false } = {}) {
   scroller.clientWidth = 1370;
   const inside = [scroller];
   if (card) inside.push(dom.el('div', { attrs: { [CARD]: '' }, texts: ['Allow Codex to run this command?'] }));
+  if (meter) inside.push(composerWith(dom, meter));
   const activity = dom.el('div', { attrs: { [ACTIVITY]: '' }, kids: inside });
   const body = dom.el('body', { class: 'vscode-dark', kids: [dom.el('div', { kids: [activity] })] });
   dom.setBody(body);
@@ -284,7 +298,7 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
     [1, false, 'clock'], 'fewer than the page shows do not line up and go unused, and Codex\'s own clock still stands');
 
   /* Everything off: the self-check is how "nothing of its own is left in the page" is read back. */
-  page.view({ timestamps: false, navigation: false, userColor: '', userEdge: false });
+  page.view({ timestamps: false, navigation: false, userColor: '', userEdge: false, lowContext: false });
   const off = page.ask().report;
   eq([off.marks.total, off.times.user, off.times.assistant, off.navigation.rows, off.colour.inked, off.colour.edged],
     [0, 0, 0, 0, 0, 0], 'with every setting off it reports nothing of its own anywhere in the page');
@@ -340,6 +354,27 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
   for (let i = 0; i < 4; i++) page.view();
   eq(page.posted.filter((m) => m.kind === 'anchorsMissing').length, 0,
     'the real sample, whose messages are all recognised, never says it');
+
+  /* ── Codex's own context meter, outlined once 85% of the window is used ── */
+  eq(sample.page.dataAttrs.includes(COMPOSER), true, 'the message box\'s own attribute is one the live page had');
+  const meterPage = (label, over = {}) => {
+    const d = createDom();
+    pageFromSample(d, sample, { meter: label });
+    const p = pageUnder(root, d);
+    p.view(over);
+    const r = p.ask().report;
+    return { r, outlined: d.document.root.querySelectorAll('.codex-extras-ctx-low').length };
+  };
+  const high = meterPage('Context usage: 87%');
+  eq([high.r.context.meterFound, high.r.context.percentUsed, high.r.context.outlined, high.outlined], [true, 87, true, 1],
+    'at 87% used Codex\'s meter is found and given the outline class, and only it');
+  const half = meterPage('Context usage: 50%');
+  eq([half.r.context.meterFound, half.r.context.outlined, half.outlined], [true, false, 0], 'at half it is left as Codex draws it');
+  const localised = meterPage('Uso del contexto: 91 %');
+  eq([localised.r.context.percentUsed, localised.outlined], [91, 1], 'the label is read for its number only, whatever language it is in');
+  const optedOut = meterPage('Context usage: 95%', { lowContext: false });
+  eq([optedOut.r.context.outlineSetting, optedOut.outlined], [false, 0], 'and with the setting off it is never outlined');
+  eq(page.ask().report.context.meterFound, false, 'a page whose message box shows no meter, Codex\'s setting being off, says so');
 
   /* ── the lines a person reads, which are the same in both places they come out ── */
   delete require.cache[require.resolve('../../src/patching')];

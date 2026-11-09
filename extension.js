@@ -72,6 +72,7 @@ function settings() {
     conversationNavigation: on && c.get('conversationNavigation', true),
     userMessageColor: on ? c.get('userMessageColor', '') : '',
     userMessageEdge: on && c.get('userMessageEdge', true),
+    lowContextOutline: on && c.get('lowContextOutline', true),
     waitingInStatusBar: on && c.get('waitingInStatusBar', true),
   };
 }
@@ -189,7 +190,8 @@ async function activate(context) {
        because it decides all three, and a page has to be told when it goes either way. */
     if (e.affectsConfiguration(`${CONFIG}.enabled`) || e.affectsConfiguration(`${CONFIG}.timestamps`)
       || e.affectsConfiguration(`${CONFIG}.conversationNavigation`)
-      || e.affectsConfiguration(`${CONFIG}.userMessageColor`) || e.affectsConfiguration(`${CONFIG}.userMessageEdge`)) {
+      || e.affectsConfiguration(`${CONFIG}.userMessageColor`) || e.affectsConfiguration(`${CONFIG}.userMessageEdge`)
+      || e.affectsConfiguration(`${CONFIG}.lowContextOutline`)) {
       const typed = String(cfg().get('userMessageColor', '') || '').trim();
       if (typed && !patching.safeColor(typed)) {
         vscode.window.showWarningMessage(`Codex Extras: "${typed}" is not a CSS colour (use for example #90EE90, `

@@ -448,6 +448,11 @@
           "type": "boolean",
           "default": true,
           "markdownDescription": "With the patch: a bar down the leading edge of **your own messages** in a Codex conversation, in the theme's focus colour. Off leaves Codex's own bubble as it is."
+        },
+        "codexExtras.lowContextOutline": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "With the patch: an outline round Codex's own context meter in the message box once 85% or more of the context window is used. Codex shows that meter only with its own setting on: in Codex's settings, General, Composer, **Show context window usage**."
         }
       }
     }

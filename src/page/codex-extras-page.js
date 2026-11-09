@@ -97,6 +97,32 @@
     post({ kind: 'approval', on: on });
   }
 
+  /*
+   * An outline round Codex's own context meter, the donut in the message box, once LOW_AT percent or more of the window
+   * is used; Codex's own only fades its label past half. Codex draws it only while its own setting is on. It is the
+   * image in the composer whose accessible label carries a percentage; the label is localised, so only the number is
+   * read. Checked on the approval watcher's pass, which already sees the composer change, and on the marks' pass. Only a
+   * class goes on Codex's element.
+   */
+  var LOW_CLASS = 'codex-extras-ctx-low', LOW_AT = 85;
+  var COMPOSER_SEL = '[data-codex-composer]', METER_SEL = 'span[role="img"][aria-label]';
+  var meter = { found: false, percent: null, low: false };
+  function markLowContext() {
+    var found = null, pct = null, boxes = all(document, COMPOSER_SEL);
+    for (var b = 0; b < boxes.length && !found; b++) {
+      var spans = all(boxes[b], METER_SEL);
+      for (var i = 0; i < spans.length; i++) {
+        var m = /(\d+(?:[.,]\d+)?)\s*%/.exec(String(spans[i].getAttribute('aria-label') || ''));
+        if (m) { found = spans[i]; pct = parseFloat(m[1].replace(',', '.')); break; }
+      }
+    }
+    var low = !!(found && view.lowContext !== false && pct >= LOW_AT);
+    var flagged = all(document, '.' + LOW_CLASS);
+    for (var k = 0; k < flagged.length; k++) if (flagged[k] !== found || !low) flag(flagged[k], LOW_CLASS, false);
+    if (found && low) { flag(found, LOW_CLASS, true); if (!sheet || !sheet.isConnected) restyle(); }
+    meter = { found: !!found, percent: found ? pct : null, low: low };
+  }
+
   function watchApproval() {
     if (typeof MutationObserver !== 'function' || !document.body) return;
     var target = null;
@@ -106,7 +132,7 @@
     if (approvalObserver) { try { approvalObserver.disconnect(); } catch (e) { /* gone */ } }
     approvalObserver = new MutationObserver(function () {
       if (approvalDue) return;
-      approvalDue = setTimeout(function () { approvalDue = 0; watchApproval(); tellApproval(); }, APPROVAL_DEBOUNCE_MS);
+      approvalDue = setTimeout(function () { approvalDue = 0; watchApproval(); tellApproval(); markLowContext(); }, APPROVAL_DEBOUNCE_MS);
     });
     approvalObserved = target;
     try { approvalObserver.observe(target, { childList: true, subtree: true }); }
@@ -325,7 +351,7 @@
 
   /* What the host last said to show. The defaults are the settings' own defaults, so a page the host has not spoken to
      yet shows what those settings say rather than nothing at all. */
-  var view = { timestamps: true, navigation: true, userColor: '', userEdge: true };
+  var view = { timestamps: true, navigation: true, userColor: '', userEdge: true, lowContext: true };
   /* One time per user message of this conversation, in the order the rollout has them, as the host read them there.
      Used only when there are exactly as many as the page shows - see stampAll. */
   var hostWhen = null;
@@ -352,7 +378,9 @@
   var scrollerEl = function () { return one(document, SEL.scroller); };
   var words = function (el) { return String((el && el.textContent) || '').replace(/\s+/g, ' ').trim(); };
   var isOurs = function (el) { return !!(el && el.getAttribute && el.getAttribute(MARK) != null); };
-  var anythingOn = function () { return !!(view.timestamps || view.navigation || view.userColor || view.userEdge !== false); };
+  var anythingOn = function () {
+    return !!(view.timestamps || view.navigation || view.userColor || view.userEdge !== false || view.lowContext !== false);
+  };
 
   /* Anything outside these two years is not a time somebody wrote, whatever the number happened to parse as. */
   var EPOCH_LO = Date.UTC(2001, 0, 1), EPOCH_HI = Date.UTC(2100, 0, 1);
@@ -641,6 +669,10 @@
       css += '.' + EDGE_CLASS + '{border-inline-start:3px solid '
         + 'var(--vscode-focusBorder,var(--vscode-textLink-foreground,#4493f8)) !important;'
         + 'padding-inline-start:8px !important;}';
+    }
+    if (view.lowContext !== false) {
+      css += '.' + LOW_CLASS + '{outline:2px solid var(--vscode-editorWarning-foreground,#cca700) !important;'
+        + 'outline-offset:1px;border-radius:50%;}';
     }
     css += NAV_CSS;
     if (!sheet || !sheet.isConnected) {
@@ -1032,6 +1064,7 @@
       colourAll(users);
       if (view.navigation) buildNav(users); else dropNav();
       if (anythingOn()) restyle(); else dropSheet();
+      markLowContext();
     } catch (e) { /* this is Codex's page: a fault here leaves everything of its own as it was */ }
     finally { refreshing = false; }
   }
@@ -1129,6 +1162,9 @@
           activityRootFound: !!one(document, ACTIVITY_SEL), observing: !!approvalObserver },
         cardSelector: APPROVAL_SEL,
       },
+      /* Codex's own context meter, and whether this script outlined it. The percentage is the number Codex shows. */
+      context: { meterFound: meter.found, percentUsed: meter.percent, outlined: meter.low,
+        outlineSetting: view.lowContext !== false, outlineAt: LOW_AT },
       /* The strip in the corner. Its text is the host's figures for this conversation, so only whether there is any. */
       figures: { present: !!(strip && strip.isConnected), showing: !!(strip && strip.style.display !== 'none'),
         hasText: !!(figures && figures.text), toolRunning: !!(figures && figures.tool) },
@@ -1182,7 +1218,8 @@
       if (document.body) draw(); else document.addEventListener('DOMContentLoaded', draw);
     } else if (m.type === 'codex-extras-view') {
       view = { timestamps: m.timestamps !== false, navigation: m.navigation !== false,
-        userColor: typeof m.userColor === 'string' ? m.userColor : '', userEdge: m.userEdge !== false };
+        userColor: typeof m.userColor === 'string' ? m.userColor : '', userEdge: m.userEdge !== false,
+        lowContext: m.lowContext !== false };
       ready();
     } else if (m.type === 'codex-extras-user-times') {
       hostWhen = Array.isArray(m.times)
