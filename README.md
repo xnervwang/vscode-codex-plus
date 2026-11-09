@@ -74,6 +74,20 @@ code --install-extension build/xnervwang.codex-extras-0.1.0.vsix
 - Optional: `Codex Extras: Patch Codex (…)`, then reload the window.
 - `Codex Extras: Show Status` shows what is installed, patched and registered.
 
+### After an update of this extension
+
+- A new build usually changes what the patch writes into Codex, so the copy already in Codex's files is an older one.
+- A reload on its own cannot carry that across: Codex reads those files when its extension starts and when it builds a page, so the new copy has to be **written first**, and only a reload then hands it over.
+- Writing it is not something to run by hand. A few seconds after this extension starts it writes the new copy over the old one and offers a reload. Clicking that reload is the whole of it.
+- No question is put for this: the one already answered was whether to patch this Codex at all.
+
+| State of Codex's files | What happens |
+| --- | --- |
+| This build's patch | Nothing. |
+| An older build's patch | Written over without asking, then a reload is offered. |
+| Codex's own files, never patched | Asked about once per Codex version (`codexExtras.patchCodex`). |
+| Codex's own files, after `Remove the Patch from Codex` | Left alone. That command also sets `codexExtras.patchCodex` to `off`. |
+
 ### Turning it all off
 
 Three states, and three different acts, because each leaves something different behind.

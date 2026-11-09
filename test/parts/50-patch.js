@@ -26,10 +26,11 @@ function codexInstalls() {
 }
 
 module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
-  const { vscode } = fake.create();
+  const { vscode, control } = fake.create();
   fake.install(vscode);
   const host = require('../../src/host');
   const page = require('../../src/webview-inject');
+  const patching = require('../../src/patching');
 
   const installs = codexInstalls();
   if (!installs.length) note('no Codex extension installed here: the edits were not checked against a real build');
@@ -67,10 +68,47 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
     [...targets].reverse().forEach((t) => t.restore(copy));
     eq([fs.readFileSync(host.targetFile(copy)).equals(origHost), fs.readFileSync(page.targetFile(copy)).equals(origPage),
       fs.existsSync(path.join(copy, 'webview', page.PAGE_FILE))], [true, true, false], 'restoring leaves both files byte for byte as they were');
+
+    /*
+     * A build of this extension that changes what the patch writes leaves Codex carrying an older copy of it. That is
+     * the state the refresh is for: it goes in without asking again, although this Codex version was already asked
+     * about and answered. A Codex gone back to clean is a fresh decision and stays with the answer already given.
+     */
+    const stale = tmp('codex-stale');
+    fs.mkdirSync(path.join(stale, 'out'));
+    fs.mkdirSync(path.join(stale, 'webview'));
+    fs.writeFileSync(host.targetFile(stale), origHost);
+    fs.writeFileSync(page.targetFile(stale), origPage);
+    targets.forEach((t) => t.apply(stale));
+    /* What an older build looks like from status(): the mark is one of ours, with another build's digest in it. */
+    const age = (file, anyMark) => {
+      const text = fs.readFileSync(file, 'utf8');
+      const dash = text.indexOf('-', text.indexOf(anyMark) + anyMark.length);
+      fs.writeFileSync(file, `${text.slice(0, dash + 1)}d00000000000${text.slice(dash + 13)}`);
+    };
+    age(host.targetFile(stale), host.ANY_MARK);
+    age(page.targetFile(stale), page.ANY_MARK);
+    eq(targets.map((t) => t.status(stale)), ['outdated', 'outdated'], 'another build\'s patch in Codex reads as outdated, not as clean');
+
+    const codexVersion = '26.1021.22027';
+    control.state.extensions.set('openai.chatgpt', { extensionPath: stale, packageJSON: { version: codexVersion } });
+    const asked = fake.memento();
+    await asked.update(`codexExtras.patchAsked:${codexVersion}`, true);
+    control.state.said.length = 0;
+    await patching.ensurePatched(vscode, { globalState: asked }, () => {}, 'ask');
+    const refreshed = control.state.said.map((s) => s.message).join('\n');
+    eq([targets.map((t) => t.status(stale)), refreshed.includes('Patch the Codex extension'), refreshed.includes('Reload the window')],
+      [['patched', 'patched'], false, true],
+      'so it is brought up to this build with no question put, and only a reload is asked for');
+
+    [...targets].reverse().forEach((t) => t.restore(stale));
+    control.state.said.length = 0;
+    await patching.ensurePatched(vscode, { globalState: asked }, () => {}, 'ask');
+    eq([targets.map((t) => t.status(stale)), control.state.said.length], [['clean', 'clean'], 0],
+      'while a Codex with the patch taken off is left alone, since that answer was already given too');
   }
 
   /* The hooks, with a stand-in provider and panel. */
-  const patching = require('../../src/patching');
   const sent = [], navigated = [], focused = [];
   const provider = {
     sendMessageToPanel: (panel, msg) => sent.push(msg),

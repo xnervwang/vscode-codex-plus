@@ -7,6 +7,8 @@
  * The patch to Codex's own extension at run time: putting it in place, and using what it hands over.
  *
  * Patching is asked once per Codex version (codexExtras.patchCodex: ask, on or off) and takes effect after a reload.
+ * Once Codex carries the patch, a build of this extension that changes what the patch writes refreshes it without
+ * asking again: the question answered was whether to patch this Codex, and the answer is still the same one.
  * Removing it is a command, and the uninstall hook restores Codex's files too (uninstall.js).
  *
  * What the patched host hands over (src/host.js), and what is done with it:
@@ -468,7 +470,14 @@ async function ensurePatched(vscode, context, log, mode) {
   if (states.every((s) => s === 'patched')) { state.reason = state.active ? 'connected' : 'patched; reload to connect'; return; }
   if (mode === 'off') { state.reason = 'turned off (codexExtras.patchCodex)'; return; }
   const version = (vscode.extensions.getExtension('openai.chatgpt').packageJSON || {}).version || '';
-  if (mode === 'ask') {
+  /*
+   * Every target still carries a mark of this extension's, just not this build's: Codex is patched and what is in it is
+   * an older copy of the same thing. Write the new copy without asking - the decision to patch this Codex was already
+   * made, and leaving the old copy in place is what the stale state is. A target gone back to clean (the remove
+   * command, or a Codex update into a fresh directory) is a fresh decision and goes through the question below.
+   */
+  const refresh = states.every((s) => s === 'patched' || s === 'outdated');
+  if (mode === 'ask' && !refresh) {
     const key = `codexExtras.patchAsked:${version}`;
     if (context.globalState.get(key)) { state.reason = 'not patched: declined for this Codex version'; return; }
     await context.globalState.update(key, true);
@@ -494,7 +503,11 @@ async function ensurePatched(vscode, context, log, mode) {
   }
   state.reason = 'patched; reload the window to connect';
   const reload = 'Reload Window';
-  const pick = await vscode.window.showInformationMessage('Codex is patched. Reload the window for it to take effect.', reload);
+  /* Codex reads these files when its extension starts and when it builds a page, so neither half of what was just
+     written runs until the window is reloaded. There is no way to hand it over without one. */
+  const pick = await vscode.window.showInformationMessage(refresh
+    ? 'Codex Extras brought its patch of Codex up to this version. Reload the window for it to take effect.'
+    : 'Codex is patched. Reload the window for it to take effect.', reload);
   if (pick === reload) await vscode.commands.executeCommand('workbench.action.reloadWindow');
 }
 
@@ -522,7 +535,7 @@ function activate(context, opts) {
   return state;
 }
 
-module.exports = { activate, statusLines, openInSidebar, canType, canDeliver, deliver, sidebarThread, panelThreads, revealPanel, removePatch,
+module.exports = { activate, ensurePatched, statusLines, openInSidebar, canType, canDeliver, deliver, sidebarThread, panelThreads, revealPanel, removePatch,
   figuresOf, safeColor, viewOf, sampleLayout, selfCheckPage, selfCheckLines, installHooks, refreshPanels, approvalsOf,
   decideCount, waitingThreads, onApprovalsChanged, _state: () => state, _panels: panels, _approvals: approvals,
   TAB_DOTS, ASK_MS };
