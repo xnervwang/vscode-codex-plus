@@ -148,6 +148,20 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
       'Session Information on a tab opened with Codex\'s New button shows the conversation that tab went on to start');
   }
 
+  /* Find searches the conversations the list holds: this workspace's. */
+  {
+    const w = await run(root, tmp, { probe: async ({ vscode, control, home }) => {
+      vscode.workspace.workspaceFolders = [{ uri: vscode.Uri.file(tmp('another-workspace')) }];
+      await control.state.handlers['codexPlus.findThread']();
+      const elsewhere = control.state.quickPicks[control.state.quickPicks.length - 1].items.length;
+      vscode.workspace.workspaceFolders = [{ uri: vscode.Uri.file(home) }];
+      await control.state.handlers['codexPlus.findThread']();
+      const here = control.state.quickPicks[control.state.quickPicks.length - 1].items.map((i) => i.label);
+      return { elsewhere, here };
+    } });
+    eq([w.probed.elsewhere, w.probed.here], [0, ['One']], 'Find lists this workspace\'s conversations only, as the session list does');
+  }
+
   const refused = await run(root, tmp, { core: 'refuse' });
   eq([refused.state.context['codexPlus.registered'], refused.state.said.length], [false, 0],
     'a refused registration leaves the key off, and Agent Plus, not this extension, says which one to update');
@@ -171,7 +185,7 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
   eq(onBar.filter((m) => !byCommand.get(m.command) || !byCommand.get(m.command).icon).map((m) => m.command), [],
     'each of them has an icon, or it would show as a word on the bar');
   eq(title.filter((m) => !/^navigation/.test(m.group || '')).map((m) => m.command),
-    ['codexPlus.showAllFolders', 'codexPlus.openSettings'], 'the ... menu holds the two that are not everyday actions');
+    ['codexPlus.openSettings'], 'the ... menu holds the settings, which are not an everyday action');
   const menus = [].concat(...Object.values(pkg.contributes.menus)).map((m) => m.command);
   eq(menus.filter((c) => !byCommand.has(c)), [], 'every command a menu names is declared');
 

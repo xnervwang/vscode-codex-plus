@@ -131,10 +131,6 @@
         "title": "Codex Plus: Text Color..."
       },
       {
-        "command": "codexPlus.showAllFolders",
-        "title": "Codex Plus: List Conversations from Every Folder"
-      },
-      {
         "command": "codexPlus.findThread",
         "title": "Codex Plus: Find a Codex Conversation by Title or ID",
         "icon": "$(search)"
@@ -218,22 +214,12 @@
           "group": "navigation@3"
         },
         {
-          "command": "codexPlus.showAllFolders",
-          "when": "view == codexPlus.sessions && config.codexPlus.sessionsInWorkspaceOnly",
-          "group": "1_list@1"
-        },
-        {
           "command": "codexPlus.openSettings",
           "when": "view == codexPlus.sessions",
           "group": "9_settings@1"
         }
       ],
       "view/item/context": [
-        {
-          "command": "codexPlus.showAllFolders",
-          "when": "view == codexPlus.sessions && viewItem == codexPlusGroup-other",
-          "group": "1_list@1"
-        },
         {
           "command": "codexPlus.openThreadInTab",
           "when": "view == codexPlus.sessions && viewItem =~ /^codexPlusThread/",
@@ -341,7 +327,7 @@
         "codexPlus.sessionsInWorkspaceOnly": {
           "type": "boolean",
           "default": true,
-          "markdownDescription": "List only conversations started in this window's workspace folders, or folders under them, in Codex sessions (open and recently closed ones are always listed)."
+          "markdownDescription": "List only conversations started in this window's workspace folders, or folders under them, in Codex sessions and in Find, as Claude Code's own list does (open and recently closed ones are always listed). Off lists every conversation."
         },
         "codexPlus.hideBackgroundSessions": {
           "type": "boolean",

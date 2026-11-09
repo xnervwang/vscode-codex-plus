@@ -60,7 +60,7 @@ module.exports = async ({ ok, bad, eq, tmp }) => {
       [true, true], 'a directory that no longer exists is placed through the nearest ancestor that does');
   }
 
-  /* ── the view fills, and says how many it left out ── */
+  /* ── the view holds this workspace's conversations, as Claude Code's own list does ── */
   const inside = linked ? path.join(real, 'ws', 'sub') : path.join(base, 'ws', 'sub');
   const outsideA = path.join(base, 'other');
   const outsideB = path.join(base, 'other2');
@@ -70,30 +70,13 @@ module.exports = async ({ ok, bad, eq, tmp }) => {
   const provider = new SessionsProvider(vscode, { memory: stubMemory(), memento: fake.memento(), reader: stubReader(threads),
     stateOf: () => null, settings: () => ({ sessionsInWorkspaceOnly: workspaceOnly, recentClosedSessions: 10, hideBackgroundSessions: true }) });
   provider.refresh();
-  const rows = provider.getChildren();
   const ungrouped = provider.groups.find((g) => g.key === 'ungrouped');
-  eq([ungrouped.threads.map((t) => t.title), provider.hidden], [['t1'], 2],
-    'the conversation in this workspace is listed even though its folder is the one behind the link, and the two elsewhere are counted');
-  /* Nothing is dropped: what the filter left out is the history group, and its count is exactly what was filtered. */
-  const other = provider.groups.find((g) => g.key === 'other');
-  eq([rows.map((r) => r.group.label).includes('Other folders'), other.threads.length === provider.hidden, other.expanded],
-    [true, true, false], 'the conversations of other folders are a group of their own, counted and starting collapsed');
-  const otherItem = provider.getTreeItem(rows[rows.length - 1]);
-  eq([otherItem.label, otherItem.description, otherItem.iconPath.id, otherItem.contextValue],
-    ['Other folders', '2', 'history', 'codexPlusGroup-other'], 'it reads as history, with how many it holds');
-  const folders = provider.getChildren(rows[rows.length - 1]);
-  eq([folders.map((f) => f.folder.dir), folders.map((f) => f.folder.threads.length)], [[outsideB, outsideA], [1, 1]],
-    'under it one row per folder, the folder used most recently first');
-  const folderItem = provider.getTreeItem(folders[0]);
-  eq([folderItem.label, folderItem.description, folderItem.collapsibleState], [outsideB, '1', 1], 'each folder row says how many and opens');
-  eq(provider.getChildren(folders[0]).map((e) => [e.kind, e.group, e.thread.title]), [['thread', 'other', 't3']],
-    'and opening one gives that folder\'s conversations');
+  eq([ungrouped.threads.map((t) => t.title), provider.groups.some((g) => g.threads.some((t) => t.title === 't2' || t.title === 't3'))],
+    [['t1'], false], 'the conversation in this workspace is listed even though its folder is the one behind the link, and those of other folders are not');
+  eq(provider.getChildren().map((r) => r.group.label).includes('Other folders'), false, 'and there is no group for other folders');
   workspaceOnly = false;
   provider.refresh();
-  eq([provider.hidden, provider.groups.find((g) => g.key === 'other').threads.length,
-    provider.groups.find((g) => g.key === 'ungrouped').threads.length],
-  [0, 0, 3], 'with the filter off every conversation is listed with the rest and the history group empties');
-  eq(provider.getChildren().map((r) => r.group.label).includes('Other folders'), false, 'an empty group is left out');
+  eq(provider.groups.find((g) => g.key === 'ungrouped').threads.length, 3, 'with the filter off every conversation is listed with the rest');
   workspaceOnly = true;
 
   /* ── the tab URIs Codex really uses ── */
@@ -171,10 +154,10 @@ module.exports = async ({ ok, bad, eq, tmp }) => {
   const inWs = (cwd) => cwd === inside;
   const shaped = group([thread(1, inside), thread(2, outsideA), thread(5, inside, { archived: true })],
     { open: [], closed: [], cwdFilter: inWs });
-  eq(shaped.map((g) => g.label), ['Open sessions', 'Recently closed', 'Ungrouped', 'Archived sessions', 'Other folders'],
+  eq(shaped.map((g) => g.label), ['Open sessions', 'Recently closed', 'Ungrouped', 'Archived sessions'],
     'the group names are the ones Claude Code\'s session list uses, in its order');
-  eq(shaped.filter((g) => !g.expanded).map((g) => g.label), ['Recently closed', 'Archived sessions', 'Other folders'],
-    'the three a reader opens only when looking for something start collapsed');
+  eq(shaped.filter((g) => !g.expanded).map((g) => g.label), ['Recently closed', 'Archived sessions'],
+    'the two a reader opens only when looking for something start collapsed');
 
   /* ── an empty open group says so; no group carries a nought ── */
   const bare = new SessionsProvider(vscode, { memory: stubMemory(), memento: fake.memento(), reader: stubReader([thread(1, inside)]),

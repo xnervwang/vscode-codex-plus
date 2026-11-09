@@ -31,6 +31,7 @@ const patching = require('./src/patching');
 const domSample = require('./src/dom-sample');
 const supported = require('./src/supported');
 const pythonRuntime = require('./src/python-runtime');
+const { folderTest } = require('./src/folders');
 const openTimes = require('./src/open-times');
 const codexConfig = require('./src/codex-config');
 
@@ -467,10 +468,6 @@ function registerCommands(context, { source, memory, sessionsProvider, say, link
     } catch (e) { vscode.window.showErrorMessage(`Could not remove the plugin: ${e.message}`); }
   });
   reg('refreshSessions', () => { source._poll(); sessionsProvider.refresh(); });
-  reg('showAllFolders', async () => {
-    await vscode.workspace.getConfiguration(CONFIG).update('sessionsInWorkspaceOnly', false, vscode.ConfigurationTarget.Global);
-    sessionsProvider.refresh();
-  });
   reg('newInTab', () => newConversationInTab(say));
   reg('newInSidebar', async () => {
     if (await tabs.openRouteInSidebar(vscode, '/')) return;
@@ -512,7 +509,11 @@ function registerCommands(context, { source, memory, sessionsProvider, say, link
     if (pick) await sessionsProvider.setColor(id, pick.label === 'none' ? '' : pick.label);
   });
   reg('findThread', async () => {
-    const threads = (reader.threads() || []).filter((t) => t.kind === 'user' || !settings().hideBackgroundSessions);
+    /* The same conversations the list holds: this workspace's, as the Codex sessions view filters them. */
+    const folders = (vscode.workspace.workspaceFolders || []).map((f) => f.uri.fsPath);
+    const inWorkspace = settings().sessionsInWorkspaceOnly && folders.length ? folderTest(folders, new Map()) : null;
+    const threads = (reader.threads() || []).filter((t) => (t.kind === 'user' || !settings().hideBackgroundSessions)
+      && (!inWorkspace || inWorkspace(t.cwd)));
     const qp = vscode.window.createQuickPick();
     qp.placeholder = 'Search titles, or four or more characters of a thread id';
     qp.matchOnDescription = true;

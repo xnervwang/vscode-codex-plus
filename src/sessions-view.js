@@ -11,14 +11,13 @@
  *   Pinned, <sections>    Codex's own pins and sections, as its sidebar keeps them
  *   Ungrouped             the rest of this workspace's
  *   Archived sessions     Codex's archived threads of this workspace (collapsed)
- *   Other folders         everything the workspace filter left out, by the folder it started in (collapsed)
  *
  * The group names are Claude Code's, so that both lists read the same way. Each carries its count; an empty one is
  * left out, except Open sessions, which says there is none.
  *
- * The workspace filter hides rather than drops, and Other folders holds what it hid, so no conversation disappears
- * from the view. That filter compares real paths (src/folders.js): the same directory reached through a symbolic link
- * used to match nothing, and the whole view came up empty with no reason shown.
+ * Like Claude Code's list, it holds this workspace's conversations only (codexPlus.sessionsInWorkspaceOnly). The
+ * workspace filter compares real paths (src/folders.js): the same directory reached through a symbolic link used to
+ * match nothing, and the whole view came up empty with no reason shown.
  *
  * Grouping, sorting and filtering are arithmetic over the snapshot already in memory, and read no file of their own.
  * Conversations the user skipped carry no status dot until their group is expanded, which is the only moment their
@@ -66,26 +65,6 @@ function dateSpan(createdMs, updatedMs, now = Date.now()) {
   return `${ago(updatedMs, now)} · ${a && a !== b ? `${a}→${b}` : b}`;
 }
 
-/*
- * The conversations of one directory, for Other folders: newest directory first, and within one the order they came in
- * (newest conversation first), archived ones after the rest.
- */
-function byFolder(threads) {
-  const dirs = new Map();
-  for (const t of threads) {
-    const dir = t.cwd || '(no folder)';
-    if (!dirs.has(dir)) dirs.set(dir, []);
-    dirs.get(dir).push(t);
-  }
-  const out = [...dirs].map(([dir, list]) => ({
-    dir,
-    threads: list.slice().sort((a, b) => (a.archived ? 1 : 0) - (b.archived ? 1 : 0)),
-    at: Math.max(...list.map((t) => t.updatedMs || 0)),
-  }));
-  out.sort((a, b) => b.at - a.at || a.dir.localeCompare(b.dir));
-  return out;
-}
-
 /** Group a list of threads for the tree. Pure, so the test can hold it to the order above. */
 function group(threads, { open = [], closed = [], sections = new Map(), hideBackground = true, cwdFilter = null, frontAt = () => 0,
   sidebar = '' }) {
@@ -93,9 +72,6 @@ function group(threads, { open = [], closed = [], sections = new Map(), hideBack
   const byId = new Map(threads.map((t) => [t.id, t]));
   const kindOk = (t) => (hideBackground ? t.kind === 'user' : true);
   const here = threads.filter((t) => kindOk(t) && (!cwdFilter || cwdFilter(t.cwd)));
-  /* Conversations of other folders are not dropped: they are the history group, so the list is never short with no
-     reason shown. Background threads stay out of it - they belong to whatever started them, not to a folder. */
-  const elsewhere = cwdFilter ? threads.filter((t) => t.kind === 'user' && !cwdFilter(t.cwd)) : [];
   const openRows = open.map((id) => byId.get(id) || { id, title: '', kind: 'user', updatedMs: 0, createdMs: 0 })
     .sort((a, b) => (frontAt(b.id) - frontAt(a.id)) || (b.updatedMs - a.updatedMs));
   const openSet = new Set(open);
@@ -115,7 +91,6 @@ function group(threads, { open = [], closed = [], sections = new Map(), hideBack
   const background = here.filter((t) => t.kind !== 'user');
   if (!hideBackground && background.length) out.push({ key: 'background', label: 'Background', expanded: false, threads: background });
   out.push({ key: 'archived', label: 'Archived sessions', expanded: false, threads: here.filter((t) => t.kind === 'user' && t.archived) });
-  out.push({ key: 'other', label: 'Other folders', expanded: false, threads: elsewhere, folders: byFolder(elsewhere) });
   return out;
 }
 
@@ -149,8 +124,6 @@ class SessionsProvider {
     this.threads = [];
     this.sections = new Map();
     this.groups = [];
-    /* How many conversations the workspace filter left out, so the view never just comes up empty with no reason given. */
-    this.hidden = 0;
   }
 
   colors() { return this.memento.get(COLOR_KEY) || {}; }
@@ -178,7 +151,6 @@ class SessionsProvider {
      * only, so a folder created or moved since is resolved again next time.
      */
     const cwdFilter = this.settings().sessionsInWorkspaceOnly && folders.length ? folderTest(folders, new Map()) : null;
-    this.hidden = cwdFilter ? this.threads.filter((t) => t.kind === 'user' && !cwdFilter(t.cwd)).length : 0;
     try { this.sidebarNow = this.sidebarShowing() || ''; } catch (_) { this.sidebarNow = ''; }
     this.groups = group(this.threads, {
       sidebar: this.sidebarNow,
@@ -198,17 +170,9 @@ class SessionsProvider {
     if (!element) return this.groups.filter((g) => g.threads.length || g.key === 'open').map((g) => ({ kind: 'group', group: g }));
     if (element.kind === 'group') {
       const g = element.group;
-      if (g.key === 'other') {
-        this.ask(g.threads);
-        return g.folders.map((f) => ({ kind: 'folder', folder: f }));
-      }
       if (!g.threads.length && g.key === 'open') return [{ kind: 'empty', text: 'No conversation open in this window' }];
       this.ask(g.threads);
       return g.threads.map((t) => ({ kind: 'thread', thread: t, group: g.key }));
-    }
-    if (element.kind === 'folder') {
-      this.ask(element.folder.threads);
-      return element.folder.threads.map((t) => ({ kind: 'thread', thread: t, group: 'other' }));
     }
     return [];
   }
@@ -227,16 +191,6 @@ class SessionsProvider {
       item.contextValue = 'codexPlusEmpty';
       return item;
     }
-    if (element.kind === 'folder') {
-      const f = element.folder;
-      const item = new vscode.TreeItem(f.dir, vscode.TreeItemCollapsibleState.Collapsed);
-      item.id = `folder:${f.dir}`;
-      item.description = String(f.threads.length);
-      item.iconPath = new vscode.ThemeIcon('folder');
-      item.tooltip = `${f.threads.length} conversation${f.threads.length === 1 ? '' : 's'} started in ${f.dir}`;
-      item.contextValue = 'codexPlusFolder';
-      return item;
-    }
     if (element.kind === 'group') {
       const g = element.group;
       const item = new vscode.TreeItem(g.label, g.expanded ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed);
@@ -244,11 +198,6 @@ class SessionsProvider {
       // An empty group says so in a row of its own instead of carrying a nought.
       if (g.threads.length) item.description = String(g.threads.length);
       item.contextValue = `codexPlusGroup-${g.key}`;
-      if (g.key === 'other') {
-        item.iconPath = new vscode.ThemeIcon('history');
-        item.tooltip = 'Conversations started outside this window\'s workspace, by the folder they started in.'
-          + ' Right-click to list them with the rest instead (codexPlus.sessionsInWorkspaceOnly).';
-      }
       return item;
     }
     const t = element.thread;
@@ -265,7 +214,7 @@ class SessionsProvider {
     item.contextValue = t.archived ? 'codexPlusThreadArchived' : open ? 'codexPlusThreadOpen' : 'codexPlusThread';
     const md = new vscode.MarkdownString();
     md.appendMarkdown(`**${(t.title || '(untitled)').replace(/[*_`[\]]/g, '\\$&')}**\n\n`);
-    const place = element.group === 'other' ? 'Other folders' : placeOf(t, this.sections);
+    const place = placeOf(t, this.sections);
     const inSidebar = open && t.id === this.sidebarNow && !this.memory.openThreads().includes(t.id);
     md.appendMarkdown(`${look.word} · ${place}${inSidebar ? ' · in Codex\'s sidebar' : open ? ' · open in this window' : ''}\n\n`);
     md.appendCodeblock(t.id, 'text');
