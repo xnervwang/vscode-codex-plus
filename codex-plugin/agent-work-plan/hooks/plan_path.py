@@ -108,6 +108,10 @@ DEFAULTS = {
     # Whether the model is told the time zone the user reads the panel in when it differs from this machine's
     # (tell-time-zone.py). Separate from `enabled`: it has nothing to do with the plan.
     "tellTimeZone": True,
+    # The user's model_auto_compact_token_limit from config.toml, which the extension copies here; 0 when none is set.
+    # Codex compacts at the lower of it and 90% of the full window, so the marks before a compaction are measured
+    # against the lower one too (refresh-work-plan.py).
+    "compactTokenLimit": 0,
 }
 
 

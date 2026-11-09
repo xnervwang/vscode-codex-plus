@@ -13,7 +13,8 @@ row is where that goes, and the plan is what gets read after the compaction (see
 How full the context is never reaches the model, so this measures it from the rollout: every model call ends with a
 token_count event carrying the input tokens it sent and the model's context window. Codex compacts on its own once a
 call would pass 90% of the model's full window, and the window it reports has 5% already held back, so the compaction
-line is 0.9 / 0.95 of the reported window. The marks are fractions of that line.
+line is 0.9 / 0.95 of the reported window, or the user's own model_auto_compact_token_limit when that is lower. The
+marks are fractions of that line.
 
 It speaks once per mark per stretch between compactions: after each tool call (PostToolUse, as added context) or at the
 end of a turn (Stop, which keeps the turn going for one more step). A drop in context well below the lowest mark means a
@@ -35,8 +36,10 @@ MARKS = (0.70, 0.85)
 COMPACT_SHARE = 0.9 / 0.95
 
 
-def compaction_line(window):
-    return int(window * COMPACT_SHARE)
+def compaction_line(window, limit=0):
+    """Where Codex compacts: 90% of the full window, or the user's own limit when that is lower."""
+    line = int(window * COMPACT_SHARE)
+    return min(line, int(limit)) if limit and limit > 0 else line
 
 
 def doing_rows(nodes, prefix=""):
@@ -107,7 +110,7 @@ def main():
     context, window = current_context(tail), context_window(tail)
     if not context or not window:
         return 0
-    line = compaction_line(window)
+    line = compaction_line(window, limits["compactTokenLimit"])
     mark, keep = due_mark(read_state(path), context, line)
     # The state is written whether or not anything is said, so a mark passed while no row was `doing` is not raised
     # later about rows that started after it; and if it cannot be written, nothing is said, so this never repeats.
@@ -130,6 +133,8 @@ def selftest():
     line = compaction_line(258400)
     check = lambda label, cond: (None if cond else bad.append(label), print("%-4s %s" % ("PASS" if cond else "FAIL", label)))
     check("the line is 90% of the full window", line == int(258400 / 0.95 * 0.9))
+    check("a lower limit the user set is where Codex compacts", compaction_line(258400, 150000) == 150000)
+    check("and a higher one changes nothing", compaction_line(258400, 400000) == line)
     m, keep = due_mark({}, int(0.5 * line), line)
     check("below the first mark nothing is due", m is None and keep["spoken"] == [])
     m, keep = due_mark(keep, int(0.72 * line), line)

@@ -32,6 +32,7 @@ const domSample = require('./src/dom-sample');
 const supported = require('./src/supported');
 const pythonRuntime = require('./src/python-runtime');
 const openTimes = require('./src/open-times');
+const codexConfig = require('./src/codex-config');
 
 const CONFIG = 'codexExtras';
 let log = null;
@@ -104,6 +105,7 @@ function writeHookSettings(context) {
       offerMinToolCalls: c.get('workPlanOfferMinToolCalls', 25),
       quietWhenReplyMatches: c.get('workPlanQuietWhenReplyMatches', ''),
       tellTimeZone: c.get('tellCodexYourTimeZone', true),
+      compactTokenLimit: codexConfig.compactLimit(files.codexHome()),
     });
     const zone = context.globalState.get('codexExtras.clientTimeZone');
     if (zone) fs.writeFileSync(path.join(install.planDir(files.codexHome()), 'client-time-zone.json'), JSON.stringify({ timeZone: zone }) + '\n');

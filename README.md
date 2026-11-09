@@ -6,7 +6,7 @@
 | Work plan per conversation: rows with states, numbered, kept across turns and compactions | Agent Work Plan's Work plan view; Codex's context every turn | Work plan plugin, its hooks trusted |
 | Plan changes through MCP tools `set_row` / `add_row`, no sandbox approval | Codex | Work plan plugin |
 | End-of-turn reminders: rows left `doing`, questions not on a row, plan not reconciled | Codex | Work plan plugin |
-| Reminder to bring `doing` rows up to date before an automatic compaction; pointer to the plan after one | Codex | Work plan plugin |
+| Reminder to bring `doing` rows up to date before an automatic compaction, at 70% and 85% of where Codex compacts (90% of the model's window, or `model_auto_compact_token_limit` in `config.toml` when that is lower); pointer to the plan after one | Codex | Work plan plugin |
 | Your time zone told to Codex when it runs on another machine, with this machine's zone and the time now; quiet while Codex's own page has told it the same zone since the last compaction (`<codex_apps_client_time_context>`) | Codex's context | Work plan plugin; the patch; `codexExtras.tellCodexYourTimeZone` |
 | Answer a plan question from Agent Work Plan's Answer view, drafted into the conversation's message box | Codex tab | Patch; otherwise the answer stays in the Answer view |
 | Open sessions, Recently closed, Pinned, the sections you made in Codex's own sidebar, Ungrouped, Archived sessions, each with its count | Codex sessions view, in the Codex Extras sidebar | — |

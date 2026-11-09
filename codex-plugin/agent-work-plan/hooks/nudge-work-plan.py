@@ -60,7 +60,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from changes import changes
 from changes import shell_command  # noqa: F401  (kept beside changes so both read a call the same way)
-from plan_path import (MCP_SERVER, MCP_TOOLS, NUDGED_SUFFIX, OFFERED_SUFFIX, SETTLED_SUFFIX, children, epoch, listed,
+from plan_path import (MCP_TOOLS, NUDGED_SUFFIX, OFFERED_SUFFIX, SETTLED_SUFFIX, children, epoch, listed,
                        open_tail, plan_file, read_payload, settings, side_file, turn_began, write_quietly)
 
 # Every threshold this uses is in plan_path.DEFAULTS, where the editor's settings can override it.
@@ -113,7 +113,9 @@ def turn_shape(tail, plan="", began=None):
     count of turns is a lower bound, which can only make this quieter.
 
     Going to the plan is looked for only in the calls the model made, never anywhere else in the turn: the path is also
-    in the text this plugin injects at the start of every turn, so a search across whole rows would always find it.
+    in the text this plugin injects at the start of every turn, so a search across whole rows would always find it. A
+    call to the plan's tools carries the plan's path, which they require; Codex records such a call by the tool's own
+    name (set_row) with the server in a field of its own, so the name says nothing about the server.
     """
     started, tools, changes_made, turns, reached = began, 0, 0, 0, False
     names = spellings(plan) if plan else set()
@@ -141,7 +143,7 @@ def turn_shape(tail, plan="", began=None):
         if call:
             tools += 1
             changes_made += int(changes(call[0], call[1]))
-            if MCP_SERVER in call[0] or any(n in line for n in names):
+            if any(n in line for n in names):
                 reached = True
     return started, tools, changes_made, turns, reached
 

@@ -13,7 +13,7 @@ const path = require('path');
 const fake = require('../fake-vscode');
 const fixture = require('../fixture');
 
-async function run(root, tmp, { core = 'accept', trusted = true, config = {}, takesRoute = false, probe = null, logDir = '' } = {}) {
+async function run(root, tmp, { core = 'accept', trusted = true, config = {}, takesRoute = false, probe = null, logDir = '', configToml = '' } = {}) {
   const { vscode, control } = fake.create();
   vscode.workspace.isTrusted = trusted;
   vscode.workspace.onDidGrantWorkspaceTrust = () => ({ dispose() {} });
@@ -23,6 +23,7 @@ async function run(root, tmp, { core = 'accept', trusted = true, config = {}, ta
   for (const k of Object.keys(require.cache)) if (k.startsWith(root + path.sep) && !k.includes(`${path.sep}test${path.sep}`)) delete require.cache[k];
   const home = tmp('home');
   fixture.codexHome(home, [{ title: 'One', cwd: home, turns: [{}] }]);
+  if (configToml) fs.writeFileSync(path.join(home, 'config.toml'), configToml);
   control.state.config = { codexHome: home, installWorkPlanPlugin: 'never', reopenDroppedTabs: false, patchCodex: 'off', ...config };
   const registered = [];
   if (core) {
@@ -40,7 +41,9 @@ async function run(root, tmp, { core = 'accept', trusted = true, config = {}, ta
   if (logDir) context.logUri = vscode.Uri.file(logDir);
   await ext.activate(context);
   await new Promise((r) => setTimeout(r, 300));
-  const out = { state: control.state, registered, home, wroteSettings: fs.existsSync(path.join(home, 'plugins', 'data', 'agent-work-plan-codex-extras', 'config.json')) };
+  let hookSettings = null;
+  try { hookSettings = JSON.parse(fs.readFileSync(path.join(home, 'plugins', 'data', 'agent-work-plan-codex-extras', 'config.json'), 'utf8')); } catch (_) { /* none */ }
+  const out = { state: control.state, registered, home, hookSettings, wroteSettings: fs.existsSync(path.join(home, 'plugins', 'data', 'agent-work-plan-codex-extras', 'config.json')) };
   /* Asked while the extension is still up, since the lines below dispose it. */
   if (probe) out.probed = await probe({ vscode, control, home });
   for (const d of subs) { try { d.dispose(); } catch (_) { /* gone */ } }
@@ -60,6 +63,12 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
   eq(hosted.state.status.filter((s) => s.shown).length, 0, 'and nothing of its own is in the status bar while no conversation is waiting on anybody');
   eq(declared.filter((c) => !hosted.state.registered.includes(c)), [], 'every command in the manifest is registered');
   eq(hosted.wroteSettings, true, 'in a trusted window the hooks\' settings are written');
+  const planPath = fs.readFileSync(path.join(root, 'codex-plugin', 'agent-work-plan', 'hooks', 'plan_path.py'), 'utf8');
+  const known = [...(/^DEFAULTS = \{([\s\S]*?)^\}/m.exec(planPath) || ['', ''])[1].matchAll(/^ {4}"(\w+)":/gm)].map((m) => m[1]);
+  eq(Object.keys(hosted.hookSettings || {}).filter((k) => !known.includes(k)), [], 'every key written for the hooks is one plan_path.py knows');
+  eq(hosted.hookSettings.compactTokenLimit, 0, 'with no compaction limit in config.toml the hooks are handed none');
+  const limited = await run(root, tmp, { configToml: 'model_provider = "amazon-bedrock"\nmodel_auto_compact_token_limit = 150000\n' });
+  eq(limited.hookSettings.compactTokenLimit, 150000, 'and with one set there, the hooks are handed it, since Codex compacts at it');
   eq(hosted.state.said.length, 0, 'nothing is said when it is taken');
 
   /*
