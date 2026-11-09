@@ -166,6 +166,7 @@ Everything in **Inside a Codex conversation** is drawn inside Codex's page, whic
 | Needs | The patch (`Codex Extras: Patch Codex`) **and** a window reload after it, plus a Codex conversation tab in front |
 | Where it comes out | The Codex Extras output channel, with a **Copy** button for pasting the whole of it back |
 
+- The page also speaks up by itself, without the command: when a Codex page shows turns and the script has recognised none of the messages in them for three passes and five seconds, which is what a Codex release that renamed an anchor looks like, one line goes to the Codex Extras output channel and stays in `Show Status`. It carries how many turns there were and whether the scroller was found, nothing else, and is said once until the messages are found again.
 - A window with no patch, with a page left on an older copy of the script, or with no Codex tab in front gets one line saying which of those it is, rather than a report of zeroes that would read as a Codex release having moved an anchor.
 - Your side's time has two possible sources and the report names the one used, because the stamp looks the same either way: `clock` is the one Codex renders beside the message on hover, `rollout` is the conversation's own record.
 - Taken on a hidden page it is also how the two observers are told apart: the one for the marks is meant to be gone and the approval card's is meant to have stayed.

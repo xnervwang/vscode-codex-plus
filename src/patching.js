@@ -75,12 +75,20 @@ function codexPath(vscode) {
   return ext ? ext.extensionPath : '';
 }
 
+function anchorsMissingLine(m) {
+  return `A Codex page showed ${m.turns} turn${m.turns === 1 ? '' : 's'} and the page script recognised none of the `
+    + `messages in ${m.turns === 1 ? 'it' : 'them'}${m.scroller ? '' : ', nor the element the conversation scrolls in'}: `
+    + 'this Codex build has probably changed what the times, the message list and the colouring are attached to. '
+    + '"Codex Extras: Check What the Page Script Found in This Conversation" says which part was not found.';
+}
+
 function statusLines() {
   const lines = [`Patch to Codex: ${state.active ? 'in place and connected' : 'not in effect'} (${state.reason})`];
   if (deps) {
     const dir = codexPath(deps.vscode);
     for (const t of targets) lines.push(`  ${t.name}: ${dir ? t.status(dir) : 'Codex not found'}`);
   }
+  if (state.anchorsMissing) lines.push(`  At ${new Date(state.anchorsMissing.at).toISOString()}: ${anchorsMissingLine(state.anchorsMissing)}`);
   const waiting = approvals.threads();
   lines.push(`Waiting for you: ${waiting.length ? waiting.map((t) => {
     const n = approvals.of(t);
@@ -541,6 +549,12 @@ function installHooks() {
       deps.log(`Codex's sent time is in a form this extension cannot read: ${+msg.len || 0} characters, the first a `
         + `${msg.first === 'digit' || msg.first === 'letter' ? msg.first : 'character that is neither'}`
         + `, ${msg.digits ? 'all digits' : 'not all digits'}. No time is shown on replies.`);
+    }
+    /* A page that has turns and recognised none of the messages in them. Only numbers and flags come with it. */
+    if (msg && msg.kind === 'anchorsMissing') {
+      const turns = Math.max(0, Math.floor(+msg.turns || 0));
+      state.anchorsMissing = { at: Date.now(), turns, scroller: msg.scroller === true };
+      if (deps && deps.log) deps.log(anchorsMissingLine(state.anchorsMissing));
     }
     /* Whether an approval card is on this page's screen. A tab's page says it for the conversation that tab holds, and
        says nothing while that is not known; the sidebar's page says it for the conversation the sidebar last went to,

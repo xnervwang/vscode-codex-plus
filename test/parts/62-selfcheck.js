@@ -305,6 +305,42 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
   eq([none && none.error, none && none.report], ['the page has no body yet', undefined],
     'a page with nothing in it yet says so instead of answering with zeroes that read as a Codex that changed');
 
+  /*
+   * ── a Codex release that renamed what the script selects by ──
+   *
+   * The same real sample with the two message anchors renamed, which is what a release that moved them looks like to
+   * this script: turns on the page and no message recognised. The page tells the host once the miss has held for three
+   * passes and five seconds, and the message carries counts, a flag and the script's version and nothing else.
+   */
+  const RENAMED = ['data-local-conversation-user-anchor', 'data-response-annotation-target'];
+  const renamed = JSON.parse(JSON.stringify(sample), (k, v) => (k === 'attrs' && Array.isArray(v)
+    ? v.map((a) => (RENAMED.includes(a) ? `${a}-renamed` : a)) : v));
+  const moved = createDom();
+  let clockMs = Date.UTC(2026, 10, 9, 5, 0, 0);
+  moved.sandbox.Date = class extends Date {
+    constructor(...a) { super(...(a.length ? a : [clockMs])); }
+    static now() { return clockMs; }
+  };
+  pageFromSample(moved, renamed);
+  const movedPage = pageUnder(root, moved);
+  const told = () => movedPage.posted.filter((m) => m.kind === 'anchorsMissing');
+  movedPage.view(); movedPage.view(); movedPage.view();
+  eq(told().length, 0, 'three passes within a few seconds of each other say nothing, since a conversation can still be being drawn');
+  clockMs += 6000;
+  movedPage.view();
+  eq(told().length, 1, 'once the miss has held for five seconds the host is told');
+  eq([told()[0].turns > 0, told()[0].scroller], [true, true], 'with how many turns were on the page, and that the scroller itself was found');
+  clockMs += 60000;
+  movedPage.view(); movedPage.view();
+  eq(told().length, 1, 'and only once while it stays that way');
+  eq([...new Set(strings(told()[0]))].filter((x) => !['codex-extras', 'anchorsMissing', pkg.version].includes(x)), [],
+    'every string in that message is one of the script\'s own constants');
+  eq(searchable.filter((p) => JSON.stringify(told()).includes(p.text)).map((p) => p.text), [],
+    'and none of the page\'s planted text is in it');
+  for (let i = 0; i < 4; i++) page.view();
+  eq(page.posted.filter((m) => m.kind === 'anchorsMissing').length, 0,
+    'the real sample, whose messages are all recognised, never says it');
+
   /* ── the lines a person reads, which are the same in both places they come out ── */
   delete require.cache[require.resolve('../../src/patching')];
   const patching = require('../../src/patching');
@@ -345,6 +381,9 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
   globalThis.__codexExtrasPanel(panel, THREAD, provider);
   eq(/in front/.test((await patching.selfCheckPage()).error || ''), true,
     'with the patch but no Codex tab in front it says to bring one forward, rather than checking the wrong page');
+  globalThis.__codexExtrasMessage(panel.webview, told()[0], provider);
+  eq(patching.statusLines().filter((l) => /showed \d+ turns and the page script recognised none of the messages in them: /.test(l)).length, 1,
+    'the host keeps what such a page told it, and Show Status says it in one line naming the command that finds which part moved');
   panel.active = true;
   const wanted = patching.selfCheckPage();
   const request = sent[sent.length - 1];

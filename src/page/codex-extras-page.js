@@ -517,11 +517,14 @@
     return v ? String(v).toLowerCase() : '';
   }
 
+  /* How many turns the last entries() saw. */
+  var lastTurns = 0;
   /* Every user message and reply block of the conversation, in document order, each with the day it sits under. */
   function entries() {
     var sc = scrollerEl();
-    if (!sc) return null;
+    if (!sc) { lastTurns = 0; return null; }
     var turns = all(sc, SEL.turn), out = [], day = null;
+    lastTurns = turns.length;
     for (var i = 0; i < turns.length; i++) {
       var turn = turns[i], d = dayOfTurn(turn);
       if (d !== null) day = d;
@@ -1000,12 +1003,30 @@
     try { observer.observe(target, { childList: true, subtree: true }); } catch (e) { unwatch(); }
   }
 
+  /*
+   * Codex's page has turns and this script recognised none of the messages in them: a Codex release has most likely
+   * changed an attribute it selects by. Told to the host once MISS_PASSES passes in a row have seen it and at least
+   * MISS_MS has gone by since the first, so a conversation still being drawn does not count, and told again only after
+   * the messages have been found in between. The message holds counts, flags and this script's version, nothing else.
+   */
+  var MISS_PASSES = 3, MISS_MS = 5000, missRun = 0, missSince = 0, missTold = false;
+  function noteMisses(list) {
+    var turns = list ? lastTurns : all(document, SEL.turn).length;
+    if (!turns || (list && list.length)) { missRun = 0; missSince = 0; missTold = false; return; }
+    if (!missRun) missSince = Date.now();
+    missRun++;
+    if (missTold || missRun < MISS_PASSES || Date.now() - missSince < MISS_MS) return;
+    missTold = true;
+    post({ kind: 'anchorsMissing', version: SCRIPT_VERSION, turns: turns, scroller: !!list });
+  }
+
   var refreshing = false;
   function refresh() {
     if (refreshing || !document.body) return;
     refreshing = true;
     try {
       var list = entries();
+      noteMisses(list);
       if (!list) { dropNav(); return; }
       var users = stampAll(list);
       colourAll(users);
