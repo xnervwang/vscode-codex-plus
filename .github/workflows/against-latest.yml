@@ -1,0 +1,46 @@
+# Once a day, against the Codex the marketplace is shipping now.
+#
+# This is the one check that can go red without anything in this repository having changed: Codex publishes a build
+# whose extension host bundle no longer matches an edit of the patch, and the patch then silently does nothing for
+# everyone who updates. test/against-latest.js downloads that build, unpacks only the two patched files and applies
+# every edit to them.
+#
+# The exit code is left to fail the step. 1 is an edit that no longer matches exactly once, or a patched file that no
+# longer parses; anything else is the check not having run at all, which is also worth a red run, because a check that
+# quietly stopped working reads the same as one that keeps passing.
+#
+# A Codex release that is simply not in src/supported-versions.json is not a failure and prints as a note: the edits
+# matching a build is not the whole of what that file claims, and only a machine with that Codex installed can
+# establish the rest.
+name: against-latest
+
+on:
+  schedule:
+    # 06:17 UTC. Not on the hour, which is when the scheduler is busiest and runs are likeliest to be dropped.
+    - cron: '17 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  against-latest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: node test/against-latest.js
+        run: |
+          set +e
+          node test/against-latest.js
+          code=$?
+          set -e
+          if [ "$code" -eq 0 ]; then exit 0; fi
+          if [ "$code" -eq 1 ]; then
+            echo "::error::An edit of the patch no longer fits the Codex being shipped. src/host.js or src/webview-inject.js needs updating before anyone's Codex updates."
+          else
+            echo "::error::The check did not run (exit $code), so whether the patch still fits is unknown."
+          fi
+          exit "$code"

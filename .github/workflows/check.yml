@@ -1,0 +1,31 @@
+# The whole suite, on every push and every pull request.
+#
+# Two Node versions because the extension reads Codex's state database through node:sqlite, which Node 22 has only
+# behind a flag and Node 24 has without one. test/check.js re-execs itself with the flag when it has to, so running
+# both is what checks that it does.
+#
+# A runner has no Codex extension installed, so the three checks that read a real Codex build report themselves as not
+# run rather than passing silently, and the suite's last line counts them separately.
+name: check
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['22', '24']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - name: node test/check.js
+        run: node test/check.js

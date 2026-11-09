@@ -30,6 +30,18 @@
 - `bash build/pack.sh`: runs the suite and builds the `.vsix`.
 - `node build/plan-health.js [--days N] [--home <CODEX_HOME>] [--json]`: over the plans written in the last N days (14 by default), how many of their rows are stale (`doing` while the conversation is running no turn) or incomplete (`waiting` without saying on whom). It counts rather than passing or failing, so run it before and after a change with the same `--days`. It stays in `build/`, which `pack.sh` does not copy, because it reads a person's plans.
 
+### On CI
+
+Two workflows in `.github/workflows/`. **Neither has ever run: this repository has not been pushed anywhere**, so they are checked only by `test/parts/66-workflows.js`, which runs the scheduled one's own shell against a stand-in `node`.
+
+| | |
+| --- | --- |
+| `check.yml` | The suite, on every push and pull request, on Node 22 and Node 24. Both, because `node:sqlite` is behind a flag in one and not the other and `test/check.js` re-execs itself with the flag only when it has to. A runner has no Codex installed, so three checks report themselves as not run; the suite's last line counts those separately and the rest still pass. |
+| `against-latest.yml` | `test/against-latest.js` once a day, and on demand. This is the check that can go red with nothing here having changed: Codex ships a build an edit no longer fits, and the patch then quietly does nothing for everyone who updates. |
+
+- The scheduled step is red for exit 1 (an edit no longer fits, or a patched file no longer parses) **and** for any other non-zero code (the check did not run), with a different annotation for each. A step that passes whatever happened reads the same as one that keeps working, and a scheduled check is the kind nobody looks at until it matters.
+- A Codex release merely absent from `src/supported-versions.json` prints as a note and does not fail, which is `against-latest.js`'s own decision: the edits fitting a build is not the whole of what that file claims.
+
 ## Verified Codex builds
 
 `src/supported-versions.json` records which Codex builds a commit was checked against, the date, and what was checked. Add an entry after checking a build; the suite then keeps that entry in step with the code.
