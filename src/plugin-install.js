@@ -250,7 +250,16 @@ async function install({ binary, home, stage, source = SOURCE, python = SHIPPED_
   const manifest = stageMarketplace(stage, source, python);
   const keepOff = load === 'keep' && pluginLoadState(home) === 'not loaded';
   return withAppServer(binary, home, async (server) => {
-    const added = await server.request('marketplace/add', { source: stage });
+    const add = () => server.request('marketplace/add', { source: stage });
+    let added;
+    try {
+      added = await add();
+    } catch (e) {
+      // Codex refuses a second source under a name it already holds, such as a staging path of an earlier build.
+      if (!/already added from a different source/i.test(String((e && e.message) || ''))) throw e;
+      await server.request('marketplace/remove', { marketplaceName: MARKETPLACE });
+      added = await add();
+    }
     if (added && added.installedRoot && path.resolve(added.installedRoot) !== path.resolve(fs.realpathSync(stage))
       && path.resolve(added.installedRoot) !== path.resolve(stage)) {
       // A marketplace of this name registered elsewhere (an older staging path): point it here.
