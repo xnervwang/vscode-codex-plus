@@ -164,8 +164,23 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
     { launcher: ['py', '-3'], executable: 'C:/Python312/python.exe', version: '3.12' });
   eq([r1.state, r1.hooks, commands(fitted).every((c) => c.startsWith('py -3 "$PLUGIN_ROOT/hooks/'))],
     ['fitted', 9, true], 'a launcher with arguments goes in front of every hook command, leaving the rest of the line alone');
-  eq([mcpOf(fitted).command, mcpOf(fitted).args], ['C:/Python312/python.exe', ['-3', './hooks/plan-mcp.py']],
-    "the MCP server gets the interpreter's own path, since it is not started from the user's shell");
+  eq([mcpOf(fitted).command, mcpOf(fitted).args], ['C:/Python312/python.exe', ['./hooks/plan-mcp.py']],
+    "the MCP server gets the interpreter's own path, since it is not started from the user's shell, and none of the "
+      + "launcher's arguments, which are the launcher's and not the interpreter's");
+  /* What Codex then runs: the command and arguments in .mcp.json, from the plugin's directory. The interpreter here is
+     this machine's own, which refuses -3 as python.exe does ("Unknown option: -3"). */
+  const real = cp.spawnSync('python3', ['-c', 'import sys; print(sys.executable)'], { encoding: 'utf8' });
+  if (real.status === 0 && real.stdout.trim()) {
+    const run = tmp('stage-py3-run');
+    pi.stageMarketplace(run, pi.SOURCE, { launcher: ['py', '-3'], executable: real.stdout.trim(), version: '3' });
+    const m = mcpOf(run);
+    const r = cp.spawnSync(m.command, m.args, { cwd: path.join(run, pi.PLUGIN, m.cwd || '.'), encoding: 'utf8', timeout: 20000,
+      input: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {} } }) + '\n',
+      env: { ...process.env, PYTHONDONTWRITEBYTECODE: '1', CODEX_HOME: tmp('mcp-home') } });
+    let answered = false;
+    try { answered = JSON.parse(r.stdout.trim().split('\n')[0]).id === 1; } catch (_) { /* no answer */ }
+    eq([answered, r.status], [true, 0], 'and started the way Codex starts it, that MCP server answers rather than exiting at its first argument');
+  }
   eq(JSON.parse(fs.readFileSync(launcherFile(fitted), 'utf8')), { row: ['py', '-3'] },
     'and launcher.json gets the words a person would type, which is what the model is told to run');
 

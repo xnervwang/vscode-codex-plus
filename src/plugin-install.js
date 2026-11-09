@@ -232,10 +232,8 @@ function fitHooks(dir, python) {
   fs.writeFileSync(hooksFile, JSON.stringify(config, null, 2) + '\n');
   const mcp = JSON.parse(fs.readFileSync(mcpFile, 'utf8'));
   for (const server of Object.values(mcp.mcpServers || {})) {
-    if (server && server.command === SHIPPED) {
-      server.command = python.executable;
-      if (python.launcher.length > 1) server.args = python.launcher.slice(1).concat(server.args || []);
-    }
+    // The interpreter itself, so a launcher's own arguments (the -3 of `py -3`) are not for it.
+    if (server && server.command === SHIPPED) server.command = python.executable;
   }
   fs.writeFileSync(mcpFile, JSON.stringify(mcp, null, 2) + '\n');
   fs.writeFileSync(path.join(plugin, 'hooks', 'launcher.json'), JSON.stringify({ row: python.launcher }) + '\n');
