@@ -160,14 +160,55 @@ async function setPluginEnabled({ binary, home, enabled }) {
 /*
  * Copy the marketplace to `stage`, replacing what an earlier version left there, and fit the copy to the Python found
  * on this machine. `python` is what src/python-runtime.js findPython returned, or null when there is none.
+ *
+ * Every window of the editor stages into the same folder and Codex copies the plugin from it, so the copy is built and
+ * fitted beside it and then put in its place by two renames, as Claude Code Plus stages its plugin: the earlier copy
+ * moved aside, the new one moved in. A reader finds the whole of one or the other, or, in the moment between the two
+ * renames, no folder, which fails its copy rather than giving it half of one.
  */
 function stageMarketplace(stage, source = SOURCE, python = SHIPPED_PYTHON) {
-  fs.mkdirSync(stage, { recursive: true });
-  for (const name of fs.readdirSync(stage)) fs.rmSync(path.join(stage, name), { recursive: true, force: true });
-  fs.cpSync(source, stage, { recursive: true, filter: (p) => !p.includes(`${path.sep}__pycache__`) });
-  fitHooks(stage, python);
-  fs.writeFileSync(path.join(stage, PLUGIN, DIGEST_FILE), `${sourceDigest(source)}\n${fitOf(python)}\n`);
+  const tag = `${process.pid}.${crypto.randomBytes(4).toString('hex')}`;
+  const next = `${stage}.${tag}.new`, aside = `${stage}.${tag}.old`;
+  fs.mkdirSync(path.dirname(stage), { recursive: true });
+  try {
+    fs.cpSync(source, next, { recursive: true, filter: (p) => !p.includes(`${path.sep}__pycache__`) });
+    fitHooks(next, python);
+    fs.writeFileSync(path.join(next, PLUGIN, DIGEST_FILE), `${sourceDigest(source)}\n${fitOf(python)}\n`);
+    let moved = false;
+    try { fs.renameSync(stage, aside); moved = true; } catch (e) { if (!e || e.code !== 'ENOENT') throw e; }
+    try { fs.renameSync(next, stage); } catch (e) {
+      if (moved) { try { fs.renameSync(aside, stage); } catch (_) { /* left aside */ } }
+      throw e;
+    }
+  } finally {
+    fs.rmSync(next, { recursive: true, force: true });
+    fs.rmSync(aside, { recursive: true, force: true });
+  }
   return path.join(stage, MANIFEST);
+}
+
+/*
+ * One install at a time per staging folder, across the windows of the editor: a second window's staging would replace
+ * the folder Codex is copying from. The lock is a directory beside the folder, since mkdir is atomic; one older than
+ * STAGE_LOCK_STALE_MS was left by a window that died holding it, as an install is bounded by the app-server's timeout.
+ */
+const STAGE_LOCK_STALE_MS = 120000;
+const STAGE_LOCK_WAIT_MS = 130000;
+const STAGE_LOCK_POLL_MS = 200;
+async function stageLock(stage) {
+  const lock = `${stage}.lock`;
+  fs.mkdirSync(path.dirname(stage), { recursive: true });
+  const until = Date.now() + STAGE_LOCK_WAIT_MS;
+  for (;;) {
+    try { fs.mkdirSync(lock); return () => { try { fs.rmdirSync(lock); } catch (_) { /* gone */ } }; } catch (e) {
+      if (!e || e.code !== 'EEXIST') throw e;
+    }
+    let stale = false;
+    try { stale = Date.now() - fs.statSync(lock).mtimeMs > STAGE_LOCK_STALE_MS; } catch (_) { continue; }
+    if (stale) { try { fs.rmdirSync(lock); } catch (_) { /* taken by another */ } continue; }
+    if (Date.now() > until) throw new Error(`another window has been installing the plugin from ${stage} for too long; try again`);
+    await new Promise((r) => setTimeout(r, STAGE_LOCK_POLL_MS));
+  }
 }
 
 /* What the plugin ships as: the name in its own hooks and MCP server, which needs no fitting. */
@@ -274,7 +315,12 @@ function writeHookSettings(home, values, { marker = '' } = {}) {
  * Either is written after plugin/install, in the same app-server, so the outcome does not depend on what Codex's install
  * does with the key. `loaded` is false only when it was kept off.
  */
-async function install({ binary, home, stage, source = SOURCE, python = SHIPPED_PYTHON, load = true }) {
+async function install(opts) {
+  const release = await stageLock(opts.stage);
+  try { return await installLocked(opts); } finally { release(); }
+}
+
+async function installLocked({ binary, home, stage, source = SOURCE, python = SHIPPED_PYTHON, load = true }) {
   const manifest = stageMarketplace(stage, source, python);
   const keepOff = load === 'keep' && pluginLoadState(home) === 'not loaded';
   return withAppServer(binary, home, async (server) => {
