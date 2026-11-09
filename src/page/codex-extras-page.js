@@ -133,12 +133,53 @@
    * it from its own copy, so no text leaves the page.
    */
   var bar = null, infoBtn = null, muteBtn = null, infoBox = null, infoAsk = '', barWired = false;
-  var BELL = '\uD83D\uDD14', NO_BELL = '\uD83D\uDD15', INFO_GLYPH = String.fromCharCode(8505);
-  var Z_BAR = 2147483000;
+  var NOTE_GLYPH = String.fromCharCode(9834), INFO_GLYPH = String.fromCharCode(8505);
+  /*
+   * Above Codex's content and below every overlay it draws. Codex puts its content at z-index 0 to 20; the lowest layer
+   * it gives a popover portalled to <body> is z-30 (zIndexClassName "z-30"), its menus and dialogs use z-50 or the menu
+   * variable's 70, and its overlay ceiling is --max-app-overlay-z-index, 2147480000. The box that opens from a button is
+   * one above the button, still under all of those.
+   */
+  var Z_BELOW_CODEX = 25, Z_BELOW_CODEX_BOX = 27;
+
+  /* A hover label of this script's own, since a native title is not reliably shown in Codex's page. Created on hover
+     and removed on leave or click, so nothing stays in the page. */
+  var labelBox = null;
+  function hideLabel() { if (labelBox) { try { labelBox.remove(); } catch (e) { /* gone */ } labelBox = null; } }
+  function showLabel(el) {
+    var text = el && el.getAttribute('aria-label');
+    if (!text || !document.body) return;
+    hideLabel();
+    var box = document.createElement('div');
+    box.setAttribute(MARK, 'label');
+    box.style.cssText = 'position:fixed;z-index:' + Z_BELOW_CODEX_BOX + ';pointer-events:none;max-width:260px;padding:6px 8px;'
+      + 'background:var(--vscode-editorHoverWidget-background,#252526);color:var(--vscode-editorHoverWidget-foreground,#ccc);'
+      + 'border:1px solid var(--vscode-editorHoverWidget-border,#454545);border-radius:4px;'
+      + 'font:11px var(--vscode-font-family,sans-serif);line-height:1.35;white-space:pre-line;overflow-wrap:anywhere;';
+    box.textContent = text;
+    document.body.appendChild(box);
+    var r = null, b = null;
+    try { r = el.getBoundingClientRect(); b = box.getBoundingClientRect(); } catch (e) { r = null; }
+    if (r && b) {
+      var vw = +globalThis.innerWidth || 0;
+      box.style.left = Math.max(8, vw ? Math.min(vw - (b.width || 0) - 8, r.left) : r.left) + 'px';
+      box.style.top = Math.max(8, r.top - (b.height || 0) - 6) + 'px';
+    }
+    labelBox = box;
+  }
+  function labelled(el, text) {
+    if (el.getAttribute('aria-label') !== text) el.setAttribute('aria-label', text);
+    if (el.getAttribute(MARK + '-labelled') !== null) return;
+    el.setAttribute(MARK + '-labelled', '');
+    el.addEventListener('mouseenter', function () { showLabel(el); });
+    el.addEventListener('mouseleave', hideLabel);
+    el.addEventListener('click', hideLabel);
+  }
   var composerRoot = function () { return one(document, '[data-codex-composer-root]') || one(document, '[data-codex-composer]'); };
   var infoOpen = function () { return !!(infoBox && infoBox.isConnected && infoBox.style.display === 'block'); };
   function closeInfo() { if (infoBox) infoBox.style.display = 'none'; }
   function dropBar() {
+    hideLabel();
     if (bar) { try { bar.remove(); } catch (e) { /* gone */ } }
     if (infoBox) { try { infoBox.remove(); } catch (e) { /* gone */ } }
     bar = infoBtn = muteBtn = infoBox = null;
@@ -147,8 +188,7 @@
     var b = document.createElement('div');
     b.setAttribute(MARK, 'bar-button');
     b.setAttribute('role', 'button');
-    b.setAttribute('title', label);
-    b.setAttribute('aria-label', label);
+    labelled(b, label);
     b.style.cssText = 'pointer-events:auto;cursor:pointer;user-select:none;padding:0 4px;border-radius:3px;line-height:18px;'
       + 'font-size:12px;opacity:.75;';
     b.addEventListener('click', function (ev) { try { ev.stopPropagation(); } catch (e) { /* none */ } onClick(); });
@@ -163,12 +203,13 @@
       dropBar();
       bar = document.createElement('div');
       bar.setAttribute(MARK, 'bar');
-      bar.style.cssText = 'position:fixed;z-index:' + Z_BAR + ';pointer-events:none;display:flex;gap:2px;'
+      bar.style.cssText = 'position:fixed;z-index:' + Z_BELOW_CODEX + ';pointer-events:none;display:flex;gap:2px;'
         + 'font:11px var(--vscode-font-family,sans-serif);color:var(--vscode-descriptionForeground,#888);';
       infoBtn = barButton('About this conversation: its thread id, the process of Codex\'s server, the folder it '
         + 'started in, its rollout and size, the context in use and the tokens it used. Click a value to copy it.', toggleInfo);
       infoBtn.textContent = INFO_GLYPH;
-      muteBtn = barButton('', function () { post({ kind: 'toggleChime' }); });
+      muteBtn = barButton('Chimes', function () { post({ kind: 'toggleChime' }); });
+      muteBtn.textContent = NOTE_GLYPH;
       bar.appendChild(infoBtn);
       bar.appendChild(muteBtn);
       document.body.appendChild(bar);
@@ -189,9 +230,10 @@
     bar.style.left = Math.round(r.left) + 'px';
     bar.style.top = Math.round(top) + 'px';
     var muted = view.chime === false;
-    if (muteBtn.textContent !== (muted ? NO_BELL : BELL)) muteBtn.textContent = muted ? NO_BELL : BELL;
-    var label = muted ? 'Chimes are off: click to turn them on (codexPlus.chime)' : 'Chimes are on: click to turn them off (codexPlus.chime)';
-    if (muteBtn.getAttribute('title') !== label) { muteBtn.setAttribute('title', label); muteBtn.setAttribute('aria-label', label); }
+    var deco = muted ? 'line-through' : 'none';
+    if (muteBtn.style.textDecoration !== deco) muteBtn.style.textDecoration = deco;
+    if (muteBtn.style.opacity !== (muted ? '0.45' : '0.75')) muteBtn.style.opacity = muted ? '0.45' : '0.75';
+    labelled(muteBtn, muted ? 'Chimes are off: click to turn them on (codexPlus.chime)' : 'Chimes are on: click to turn them off (codexPlus.chime)');
   }
   function toggleInfo() {
     if (infoOpen()) { closeInfo(); return; }
@@ -203,7 +245,7 @@
     if (!infoBox || !infoBox.isConnected) {
       infoBox = document.createElement('div');
       infoBox.setAttribute(MARK, 'info');
-      infoBox.style.cssText = 'position:fixed;z-index:' + Z_BAR + ';display:none;width:420px;max-width:calc(100vw - 32px);'
+      infoBox.style.cssText = 'position:fixed;z-index:' + Z_BELOW_CODEX_BOX + ';display:none;width:420px;max-width:calc(100vw - 32px);'
         + 'padding:8px 10px;border-radius:5px;font:11px var(--vscode-font-family,sans-serif);line-height:1.5;'
         + 'background:var(--vscode-editorHoverWidget-background,rgba(30,30,30,.99));'
         + 'color:var(--vscode-editorHoverWidget-foreground,#ddd);'

@@ -39,10 +39,18 @@ module.exports = async ({ eq, tmp, root }) => {
       [true, 2, '722px', '40px', true], 'two buttons sit in a row of this script\'s own just below the message box, on the body');
     eq([/pointer-events:none/.test(bar.style.cssText), buttons.every((b) => /pointer-events:auto/.test(b.style.cssText))], [true, true],
       'the row takes no clicks, only its two buttons do');
-    eq(buttons[1].textContent, '🔔', 'the chime button shows a bell while chimes are on');
+    eq([buttons[1].textContent, buttons[1].style.textDecoration, buttons.map((b) => b.getAttribute('title'))], ['\u266a', 'none', [null, null]],
+      'the chime button is a plain note while chimes are on, in one colour like Codex\'s own icons, and neither button has a native title');
     p.view({ chime: false });
-    eq([p.q('[data-codex-extras="bar-button"]')[1].textContent, /turn them on/.test(p.q('[data-codex-extras="bar-button"]')[1].getAttribute('title'))],
-      ['🔕', true], 'and a struck-out bell, saying how to turn them on, while they are off');
+    const muted = p.q('[data-codex-extras="bar-button"]')[1];
+    eq([muted.textContent, muted.style.textDecoration, /turn them on/.test(muted.getAttribute('aria-label'))], ['\u266a', 'line-through', true],
+      'and the same note struck through, saying how to turn them on, while they are off');
+    muted.dispatch('mouseenter', {});
+    const label = p.q('[data-codex-extras="label"]');
+    eq([label.length, label[0] && /turn them on/.test(label[0].textContent)], [1, true], 'hovering it draws a label of this script\'s own');
+    muted.dispatch('mouseleave', {});
+    eq(p.q('[data-codex-extras="label"]').length, 0, 'which goes when the pointer leaves');
+    eq([/z-index:25;/.test(bar.style.cssText)], [true], 'the row sits above Codex\'s content and below the lowest layer of its overlays, z-30');
     p.q('[data-codex-extras="bar-button"]')[1].dispatch('click', { stopPropagation() {} });
     eq(p.posted.filter((m) => m.kind === 'toggleChime').length, 1, 'clicking it asks the host to switch the setting');
 
