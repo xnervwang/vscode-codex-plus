@@ -224,6 +224,32 @@ module.exports = async ({ ok, bad, note, eq, tmp }) => {
     'and tells the two kinds apart when one is Codex\'s own to answer');
   patching._approvals.clear();
 
+  /*
+   * ── commands still running ──
+   *
+   * The notifications as Codex 0.164's app-server protocol defines them (app-server-protocol v2/item.rs:
+   * ItemStartedNotification and ItemCompletedNotification around a commandExecution item, in camelCase). A command the
+   * model started through unified exec runs until its item/completed, which Codex sends when the process exits whether
+   * or not the model polls it; commands of any other source are not counted.
+   */
+  const cmd = (method, id, extra = {}) => ({ method, params: { threadId: THREAD, turnId: 'turn-1', startedAtMs: 1762650000000,
+    item: { type: 'commandExecution', id, command: '/bin/bash -lc "sleep 120"', cwd: '/w', processId: '41234', source: 'unifiedExecStartup',
+      status: method === 'item/started' ? 'inProgress' : 'completed', commandActions: [], aggregatedOutput: null, exitCode: null,
+      durationMs: null, ...extra } } });
+  chimes.length = 0;
+  globalThis.__codexExtrasAppServer('notification', cmd('item/started', 'call_bg1'));
+  globalThis.__codexExtrasAppServer('notification', cmd('item/started', 'call_fg', { source: 'agent' }));
+  globalThis.__codexExtrasAppServer('notification', { method: 'item/started', params: { threadId: THREAD, item: { type: 'agentMessage', id: 'm1' } } });
+  eq(patching.runningCommands(THREAD).map((c) => [c.command, c.cwd]), [['/bin/bash -lc "sleep 120"', '/w']],
+    'a command started through unified exec counts as running; one of another source and any other item do not');
+  eq(patching.figuresOf({ state: 'working', context: { used: 1000, window: 258400 } }, 1).text, '1 command running · ctx 0%',
+    'and the strip leads with how many are running');
+  eq(/Commands running in this window's Codex: \/bin\/bash -lc "sleep 120" \(since \d\d:\d\d:\d\d UTC/.test(patching.statusLines().join('\n')), true,
+    'Show Status lists it with when it started');
+  globalThis.__codexExtrasAppServer('notification', cmd('item/completed', 'call_bg1', { exitCode: 0, durationMs: 120000 }));
+  eq([patching.runningCommands().length, /Commands running in this window's Codex: none/.test(patching.statusLines().join('\n'))], [0, true],
+    'its item/completed ends it');
+
   /* ── the method names, against the Codex installed here ── */
   const bundles = pristineBundles();
   if (!bundles.length) note('no Codex extension installed here: the method names were not looked for in a real bundle');

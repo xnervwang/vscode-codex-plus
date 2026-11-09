@@ -169,6 +169,10 @@
         "title": "Codex Extras: Show How Long Opening a Codex Page Took"
       },
       {
+        "command": "codexExtras.showRunningCommands",
+        "title": "Codex Extras: Show the Commands Codex Is Still Running"
+      },
+      {
         "command": "codexExtras.goToWaiting",
         "title": "Codex Extras: Go to the Conversation Waiting for You"
       }

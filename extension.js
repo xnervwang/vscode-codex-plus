@@ -406,6 +406,16 @@ function registerCommands(context, { source, memory, sessionsProvider, say, link
     log.appendLine(openTimes.reportLines(spans, { zone: context.globalState.get('codexExtras.clientTimeZone') || '', last: 20 }).join('\n'));
     log.show(true);
   });
+  reg('showRunningCommands', async () => {
+    const running = patching.runningCommands();
+    if (!running.length) { vscode.window.showInformationMessage('Codex Extras: no command Codex started is running in this window.'); return; }
+    const zone = context.globalState.get('codexExtras.clientTimeZone') || undefined;
+    const when = (ms) => { try { return new Date(ms).toLocaleTimeString('en-GB', { timeZone: zone }); } catch (_) { return new Date(ms).toISOString().slice(11, 19); } };
+    const pick = await vscode.window.showQuickPick(running.map((c) => ({ label: c.command.slice(0, 120) || '(no command line)',
+      description: c.cwd, detail: `since ${when(c.startedMs)} · ${(reader.thread(c.thread) || {}).title || c.thread}`, thread: c.thread })),
+    { placeHolder: 'Commands Codex started that are still running; pick one to open its conversation' });
+    if (pick && pick.thread) await tabs.openInTab(vscode, pick.thread);
+  });
   reg('openSettings', () => vscode.commands.executeCommand('workbench.action.openSettings', '@ext:xnervwang.codex-extras'));
   reg('installWorkPlanPlugin', () => (restricted() ? undefined : installPlugin(context, say, { interactive: true })));
   reg('downloadPython', async () => {

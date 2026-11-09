@@ -91,6 +91,9 @@ function statusLines() {
   }
   if (state.anchorsMissing) lines.push(`  At ${new Date(state.anchorsMissing.at).toISOString()}: ${anchorsMissingLine(state.anchorsMissing)}`);
   const waiting = approvals.threads();
+  const running = runningCommands();
+  lines.push(`Commands running in this window's Codex: ${running.length ? running.map((c) => `${c.command.slice(0, 60)} `
+    + `(since ${new Date(c.startedMs).toISOString().slice(11, 19)} UTC, in ${c.thread || 'an unknown conversation'})`).join('; ') : 'none'}`);
   lines.push(`Waiting for you: ${waiting.length ? waiting.map((t) => {
     const n = approvals.of(t);
     return `${t} (${n.decide} to decide${n.soon ? `, ${n.soon} Codex will answer itself` : ''})`;
@@ -449,10 +452,35 @@ function viewOf(s = {}) {
     replyFigures: s.figures !== false };
 }
 
+/*
+ * Commands still running in this window's Codex, by item id: a command the model started through Codex's unified exec
+ * (item source unifiedExecStartup) is started with item/started and ended with item/completed, and Codex sends the end
+ * from a watcher of its own when the process exits or is stopped, whether or not the model asks after it again
+ * (core/src/unified_exec/async_watcher.rs, spawn_exit_watcher). A window reloaded while one runs learns of it only from
+ * its end.
+ */
+const COMMANDS_KEPT = 100;
+const commands = new Map();
+function noteCommand(msg) {
+  const method = msg && msg.method, p = (msg && msg.params) || {}, item = p.item || {};
+  if ((method !== 'item/started' && method !== 'item/completed') || item.type !== 'commandExecution' || !item.id) return false;
+  if (method === 'item/completed') return commands.delete(item.id);
+  if (item.source !== 'unifiedExecStartup') return false;
+  commands.set(item.id, { thread: String(p.threadId || ''), command: String(item.command || ''), cwd: String(item.cwd || ''),
+    startedMs: Number.isFinite(+p.startedAtMs) && +p.startedAtMs > 0 ? +p.startedAtMs : Date.now() });
+  while (commands.size > COMMANDS_KEPT) commands.delete(commands.keys().next().value);
+  return true;
+}
+/** The commands still running, oldest first, for one conversation or for all of this window's. */
+function runningCommands(thread) {
+  return [...commands.values()].filter((c) => !thread || c.thread === thread).sort((a, b) => a.startedMs - b.startedMs);
+}
+
 /* The strip's figures. A turn's duration is not among them: Codex draws "Worked for" on every finished turn itself. */
-function figuresOf(c) {
+function figuresOf(c, commandsRunning = 0) {
   if (!c) return null;
   const parts = [];
+  if (commandsRunning) parts.push(`${commandsRunning} command${commandsRunning === 1 ? '' : 's'} running`);
   if (c.context && c.context.window) parts.push(`ctx ${Math.round(100 * c.context.used / c.context.window)}%`);
   if (c.model) parts.push([String(c.model).replace(/^openai\./, ''), c.effort].filter(Boolean).join(' '));
   const running = c.state === 'working' && c.lastTool && !c.lastTool.endedMs;
@@ -562,7 +590,7 @@ async function refreshPanels() {
         if (was.working && c && !c.working) postTo(panel, { type: 'codex-extras-chime', kind: 'done' });
         else if (planQuestions(thread) > (was.questions || 0)) postTo(panel, { type: 'codex-extras-chime', kind: 'question' });
       }
-      if (deps.settings().figures) postTo(panel, figuresOf(c) || { type: 'codex-extras-figures', text: '' });
+      if (deps.settings().figures) postTo(panel, figuresOf(c, runningCommands(thread).length) || { type: 'codex-extras-figures', text: '' });
       postTo(panel, view);
       if (whens.has(thread)) postTo(panel, { type: 'codex-extras-user-times', ...whens.get(thread) });
     }
@@ -662,6 +690,9 @@ function installHooks() {
     else if (kind === 'answer') moved = !!approvals.resolve(msg && msg.id);
     else if (kind === 'notification' && msg && msg.method === 'serverRequest/resolved') {
       moved = !!approvals.resolve(msg.params && msg.params.requestId);
+    } else if (kind === 'notification' && noteCommand(msg)) {
+      refreshPanels().catch(() => { /* the next poll draws it */ });
+      return;
     }
     if (!moved) return;
     approvalsChanged();
@@ -781,6 +812,7 @@ function activate(context, opts) {
       '__codexExtrasAppServer']) delete globalThis[k];
     approvals.clear();
     onApprovals.clear();
+    commands.clear();
   } });
   /* Straight after activation rather than after a pause: Codex starts on the same event as this extension, in no set
      order, and every moment waited is one more in which it reads the copy of its files that is about to be replaced. */
@@ -791,5 +823,5 @@ function activate(context, opts) {
 module.exports = { activate, ensurePatched, statusLines, openInSidebar, canType, canDeliver, deliver, sidebarThread, panelThreads, shownIn,
   nowShowing, revealPanel, removePatch,
   figuresOf, safeColor, viewOf, sampleLayout, selfCheckPage, selfCheckLines, installHooks, refreshPanels, approvalsOf,
-  decideCount, waitingThreads, onApprovalsChanged, offerReloadIfStale, sidebarShowing, onSidebarChanged, _state: () => state, _registry: registry, _approvals: approvals,
+  decideCount, waitingThreads, onApprovalsChanged, offerReloadIfStale, sidebarShowing, onSidebarChanged, runningCommands, _state: () => state, _registry: registry, _approvals: approvals,
   TAB_DOTS, ASK_MS };
