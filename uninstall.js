@@ -19,7 +19,7 @@ const plan = require('./src/uninstall-plan');
 const manifest = (() => { try { return require('./package.json'); } catch (_) { return {}; } })();
 const id = manifest.publisher && manifest.name ? `${manifest.publisher}.${manifest.name}` : plan.ID;
 
-for (const root of plan.restoreDirs(path.dirname(__dirname), { id })) {
+for (const root of plan.restoreDirs(path.dirname(__dirname), { id: [id, ...plan.FORMER_IDS] })) {
   let names = [];
   try { names = fs.readdirSync(root); } catch (_) { continue; }
   for (const name of names.filter((n) => /^openai\.chatgpt-/.test(n))) {

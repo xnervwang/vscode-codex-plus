@@ -123,13 +123,13 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
     'activating next to an unrecorded Codex writes one line to the log and puts up no dialog');
 
   control.state.log.length = 0;
-  await control.state.handlers['codexExtras.status']();
+  await control.state.handlers['codexPlus.status']();
   const shown = control.state.log.join('\n');
   eq([/Verified against Codex: NOT this build/.test(shown), shown.includes(UNRECORDED)], [true, true],
     'and the status command shows where the installed build stands');
   control.state.extensions.set('openai.chatgpt', { extensionPath: tmp('codex2'), packageJSON: { version: newest } });
   control.state.log.length = 0;
-  await control.state.handlers['codexExtras.status']();
+  await control.state.handlers['codexPlus.status']();
   eq(/Verified against Codex: this build/.test(control.state.log.join('\n')), true,
     'on a recorded build the same line says so instead');
   for (const d of subs) { try { d.dispose(); } catch (_) { /* gone */ } }

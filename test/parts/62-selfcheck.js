@@ -505,19 +505,19 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
     globalStorageUri: vscode.Uri.file(tmp('storage')), extensionPath: root });
 
   control.state.log.length = 0;
-  await control.state.handlers['codexExtras.status']();
+  await control.state.handlers['codexPlus.status']();
   eq(/Page self-check: the patch to Codex is not in effect/.test(control.state.log.join('\n')), true,
     'Show Status ends with the self-check, and in a window with no patch that is the one line rather than an error');
 
   control.state.log.length = 0;
   const before = control.state.said.length;
-  await control.state.handlers['codexExtras.pageSelfCheck']();
+  await control.state.handlers['codexPlus.pageSelfCheck']();
   const said = control.state.said.slice(before);
   eq([/Page self-check:/.test(control.state.log.join('\n')), said.length, (said[0] || {}).buttons],
     [true, 1, ['Copy']], 'and the command of its own writes the same lines to the output panel and offers to copy them');
   /* The lines go to the clipboard whole, which is the point of the command: one paste carries the answer back. */
-  control.answer('Codex Extras:', 'Copy');
-  await control.state.handlers['codexExtras.pageSelfCheck']();
+  control.answer('Codex Plus:', 'Copy');
+  await control.state.handlers['codexPlus.pageSelfCheck']();
   eq(/^Page self-check:/.test(control.state.clipboard), true, 'and copies them when the user asks for that');
   for (const d of subs) { try { d.dispose(); } catch (_) { /* gone */ } }
   ext.deactivate();

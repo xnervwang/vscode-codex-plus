@@ -46,7 +46,7 @@ module.exports = async ({ eq, tmp }) => {
 
   /* Where the logs are: this extension's log folder has Codex's beside it, and VS Code's logs folder two levels up. */
   const root = tmp('logs');
-  const ours = path.join(root, '20261109T010000', 'exthost2', 'xnervwang.codex-extras');
+  const ours = path.join(root, '20261109T010000', 'exthost2', 'xnervwang.codex-plus');
   const w = ot.whereLogs(ours);
   eq([w.own, w.root], [path.join(root, '20261109T010000', 'exthost2', 'openai.chatgpt', 'Codex.log'), root],
     'this window\'s Codex.log is beside this extension\'s log folder');

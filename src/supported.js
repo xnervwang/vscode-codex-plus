@@ -114,7 +114,7 @@ function noticeLine(version, record = read()) {
   const all = versions(record);
   return `Codex ${version} is not among the builds this extension has been verified against `
     + `(${all.join(', ') || 'none recorded'}). Nothing is disabled by that: the patch matches Codex's own code by shape `
-    + 'and refuses as a whole if it does not fit, and "Codex Extras: Show Status" says where each piece stands.';
+    + 'and refuses as a whole if it does not fit, and "Codex Plus: Show Status" says where each piece stands.';
 }
 
 module.exports = { RECORD_FILE, read, versions, entry, verified, statusLines, noticeLine, cmpVersion, checkedParts, FIELDS };

@@ -5,7 +5,7 @@
 'use strict';
 /*
  * Activation: reads the settings, points the Codex file readers at the right CODEX_HOME, builds the Codex source and
- * registers it with Agent Work Plan (xnervwang.agent-work-plan), which draws the work plan, Conversations and Answer
+ * registers it with Agent Plus (xnervwang.agent-plus), which draws the work plan, Conversations and Answer
  * views. What stays here is what only Codex has: the Codex session list, the companion plugin, the patch to Codex and
  * the tab bar's open button. Each part lives in its own module under src/; this file wires them together and owns the
  * commands.
@@ -34,14 +34,14 @@ const pythonRuntime = require('./src/python-runtime');
 const openTimes = require('./src/open-times');
 const codexConfig = require('./src/codex-config');
 
-const CONFIG = 'codexExtras';
+const CONFIG = 'codexPlus';
 let log = null;
 let reader = null;
 
 function cfg() { return vscode.workspace.getConfiguration(CONFIG); }
 
 /*
- * The settings, with the master switch (codexExtras.enabled) already applied to the ones it covers.
+ * The settings, with the master switch (codexPlus.enabled) already applied to the ones it covers.
  *
  * The switch is a setting of its own rather than a command that writes `false` over each of the settings below, so that
  * turning everything off and on again gives back the choices the user had made rather than every default. Everything
@@ -52,7 +52,7 @@ function cfg() { return vscode.workspace.getConfiguration(CONFIG); }
  * chime - and the README says as much.
  *
  * `patchCodex` reading 'off' stops the patch being applied or kept up to date. It does not take an applied patch out of
- * Codex's files: that is `Codex Extras: Remove the Patch from Codex`, and the two are different acts.
+ * Codex's files: that is `Codex Plus: Remove the Patch from Codex`, and the two are different acts.
  */
 function settings() {
   const c = cfg();
@@ -109,13 +109,13 @@ function writeHookSettings(context) {
       tellTimeZone: c.get('tellCodexYourTimeZone', true),
       compactTokenLimit: codexConfig.compactLimit(files.codexHome()),
     });
-    const zone = context.globalState.get('codexExtras.clientTimeZone');
+    const zone = context.globalState.get('codexPlus.clientTimeZone');
     if (zone) fs.writeFileSync(path.join(install.planDir(files.codexHome()), 'client-time-zone.json'), JSON.stringify({ timeZone: zone }) + '\n');
   } catch (e) { log.appendLine(`could not write the hooks' settings: ${e.message}`); }
 }
 
 async function activate(context) {
-  log = vscode.window.createOutputChannel('Codex Extras');
+  log = vscode.window.createOutputChannel('Codex Plus');
   context.subscriptions.push(log);
   applyCodexHome();
   const say = (m) => log.appendLine(`${new Date().toISOString()} ${m}`);
@@ -128,14 +128,14 @@ async function activate(context) {
     seen: createSeen(context.globalState) });
   context.subscriptions.push(source);
   /* The user's time zone, as Codex's page reported it through the patch. */
-  source.timeZone = () => context.globalState.get('codexExtras.clientTimeZone') || '';
+  source.timeZone = () => context.globalState.get('codexPlus.clientTimeZone') || '';
   const reportTimeZone = async (zone) => {
-    if (!zone || zone === context.globalState.get('codexExtras.clientTimeZone')) return;
-    await context.globalState.update('codexExtras.clientTimeZone', zone);
+    if (!zone || zone === context.globalState.get('codexPlus.clientTimeZone')) return;
+    await context.globalState.update('codexPlus.clientTimeZone', zone);
     writeHookSettings(context);
   };
 
-  /* ── The Codex session list, in Agent Work Plan's container ── */
+  /* ── The Codex session list, in Agent Plus's container ── */
   const memory = new TabMemory(vscode, context.workspaceState, {
     titleOf: (id) => (reader.thread(id) || {}).title || '',
     exists: (id) => reader.present(id),
@@ -147,7 +147,7 @@ async function activate(context) {
   const sessionsProvider = new SessionsProvider(vscode, { memory, memento: context.globalState, settings, reader,
     stateOf: (id) => lastConversations.get(id), wantState: (ids) => source.wantState(ids),
     sidebarShowing: () => patching.sidebarShowing() });
-  context.subscriptions.push(vscode.window.registerTreeDataProvider('codexExtras.sessions', sessionsProvider));
+  context.subscriptions.push(vscode.window.registerTreeDataProvider('codexPlus.sessions', sessionsProvider));
   context.subscriptions.push(vscode.window.registerFileDecorationProvider(sessionsProvider));
   const redrawSessions = async () => {
     try { lastConversations = new Map((await source.listConversations()).map((c) => [c.sessionId, c])); } catch (_) { /* the last one stays */ }
@@ -177,10 +177,10 @@ async function activate(context) {
   context.subscriptions.push(patching.onApprovalsChanged(drawWaiting), source.onDidChangeConversations(drawWaiting));
   drawWaiting();
 
-  /* ── Agent Work Plan draws the rest ── */
+  /* ── Agent Plus draws the rest ── */
   const link = await hostLink.link(vscode, source, { log: say, memento: context.globalState });
   if (link.registered) {
-    say('the Codex source is registered with Agent Work Plan');
+    say('the Codex source is registered with Agent Plus');
     context.subscriptions.push(link.registration);
   }
   redrawSessions();
@@ -197,7 +197,7 @@ async function activate(context) {
       || e.affectsConfiguration(`${CONFIG}.lowContextOutline`) || e.affectsConfiguration(`${CONFIG}.chime`)) {
       const typed = String(cfg().get('userMessageColor', '') || '').trim();
       if (typed && !patching.safeColor(typed)) {
-        vscode.window.showWarningMessage(`Codex Extras: "${typed}" is not a CSS colour (use for example #90EE90, `
+        vscode.window.showWarningMessage(`Codex Plus: "${typed}" is not a CSS colour (use for example #90EE90, `
           + 'lightgreen or rgb(144,238,144)); the colour of your own messages is left as Codex draws it.');
       }
       patching.refreshPanels().catch((err) => say(`redrawing the Codex pages: ${err.message}`));
@@ -265,7 +265,7 @@ function registerCommands(context, { source, memory, sessionsProvider, say, link
   const threadArg = (arg) => (typeof arg === 'string' ? arg : arg && arg.thread ? arg.thread.id : arg && arg.sessionId) || '';
   const restricted = () => {
     if (trusted()) return false;
-    vscode.window.showInformationMessage('Codex Extras: in Restricted Mode nothing is installed or changed. Trust the workspace first.');
+    vscode.window.showInformationMessage('Codex Plus: in Restricted Mode nothing is installed or changed. Trust the workspace first.');
     return true;
   };
 
@@ -292,17 +292,17 @@ function registerCommands(context, { source, memory, sessionsProvider, say, link
         + ` (this extension ships ${install.pluginVersion()}`
         + `${installed.length ? `; Codex's copy has ${({ current: 'the same files', 'other version': 'another version',
           'no digest': 'files of unknown age', 'files differ': 'DIFFERENT FILES, reinstall to update it' })[copy] || copy}` : ''})`,
-      `Additions: ${settings().enabled ? 'on' : 'OFF (codexExtras.enabled); the patch to Codex is left as it is'}`,
+      `Additions: ${settings().enabled ? 'on' : 'OFF (codexPlus.enabled); the patch to Codex is left as it is'}`,
       `Python for the hooks: ${python ? `${python.version} as ${python.launcher.join(' ')} (${python.executable})`
         : `none found, tried ${tried.map((l) => l.join(' ')).join(', ')}`
-          + (pythonRuntime.build() ? '; "Codex Extras: Download Python for the Work Plan Hooks" fetches one' : '')}`,
+          + (pythonRuntime.build() ? '; "Codex Plus: Download Python for the Work Plan Hooks" fetches one' : '')}`,
       `Plans: ${install.planDir(home)}`,
       `codex program: ${codexProgram() || '(not found)'}`,
-      `Agent Work Plan: ${link.registered ? 'the Codex source is registered' : `not registered (${link.code}: ${link.reason})`}`,
+      `Agent Plus: ${link.registered ? 'the Codex source is registered' : `not registered (${link.code}: ${link.reason})`}`,
       `Workspace trusted: ${trusted() ? 'yes' : 'no (Restricted Mode: nothing is written)'}`,
       ...patching.statusLines(),
       ...supported.statusLines(codexVersion()),
-      ...openTimes.reportLines(await opens.read().catch(() => []), { zone: context.globalState.get('codexExtras.clientTimeZone') || '', last: 3 }),
+      ...openTimes.reportLines(await opens.read().catch(() => []), { zone: context.globalState.get('codexPlus.clientTimeZone') || '', last: 3 }),
       /* What Codex's own page makes of the conversation in front. A window with no patch, or none with a Codex tab in
          front, answers with the one line saying so rather than holding this command up. */
       ...patching.selfCheckLines(await patching.selfCheckPage()),
@@ -321,7 +321,7 @@ function registerCommands(context, { source, memory, sessionsProvider, say, link
     log.show(true);
     const copy = 'Copy';
     const pick = await vscode.window.showInformationMessage(answer.error
-      ? `Codex Extras: ${answer.error}` : 'Codex Extras: the page self-check is in the output panel.', copy);
+      ? `Codex Plus: ${answer.error}` : 'Codex Plus: the page self-check is in the output panel.', copy);
     if (pick === copy) await vscode.env.clipboard.writeText(lines.join('\n'));
   });
   /*
@@ -330,7 +330,7 @@ function registerCommands(context, { source, memory, sessionsProvider, say, link
    * It writes the one setting the others are read through (settings()), so the user's own choices among them survive
    * being turned off and come back as they were. What it does not do is take the patch out of Codex's files: with the
    * switch off the patch is left in place and nothing is drawn with it, and the file is put back only by
-   * `Codex Extras: Remove the Patch from Codex`. The command titles say so, because a "Turn Off" that was thought to
+   * `Codex Plus: Remove the Patch from Codex`. The command titles say so, because a "Turn Off" that was thought to
    * restore Codex's own files would be found out only much later.
    */
   const setEnabled = async (on) => {
@@ -338,8 +338,8 @@ function registerCommands(context, { source, memory, sessionsProvider, say, link
     sessionsProvider.refresh();
     patching.refreshPanels().catch((e) => say(`redrawing the Codex pages: ${e.message}`));
     vscode.window.showInformationMessage(on
-      ? 'Codex Extras: the additions are on again, each as you had it set.'
-      : 'Codex Extras: the additions are off. The patch to Codex\'s files is still in place and unchanged; '
+      ? 'Codex Plus: the additions are on again, each as you had it set.'
+      : 'Codex Plus: the additions are off. The patch to Codex\'s files is still in place and unchanged; '
         + '"Remove the Patch from Codex" is what puts those back.');
   };
   reg('turnOn', () => setEnabled(true));
@@ -353,7 +353,7 @@ function registerCommands(context, { source, memory, sessionsProvider, say, link
       await vscode.workspace.getConfiguration(CONFIG).update('enabled', true, vscode.ConfigurationTarget.Global);
       say('the additions were off; turned back on, since the patch is only of use to them');
     }
-    await context.globalState.update(`codexExtras.patchAsked:${(vscode.extensions.getExtension('openai.chatgpt') || { packageJSON: {} }).packageJSON.version}`, 'yes');
+    await context.globalState.update(`codexPlus.patchAsked:${(vscode.extensions.getExtension('openai.chatgpt') || { packageJSON: {} }).packageJSON.version}`, 'yes');
     await vscode.workspace.getConfiguration(CONFIG).update('patchCodex', 'on', vscode.ConfigurationTarget.Global);
     vscode.window.showInformationMessage('Codex will be patched now; reload the window when asked.');
     /* Only the patching itself: activation already wired the hooks and the listeners, and wiring them again would
@@ -378,16 +378,16 @@ function registerCommands(context, { source, memory, sessionsProvider, say, link
   reg('sampleConversationDom', async () => {
     if (restricted()) return;
     const r = await patching.sampleLayout();
-    if (r.error) { vscode.window.showWarningMessage(`Codex Extras: ${r.error}`); return; }
+    if (r.error) { vscode.window.showWarningMessage(`Codex Plus: ${r.error}`); return; }
     const codex = vscode.extensions.getExtension('openai.chatgpt');
     let file;
     try {
       file = domSample.save({ dir: context.globalStorageUri.fsPath, sample: r.sample,
         codexVersion: ((codex && codex.packageJSON) || {}).version || '' });
-    } catch (e) { vscode.window.showErrorMessage(`Codex Extras: the sample could not be written: ${e.message}`); return; }
+    } catch (e) { vscode.window.showErrorMessage(`Codex Plus: the sample could not be written: ${e.message}`); return; }
     say(`conversation layout sample written to ${file}`);
     const copy = 'Copy Path';
-    const pick = await vscode.window.showInformationMessage(`Codex Extras: the conversation layout sample is at ${file}`, copy);
+    const pick = await vscode.window.showInformationMessage(`Codex Plus: the conversation layout sample is at ${file}`, copy);
     if (pick === copy) await vscode.env.clipboard.writeText(file);
   });
   /*
@@ -396,7 +396,7 @@ function registerCommands(context, { source, memory, sessionsProvider, say, link
    */
   reg('goToWaiting', async () => {
     const waiting = patching.waitingThreads().filter((t) => patching.approvalsOf(t).decide);
-    if (!waiting.length) { vscode.window.showInformationMessage('Codex Extras: no Codex conversation in this window is waiting for you.'); return; }
+    if (!waiting.length) { vscode.window.showInformationMessage('Codex Plus: no Codex conversation in this window is waiting for you.'); return; }
     let id = waiting[0];
     if (waiting.length > 1) {
       const pick = await vscode.window.showQuickPick(waiting.map((t) => ({ label: (reader.thread(t) || {}).title || t, description: t, id: t })),
@@ -409,20 +409,20 @@ function registerCommands(context, { source, memory, sessionsProvider, say, link
   });
   reg('showOpenTimes', async () => {
     const spans = await opens.read().catch(() => []);
-    log.appendLine(openTimes.reportLines(spans, { zone: context.globalState.get('codexExtras.clientTimeZone') || '', last: 20 }).join('\n'));
+    log.appendLine(openTimes.reportLines(spans, { zone: context.globalState.get('codexPlus.clientTimeZone') || '', last: 20 }).join('\n'));
     log.show(true);
   });
   reg('showRunningCommands', async () => {
     const running = patching.runningCommands();
-    if (!running.length) { vscode.window.showInformationMessage('Codex Extras: no command Codex started is running in this window.'); return; }
-    const zone = context.globalState.get('codexExtras.clientTimeZone') || undefined;
+    if (!running.length) { vscode.window.showInformationMessage('Codex Plus: no command Codex started is running in this window.'); return; }
+    const zone = context.globalState.get('codexPlus.clientTimeZone') || undefined;
     const when = (ms) => { try { return new Date(ms).toLocaleTimeString('en-GB', { timeZone: zone }); } catch (_) { return new Date(ms).toISOString().slice(11, 19); } };
     const pick = await vscode.window.showQuickPick(running.map((c) => ({ label: c.command.slice(0, 120) || '(no command line)',
       description: c.cwd, detail: `since ${when(c.startedMs)} · ${(reader.thread(c.thread) || {}).title || c.thread}`, thread: c.thread })),
     { placeHolder: 'Commands Codex started that are still running; pick one to open its conversation' });
     if (pick && pick.thread) await tabs.openInTab(vscode, pick.thread);
   });
-  reg('openSettings', () => vscode.commands.executeCommand('workbench.action.openSettings', '@ext:xnervwang.codex-extras'));
+  reg('openSettings', () => vscode.commands.executeCommand('workbench.action.openSettings', '@ext:xnervwang.codex-plus'));
   reg('installWorkPlanPlugin', () => (restricted() ? undefined : installPlugin(context, say, { interactive: true })));
   reg('downloadPython', async () => {
     if (restricted()) return;
@@ -444,8 +444,8 @@ function registerCommands(context, { source, memory, sessionsProvider, say, link
       await install.setPluginEnabled({ binary, home: files.codexHome(), enabled: on });
       say(`Codex is now set to ${on ? 'load' : 'skip'} the work plan plugin in ${files.codexHome()}`);
       vscode.window.showInformationMessage(on
-        ? 'Codex Extras: Codex will load the work plan plugin again. Open a new conversation for it to take effect.'
-        : 'Codex Extras: Codex will not load the work plan plugin. It stays installed, with its hooks still trusted; '
+        ? 'Codex Plus: Codex will load the work plan plugin again. Open a new conversation for it to take effect.'
+        : 'Codex Plus: Codex will not load the work plan plugin. It stays installed, with its hooks still trusted; '
           + '"Load the Work Plan Plugin in Codex" turns it back on.');
     } catch (e) { vscode.window.showErrorMessage(`Could not change whether Codex loads the plugin: ${e.message}`); }
   };
@@ -566,7 +566,7 @@ async function offerPlugin(context, say) {
   const mode = settings().installPlugin;
   if (mode === 'never') return;
   if (mode === 'ask') {
-    const key = `codexExtras.offered:${home}:${st.want}:${st.digest}`;
+    const key = `codexPlus.offered:${home}:${st.want}:${st.digest}`;
     if (context.globalState.get(key)) return;
     await context.globalState.update(key, true);
     const have = st.versions;
@@ -593,15 +593,15 @@ function findPython(context) {
 async function downloadPython(context, say) {
   const storage = context.globalStorageUri.fsPath;
   if (!pythonRuntime.build()) {
-    vscode.window.showInformationMessage('Codex Extras: python.org publishes an embeddable Python for Windows only. '
-      + 'On this machine, install Python 3 and run "Codex Extras: Install the Work Plan Plugin into Codex".');
+    vscode.window.showInformationMessage('Codex Plus: python.org publishes an embeddable Python for Windows only. '
+      + 'On this machine, install Python 3 and run "Codex Plus: Install the Work Plan Plugin into Codex".');
     return null;
   }
   const r = await vscode.window.withProgress(
     { location: vscode.ProgressLocation.Notification, title: `Downloading Python ${pythonRuntime.VERSION} from python.org` },
     () => pythonRuntime.download(storage));
   say(`python download: ${r.said}`);
-  if (!r.ok) { vscode.window.showErrorMessage(`Codex Extras: downloading Python failed. ${r.said}`); return null; }
+  if (!r.ok) { vscode.window.showErrorMessage(`Codex Plus: downloading Python failed. ${r.said}`); return null; }
   return r;
 }
 

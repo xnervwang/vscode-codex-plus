@@ -246,7 +246,7 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
   await ext.activate({ subscriptions: subs, workspaceState: fake.memento(), globalState: fake.memento(),
     globalStorageUri: vscode.Uri.file(storage), extensionPath: root });
   const before = control.state.said.length;
-  await control.state.handlers['codexExtras.sampleConversationDom']();
+  await control.state.handlers['codexPlus.sampleConversationDom']();
   const said = control.state.said.slice(before);
   const written = fs.readdirSync(storage).filter((f) => f.startsWith(dom.PREFIX));
   eq([said.length, /patch to Codex is not in effect/.test((said[0] || {}).message || ''), written],

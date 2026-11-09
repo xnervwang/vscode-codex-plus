@@ -4,7 +4,7 @@
 
 'use strict';
 /*
- * activate() itself, against a stand-in VS Code and a stand-in Agent Work Plan: the Codex source is registered with it,
+ * activate() itself, against a stand-in VS Code and a stand-in Agent Plus: the Codex source is registered with it,
  * the session list shows only once that registration was accepted, every command the manifest names is registered, and
  * Restricted Mode writes nothing.
  */
@@ -32,7 +32,7 @@ async function run(root, tmp, { core = 'accept', trusted = true, config = {}, ta
       return core === 'accept' ? { accepted: true, code: '', reason: '', registration: { dispose() {} } }
         : { accepted: false, code: 'core-too-old', reason: 'protocol 1 is not one this host accepts (2)', registration: null };
     };
-    control.state.extensions.set('xnervwang.agent-work-plan', { isActive: true, exports: core === 'bare' ? {} : { agentWorkPlan: { protocol: 1, accepts: [1], features: [], registerSource } } });
+    control.state.extensions.set('xnervwang.agent-plus', { isActive: true, exports: core === 'bare' ? {} : { agentPlus: { protocol: 1, accepts: [1], features: [], registerSource } } });
   }
   const ext = require(path.join(root, 'extension.js'));
   const subs = [];
@@ -57,9 +57,9 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
 
   const hosted = await run(root, tmp);
   eq([hosted.registered.length, hosted.registered[0] && hosted.registered[0].id, hosted.registered[0] && hosted.registered[0].protocol],
-    [1, 'codex', 1], 'the Codex source is registered with Agent Work Plan, at protocol 1');
-  eq(hosted.state.context['codexExtras.registered'], true, 'an accepted registration shows the session list');
-  eq(hosted.state.views, ['codexExtras.sessions'], 'the session list is the only view this extension provides');
+    [1, 'codex', 1], 'the Codex source is registered with Agent Plus, at protocol 1');
+  eq(hosted.state.context['codexPlus.registered'], true, 'an accepted registration shows the session list');
+  eq(hosted.state.views, ['codexPlus.sessions'], 'the session list is the only view this extension provides');
   eq(hosted.state.status.filter((s) => s.shown).length, 0, 'and nothing of its own is in the status bar while no conversation is waiting on anybody');
   eq(declared.filter((c) => !hosted.state.registered.includes(c)), [], 'every command in the manifest is registered');
   eq(hosted.wroteSettings, true, 'in a trusted window the hooks\' settings are written');
@@ -75,9 +75,9 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
     const w = await run(root, tmp, { configToml: 'model_provider = "amazon-bedrock"\n\n[model_providers.amazon-bedrock.aws]\nregion = "us-west-2"\n',
       probe: async ({ control, home }) => {
         const mark = control.state.log.length;
-        await control.state.handlers['codexExtras.status']();
+        await control.state.handlers['codexPlus.status']();
         const id = /([0-9a-f-]{36})\.jsonl$/.exec(fs.readdirSync(path.join(home, 'sessions'), { recursive: true }).map(String).find((f) => f.endsWith('.jsonl')).replace(/\\/g, '/'))[1];
-        await control.state.handlers['codexExtras.sessionInfo'](id);
+        await control.state.handlers['codexPlus.sessionInfo'](id);
         return { status: control.state.log.slice(mark).join('\n'), info: (control.state.picks[control.state.picks.length - 1] || []).map((p) => `${p.label}=${p.value}`) };
       } });
     eq([/^Account: Amazon Bedrock · us-west-2 /m.test(w.probed.status), w.probed.info.includes('Account=Amazon Bedrock · us-west-2')], [true, true],
@@ -101,7 +101,7 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
       hiddenAgain: !(after && after.shown) };
   } });
   eq([waiting.probed.text, waiting.probed.command, /One/.test(waiting.probed.tooltip || '')],
-    ['$(bell-dot) 1 to decide', 'codexExtras.goToWaiting', true],
+    ['$(bell-dot) 1 to decide', 'codexPlus.goToWaiting', true],
     'a conversation waiting for permission puts a count in the status bar, naming it on hover and going to it when clicked');
   eq(waiting.probed.hiddenAgain, true, 'and the count goes once the request is answered, rather than sitting there at nought');
 
@@ -109,7 +109,7 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
      command and in Show Status. */
   {
     const logs = tmp('logs');
-    const ours = path.join(logs, '20261109T010000', 'exthost1', 'xnervwang.codex-extras');
+    const ours = path.join(logs, '20261109T010000', 'exthost1', 'xnervwang.codex-plus');
     fs.mkdirSync(path.join(path.dirname(ours), 'openai.chatgpt'), { recursive: true });
     fs.writeFileSync(path.join(path.dirname(ours), 'openai.chatgpt', 'Codex.log'), '2026-11-09 01:00:02.000 [info] '
       + 'client.performance.span backgroundDurationMs=0 clientPlatform=darwin durationMs=9320.4 hostType=extension '
@@ -117,10 +117,10 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
       + 'name=app_start outcome=success reason=null timingQuality=foreground wallDurationMs=9320.4\n');
     const w = await run(root, tmp, { logDir: ours, probe: async ({ control }) => {
       const before = control.state.log.length;
-      await control.state.handlers['codexExtras.showOpenTimes']();
+      await control.state.handlers['codexPlus.showOpenTimes']();
       const own = control.state.log.slice(before).join('\n');
       const mark = control.state.log.length;
-      await control.state.handlers['codexExtras.status']();
+      await control.state.handlers['codexPlus.status']();
       return { own, status: control.state.log.slice(mark).join('\n') };
     } });
     eq([/1 found/.test(w.probed.own), /thread +9\.3s .*\[this window\]/.test(w.probed.own), /Opening a Codex page.*1 found/.test(w.probed.status)],
@@ -140,7 +140,7 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
       await new Promise((r) => setTimeout(r, 200));
       control.setTabs([{ label: 'Codex', input: new vscode.TabInputCustom(vscode.Uri.from({ scheme: 'openai-codex', authority: 'route',
         path: '/extension/panel/new' }), 'chatgpt.conversationEditor') }], 0);
-      await control.state.handlers['codexExtras.sessionInfo']();
+      await control.state.handlers['codexPlus.sessionInfo']();
       const rows = (control.state.picks[control.state.picks.length - 1] || []).map((p) => `${p.label}=${p.value}`);
       return { id, rows, said: control.state.said.map((x) => x.message) };
     } });
@@ -149,11 +149,11 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
   }
 
   const refused = await run(root, tmp, { core: 'refuse' });
-  eq([refused.state.context['codexExtras.registered'], refused.state.said.length], [false, 0],
-    'a refused registration leaves the key off, and Agent Work Plan, not this extension, says which one to update');
+  eq([refused.state.context['codexPlus.registered'], refused.state.said.length], [false, 0],
+    'a refused registration leaves the key off, and Agent Plus, not this extension, says which one to update');
 
   const bare = await run(root, tmp, { core: 'bare' });
-  eq([bare.state.context['codexExtras.registered'], bare.state.said.map((s) => /Agent Work Plan has no agentWorkPlan interface/.test(s.message))],
+  eq([bare.state.context['codexPlus.registered'], bare.state.said.map((s) => /Agent Plus has no agentPlus interface/.test(s.message))],
     [false, [true]], 'with no interface to register with, it says so once');
 
   const restricted = await run(root, tmp, { trusted: false });
@@ -161,17 +161,17 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
   else bad(`restricted: ${JSON.stringify([restricted.registered.length, restricted.wroteSettings])}`);
 
   /* ── the session list's own title bar: what a reader sees on it, and what is a click further away ── */
-  const title = (pkg.contributes.menus['view/title'] || []).filter((m) => /codexExtras\.sessions/.test(m.when || ''));
+  const title = (pkg.contributes.menus['view/title'] || []).filter((m) => /codexPlus\.sessions/.test(m.when || ''));
   const onBar = title.filter((m) => /^navigation/.test(m.group || ''));
   const byCommand = new Map(pkg.contributes.commands.map((c) => [c.command, c]));
   eq(onBar.length <= 4, true, `at most four buttons sit on the title bar, the rest in its ... menu (there are ${onBar.length})`);
   eq(onBar.sort((a, b) => a.group.localeCompare(b.group)).map((m) => m.command),
-    ['codexExtras.newInTab', 'codexExtras.newInSidebar', 'codexExtras.findThread', 'codexExtras.refreshSessions'],
+    ['codexPlus.newInTab', 'codexPlus.newInSidebar', 'codexPlus.findThread', 'codexPlus.refreshSessions'],
     'the two for opening a conversation come first, then search and refresh');
   eq(onBar.filter((m) => !byCommand.get(m.command) || !byCommand.get(m.command).icon).map((m) => m.command), [],
     'each of them has an icon, or it would show as a word on the bar');
   eq(title.filter((m) => !/^navigation/.test(m.group || '')).map((m) => m.command),
-    ['codexExtras.showAllFolders', 'codexExtras.openSettings'], 'the ... menu holds the two that are not everyday actions');
+    ['codexPlus.showAllFolders', 'codexPlus.openSettings'], 'the ... menu holds the two that are not everyday actions');
   const menus = [].concat(...Object.values(pkg.contributes.menus)).map((m) => m.command);
   eq(menus.filter((c) => !byCommand.has(c)), [], 'every command a menu names is declared');
 
@@ -184,7 +184,7 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
   {
     const w = await run(root, tmp, { config: { openButtonTarget: 'tab' }, takesRoute: true });
     const before = w.state.commands.length;
-    await w.state.handlers['codexExtras.openCodex']();
+    await w.state.handlers['codexPlus.openCodex']();
     const ran = w.state.commands.slice(before);
     const [cmd, uri, viewType, options] = ran[0] || [];
     eq([ran.length, cmd, uri && uri.path, viewType, options && options.viewColumn, options && options.preview],
@@ -195,21 +195,21 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
     // A split's narrow half is the group in front when its title bar button is pressed, so the group is a setting.
     const w = await run(root, tmp, { config: { openButtonTarget: 'tab', newConversationGroup: 'active' }, takesRoute: true });
     const before = w.state.commands.length;
-    await w.state.handlers['codexExtras.openCodex']();
+    await w.state.handlers['codexPlus.openCodex']();
     const options = (w.state.commands.slice(before)[0] || [])[3];
     eq(options && options.viewColumn, -1, 'set to the group in front, it names that group instead of the first');
   }
   {
     const w = await run(root, tmp, { config: { openButtonTarget: 'tab' } });
     const before = w.state.commands.length;
-    await w.state.handlers['codexExtras.openCodex']();
+    await w.state.handlers['codexPlus.openCodex']();
     eq(w.state.commands.slice(before).map((c) => c[0]), ['vscode.openWith', 'chatgpt.newCodexPanel'],
       'when the route leaves no conversation tab, Codex\'s own command is asked instead');
   }
   {
     const w = await run(root, tmp, { config: { openButtonTarget: 'sidebar' } });
     const before = w.state.commands.length;
-    await w.state.handlers['codexExtras.openCodex']();
+    await w.state.handlers['codexPlus.openCodex']();
     eq(w.state.commands.slice(before).map((c) => c[0]), ['chatgpt.openSidebar'],
       'set to the sidebar it opens Codex\'s sidebar and no tab');
   }
@@ -224,13 +224,13 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
     const w = await run(root, tmp, { probe: async ({ vscode, control }) => {
       vscode.env.uriScheme = 'vscode-insiders';
       const mark = control.state.commands.length;
-      await control.state.handlers['codexExtras.openThreadInSidebar'](id);
-      await control.state.handlers['codexExtras.newInSidebar']();
+      await control.state.handlers['codexPlus.openThreadInSidebar'](id);
+      await control.state.handlers['codexPlus.newInSidebar']();
       const ran = control.state.commands.slice(mark).map((c) => c[0]);
       control.state.externalAnswer = false;
       const mark2 = control.state.commands.length;
-      await control.state.handlers['codexExtras.openThreadInSidebar'](id);
-      await control.state.handlers['codexExtras.newInSidebar']();
+      await control.state.handlers['codexPlus.openThreadInSidebar'](id);
+      await control.state.handlers['codexPlus.newInSidebar']();
       return { external: control.state.external.slice(), ran, refused: control.state.commands.slice(mark2).map((c) => c[0]) };
     } });
     eq([w.probed.external.slice(0, 2), w.probed.ran],

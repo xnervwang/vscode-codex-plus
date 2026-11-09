@@ -92,7 +92,7 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
 
     const codexVersion = '26.1021.22027';
     control.state.extensions.set('openai.chatgpt', { extensionPath: stale, packageJSON: { version: codexVersion } });
-    const key = `codexExtras.patchAsked:${codexVersion}`;
+    const key = `codexPlus.patchAsked:${codexVersion}`;
     const asked = fake.memento();
     await asked.update(key, 'no');
     control.state.said.length = 0;
@@ -140,22 +140,23 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
     };
     const inHome = (d) => path.join(home, d, 'extensions');
     const mine = editor(inHome('.vscode-server'));
-    const kept = editor(inHome('.vscode-server-insiders'), ['xnervwang.codex-extras-0.2.0']);
-    const none = editor(inHome('.cursor'));
-    const leaving = editor(inHome('.vscode'), ['xnervwang.codex-extras-0.1.0'], { 'xnervwang.codex-extras-0.1.0': true });
-    const lookalike = editor(inHome('.vscode-insiders'), ['xnervwang.codex-extras-plus-1.0.0']);
+    const kept = editor(inHome('.vscode-server-insiders'), ['xnervwang.codex-plus-0.2.0']);
+    const former = editor(inHome('.cursor'), ['xnervwang.codex-extras-0.1.0']);
+    const leaving = editor(inHome('.vscode'), ['xnervwang.codex-plus-1.0.0'], { 'xnervwang.codex-plus-1.0.0': true });
+    const lookalike = editor(inHome('.vscode-insiders'), ['xnervwang.codex-plus-plus-1.0.0']);
     const elsewhere = editor(tmp('editor-elsewhere'));
-    const self = path.join(mine.ext, 'xnervwang.codex-extras-0.1.0');
+    const self = path.join(mine.ext, 'xnervwang.codex-plus-1.0.0');
     fs.mkdirSync(self);
     for (const f of ['uninstall.js', 'package.json']) fs.copyFileSync(path.join(root, f), path.join(self, f));
     fs.cpSync(path.join(root, 'src'), path.join(self, 'src'), { recursive: true });
     require('child_process').execFileSync(process.execPath, [path.join(self, 'uninstall.js')],
       { stdio: 'pipe', env: { ...process.env, HOME: home, USERPROFILE: home } });
     const st = (e) => targets.map((t) => t.status(e.codex));
-    eq([st(mine), st(kept)], [['clean', 'clean'], ['patched', 'patched']],
-      'uninstalling puts back the Codex in its own extensions folder and leaves one whose editor still has this extension');
-    eq([st(none), st(leaving), st(lookalike)], [['clean', 'clean'], ['clean', 'clean'], ['clean', 'clean']],
-      'and puts back another editor\'s Codex when that editor has no copy of this extension left: none at all, only one '
+    eq([st(mine), st(kept), st(former)], [['clean', 'clean'], ['patched', 'patched'], ['patched', 'patched']],
+      'uninstalling puts back the Codex in its own extensions folder and leaves one whose editor still has this extension, '
+      + 'under this name or the one it had before, codex-extras');
+    eq([st(leaving), st(lookalike)], [['clean', 'clean'], ['clean', 'clean']],
+      'and puts back another editor\'s Codex when that editor has no copy of this extension left: only one '
       + 'marked for deletion, or only an extension whose name merely starts with this one\'s');
     eq(st(elsewhere), ['patched', 'patched'], 'a folder that is no editor\'s extensions folder is not looked in');
   }

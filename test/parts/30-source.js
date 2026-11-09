@@ -4,7 +4,7 @@
 
 'use strict';
 /*
- * Codex's tabs, the reader of Codex's files and its worker thread, the Codex source as Agent Work Plan sees it, the
+ * Codex's tabs, the reader of Codex's files and its worker thread, the Codex source as Agent Plus sees it, the
  * sweep of plans whose conversation is gone, the session list and what the window remembers of its tabs, against a
  * stand-in Codex home.
  */
@@ -101,7 +101,7 @@ module.exports = async ({ ok, bad, eq, tmp }) => {
     await seenState.update(SINCE_KEY, 1);
     const source = createCodexSource(vscode, { reader: inWorker, patching, trusted: () => trusted, seen: createSeen(seenState) });
     try {
-      eq([source.protocol, source.id, source.label, source.extensionId, PROTOCOL, EXTENSION_ID], [1, 'codex', 'Codex', 'xnervwang.codex-extras', 1, 'xnervwang.codex-extras'],
+      eq([source.protocol, source.id, source.label, source.extensionId, PROTOCOL, EXTENSION_ID], [1, 'codex', 'Codex', 'xnervwang.codex-plus', 1, 'xnervwang.codex-plus'],
         'the source speaks protocol 1 and names its extension');
       eq(source.planPath(idle.id), path.join(home, 'plugins', 'data', 'agent-work-plan-codex-extras', `${idle.id}.json`), 'its plans are in the plugin\'s data directory');
       eq([source.planPath('../x'), source.sessionForTab(control.codexTab(unread.id)), source.sessionForTab(newTab), source.sessionForTab(control.fileTab('/x'))],
@@ -162,7 +162,7 @@ module.exports = async ({ ok, bad, eq, tmp }) => {
       eq([source.isFocused(idle.id), source.isFocused(unread.id), source.isFocused(working.id), source.isFocused('')], [true, true, false, false],
         'isFocused: the active tab, or the thread Codex\'s sidebar follows');
       /*
-       * Agent Work Plan asks a moment after each report, and by then the user can be somewhere else. The sidebar says
+       * Agent Plus asks a moment after each report, and by then the user can be somewhere else. The sidebar says
        * nothing about that, so the active tab becoming a tab that is not Codex's is what ends it: answering true then
        * would pull the work plan view back to a conversation the user has left.
        */

@@ -6,7 +6,7 @@
 /*
  * The patch to Codex's own extension at run time: putting it in place, and using what it hands over.
  *
- * Patching is asked once per Codex version (codexExtras.patchCodex: ask, on or off) and takes effect after a reload.
+ * Patching is asked once per Codex version (codexPlus.patchCodex: ask, on or off) and takes effect after a reload.
  * Once Codex carries the patch, a build of this extension that changes what the patch writes refreshes it without
  * asking again: the question answered was whether to patch this Codex, and the answer is still the same one.
  * Removing it is a command, and the uninstall hook restores Codex's files too (uninstall.js).
@@ -82,7 +82,7 @@ function anchorsMissingLine(m) {
       + `${m.composer === false ? ', nor its message box' : ''}`;
   return `A Codex page showed ${m.turns} turn${m.turns === 1 ? '' : 's'} and the page script recognised none of ${what}: `
     + 'this Codex build has probably changed what the additions in its page are attached to. '
-    + '"Codex Extras: Check What the Page Script Found in This Conversation" says which part was not found.';
+    + '"Codex Plus: Check What the Page Script Found in This Conversation" says which part was not found.';
 }
 
 function statusLines() {
@@ -246,7 +246,7 @@ function postTo(panel, msg) {
    So the outcome is uncertain (the protocol's word for it): the sender keeps the answer and tells the user to look. */
 /*
  * An answer into a conversation shown here, in a tab or in the sidebar: Codex's own route state puts it in the message
- * box as a draft (into an empty box only), and the page script then sends it unless codexExtras.sendAnswers is off and
+ * box as a draft (into an empty box only), and the page script then sends it unless codexPlus.sendAnswers is off and
  * reports what it saw (src/page/codex-extras-page.js takeAnswer). A page with no such script, or one that does not
  * answer in time, leaves the outcome uncertain: the draft may still be there.
  */
@@ -345,13 +345,13 @@ function pagePatchState() {
  */
 async function askPage(kind, { field, doing, noun, busy, failed, timeoutMs = ASK_MS }) {
   if (!state.active) {
-    return { error: 'the patch to Codex is not in effect, so its page cannot be asked. Run "Codex Extras: Patch Codex" '
+    return { error: 'the patch to Codex is not in effect, so its page cannot be asked. Run "Codex Plus: Patch Codex" '
       + 'and reload the window.' };
   }
   const pageState = pagePatchState();
   if (pageState && pageState !== 'patched') {
     return { error: `Codex's page carries ${pageState === 'outdated' ? 'an older version of' : 'none of'} this extension's `
-      + `page script, so it does not know how to ${doing}. Run "Codex Extras: Patch Codex" and reload the window.` };
+      + `page script, so it does not know how to ${doing}. Run "Codex Plus: Patch Codex" and reload the window.` };
   }
   const panel = activePanel();
   if (!panel) return { error: `bring a Codex conversation tab to the front first: the ${noun} is of the page in front.` };
@@ -742,7 +742,7 @@ async function ensurePatched(vscode, context, log, mode) {
   if (!dir) { state.reason = 'the Codex extension is not installed'; return; }
   const states = targets.map((t) => t.status(dir));
   if (states.every((s) => s === 'patched')) { state.reason = state.active ? 'connected' : 'patched; reload to connect'; return; }
-  if (mode === 'off') { state.reason = 'turned off (codexExtras.patchCodex)'; return; }
+  if (mode === 'off') { state.reason = 'turned off (codexPlus.patchCodex)'; return; }
   const version = (vscode.extensions.getExtension('openai.chatgpt').packageJSON || {}).version || '';
   /*
    * Every target still carries a mark of this extension's, just not this build's: Codex is patched and what is in it is
@@ -754,7 +754,7 @@ async function ensurePatched(vscode, context, log, mode) {
   /* The answer given for this Codex version: 'yes' goes ahead without asking again, even after the patch was taken off
      by something other than the user (a failed refresh puts every target back), and 'no' stays a no. Anything else,
      including what an older build stored without saying which answer it was, is asked again. */
-  const key = `codexExtras.patchAsked:${version}`;
+  const key = `codexPlus.patchAsked:${version}`;
   const answered = context.globalState.get(key);
   if (mode === 'ask' && !refresh && answered === 'no') { state.reason = 'not patched: declined for this Codex version'; return; }
   if (mode === 'ask' && !refresh && answered !== 'yes') {
@@ -763,7 +763,7 @@ async function ensurePatched(vscode, context, log, mode) {
       detail: 'It adds status dots to Codex tabs, opening a conversation in the sidebar, answers into a conversation\'s '
         + 'message box, chimes, a line with each conversation\'s last turn figures, a time on every message and reply, '
         + 'a list of your own messages on the right edge, and your own messages marked out. Codex\'s files are kept and '
-        + 'put back by "Codex Extras: Remove the Patch from Codex" or on uninstall. A window reload applies it.' }, go, 'Not now');
+        + 'put back by "Codex Plus: Remove the Patch from Codex" or on uninstall. A window reload applies it.' }, go, 'Not now');
     await context.globalState.update(key, pick === go ? 'yes' : 'no');
     if (pick !== go) { state.reason = 'not patched: declined for this Codex version'; return; }
   }
@@ -785,7 +785,7 @@ async function ensurePatched(vscode, context, log, mode) {
   /* Codex reads these files when its extension starts and when it builds a page, so neither half of what was just
      written runs until the window is reloaded. There is no way to hand it over without one. */
   const pick = await vscode.window.showInformationMessage(refresh
-    ? 'Codex Extras brought its patch of Codex up to this version. Reload the window for it to take effect.'
+    ? 'Codex Plus brought its patch of Codex up to this version. Reload the window for it to take effect.'
     : 'Codex is patched. Reload the window for it to take effect.', reload);
   if (pick === reload) await vscode.commands.executeCommand('workbench.action.reloadWindow');
 }

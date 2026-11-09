@@ -19,10 +19,10 @@
  */
 const tabs = require('./codex-tabs');
 
-const OPEN_KEY = 'codexExtras.openTabs';
-const CLOSED_KEY = 'codexExtras.recentlyClosed';
+const OPEN_KEY = 'codexPlus.openTabs';
+const CLOSED_KEY = 'codexPlus.recentlyClosed';
 /* The conversation last in front in this workspace, kept across reloads, for the tab bar's open button. */
-const LAST_KEY = 'codexExtras.lastInFront';
+const LAST_KEY = 'codexPlus.lastInFront';
 const KEEP_CLOSED = 50;
 /* More than this many to reopen at once is more likely a record gone wrong than tabs a person had open. */
 const REOPEN_LIMIT = 20;

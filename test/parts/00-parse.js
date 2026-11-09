@@ -31,30 +31,30 @@ module.exports = ({ ok, bad, eq, root }) => {
     } catch (e) { bad(`${f}: ${e.message}`); }
   }
   const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
-  eq([pkg.publisher, pkg.name, pkg.displayName], ['xnervwang', 'codex-extras', 'Codex Extras'], 'extension identity');
-  eq(pkg.version, '0.1.0', 'version stays 0.1.0');
-  eq(pkg.extensionDependencies, ['openai.chatgpt', 'xnervwang.agent-work-plan'], 'depends on the Codex extension and on Agent Work Plan');
-  eq(pkg.agentWorkPlan, { protocol: require(path.join(root, 'src', 'codex-source.js')).PROTOCOL }, 'the manifest states the protocol the source implements');
+  eq([pkg.publisher, pkg.name, pkg.displayName], ['xnervwang', 'codex-plus', 'Codex Plus'], 'extension identity');
+  eq(pkg.version, '1.0.0', 'version stays 1.0.0');
+  eq(pkg.extensionDependencies, ['openai.chatgpt', 'xnervwang.agent-plus'], 'depends on the Codex extension and on Agent Plus');
+  eq(pkg.agentPlus, { protocol: require(path.join(root, 'src', 'codex-source.js')).PROTOCOL }, 'the manifest states the protocol the source implements');
   eq(pkg.capabilities && pkg.capabilities.untrustedWorkspaces && pkg.capabilities.untrustedWorkspaces.supported, 'limited', 'it runs, limited, in Restricted Mode');
   const c = pkg.contributes;
-  eq([c.viewsContainers.activitybar, Object.keys(c.views), c.views.codexExtras],
-    [[{ id: 'codexExtras', title: 'Codex Extras', icon: 'images/sidebar.svg' }], ['codexExtras'],
-      [{ id: 'codexExtras.sessions', name: 'Codex sessions', when: 'config.codexExtras.sessionList' }]],
+  eq([c.viewsContainers.activitybar, Object.keys(c.views), c.views.codexPlus],
+    [[{ id: 'codexPlus', title: 'Codex Plus', icon: 'images/sidebar.svg' }], ['codexPlus'],
+      [{ id: 'codexPlus.sessions', name: 'Codex sessions', when: 'config.codexPlus.sessionList' }]],
   'the session list has its own activity bar container, so it does not sit in the work plan sidebar of whichever agent is in front');
   eq(fs.existsSync(path.join(root, 'images', 'sidebar.svg')), true, 'that container icon is in the repository');
   const commands = c.commands.map((x) => x.command);
   const gone = ['refreshWorkPlan', 'openWorkPlanFile', 'showWorkPlanDetail', 'showConversations', 'answerQuestion', 'openConversation',
-    'restoreWebviewRequestLimit'].map((n) => 'codexExtras.' + n);
-  eq(gone.filter((g) => commands.includes(g) || JSON.stringify(c).includes(`"${g}"`)), [], 'the commands of the views Agent Work Plan draws are gone');
-  eq(['codexExtras.conversations', 'codexExtras.webviewRequestLimit'].filter((k) => k in c.configuration.properties), [], 'and so are their settings');
-  eq(/claudeCodeExtras|codexExtras\.(standalone|hosted|answer"|sessionsHosted|conversations")/.test(JSON.stringify(c)), false, 'nothing names the old host or the standalone views');
-  const open = c.commands.find((x) => x.command === 'codexExtras.openCodex');
+    'restoreWebviewRequestLimit'].map((n) => 'codexPlus.' + n);
+  eq(gone.filter((g) => commands.includes(g) || JSON.stringify(c).includes(`"${g}"`)), [], 'the commands of the views Agent Plus draws are gone');
+  eq(['codexPlus.conversations', 'codexPlus.webviewRequestLimit'].filter((k) => k in c.configuration.properties), [], 'and so are their settings');
+  eq(/claudeCodeExtras|codexPlus\.(standalone|hosted|answer"|sessionsHosted|conversations")/.test(JSON.stringify(c)), false, 'nothing names the old host or the standalone views');
+  const open = c.commands.find((x) => x.command === 'codexPlus.openCodex');
   eq([c.menus['editor/title'], open && open.icon, ['codex-light.svg', 'codex-dark.svg'].every((f) => fs.existsSync(path.join(root, 'images', f)))],
-    [[{ command: 'codexExtras.openCodex', group: 'navigation' },
-      { command: 'codexExtras.sessionInfo', when: "activeCustomEditorId == 'chatgpt.conversationEditor'", group: 'navigation' }],
+    [[{ command: 'codexPlus.openCodex', group: 'navigation' },
+      { command: 'codexPlus.sessionInfo', when: "activeCustomEditorId == 'chatgpt.conversationEditor'", group: 'navigation' }],
     { light: 'images/codex-light.svg', dark: 'images/codex-dark.svg' }, true],
     'the tab bar has the Codex button, with its icons, and the session information button while a Codex conversation is in front');
-  const target = c.configuration.properties['codexExtras.openButtonTarget'];
+  const target = c.configuration.properties['codexPlus.openButtonTarget'];
   eq([target.enum, target.default], [['tab', 'sidebar'], 'tab'], 'the button opens a tab unless set to the sidebar');
   eq(['icon.png', 'icon.svg'].every((f) => fs.existsSync(path.join(root, 'images', f))) && pkg.icon === 'images/icon.png', true, 'the marketplace icon is there');
   const header = /^(\/\/|#) BSD 3-Clause License\n\1 Copyright \(c\) 2026, Xnerv Wang\n\1 All rights reserved\./;

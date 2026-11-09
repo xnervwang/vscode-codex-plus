@@ -6,7 +6,7 @@
 /*
  * Whether a conversation's starting directory is in this window's workspace, comparing real paths.
  *
- * Same shape as folderTest() in Agent Work Plan's src/folders.js, which cannot be required from here because the two
+ * Same shape as folderTest() in Agent Plus's src/folders.js, which cannot be required from here because the two
  * are separate extensions. Two differences matter for Codex's threads:
  *
  *   - a directory that no longer exists still resolves, through the nearest ancestor that does, so a conversation

@@ -18,7 +18,9 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
-const ID = 'xnervwang.codex-extras';
+const ID = 'xnervwang.codex-plus';
+/* The id this extension had before it was renamed: a copy under it still patches its editor's Codex. */
+const FORMER_IDS = ['xnervwang.codex-extras'];
 const EDITORS = ['.vscode', '.vscode-server', '.vscode-insiders', '.vscode-server-insiders', '.cursor'];
 
 /** The extensions folder of every editor this looks in, the given one first. */
@@ -38,19 +40,20 @@ function obsolete(extensionsDir) {
    dash keeps an extension whose name merely starts with this one's from being taken for a copy of it. */
 const folderOf = (id) => new RegExp(`^${id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}-\\d`, 'i');
 
-/** The copies of extension `id` in one extensions folder that its editor has not marked for deletion. */
-function liveCopies(extensionsDir, id = ID) {
-  const own = folderOf(id);
+/** The copies of extension `id` (or of any of a list of ids) in one extensions folder that its editor has not marked
+    for deletion. */
+function liveCopies(extensionsDir, id = [ID, ...FORMER_IDS]) {
+  const own = (Array.isArray(id) ? id : [id]).map(folderOf);
   const marked = obsolete(extensionsDir);
   let names;
   try { names = fs.readdirSync(extensionsDir); } catch (_) { return []; }
-  return names.filter((n) => own.test(n) && marked[n] !== true).map((n) => path.join(extensionsDir, n));
+  return names.filter((n) => own.some((re) => re.test(n)) && marked[n] !== true).map((n) => path.join(extensionsDir, n));
 }
 
 /** The extensions folders whose Codex the uninstall hook of the copy in `extensionsDir` puts back. */
-function restoreDirs(extensionsDir, { id = ID, home = os.homedir() } = {}) {
+function restoreDirs(extensionsDir, { id = [ID, ...FORMER_IDS], home = os.homedir() } = {}) {
   const own = path.resolve(extensionsDir);
   return roots(own, home).filter((d) => d === own || !liveCopies(d, id).length);
 }
 
-module.exports = { ID, EDITORS, roots, obsolete, liveCopies, restoreDirs };
+module.exports = { ID, FORMER_IDS, EDITORS, roots, obsolete, liveCopies, restoreDirs };

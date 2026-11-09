@@ -25,7 +25,7 @@
  * rollout is asked for, and the answer comes back on the next scheduled poll (getChildren, ask).
  *
  * Threads Codex started by itself - sub-agents, the reviews of approval requests - and `codex exec` runs are left out
- * unless codexExtras.hideBackgroundSessions is off, when they are listed under Background. Clicking a conversation opens
+ * unless codexPlus.hideBackgroundSessions is off, when they are listed under Background. Clicking a conversation opens
  * it in a tab. The hover gives its thread id and which group it sits in, and the title can be given a colour.
  *
  * It is drawn in this extension's own activity bar container, so it does not sit in the work plan sidebar while another
@@ -39,7 +39,7 @@ const COLORS = {
   red: 'charts.red', orange: 'charts.orange', yellow: 'charts.yellow', green: 'charts.green',
   cyan: 'terminal.ansiCyan', blue: 'charts.blue', purple: 'charts.purple', pink: 'terminal.ansiMagenta',
 };
-const COLOR_KEY = 'codexExtras.titleColors';
+const COLOR_KEY = 'codexPlus.titleColors';
 const SCHEME = 'codex-extras-thread';
 const STATE_LOOK = {
   working: { icon: 'circle-filled', color: 'charts.green', word: 'working' },
@@ -224,7 +224,7 @@ class SessionsProvider {
     if (element.kind === 'empty') {
       const item = new vscode.TreeItem(element.text, vscode.TreeItemCollapsibleState.None);
       item.id = 'empty:open';
-      item.contextValue = 'codexExtrasEmpty';
+      item.contextValue = 'codexPlusEmpty';
       return item;
     }
     if (element.kind === 'folder') {
@@ -234,7 +234,7 @@ class SessionsProvider {
       item.description = String(f.threads.length);
       item.iconPath = new vscode.ThemeIcon('folder');
       item.tooltip = `${f.threads.length} conversation${f.threads.length === 1 ? '' : 's'} started in ${f.dir}`;
-      item.contextValue = 'codexExtrasFolder';
+      item.contextValue = 'codexPlusFolder';
       return item;
     }
     if (element.kind === 'group') {
@@ -243,11 +243,11 @@ class SessionsProvider {
       item.id = `group:${g.key}`;
       // An empty group says so in a row of its own instead of carrying a nought.
       if (g.threads.length) item.description = String(g.threads.length);
-      item.contextValue = `codexExtrasGroup-${g.key}`;
+      item.contextValue = `codexPlusGroup-${g.key}`;
       if (g.key === 'other') {
         item.iconPath = new vscode.ThemeIcon('history');
         item.tooltip = 'Conversations started outside this window\'s workspace, by the folder they started in.'
-          + ' Right-click to list them with the rest instead (codexExtras.sessionsInWorkspaceOnly).';
+          + ' Right-click to list them with the rest instead (codexPlus.sessionsInWorkspaceOnly).';
       }
       return item;
     }
@@ -262,7 +262,7 @@ class SessionsProvider {
     item.description = dateSpan(t.createdMs, t.updatedMs);
     item.iconPath = new vscode.ThemeIcon(look.icon, new vscode.ThemeColor(look.color));
     const open = element.group === 'open';
-    item.contextValue = t.archived ? 'codexExtrasThreadArchived' : open ? 'codexExtrasThreadOpen' : 'codexExtrasThread';
+    item.contextValue = t.archived ? 'codexPlusThreadArchived' : open ? 'codexPlusThreadOpen' : 'codexPlusThread';
     const md = new vscode.MarkdownString();
     md.appendMarkdown(`**${(t.title || '(untitled)').replace(/[*_`[\]]/g, '\\$&')}**\n\n`);
     const place = element.group === 'other' ? 'Other folders' : placeOf(t, this.sections);
@@ -271,8 +271,8 @@ class SessionsProvider {
     md.appendCodeblock(t.id, 'text');
     if (t.cwd) md.appendMarkdown(`\n${t.cwd}${t.branch ? ` (${t.branch})` : ''}`);
     item.tooltip = md;
-    item.command = inSidebar ? { command: 'codexExtras.openThreadInSidebar', title: 'Show in the sidebar', arguments: [t.id] }
-      : { command: 'codexExtras.openThreadInTab', title: 'Open in a tab', arguments: [t.id] };
+    item.command = inSidebar ? { command: 'codexPlus.openThreadInSidebar', title: 'Show in the sidebar', arguments: [t.id] }
+      : { command: 'codexPlus.openThreadInTab', title: 'Open in a tab', arguments: [t.id] };
     return item;
   }
 }

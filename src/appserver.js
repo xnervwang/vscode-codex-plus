@@ -64,7 +64,7 @@ class AppServer {
       this.pending.clear();
     });
     return this.request('initialize', {
-      clientInfo: { name: 'codex-extras', title: 'Codex Extras', version: '0.1.0' },
+      clientInfo: { name: 'codex-plus', title: 'Codex Plus', version: '1.0.0' },
       capabilities: { experimentalApi: true },
     }).then((r) => { this.notify('initialized'); return r; });
   }

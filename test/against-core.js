@@ -4,19 +4,19 @@
 
 'use strict';
 /*
- * Checks this extension against the Agent Work Plan build the marketplace is shipping now: whether it accepts the Codex
- * source's protocol major, as its package.json states under "agentWorkPlan". It only reads the marketplace; nothing is
+ * Checks this extension against the Agent Plus build the marketplace is shipping now: whether it accepts the Codex
+ * source's protocol major, as its package.json states under "agentPlus". It only reads the marketplace; nothing is
  * installed.
  *
  *   node test/against-core.js
  *
- * Exit 0 when it accepts this major, or when Agent Work Plan is not on the marketplace yet (said so); 1 when it does not
+ * Exit 0 when it accepts this major, or when Agent Plus is not on the marketplace yet (said so); 1 when it does not
  * accept it; 2 when the marketplace could not be read.
  */
 const { PROTOCOL } = require('../src/codex-source');
 
 const QUERY_URL = 'https://marketplace.visualstudio.com/_apis/public/gallery/extensionquery';
-const CORE_ID = 'xnervwang.agent-work-plan';
+const CORE_ID = 'xnervwang.agent-plus';
 const ATTEMPTS = 3;
 
 async function fetchRetrying(url, init) {
@@ -46,9 +46,9 @@ async function fetchRetrying(url, init) {
   const asset = version && (version.files || []).find((f) => f.assetType === 'Microsoft.VisualStudio.Code.Manifest');
   if (!asset) throw new Error('the newest version carries no manifest');
   const manifest = await (await fetchRetrying(asset.source)).json();
-  const accepts = (manifest.agentWorkPlan && manifest.agentWorkPlan.accepts) || [];
+  const accepts = (manifest.agentPlus && manifest.agentPlus.accepts) || [];
   console.log(`${CORE_ID} ${version.version} on the marketplace accepts protocol ${JSON.stringify(accepts)}`);
   if (accepts.includes(PROTOCOL)) { console.log(`ok    it accepts protocol ${PROTOCOL}`); return 0; }
   console.log(`FAIL  it does not accept protocol ${PROTOCOL}`);
   return 1;
-})().then((code) => process.exit(code), (e) => { console.error(`could not check against Agent Work Plan: ${e.message}`); process.exit(2); });
+})().then((code) => process.exit(code), (e) => { console.error(`could not check against Agent Plus: ${e.message}`); process.exit(2); });

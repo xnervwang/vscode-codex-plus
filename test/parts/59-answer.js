@@ -125,7 +125,7 @@ module.exports = async ({ eq, tmp, root }) => {
   says = 'drafted';
   asked.length = 0;
   await patching.deliver(THREAD, ANSWER);
-  eq(asked, [['panel', 'navigate-to-route'], ['page', false]], 'with codexExtras.sendAnswers off the page is told not to send');
+  eq(asked, [['panel', 'navigate-to-route'], ['page', false]], 'with codexPlus.sendAnswers off the page is told not to send');
   send = true;
 
   /* A conversation shown only in Codex's sidebar takes it too, through Codex's own route and the sidebar's page. */

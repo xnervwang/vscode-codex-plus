@@ -4,7 +4,7 @@
 
 'use strict';
 /*
- * Codex as a conversation source of Agent Work Plan (xnervwang.agent-work-plan, protocol 1; its docs/protocol.md), which
+ * Codex as a conversation source of Agent Plus (xnervwang.agent-plus, protocol 1; its docs/protocol.md), which
  * draws the work plan, Conversations and Answer views.
  *
  *   id, label, logo, extensionId   who the conversations belong to
@@ -35,9 +35,9 @@ const STALE_WORKING_MS = 2 * 60 * 60 * 1000;
 /* A conversation counts as running while it is working, open in a tab of this window, or was active this recently. */
 const RECENT_MS = 15 * 60 * 1000;
 const POLL_MS = 3000;
-/* The protocol major this source implements; package.json repeats it under "agentWorkPlan". */
+/* The protocol major this source implements; package.json repeats it under "agentPlus". */
 const PROTOCOL = 1;
-const EXTENSION_ID = 'xnervwang.codex-extras';
+const EXTENSION_ID = 'xnervwang.codex-plus';
 
 function logoOf(vscode, exists = require('fs').existsSync) {
   const ext = vscode.extensions.getExtension('openai.chatgpt');
@@ -138,7 +138,7 @@ function threadOfCodexTab(vscode, patching, tab) {
 }
 
 /*
- * `deps`: reader (src/codex-reader.js), patching (src/patching.js), enabled() (codexExtras.workPlan), trusted()
+ * `deps`: reader (src/codex-reader.js), patching (src/patching.js), enabled() (codexPlus.workPlan), trusted()
  * (not in Restricted Mode), seen (src/seen.js) and log.
  */
 function createCodexSource(vscode, { log = () => {}, reader, patching = null, enabled = () => true, trusted = () => true,
@@ -155,7 +155,7 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
    * of its own for still being where they are looking: the broadcast behind it (src/patching.js,
    * thread-stream-following-changed) says which conversation it started following and nothing after that, and VS Code
    * tells an extension nothing about which view has keyboard focus. The active editor tab becoming a tab that is not
-   * Codex's is as close as it gets, and it is what Agent Work Plan's question a moment later turns on.
+   * Codex's is as close as it gets, and it is what Agent Plus's question a moment later turns on.
    */
   let leftSidebar = false;
   let frontTab;

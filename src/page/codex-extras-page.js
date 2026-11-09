@@ -41,7 +41,7 @@
   /* This script's own version. A page runs the copy it was built with, so a page left on an older patch answers a
      self-check with an older version here, which is the one case the host cannot tell from reading its own files.
      test/parts/62-selfcheck.js holds it to package.json, since a page cannot read that file. */
-  var SCRIPT_VERSION = '0.1.0';
+  var SCRIPT_VERSION = '1.0.0';
 
   var audio = null;
   /* Rising for a question, falling for a finished turn, and three notes for a request that cannot go on without an
@@ -190,7 +190,7 @@
     bar.style.top = Math.round(top) + 'px';
     var muted = view.chime === false;
     if (muteBtn.textContent !== (muted ? NO_BELL : BELL)) muteBtn.textContent = muted ? NO_BELL : BELL;
-    var label = muted ? 'Chimes are off: click to turn them on (codexExtras.chime)' : 'Chimes are on: click to turn them off (codexExtras.chime)';
+    var label = muted ? 'Chimes are off: click to turn them on (codexPlus.chime)' : 'Chimes are on: click to turn them off (codexPlus.chime)';
     if (muteBtn.getAttribute('title') !== label) { muteBtn.setAttribute('title', label); muteBtn.setAttribute('aria-label', label); }
   }
   function toggleInfo() {

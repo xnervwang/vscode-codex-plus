@@ -7,8 +7,8 @@
 - `src/codex-worker.js`, `src/codex-reader.js`: the worker thread that reads Codex's files, and the snapshot the extension host reads instead.
 - `src/codex-tabs.js`: Codex conversation tabs (`chatgpt.conversationEditor`, `openai-codex://route/local/<id>`), opening one in a tab. A tab Codex opened with its own New button stays at `/extension/panel/new` and names no conversation; the patch supplies the missing conversation ids (`patching.panelThreads`), from the thread start of the tab's own page.
 - `src/folders.js`: whether a conversation's folder is in this window's workspace, by real path.
-- `src/codex-source.js`: Codex as a source of Agent Work Plan, protocol 1, defined in Agent Work Plan's `docs/protocol.md`.
-- `src/host-link.js`: finding Agent Work Plan's `agentWorkPlan` interface, registering, the `codexExtras.registered` key.
+- `src/codex-source.js`: Codex as a source of Agent Plus, protocol 1, defined in Agent Plus's `docs/protocol.md`.
+- `src/host-link.js`: finding Agent Plus's `agentPlus` interface, registering, the `codexPlus.registered` key.
 - `src/workplan.js`: plan files (reading, the sweep of plans whose conversation is gone, questions for the chime).
 - `src/logo-dot.js`: Codex's logo with a state dot, for the tab icons.
 - `src/sessions-view.js`, `src/tab-memory.js`, `src/session-info.js`: the Codex sessions view, recently closed and dropped tabs, session information.
@@ -26,8 +26,8 @@
 - `node test/check.js`: the whole suite, no dependencies; parts in `test/parts/`, run in name order.
 - `node test/e2e-codex.js <codex> <CODEX_HOME>`: the work plan against a real codex; needs model credentials.
 - `node test/against-latest.js`: the patch against the newest Codex on the marketplace (`CODEX_EXTRAS_PRERELEASE=1` for pre-releases).
-- `test/parts/45-core.js`: this extension and Agent Work Plan together; needs its checkout beside this one, or `AGENT_WORK_PLAN_DIR`.
-- `node test/against-core.js`: the protocol major against the newest Agent Work Plan on the marketplace.
+- `test/parts/45-core.js`: this extension and Agent Plus together; needs its checkout beside this one, or `AGENT_WORK_PLAN_DIR`.
+- `node test/against-core.js`: the protocol major against the newest Agent Plus on the marketplace.
 - `bash build/pack.sh`: runs the suite and builds the `.vsix`.
 - `node build/plan-health.js [--days N] [--home <CODEX_HOME>] [--json]`: over the plans written in the last N days (14 by default), how many of their rows are stale (`doing` while the conversation is running no turn) or incomplete (`waiting` without saying on whom). It counts rather than passing or failing, so run it before and after a change with the same `--days`. It stays in `build/`, which `pack.sh` does not copy, because it reads a person's plans.
 
@@ -53,7 +53,7 @@ Two workflows in `.github/workflows/`. **Neither has ever run: this repository h
 
 ## Cost budget
 
-This extension aims to give what the Claude Code extension plus Agent Work Plan gives, for no more CPU and memory than that is worth. A feature whose data is already in the snapshot is worth adding; one that would need a wider read is not.
+This extension aims to give what the Claude Code extension plus Agent Plus gives, for no more CPU and memory than that is worth. A feature whose data is already in the snapshot is worth adding; one that would need a wider read is not.
 
 All file reading is in one thread:
 

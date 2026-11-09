@@ -27,7 +27,7 @@ const path = require('path');
 const THREAD_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 let override = '';
-/** Point every lookup at another CODEX_HOME (the setting codexExtras.codexHome, and the tests). Empty restores the default. */
+/** Point every lookup at another CODEX_HOME (the setting codexPlus.codexHome, and the tests). Empty restores the default. */
 function setCodexHome(dir) { override = dir ? String(dir) : ''; closeAll(); }
 
 /** CODEX_HOME as Codex resolves it: the environment variable when set, ~/.codex otherwise. */

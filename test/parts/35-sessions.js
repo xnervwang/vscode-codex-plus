@@ -80,7 +80,7 @@ module.exports = async ({ ok, bad, eq, tmp }) => {
     [true, true, false], 'the conversations of other folders are a group of their own, counted and starting collapsed');
   const otherItem = provider.getTreeItem(rows[rows.length - 1]);
   eq([otherItem.label, otherItem.description, otherItem.iconPath.id, otherItem.contextValue],
-    ['Other folders', '2', 'history', 'codexExtrasGroup-other'], 'it reads as history, with how many it holds');
+    ['Other folders', '2', 'history', 'codexPlusGroup-other'], 'it reads as history, with how many it holds');
   const folders = provider.getChildren(rows[rows.length - 1]);
   eq([folders.map((f) => f.folder.dir), folders.map((f) => f.folder.threads.length)], [[outsideB, outsideA], [1, 1]],
     'under it one row per folder, the folder used most recently first');
@@ -222,7 +222,7 @@ module.exports = async ({ ok, bad, eq, tmp }) => {
     settings: () => ({ sessionsInWorkspaceOnly: false, recentClosedSessions: 10, hideBackgroundSessions: true }) });
   archProvider.refresh();
   const archRow = archProvider.getChildren().find((r) => r.group.key === 'archived');
-  eq(archProvider.getTreeItem(archProvider.getChildren(archRow)[0]).contextValue, 'codexExtrasThreadArchived',
+  eq(archProvider.getTreeItem(archProvider.getChildren(archRow)[0]).contextValue, 'codexPlusThreadArchived',
     'and its rows are the ones whose right-click menu offers Delete Conversation');
 
   ok('the session list was checked against real directories and a symbolic link');
@@ -263,7 +263,7 @@ module.exports = async ({ ok, bad, eq, tmp }) => {
     listing.refresh();
     const open = listing.getChildren(listing.getChildren()[0]);
     const row = listing.getTreeItem(open[0]);
-    eq([open.length, row.command.command, /in Codex's sidebar/.test(row.tooltip.value)], [1, 'codexExtras.openThreadInSidebar', true],
+    eq([open.length, row.command.command, /in Codex's sidebar/.test(row.tooltip.value)], [1, 'codexPlus.openThreadInSidebar', true],
       'its row goes to the sidebar when clicked, and says that it is there');
     patching._approvals.clear();
   }

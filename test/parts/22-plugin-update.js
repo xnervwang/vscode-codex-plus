@@ -107,7 +107,7 @@ module.exports = async ({ note, eq, tmp, root }) => {
   const codexHome = tmp('home-for-start-up');
   fixture.codexHome(codexHome, [{ title: 'One', cwd: codexHome, turns: [{}] }]);
   control.state.config = { codexHome, installWorkPlanPlugin: 'never', reopenDroppedTabs: false, patchCodex: 'off', cliExecutable: codex };
-  control.state.extensions.set('xnervwang.agent-work-plan', { isActive: true, exports: { agentWorkPlan: { protocol: 1, accepts: [1], features: [],
+  control.state.extensions.set('xnervwang.agent-plus', { isActive: true, exports: { agentPlus: { protocol: 1, accepts: [1], features: [],
     registerSource: () => ({ accepted: true, code: '', reason: '', registration: { dispose() {} } }) } } });
   const ext = require(path.join(root, 'extension.js'));
   const pi = require(path.join(root, 'src', 'plugin-install.js'));

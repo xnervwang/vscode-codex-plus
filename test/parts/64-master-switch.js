@@ -6,7 +6,7 @@
 /*
  * The two coarse switches, and what each of them leaves alone.
  *
- *   the additions      codexExtras.enabled, thrown by three commands, over everything this extension draws in or
+ *   the additions      codexPlus.enabled, thrown by three commands, over everything this extension draws in or
  *                      around Codex. Its whole point is what it does not touch: the settings of the things it turns
  *                      off keep their values, and an applied patch stays in Codex's files.
  *   the plugin         whether Codex loads the work plan plugin, which is a state apart from whether it is installed.
@@ -38,7 +38,7 @@ async function windowWith(root, tmp, config) {
      as having done nothing. */
   vscode.workspace.getConfiguration = (section) => ({
     get: (k, d) => (control.state.config && k in control.state.config ? control.state.config[k] : d),
-    update: async (k, v) => { control.state.config[section === 'codexExtras' ? k : `${section}.${k}`] = v; },
+    update: async (k, v) => { control.state.config[section === 'codexPlus' ? k : `${section}.${k}`] = v; },
   });
   const ext = require(path.join(root, 'extension.js'));
   const subs = [];
@@ -52,19 +52,19 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
   const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
 
   /* ── the master switch is a setting of its own, which every part reads through ── */
-  eq(pkg.contributes.configuration.properties['codexExtras.enabled'].default, true,
+  eq(pkg.contributes.configuration.properties['codexPlus.enabled'].default, true,
     'the additions are on until somebody turns them off');
-  const described = pkg.contributes.configuration.properties['codexExtras.enabled'].markdownDescription;
+  const described = pkg.contributes.configuration.properties['codexPlus.enabled'].markdownDescription;
   eq([/does \*\*not\*\*/.test(described), /Remove the Patch from Codex/.test(described)], [true, true],
     'and its own description says it leaves Codex\'s files alone, naming the command that does not');
-  for (const name of ['codexExtras.toggle', 'codexExtras.turnOn', 'codexExtras.turnOff']) {
+  for (const name of ['codexPlus.toggle', 'codexPlus.turnOn', 'codexPlus.turnOff']) {
     const c = pkg.contributes.commands.find((x) => x.command === name);
     if (c) ok(`${name} is declared, as "${c.title}"`);
     else bad(`${name} is not declared`);
   }
   /* The two that turn things off say so in their own titles: a "Turn Off" taken for one that restores Codex's files
      would be found out only much later, when the files turned out still to be patched. */
-  for (const name of ['codexExtras.toggle', 'codexExtras.turnOff']) {
+  for (const name of ['codexPlus.toggle', 'codexPlus.turnOff']) {
     const title = (pkg.contributes.commands.find((x) => x.command === name) || {}).title || '';
     eq(/leaves Codex's files alone/.test(title), true, `${name} says in its title that it leaves Codex's files alone`);
   }
@@ -86,8 +86,8 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
   eq([gated.workPlan, gated.hideBackgroundSessions], [true, true],
     'while the work plan and the session list are not covered by it and read as they were set');
   off.control.state.log.length = 0;
-  await off.control.state.handlers['codexExtras.status']();
-  eq(/Additions: OFF \(codexExtras\.enabled\); the patch to Codex is left as it is/.test(off.control.state.log.join('\n')), true,
+  await off.control.state.handlers['codexPlus.status']();
+  eq(/Additions: OFF \(codexPlus\.enabled\); the patch to Codex is left as it is/.test(off.control.state.log.join('\n')), true,
     'the status says the additions are off, and that the patch is left where it is');
   off.stop();
 
@@ -110,22 +110,22 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
   const mine = { enabled: true, chime: false, timestamps: false, conversationNavigation: true,
     userMessageColor: 'lightgreen', userMessageEdge: false, patchCodex: 'off' };
   const w = await windowWith(root, tmp, { ...mine });
-  await w.control.state.handlers['codexExtras.turnOff']();
+  await w.control.state.handlers['codexPlus.turnOff']();
   eq(w.control.state.config.enabled, false, 'Turn Off writes the one setting');
   eq([w.control.state.config.chime, w.control.state.config.timestamps, w.control.state.config.userMessageColor,
     w.control.state.config.patchCodex],
   [false, false, 'lightgreen', 'off'], 'and writes over none of the settings of the things it turned off');
-  await w.control.state.handlers['codexExtras.turnOn']();
+  await w.control.state.handlers['codexPlus.turnOn']();
   eq(w.control.state.config.enabled, true, 'Turn On writes it back');
   const back = Object.fromEntries(Object.keys(mine).map((k) => [k, w.control.state.config[k]]));
   eq(back, mine, 'and every one of them is as the user had set it, rather than back at its default');
-  await w.control.state.handlers['codexExtras.toggle']();
+  await w.control.state.handlers['codexPlus.toggle']();
   eq(w.control.state.config.enabled, false, 'Toggle turns it off from on');
-  await w.control.state.handlers['codexExtras.toggle']();
+  await w.control.state.handlers['codexPlus.toggle']();
   eq(w.control.state.config.enabled, true, 'and on again from off');
   /* Asking for the patch while the additions are off would leave a patched Codex with nothing drawing through it. */
-  await w.control.state.handlers['codexExtras.turnOff']();
-  await w.control.state.handlers['codexExtras.applyPatch']();
+  await w.control.state.handlers['codexPlus.turnOff']();
+  await w.control.state.handlers['codexPlus.applyPatch']();
   eq(w.control.state.config.enabled, true,
     'and asking for the patch turns them back on, since the patch is of no use to anything else');
   w.stop();
@@ -205,12 +205,12 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
     mergeStrategy: 'upsert' }], 'the write is one key of one section, upserted, so the rest of config.toml stands');
   eq(install.pluginEnabledEdits(true)[0].value, true, 'and the same key the other way to have Codex load it again');
 
-  for (const name of ['codexExtras.stopLoadingWorkPlanPlugin', 'codexExtras.loadWorkPlanPlugin']) {
+  for (const name of ['codexPlus.stopLoadingWorkPlanPlugin', 'codexPlus.loadWorkPlanPlugin']) {
     const c = pkg.contributes.commands.find((x) => x.command === name);
     if (c) ok(`${name} is declared, as "${c.title}"`);
     else bad(`${name} is not declared`);
   }
-  eq(/keeps it installed/.test((pkg.contributes.commands.find((x) => x.command === 'codexExtras.stopLoadingWorkPlanPlugin') || {}).title || ''),
+  eq(/keeps it installed/.test((pkg.contributes.commands.find((x) => x.command === 'codexPlus.stopLoadingWorkPlanPlugin') || {}).title || ''),
     true, 'and the one that stops it says in its title that the plugin stays where it is');
 
   /* Show Status tells the two states apart, which is the whole reason for reading config.toml. */
@@ -219,13 +219,13 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
   fs.mkdirSync(cache, { recursive: true });
   fs.writeFileSync(path.join(skipped.home, 'config.toml'), `${SECTION}\nenabled = false\n`);
   skipped.control.state.log.length = 0;
-  await skipped.control.state.handlers['codexExtras.status']();
+  await skipped.control.state.handlers['codexPlus.status']();
   const statusOff = skipped.control.state.log.join('\n');
   eq(/Work plan plugin: 9\.9\.9, INSTALLED BUT NOT LOADED \(Codex is set to skip it\)/.test(statusOff), true,
     'a plugin Codex holds but will not load is reported as exactly that, rather than as installed');
   fs.writeFileSync(path.join(skipped.home, 'config.toml'), `${SECTION}\nenabled = true\n`);
   skipped.control.state.log.length = 0;
-  await skipped.control.state.handlers['codexExtras.status']();
+  await skipped.control.state.handlers['codexPlus.status']();
   eq(/Work plan plugin: 9\.9\.9, loaded/.test(skipped.control.state.log.join('\n')), true,
     'and one it will load is reported as loaded');
   skipped.stop();

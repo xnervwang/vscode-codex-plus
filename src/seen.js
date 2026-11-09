@@ -18,8 +18,8 @@
  */
 /* The moment before which every reply counts as read: when the record was started, raised whenever entries are dropped
    to keep it bounded. */
-const SINCE_KEY = 'codexExtras.seenSince';
-const SEEN_KEY = 'codexExtras.seen';
+const SINCE_KEY = 'codexPlus.seenSince';
+const SEEN_KEY = 'codexPlus.seen';
 /* Enough for every conversation anyone keeps open or comes back to. The entries dropped are the ones looked at
    longest ago, and the start time is raised to the newest of them, so dropping one can only make a reply count as read,
    never bring back as unread one the user had already looked at. */

@@ -4,12 +4,12 @@
 
 'use strict';
 /*
- * Both extensions together: Agent Work Plan from its own checkout (AGENT_WORK_PLAN_DIR, or vscode-agent-work-plan beside
+ * Both extensions together: Agent Plus from its own checkout (AGENT_WORK_PLAN_DIR, or vscode-agent-plus beside
  * this repository) activated first, as VS Code activates a dependency, then this one, in one stand-in VS Code. The Codex
  * source has to be taken, its conversations drawn in the Conversations tree, its tab followed by the work plan view, and
  * an answer to one of its questions handed to it.
  *
- * The stand-in is Agent Work Plan's own test/fake-vscode.js, with the few members this extension needs added.
+ * The stand-in is Agent Plus's own test/fake-vscode.js, with the few members this extension needs added.
  */
 const fs = require('fs');
 const path = require('path');
@@ -18,8 +18,8 @@ const fixture = require('../fixture');
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 module.exports = async ({ eq, note, tmp, root }) => {
-  const core = process.env.AGENT_WORK_PLAN_DIR || path.join(root, '..', 'vscode-agent-work-plan');
-  if (!fs.existsSync(path.join(core, 'src', 'host.js'))) { note(`no Agent Work Plan checkout at ${core}: the two were not run together`); return; }
+  const core = process.env.AGENT_WORK_PLAN_DIR || path.join(root, '..', 'vscode-agent-plus');
+  if (!fs.existsSync(path.join(core, 'src', 'host.js'))) { note(`no Agent Plus checkout at ${core}: the two were not run together`); return; }
   const fake = require(path.join(core, 'test', 'fake-vscode.js'));
   const { vscode, control } = fake.create();
   vscode.window.registerTreeDataProvider = (id, provider) => { control.state.views[id] = { id, provider }; return { dispose() {} }; };
@@ -43,13 +43,13 @@ module.exports = async ({ eq, note, tmp, root }) => {
   fs.writeFileSync(path.join(plans, asking.id + '.json'), JSON.stringify({ nodes: [{ title: 'Merge', state: 'waiting', waitingOn: 'user', question: 'Merge it?' }] }));
   vscode.workspace.workspaceFolders = [{ uri: vscode.Uri.file(ws) }];
   Object.assign(control.state.config, {
-    'codexExtras.codexHome': home, 'codexExtras.installWorkPlanPlugin': 'never', 'codexExtras.reopenDroppedTabs': false,
-    'codexExtras.patchCodex': 'off', 'agentWorkPlan.workPlanView': true, 'agentWorkPlan.conversationsView': true,
+    'codexPlus.codexHome': home, 'codexPlus.installWorkPlanPlugin': 'never', 'codexPlus.reopenDroppedTabs': false,
+    'codexPlus.patchCodex': 'off', 'agentPlus.workPlanView': true, 'agentPlus.conversationsView': true,
   });
   const corePkg = JSON.parse(fs.readFileSync(path.join(core, 'package.json'), 'utf8'));
   const selfPkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
-  const coreEntry = { id: 'xnervwang.agent-work-plan', packageJSON: corePkg, isActive: false, exports: undefined, extensionPath: core };
-  control.state.extensions = [coreEntry, { id: 'xnervwang.codex-extras', packageJSON: selfPkg, extensionPath: root }];
+  const coreEntry = { id: 'xnervwang.agent-plus', packageJSON: corePkg, isActive: false, exports: undefined, extensionPath: core };
+  control.state.extensions = [coreEntry, { id: 'xnervwang.codex-plus', packageJSON: selfPkg, extensionPath: root }];
   const context = (name) => ({ subscriptions: [], globalState: fake.memento(), workspaceState: fake.memento(),
     globalStorageUri: vscode.Uri.file(tmp(name)), extensionPath: name === 'core' ? core : root });
   const coreContext = context('core'), selfContext = context('codex');
@@ -58,32 +58,32 @@ module.exports = async ({ eq, note, tmp, root }) => {
     Object.assign(coreEntry, { isActive: true, exports: exported });
     /* The core hides its views by one key that reads the other way round: it is set only once the core has worked out
        that nothing uses it. */
-    eq([control.state.context['agentWorkPlan.alone'], exported.agentWorkPlan.protocol], [false, 1],
-      'Agent Work Plan sees Codex Extras depends on it, and speaks protocol 1');
+    eq([control.state.context['agentPlus.alone'], exported.agentPlus.protocol], [false, 1],
+      'Agent Plus sees Codex Plus depends on it, and speaks protocol 1');
     await require(path.join(root, 'extension.js')).activate(selfContext);
     await wait(400);
-    eq([control.state.context['codexExtras.registered'], control.state.log.some((l) => /conversation source registered: Codex \(codex\)/.test(l))],
-      [true, true], 'the Codex source is registered with Agent Work Plan');
-    const tree = control.state.views['agentWorkPlan.conversations'].provider;
+    eq([control.state.context['codexPlus.registered'], control.state.log.some((l) => /conversation source registered: Codex \(codex\)/.test(l))],
+      [true, true], 'the Codex source is registered with Agent Plus');
+    const tree = control.state.views['agentPlus.conversations'].provider;
     const rows = tree.getChildren().filter((e) => e.kind === 'conversation').map((e) => tree.getTreeItem(e));
-    const status = control.state.status.find((i) => i.id === 'agentWorkPlan.conversations');
+    const status = control.state.status.find((i) => i.id === 'agentPlus.conversations');
     eq([rows.map((r) => r.id), rows[0] && rows[0].description.split(' · ')[0], status && status.text.endsWith('1 to decide')],
       [[`conversations/codex/${asking.id}`], 'needs you', true],
       'the Codex conversation in this workspace is drawn, needing an answer; the other folder\'s is not');
-    eq(!!control.state.views['codexExtras.sessions'], true, 'the Codex session list is there too');
+    eq(!!control.state.views['codexPlus.sessions'], true, 'the Codex session list is there too');
 
     const tab = { label: 'Codex', input: new vscode.TabInputCustom(vscode.Uri.from({ scheme: 'openai-codex', authority: 'route', path: `/local/${asking.id}` }),
       'chatgpt.conversationEditor') };
     control.setTabs([tab]);
     control.fireTabs();
     await wait(30);
-    const plan = control.state.views['agentWorkPlan.workPlan'];
+    const plan = control.state.views['agentPlus.workPlan'];
     eq([plan.provider.shown() && plan.provider.shown().file, plan.description], [path.join(plans, asking.id + '.json'), 'Codex'],
       'the work plan view follows the Codex tab');
 
     const qrow = tree.getChildren(tree.getChildren().find((e) => e.kind === 'conversation'))[0];
-    await control.state.handlers['agentWorkPlan.answerQuestion'](tree.getTreeItem(qrow).command.arguments[0]);
-    const view = control.state.webviews['agentWorkPlan.answer'];
+    await control.state.handlers['agentPlus.answerQuestion'](tree.getTreeItem(qrow).command.arguments[0]);
+    const view = control.state.webviews['agentPlus.answer'];
     view.receive({ type: 'send', key: view.current.key, text: 'Yes.' });
     await wait(200);
     const st = view.states.get(view.current.key);
@@ -97,9 +97,9 @@ module.exports = async ({ eq, note, tmp, root }) => {
     } };
     const panel = { webview: {}, reveal() {}, onDidDispose() {}, iconPath: null };
     globalThis.__codexExtrasPanel(panel, asking.id, provider);
-    const view2 = control.state.webviews['agentWorkPlan.answer'];
+    const view2 = control.state.webviews['agentPlus.answer'];
     const qrow2 = tree.getChildren(tree.getChildren().find((e) => e.kind === 'conversation'))[0];
-    await control.state.handlers['agentWorkPlan.answerQuestion'](Object.assign({}, tree.getTreeItem(qrow2).command.arguments[0], { row: '1' }));
+    await control.state.handlers['agentPlus.answerQuestion'](Object.assign({}, tree.getTreeItem(qrow2).command.arguments[0], { row: '1' }));
     view2.states.delete(view2.current.key);
     view2.receive({ type: 'send', key: view2.current.key, text: 'Yes, now.' });
     await wait(400);

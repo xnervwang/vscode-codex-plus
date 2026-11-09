@@ -1,14 +1,14 @@
 {
-  "name": "codex-extras",
-  "displayName": "Codex Extras",
-  "description": "Codex conversations in Agent Work Plan's work plan and Conversations views, a Codex session list, and a Codex button on the tab bar.",
-  "version": "0.1.0",
+  "name": "codex-plus",
+  "displayName": "Codex Plus",
+  "description": "Codex conversations in Agent Plus's work plan and Conversations views, a Codex session list, and a Codex button on the tab bar.",
+  "version": "1.0.0",
   "publisher": "xnervwang",
   "license": "BSD-3-Clause",
   "icon": "images/icon.png",
   "repository": {
     "type": "git",
-    "url": "https://github.com/xnervwang/vscode-codex-extras"
+    "url": "https://github.com/xnervwang/vscode-codex-plus"
   },
   "engines": {
     "vscode": "^1.96.0"
@@ -19,7 +19,7 @@
   ],
   "extensionDependencies": [
     "openai.chatgpt",
-    "xnervwang.agent-work-plan"
+    "xnervwang.agent-plus"
   ],
   "keywords": [
     "codex",
@@ -42,283 +42,283 @@
     "onStartupFinished"
   ],
   "main": "./extension.js",
-  "agentWorkPlan": {
+  "agentPlus": {
     "protocol": 1
   },
   "contributes": {
     "commands": [
       {
-        "command": "codexExtras.status",
-        "title": "Codex Extras: Show Status"
+        "command": "codexPlus.status",
+        "title": "Codex Plus: Show Status"
       },
       {
-        "command": "codexExtras.openSettings",
-        "title": "Codex Extras: Settings"
+        "command": "codexPlus.openSettings",
+        "title": "Codex Plus: Settings"
       },
       {
-        "command": "codexExtras.toggle",
-        "title": "Codex Extras: Toggle All the Additions On/Off (leaves Codex's files alone)"
+        "command": "codexPlus.toggle",
+        "title": "Codex Plus: Toggle All the Additions On/Off (leaves Codex's files alone)"
       },
       {
-        "command": "codexExtras.turnOn",
-        "title": "Codex Extras: Turn All the Additions On"
+        "command": "codexPlus.turnOn",
+        "title": "Codex Plus: Turn All the Additions On"
       },
       {
-        "command": "codexExtras.turnOff",
-        "title": "Codex Extras: Turn All the Additions Off (leaves Codex's files alone)"
+        "command": "codexPlus.turnOff",
+        "title": "Codex Plus: Turn All the Additions Off (leaves Codex's files alone)"
       },
       {
-        "command": "codexExtras.installWorkPlanPlugin",
-        "title": "Codex Extras: Install the Work Plan Plugin into Codex"
+        "command": "codexPlus.installWorkPlanPlugin",
+        "title": "Codex Plus: Install the Work Plan Plugin into Codex"
       },
       {
-        "command": "codexExtras.downloadPython",
-        "title": "Codex Extras: Download Python for the Work Plan Hooks"
+        "command": "codexPlus.downloadPython",
+        "title": "Codex Plus: Download Python for the Work Plan Hooks"
       },
       {
-        "command": "codexExtras.trustWorkPlanHooks",
-        "title": "Codex Extras: Trust the Work Plan Hooks in Codex"
+        "command": "codexPlus.trustWorkPlanHooks",
+        "title": "Codex Plus: Trust the Work Plan Hooks in Codex"
       },
       {
-        "command": "codexExtras.stopLoadingWorkPlanPlugin",
-        "title": "Codex Extras: Stop Loading the Work Plan Plugin (keeps it installed)"
+        "command": "codexPlus.stopLoadingWorkPlanPlugin",
+        "title": "Codex Plus: Stop Loading the Work Plan Plugin (keeps it installed)"
       },
       {
-        "command": "codexExtras.loadWorkPlanPlugin",
-        "title": "Codex Extras: Load the Work Plan Plugin in Codex"
+        "command": "codexPlus.loadWorkPlanPlugin",
+        "title": "Codex Plus: Load the Work Plan Plugin in Codex"
       },
       {
-        "command": "codexExtras.removeWorkPlanPlugin",
-        "title": "Codex Extras: Remove the Work Plan Plugin from Codex"
+        "command": "codexPlus.removeWorkPlanPlugin",
+        "title": "Codex Plus: Remove the Work Plan Plugin from Codex"
       },
       {
-        "command": "codexExtras.refreshSessions",
-        "title": "Codex Extras: Refresh Codex Sessions",
+        "command": "codexPlus.refreshSessions",
+        "title": "Codex Plus: Refresh Codex Sessions",
         "icon": "$(refresh)"
       },
       {
-        "command": "codexExtras.newInTab",
-        "title": "Codex Extras: New Codex Conversation in a Tab",
+        "command": "codexPlus.newInTab",
+        "title": "Codex Plus: New Codex Conversation in a Tab",
         "icon": "$(add)"
       },
       {
-        "command": "codexExtras.newInSidebar",
-        "title": "Codex Extras: New Codex Conversation in the Sidebar",
+        "command": "codexPlus.newInSidebar",
+        "title": "Codex Plus: New Codex Conversation in the Sidebar",
         "icon": "$(layout-sidebar-right)"
       },
       {
-        "command": "codexExtras.openCodex",
-        "title": "Codex Extras: Open Codex",
+        "command": "codexPlus.openCodex",
+        "title": "Codex Plus: Open Codex",
         "icon": {
           "light": "images/codex-light.svg",
           "dark": "images/codex-dark.svg"
         }
       },
       {
-        "command": "codexExtras.openThreadInTab",
-        "title": "Codex Extras: Resume in Tab"
+        "command": "codexPlus.openThreadInTab",
+        "title": "Codex Plus: Resume in Tab"
       },
       {
-        "command": "codexExtras.openThreadInSidebar",
-        "title": "Codex Extras: Resume in Sidebar"
+        "command": "codexPlus.openThreadInSidebar",
+        "title": "Codex Plus: Resume in Sidebar"
       },
       {
-        "command": "codexExtras.copyThreadId",
-        "title": "Codex Extras: Copy Thread ID"
+        "command": "codexPlus.copyThreadId",
+        "title": "Codex Plus: Copy Thread ID"
       },
       {
-        "command": "codexExtras.setTitleColor",
-        "title": "Codex Extras: Text Color..."
+        "command": "codexPlus.setTitleColor",
+        "title": "Codex Plus: Text Color..."
       },
       {
-        "command": "codexExtras.showAllFolders",
-        "title": "Codex Extras: List Conversations from Every Folder"
+        "command": "codexPlus.showAllFolders",
+        "title": "Codex Plus: List Conversations from Every Folder"
       },
       {
-        "command": "codexExtras.findThread",
-        "title": "Codex Extras: Find a Codex Conversation by Title or ID",
+        "command": "codexPlus.findThread",
+        "title": "Codex Plus: Find a Codex Conversation by Title or ID",
         "icon": "$(search)"
       },
       {
-        "command": "codexExtras.deleteArchivedThread",
-        "title": "Codex Extras: Delete Conversation..."
+        "command": "codexPlus.deleteArchivedThread",
+        "title": "Codex Plus: Delete Conversation..."
       },
       {
-        "command": "codexExtras.sessionInfo",
-        "title": "Codex Extras: Session Information",
+        "command": "codexPlus.sessionInfo",
+        "title": "Codex Plus: Session Information",
         "icon": "$(info)"
       },
       {
-        "command": "codexExtras.applyPatch",
-        "title": "Codex Extras: Patch Codex (tab dots, sidebar opening, answers, chimes, turn figures, message times, navigation)"
+        "command": "codexPlus.applyPatch",
+        "title": "Codex Plus: Patch Codex (tab dots, sidebar opening, answers, chimes, turn figures, message times, navigation)"
       },
       {
-        "command": "codexExtras.removePatch",
-        "title": "Codex Extras: Remove the Patch from Codex (restore original files)"
+        "command": "codexPlus.removePatch",
+        "title": "Codex Plus: Remove the Patch from Codex (restore original files)"
       },
       {
-        "command": "codexExtras.sampleConversationDom",
-        "title": "Codex Extras: Sample the Conversation Layout"
+        "command": "codexPlus.sampleConversationDom",
+        "title": "Codex Plus: Sample the Conversation Layout"
       },
       {
-        "command": "codexExtras.pageSelfCheck",
-        "title": "Codex Extras: Check What the Page Script Found in This Conversation"
+        "command": "codexPlus.pageSelfCheck",
+        "title": "Codex Plus: Check What the Page Script Found in This Conversation"
       },
       {
-        "command": "codexExtras.showOpenTimes",
-        "title": "Codex Extras: Show How Long Opening a Codex Page Took"
+        "command": "codexPlus.showOpenTimes",
+        "title": "Codex Plus: Show How Long Opening a Codex Page Took"
       },
       {
-        "command": "codexExtras.showRunningCommands",
-        "title": "Codex Extras: Show the Commands Codex Is Still Running"
+        "command": "codexPlus.showRunningCommands",
+        "title": "Codex Plus: Show the Commands Codex Is Still Running"
       },
       {
-        "command": "codexExtras.goToWaiting",
-        "title": "Codex Extras: Go to the Conversation Waiting for You"
+        "command": "codexPlus.goToWaiting",
+        "title": "Codex Plus: Go to the Conversation Waiting for You"
       }
     ],
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "codexExtras",
-          "title": "Codex Extras",
+          "id": "codexPlus",
+          "title": "Codex Plus",
           "icon": "images/sidebar.svg"
         }
       ]
     },
     "views": {
-      "codexExtras": [
+      "codexPlus": [
         {
-          "id": "codexExtras.sessions",
+          "id": "codexPlus.sessions",
           "name": "Codex sessions",
-          "when": "config.codexExtras.sessionList"
+          "when": "config.codexPlus.sessionList"
         }
       ]
     },
     "menus": {
       "view/title": [
         {
-          "command": "codexExtras.newInTab",
-          "when": "view == codexExtras.sessions",
+          "command": "codexPlus.newInTab",
+          "when": "view == codexPlus.sessions",
           "group": "navigation@0"
         },
         {
-          "command": "codexExtras.newInSidebar",
-          "when": "view == codexExtras.sessions",
+          "command": "codexPlus.newInSidebar",
+          "when": "view == codexPlus.sessions",
           "group": "navigation@1"
         },
         {
-          "command": "codexExtras.findThread",
-          "when": "view == codexExtras.sessions",
+          "command": "codexPlus.findThread",
+          "when": "view == codexPlus.sessions",
           "group": "navigation@2"
         },
         {
-          "command": "codexExtras.refreshSessions",
-          "when": "view == codexExtras.sessions",
+          "command": "codexPlus.refreshSessions",
+          "when": "view == codexPlus.sessions",
           "group": "navigation@3"
         },
         {
-          "command": "codexExtras.showAllFolders",
-          "when": "view == codexExtras.sessions && config.codexExtras.sessionsInWorkspaceOnly",
+          "command": "codexPlus.showAllFolders",
+          "when": "view == codexPlus.sessions && config.codexPlus.sessionsInWorkspaceOnly",
           "group": "1_list@1"
         },
         {
-          "command": "codexExtras.openSettings",
-          "when": "view == codexExtras.sessions",
+          "command": "codexPlus.openSettings",
+          "when": "view == codexPlus.sessions",
           "group": "9_settings@1"
         }
       ],
       "view/item/context": [
         {
-          "command": "codexExtras.showAllFolders",
-          "when": "view == codexExtras.sessions && viewItem == codexExtrasGroup-other",
+          "command": "codexPlus.showAllFolders",
+          "when": "view == codexPlus.sessions && viewItem == codexPlusGroup-other",
           "group": "1_list@1"
         },
         {
-          "command": "codexExtras.openThreadInTab",
-          "when": "view == codexExtras.sessions && viewItem =~ /^codexExtrasThread/",
+          "command": "codexPlus.openThreadInTab",
+          "when": "view == codexPlus.sessions && viewItem =~ /^codexPlusThread/",
           "group": "1_open@1"
         },
         {
-          "command": "codexExtras.openThreadInSidebar",
-          "when": "view == codexExtras.sessions && viewItem =~ /^codexExtrasThread/",
+          "command": "codexPlus.openThreadInSidebar",
+          "when": "view == codexPlus.sessions && viewItem =~ /^codexPlusThread/",
           "group": "1_open@2"
         },
         {
-          "command": "codexExtras.copyThreadId",
-          "when": "view == codexExtras.sessions && viewItem =~ /^codexExtrasThread/",
+          "command": "codexPlus.copyThreadId",
+          "when": "view == codexPlus.sessions && viewItem =~ /^codexPlusThread/",
           "group": "2_info@1"
         },
         {
-          "command": "codexExtras.sessionInfo",
-          "when": "view == codexExtras.sessions && viewItem =~ /^codexExtrasThread/",
+          "command": "codexPlus.sessionInfo",
+          "when": "view == codexPlus.sessions && viewItem =~ /^codexPlusThread/",
           "group": "2_info@2"
         },
         {
-          "command": "codexExtras.setTitleColor",
-          "when": "view == codexExtras.sessions && viewItem =~ /^codexExtrasThread/",
+          "command": "codexPlus.setTitleColor",
+          "when": "view == codexPlus.sessions && viewItem =~ /^codexPlusThread/",
           "group": "3_look@1"
         },
         {
-          "command": "codexExtras.deleteArchivedThread",
-          "when": "view == codexExtras.sessions && viewItem == codexExtrasThreadArchived",
+          "command": "codexPlus.deleteArchivedThread",
+          "when": "view == codexPlus.sessions && viewItem == codexPlusThreadArchived",
           "group": "9_delete@1"
         }
       ],
       "commandPalette": [
         {
-          "command": "codexExtras.openThreadInTab",
+          "command": "codexPlus.openThreadInTab",
           "when": "false"
         },
         {
-          "command": "codexExtras.openThreadInSidebar",
+          "command": "codexPlus.openThreadInSidebar",
           "when": "false"
         },
         {
-          "command": "codexExtras.copyThreadId",
+          "command": "codexPlus.copyThreadId",
           "when": "false"
         },
         {
-          "command": "codexExtras.setTitleColor",
+          "command": "codexPlus.setTitleColor",
           "when": "false"
         },
         {
-          "command": "codexExtras.deleteArchivedThread",
+          "command": "codexPlus.deleteArchivedThread",
           "when": "false"
         }
       ],
       "editor/title": [
         {
-          "command": "codexExtras.openCodex",
+          "command": "codexPlus.openCodex",
           "group": "navigation"
         },
         {
-          "command": "codexExtras.sessionInfo",
+          "command": "codexPlus.sessionInfo",
           "when": "activeCustomEditorId == 'chatgpt.conversationEditor'",
           "group": "navigation"
         }
       ]
     },
     "configuration": {
-      "title": "Codex Extras",
+      "title": "Codex Plus",
       "properties": {
-        "codexExtras.codexHome": {
+        "codexPlus.codexHome": {
           "type": "string",
           "default": "",
           "markdownDescription": "The Codex home directory to read and to install the work plan plugin into. Empty uses `CODEX_HOME` when it is set, otherwise `~/.codex`.",
           "scope": "machine"
         },
-        "codexExtras.enabled": {
+        "codexPlus.enabled": {
           "type": "boolean",
           "default": true,
-          "markdownDescription": "The master switch over the additions this extension makes to Codex: the time on each message, the list of your own messages, their colouring, the chimes, the figures strip, the dot on a tab's logo and the count in the status bar, and whether Codex is patched at all. Off leaves each of their own settings as you had it, and turns them back on as they were.\n\nIt does **not** take an applied patch out of Codex's files. The patch stays where it is and nothing is drawn through it; `Codex Extras: Remove the Patch from Codex` is what puts Codex's own files back.\n\nThe work plan and the Codex session list are not covered by it, and have their own settings."
+          "markdownDescription": "The master switch over the additions this extension makes to Codex: the time on each message, the list of your own messages, their colouring, the chimes, the figures strip, the dot on a tab's logo and the count in the status bar, and whether Codex is patched at all. Off leaves each of their own settings as you had it, and turns them back on as they were.\n\nIt does **not** take an applied patch out of Codex's files. The patch stays where it is and nothing is drawn through it; `Codex Plus: Remove the Patch from Codex` is what puts Codex's own files back.\n\nThe work plan and the Codex session list are not covered by it, and have their own settings."
         },
-        "codexExtras.workPlan": {
+        "codexPlus.workPlan": {
           "type": "boolean",
           "default": true,
-          "markdownDescription": "Keep a work plan for each Codex conversation: the open rows put in front of the model every turn, and the reminders at the end of one. Agent Work Plan draws the plans. Off makes the hooks say nothing and refuse to change a plan, and no Codex plan is shown."
+          "markdownDescription": "Keep a work plan for each Codex conversation: the open rows put in front of the model every turn, and the reminders at the end of one. Agent Plus draws the plans. Off makes the hooks say nothing and refuse to change a plan, and no Codex plan is shown."
         },
-        "codexExtras.installWorkPlanPlugin": {
+        "codexPlus.installWorkPlanPlugin": {
           "type": "string",
           "default": "ask",
           "markdownDescription": "Whether to install the work plan plugin into Codex when it is missing or is not the one this extension ships: another version, or other files under the same version.",
@@ -333,34 +333,34 @@
             "Never install it; use the command"
           ]
         },
-        "codexExtras.sessionList": {
+        "codexPlus.sessionList": {
           "type": "boolean",
           "default": true,
-          "markdownDescription": "Show the **Codex sessions** view in the Codex Extras sidebar: the conversations open in this window, recently closed ones, and the rest by Codex's own sections."
+          "markdownDescription": "Show the **Codex sessions** view in the Codex Plus sidebar: the conversations open in this window, recently closed ones, and the rest by Codex's own sections."
         },
-        "codexExtras.sessionsInWorkspaceOnly": {
+        "codexPlus.sessionsInWorkspaceOnly": {
           "type": "boolean",
           "default": true,
           "markdownDescription": "List only conversations started in this window's workspace folders, or folders under them, in Codex sessions (open and recently closed ones are always listed)."
         },
-        "codexExtras.hideBackgroundSessions": {
+        "codexPlus.hideBackgroundSessions": {
           "type": "boolean",
           "default": true,
           "markdownDescription": "Leave out the threads Codex starts by itself - sub-agents and the reviews of approval requests - and `codex exec` runs."
         },
-        "codexExtras.recentClosedSessions": {
+        "codexPlus.recentClosedSessions": {
           "type": "integer",
           "default": 10,
           "markdownDescription": "How many conversations **Recently closed** lists. 0 hides it.",
           "minimum": 0,
           "maximum": 50
         },
-        "codexExtras.reopenDroppedTabs": {
+        "codexPlus.reopenDroppedTabs": {
           "type": "boolean",
           "default": true,
           "markdownDescription": "Reopen the Codex tabs that were open when the window closed but that VS Code did not restore, as can happen after the window lost its remote connection. Tabs you closed while connected stay closed."
         },
-        "codexExtras.newConversationGroup": {
+        "codexPlus.newConversationGroup": {
           "type": "string",
           "enum": [
             "main",
@@ -373,7 +373,7 @@
           "default": "main",
           "markdownDescription": "Which editor group a new Codex conversation opens in."
         },
-        "codexExtras.openButtonTarget": {
+        "codexPlus.openButtonTarget": {
           "type": "string",
           "enum": [
             "tab",
@@ -386,32 +386,32 @@
           "default": "tab",
           "markdownDescription": "What the Codex button on the tab bar opens."
         },
-        "codexExtras.tellCodexYourTimeZone": {
+        "codexPlus.tellCodexYourTimeZone": {
           "type": "boolean",
           "default": true,
           "markdownDescription": "Tell Codex the time zone you read in, when it differs from the machine Codex runs on, so it gives you times in your zone. The zone is the one Codex's page runs in. Nothing is said while Codex's own page has already told the model that zone in the conversation (it does at the start of every conversation it drives), so this speaks in `codex exec`, the terminal client, sub-agents, and after a compaction or a long stretch of conversation."
         },
-        "codexExtras.workPlanOfferMinTurns": {
+        "codexPlus.workPlanOfferMinTurns": {
           "type": "number",
           "default": 3,
           "markdownDescription": "How many messages you must have sent before a conversation without a plan is offered one.",
           "minimum": 1
         },
-        "codexExtras.workPlanOfferMinToolCalls": {
+        "codexPlus.workPlanOfferMinToolCalls": {
           "type": "number",
           "default": 25,
           "markdownDescription": "How many tool calls one turn must make before that offer.",
           "minimum": 1
         },
-        "codexExtras.workPlanQuietWhenReplyMatches": {
+        "codexPlus.workPlanQuietWhenReplyMatches": {
           "type": "string",
           "default": "",
           "markdownDescription": "A regular expression (Python syntax) tested on the latest reply. A match silences the reminders around a compaction, for conversations relaying another model's replies word for word."
         },
-        "codexExtras.patchCodex": {
+        "codexPlus.patchCodex": {
           "type": "string",
           "default": "ask",
-          "markdownDescription": "Whether to patch the Codex extension's own files for the additions that need it: status dots on Codex tabs, opening a given conversation in the sidebar, answers put into a conversation's message box, chimes, the line of turn figures, message and reply times, the list of your own messages down the right edge, and the colouring of your own messages. Codex's originals are kept beside them and put back by **Codex Extras: Remove the Patch from Codex** or on uninstall.",
+          "markdownDescription": "Whether to patch the Codex extension's own files for the additions that need it: status dots on Codex tabs, opening a given conversation in the sidebar, answers put into a conversation's message box, chimes, the line of turn figures, message and reply times, the list of your own messages down the right edge, and the colouring of your own messages. Codex's originals are kept beside them and put back by **Codex Plus: Remove the Patch from Codex** or on uninstall.",
           "enum": [
             "ask",
             "on",
@@ -423,47 +423,47 @@
             "Leave Codex's files alone"
           ]
         },
-        "codexExtras.chime": {
+        "codexPlus.chime": {
           "type": "boolean",
           "default": true,
           "markdownDescription": "With the patch: a short sound in a Codex tab when a turn there finishes, when its work plan asks you something, or when it stops for your permission. Three notes is the permission one. A conversation with no tab open in this window cannot make a sound, since the sound is made in the tab's page."
         },
-        "codexExtras.waitingInStatusBar": {
+        "codexPlus.waitingInStatusBar": {
           "type": "boolean",
           "default": true,
           "markdownDescription": "With the patch: a count in the status bar while Codex is stopped waiting for your permission, in any conversation of **this window**. Clicking it goes to that conversation. Hidden when there is none."
         },
-        "codexExtras.turnFigures": {
+        "codexPlus.turnFigures": {
           "type": "boolean",
           "default": true,
           "markdownDescription": "With the patch: beside the time on each reply, that turn's context use, model and effort; and a line at the bottom right of a Codex tab with the last turn's, and the tool call running now. A turn's duration is left to Codex's own \"Worked for\"."
         },
-        "codexExtras.timestamps": {
+        "codexPlus.timestamps": {
           "type": "boolean",
           "default": true,
           "markdownDescription": "With the patch: the time above every message and every reply block in a Codex conversation, in your own time zone. For a reply, Codex records the time on the block itself. For one of your own messages, the time comes from the clock Codex shows on hover, or failing that from the conversation's rollout, and is left off altogether when the rollout and the page disagree on how many of your messages there are."
         },
-        "codexExtras.conversationNavigation": {
+        "codexPlus.conversationNavigation": {
           "type": "boolean",
           "default": true,
           "markdownDescription": "With the patch: a strip on the right edge of a Codex conversation listing your own messages by time and opening words. Click one to scroll to it, step with the arrows or with `,` and `.`, filter the list, or jump to the top or the bottom."
         },
-        "codexExtras.userMessageColor": {
+        "codexPlus.userMessageColor": {
           "type": "string",
           "default": "",
           "markdownDescription": "With the patch: the text colour of **your own messages** in a Codex conversation, as a CSS colour, for example `#90EE90`, `lightgreen` or `rgb(144,238,144)`. Leave it empty to keep Codex's own colour."
         },
-        "codexExtras.userMessageEdge": {
+        "codexPlus.userMessageEdge": {
           "type": "boolean",
           "default": true,
           "markdownDescription": "With the patch: a bar down the leading edge of **your own messages** in a Codex conversation, in the theme's focus colour. Off leaves Codex's own bubble as it is."
         },
-        "codexExtras.sendAnswers": {
+        "codexPlus.sendAnswers": {
           "type": "boolean",
           "default": true,
-          "markdownDescription": "With the patch: an answer from Agent Work Plan's Answer view is sent into the conversation, as pressing Enter in Codex's message box would; while a turn is running Codex queues it or steers the turn with it, as with anything you send then. Off leaves it in the message box as a draft for you to send. Either way it goes in only when the box is empty."
+          "markdownDescription": "With the patch: an answer from Agent Plus's Answer view is sent into the conversation, as pressing Enter in Codex's message box would; while a turn is running Codex queues it or steers the turn with it, as with anything you send then. Off leaves it in the message box as a draft for you to send. Either way it goes in only when the box is empty."
         },
-        "codexExtras.lowContextOutline": {
+        "codexPlus.lowContextOutline": {
           "type": "boolean",
           "default": true,
           "markdownDescription": "With the patch: an outline round Codex's own context meter in the message box once 85% or more of the context window is used. Codex shows that meter only with its own setting on: in Codex's settings, General, Composer, **Show context window usage**."
