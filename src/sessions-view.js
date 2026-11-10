@@ -40,14 +40,33 @@ const COLORS = {
 };
 const COLOR_KEY = 'codexPlus.titleColors';
 const SCHEME = 'codex-extras-thread';
+/* The dots of Claude Code's own list: running green, waiting for you blue, replied and unread red, a failed last turn
+   red, idle grey; one running or waiting in another window is a ring of its colour. */
 const STATE_LOOK = {
   working: { icon: 'circle-filled', color: 'charts.green', word: 'working' },
+  workingElsewhere: { icon: 'circle-outline', color: 'charts.green', word: 'working in another window' },
   unread: { icon: 'circle-filled', color: 'charts.red', word: 'replied, not read' },
-  idle: { icon: 'circle-outline', color: 'descriptionForeground', word: 'idle' },
-  prompt: { icon: 'bell-dot', color: 'charts.orange', word: 'waiting for you' },
+  failed: { icon: 'circle-filled', color: 'charts.red', word: 'last turn failed' },
+  idle: { icon: 'circle-filled', color: 'disabledForeground', word: 'idle' },
+  prompt: { icon: 'circle-filled', color: 'charts.blue', word: 'waiting for you' },
+  promptElsewhere: { icon: 'circle-outline', color: 'charts.blue', word: 'waiting for you in another window' },
   /* No dot: the user has not read this rollout, so whether a turn is running there is not known. */
   unknown: { icon: 'blank', color: 'descriptionForeground', word: 'not read' },
 };
+
+/*
+ * The look of a conversation the source reported. `here` is whether this window shows it, in a tab or in Codex's
+ * sidebar. A conversation running or waiting that this window neither shows nor runs is in another window: the
+ * approvals this window counts (decide, soon) and the turns its app-server reported (runningHere) are its own.
+ */
+function lookOf(conv, here) {
+  const state = (conv && conv.state) || 'idle';
+  const ours = here || !!(conv && (conv.runningHere || conv.decide || conv.soon));
+  if (state === 'working') return ours ? STATE_LOOK.working : STATE_LOOK.workingElsewhere;
+  if (state === 'prompt') return ours ? STATE_LOOK.prompt : STATE_LOOK.promptElsewhere;
+  if (conv && conv.failed) return STATE_LOOK.failed;
+  return STATE_LOOK[state] || STATE_LOOK.idle;
+}
 
 const pad = (n) => String(n).padStart(2, '0');
 function ago(ms, now = Date.now()) {
@@ -204,7 +223,8 @@ class SessionsProvider {
     const conv = this.stateOf(t.id);
     /* A conversation whose rollout the user has not read gets no status dot rather than a wrong one: not read is not
        the same as idle, and reading every old rollout to colour a dot is what the window must not pay for. */
-    const look = this.reader.state(t.id) ? (STATE_LOOK[(conv && conv.state) || 'idle'] || STATE_LOOK.idle) : STATE_LOOK.unknown;
+    const here = this.memory.openThreads().includes(t.id) || t.id === this.sidebarNow;
+    const look = this.reader.state(t.id) ? lookOf(conv, here) : STATE_LOOK.unknown;
     const item = new vscode.TreeItem(t.title || '(untitled)', vscode.TreeItemCollapsibleState.None);
     item.id = `${element.group}:${t.id}`;
     item.resourceUri = vscode.Uri.from({ scheme: SCHEME, path: `/${t.id}` });
@@ -229,4 +249,4 @@ class SessionsProvider {
 /* Whether a search string is meant as part of a thread id: four or more characters of hex and hyphens. */
 const looksLikeId = (q) => /^[0-9a-f-]{4,}$/i.test(String(q || '').trim());
 
-module.exports = { SessionsProvider, group, dateSpan, placeOf, looksLikeId, COLORS, COLOR_KEY, SCHEME, STATE_LOOK };
+module.exports = { SessionsProvider, group, dateSpan, placeOf, looksLikeId, lookOf, COLORS, COLOR_KEY, SCHEME, STATE_LOOK };

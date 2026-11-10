@@ -182,7 +182,7 @@ module.exports = async ({ ok, bad, eq, tmp }) => {
   const kids = lazy.getChildren(groupRow);
   const known = lazy.getTreeItem(kids.find((k) => k.thread.id === ID(1)));
   const notRead = lazy.getTreeItem(kids.find((k) => k.thread.id === ID(7)));
-  eq([known.iconPath.id, notRead.iconPath.id, notRead.tooltip.value.includes('not read')], ['circle-outline', 'blank', true],
+  eq([known.iconPath.id, notRead.iconPath.id, notRead.tooltip.value.includes('not read')], ['circle-filled', 'blank', true],
     'the one whose rollout was read carries its status dot; the one that was not carries none, and says not read rather than idle');
   eq(asked, [ID(7)], 'opening the group asks for that one rollout, and only that one');
   asked.length = 0;
