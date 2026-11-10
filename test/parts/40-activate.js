@@ -207,8 +207,8 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
   const onBar = title.filter((m) => /^navigation/.test(m.group || ''));
   const byCommand = new Map(pkg.contributes.commands.map((c) => [c.command, c]));
   eq(onBar.sort((a, b) => a.group.localeCompare(b.group)).map((m) => m.command),
-    ['codexPlus.newInTab', 'codexPlus.newInSidebar', 'codexPlus.findThread'],
-    'the bar holds the two for opening a conversation, then search: the list redraws itself, so there is no Refresh');
+    ['codexPlus.newInTab', 'codexPlus.newInSidebar', 'codexPlus.findThread', 'codexPlus.newGroup'],
+    'the bar holds the two for opening a conversation, then search and New Group: the list redraws itself, so there is no Refresh');
   eq(onBar.filter((m) => !byCommand.get(m.command) || !byCommand.get(m.command).icon).map((m) => m.command), [],
     'each of them has an icon, or it would show as a word on the bar');
   eq(title.filter((m) => !/^navigation/.test(m.group || '')).map((m) => m.command), [],

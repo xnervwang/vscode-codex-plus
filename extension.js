@@ -26,6 +26,7 @@ const { CodexReader } = require('./src/codex-reader');
 const hostLink = require('./src/host-link');
 const { TabMemory } = require('./src/tab-memory');
 const { SessionsProvider, createFollower, COLORS, looksLikeId } = require('./src/sessions-view');
+const { createGroups } = require('./src/session-groups');
 const patching = require('./src/patching');
 const supported = require('./src/supported');
 const pythonRuntime = require('./src/python-runtime');
@@ -131,6 +132,22 @@ function codexProgram() {
   return codexBinary(ext && ext.extensionPath, configured);
 }
 
+/*
+ * A request to this window's app-server, on Codex's own connection (src/patching.js hostRequest). Before the patch has
+ * handed that connection over, a short-lived app-server is started instead, unless `fallback` is false. Resolves to
+ * { outcome, result, reason } and never rejects.
+ */
+async function askAppServer(method, params, { fallback = true } = {}) {
+  const r = await patching.hostRequest(method, params);
+  if (r.outcome !== 'unavailable' || !fallback) return r;
+  const binary = codexProgram();
+  if (!binary) return { outcome: 'failed', reason: 'the codex program of the Codex extension was not found' };
+  try {
+    const result = await require('./src/appserver').withAppServer(binary, files.codexHome(), (server) => server.request(method, params));
+    return { outcome: 'done', result };
+  } catch (e) { return { outcome: 'failed', reason: e.message }; }
+}
+
 /* What the plugin's hooks read: the few settings that change their behaviour, and the user's time zone. */
 function writeHookSettings(context) {
   if (!trusted() || standsDown()) return;
@@ -182,9 +199,10 @@ async function activate(context) {
   });
   context.subscriptions.push(memory, patching.onPanelClosed((thread, opened) => memory.panelClosed(thread, opened)));
   let lastConversations = new Map();
+  const groups = createGroups({ ask: askAppServer, sections: () => reader.sections(), memento: context.globalState });
   const sessionsProvider = new SessionsProvider(vscode, { memory, memento: context.globalState, settings, reader,
     stateOf: (id) => lastConversations.get(id), wantState: (ids) => source.wantState(ids),
-    sidebarShowing: () => patching.sidebarShowing() });
+    sidebarShowing: () => patching.sidebarShowing(), sections: () => new Map(groups.list()) });
   const sessionsView = vscode.window.createTreeView('codexPlus.sessions', { treeDataProvider: sessionsProvider, canSelectMany: true });
   context.subscriptions.push(sessionsView);
   context.subscriptions.push(vscode.window.registerFileDecorationProvider(sessionsProvider));
@@ -194,7 +212,14 @@ async function activate(context) {
     const id = tab ? source.sessionForTab(tab) : null;
     return typeof id === 'string' ? id : patching.sidebarShowing();
   });
-  const relist = () => { sessionsProvider.refresh(); follow(); };
+  /* Whether this Codex can make groups is asked on Codex's own connection once the list is on screen, and never by
+     starting an app-server for it; until it is known the group commands are offered. */
+  const probeGroups = () => {
+    if (groups.supported() !== null || !sessionsView.visible) return;
+    groups.probe({ fallback: false }).then((yes) => { if (yes === false) vscode.commands.executeCommand('setContext', 'codexPlus.noGroups', true); })
+      .catch(() => { /* asked again on the next redraw */ });
+  };
+  const relist = () => { sessionsProvider.refresh(); follow(); probeGroups(); };
   const redrawSessions = async () => {
     try { lastConversations = new Map((await source.listConversations()).map((c) => [c.sessionId, c])); } catch (_) { /* the last one stays */ }
     relist();
@@ -237,7 +262,7 @@ async function activate(context) {
   const userTimes = (id) => reader.request('userTimes', { home: files.codexHome(), id });
   /* How long Codex's pages took to open, from Codex's own log; read only when Show Status or its command asks. */
   const opens = openTimes.createOpenTimes(openTimes.whereLogs(context.logUri && context.logUri.fsPath));
-  registerCommands(context, { source, memory, sessionsProvider, say, link, opens });
+  registerCommands(context, { source, memory, sessionsProvider, say, link, opens, groups });
 
   /* Delayed start-up work is cancelled with the extension, so a window that closes within the delay starts none of it. */
   const later = (fn, ms) => {
@@ -297,7 +322,7 @@ async function newConversationInTab(say) {
   await vscode.commands.executeCommand('chatgpt.newCodexPanel');
 }
 
-function registerCommands(context, { source, memory, sessionsProvider, say, link, opens }) {
+function registerCommands(context, { source, memory, sessionsProvider, say, link, opens, groups }) {
   const reg = (name, fn) => context.subscriptions.push(vscode.commands.registerCommand(`${CONFIG}.${name}`, fn));
   const threadArg = (arg) => (typeof arg === 'string' ? arg : arg && arg.thread ? arg.thread.id : arg && arg.sessionId) || '';
   const restricted = () => {
@@ -485,17 +510,10 @@ function registerCommands(context, { source, memory, sessionsProvider, say, link
    * Before the patch has handed that connection over, a short-lived app-server is started instead. The list re-reads
    * Codex's files afterwards. Returns false if Codex refused, after showing the user why.
    */
-  const changeThread = async (doing, method, params) => {
-    let r = await patching.hostRequest(method, params);
-    if (r.outcome === 'unavailable') {
-      const binary = codexProgram();
-      if (!binary) r = { outcome: 'failed', reason: 'the codex program of the Codex extension was not found' };
-      else {
-        try { await require('./src/appserver').withAppServer(binary, files.codexHome(), (s) => s.request(method, params)); r = { outcome: 'done' }; }
-        catch (e) { r = { outcome: 'failed', reason: e.message }; }
-      }
-    }
-    if (r.outcome === 'failed') { vscode.window.showErrorMessage(`Codex could not ${doing}: ${r.reason}`); return false; }
+  const changeThread = async (doing, method, params) => done(doing, await askAppServer(method, params));
+  /* Shows why Codex refused, or has the list read Codex's files again. */
+  const done = (doing, r) => {
+    if (r && r.outcome === 'failed') { vscode.window.showErrorMessage(`Codex could not ${doing}: ${r.reason}`); return false; }
     source._poll();
     return true;
   };
@@ -516,16 +534,61 @@ function registerCommands(context, { source, memory, sessionsProvider, say, link
     if (restricted()) return;
     for (const id of chosen(arg, selected)) if ((reader.thread(id) || {}).archived && !await changeThread('unarchive it', 'thread/unarchive', { threadId: id })) return;
   });
-  /* Codex's sections are its own groups, the ones its sidebar draws; Claude Code's list calls the same act Add to Group. */
+  /*
+   * The groups. A command run before this Codex is known to have them asks first; one without them is told so, and the
+   * commands are then no longer offered.
+   */
+  const groupsHere = async () => {
+    const yes = await groups.probe({ fallback: true });
+    if (yes === false) {
+      vscode.commands.executeCommand('setContext', 'codexPlus.noGroups', true);
+      vscode.window.showInformationMessage('Codex Plus: this Codex has no groups (sections) to sort conversations into.');
+    }
+    return yes !== false;
+  };
+  const sectionArg = (arg) => {
+    const key = arg && arg.group && typeof arg.group.key === 'string' ? arg.group.key : typeof arg === 'string' ? `section:${arg}` : '';
+    return key.startsWith('section:') ? key.slice('section:'.length) : '';
+  };
+  const askName = (prompt, value) => vscode.window.showInputBox({ prompt, value, valueSelection: [0, value.length] })
+    .then((name) => (name === undefined || !name.trim() ? '' : name.trim()));
+  const newGroup = async (ids) => {
+    if (restricted() || !await groupsHere()) return;
+    const name = await askName('A name for the new group', 'New group');
+    if (!name) return;
+    const r = await groups.create(name);
+    if (r.outcome !== 'done') { done('make the group', r); return; }
+    done('move it', ids.length ? await groups.move(ids, r.id) : r);
+  };
+  reg('newGroup', () => newGroup([]));
+  reg('newGroupFromThreads', (arg, selected) => newGroup(chosen(arg, selected)));
+  reg('renameGroup', async (arg) => {
+    const id = sectionArg(arg);
+    if (!id || restricted() || !await groupsHere()) return;
+    const was = reader.sections().get(id) || '';
+    const name = await askName('A new name for this group', was);
+    if (!name || name === was) return;
+    done('rename the group', await groups.rename(id, name));
+  });
+  reg('deleteGroup', async (arg) => {
+    const id = sectionArg(arg);
+    if (!id || restricted() || !await groupsHere()) return;
+    done('delete the group', await groups.remove(id));
+  });
+  /* Claude Code's Add to group: the groups that do not already hold every conversation chosen. */
   reg('moveThreadToSection', async (arg, selected) => {
-    if (restricted()) return;
     const ids = chosen(arg, selected);
-    if (!ids.length) return;
-    const items = [...reader.sections()].map(([sectionId, name]) => ({ label: name || 'Section', sectionId }))
-      .concat([{ label: 'No section', description: 'listed under Ungrouped', sectionId: null }]);
-    const pick = await vscode.window.showQuickPick(items, { placeHolder: 'Move to which of Codex\'s sections?' });
-    if (!pick) return;
-    for (const id of ids) if (!await changeThread('move it', 'thread/section/move', { threadId: id, sectionId: pick.sectionId })) return;
+    if (!ids.length || restricted() || !await groupsHere()) return;
+    const items = groups.choices().filter(([sectionId]) => !ids.every((id) => (reader.thread(id) || {}).section === sectionId))
+      .map(([sectionId, name]) => ({ label: name || 'Group', sectionId }));
+    if (!items.length) { vscode.window.showInformationMessage('Codex Plus: there is no other group to add it to. New Group from Conversation makes one.'); return; }
+    const pick = await vscode.window.showQuickPick(items, { placeHolder: 'Add to which group?' });
+    if (pick) done('move it', await groups.move(ids, pick.sectionId));
+  });
+  reg('removeFromGroup', async (arg, selected) => {
+    const ids = chosen(arg, selected).filter((id) => (reader.thread(id) || {}).section);
+    if (!ids.length || restricted()) return;
+    done('take it out of its group', await groups.move(ids, null));
   });
   reg('markThreadUnread', (arg, selected) => { for (const id of chosen(arg, selected)) source.markUnread(id); });
   reg('deleteArchivedThread', async (arg, selected) => {

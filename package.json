@@ -134,7 +134,28 @@
       },
       {
         "command": "codexPlus.moveThreadToSection",
-        "title": "Codex Plus: Move to Section..."
+        "title": "Codex Plus: Add to Group..."
+      },
+      {
+        "command": "codexPlus.removeFromGroup",
+        "title": "Codex Plus: Remove from Group"
+      },
+      {
+        "command": "codexPlus.newGroup",
+        "title": "Codex Plus: New Group...",
+        "icon": "$(new-folder)"
+      },
+      {
+        "command": "codexPlus.newGroupFromThreads",
+        "title": "Codex Plus: New Group from Conversation..."
+      },
+      {
+        "command": "codexPlus.renameGroup",
+        "title": "Codex Plus: Rename Group..."
+      },
+      {
+        "command": "codexPlus.deleteGroup",
+        "title": "Codex Plus: Delete Group"
       },
       {
         "command": "codexPlus.markThreadUnread",
@@ -187,6 +208,11 @@
           "command": "codexPlus.findThread",
           "when": "view == codexPlus.sessions",
           "group": "navigation@2"
+        },
+        {
+          "command": "codexPlus.newGroup",
+          "when": "view == codexPlus.sessions && !codexPlus.noGroups",
+          "group": "navigation@3"
         }
       ],
       "view/item/context": [
@@ -197,7 +223,7 @@
         },
         {
           "command": "codexPlus.archiveThread",
-          "when": "view == codexPlus.sessions && viewItem =~ /^codexPlusThread(Open)?$/",
+          "when": "view == codexPlus.sessions && viewItem =~ /^codexPlusThread(Open)?( grouped)?$/",
           "group": "inline@2"
         },
         {
@@ -217,7 +243,7 @@
         },
         {
           "command": "codexPlus.archiveThread",
-          "when": "view == codexPlus.sessions && viewItem =~ /^codexPlusThread(Open)?$/",
+          "when": "view == codexPlus.sessions && viewItem =~ /^codexPlusThread(Open)?( grouped)?$/",
           "group": "2_edit@2"
         },
         {
@@ -226,8 +252,18 @@
           "group": "2_edit@2"
         },
         {
+          "command": "codexPlus.newGroupFromThreads",
+          "when": "view == codexPlus.sessions && viewItem =~ /^codexPlusThread(Open)?( grouped)?$/ && !codexPlus.noGroups",
+          "group": "2_edit@3"
+        },
+        {
           "command": "codexPlus.moveThreadToSection",
-          "when": "view == codexPlus.sessions && viewItem =~ /^codexPlusThread(Open)?$/",
+          "when": "view == codexPlus.sessions && viewItem =~ /^codexPlusThread(Open)?( grouped)?$/ && !codexPlus.noGroups",
+          "group": "2_edit@3"
+        },
+        {
+          "command": "codexPlus.removeFromGroup",
+          "when": "view == codexPlus.sessions && viewItem =~ /^codexPlusThread(Open)? grouped$/",
           "group": "2_edit@3"
         },
         {
@@ -243,6 +279,16 @@
         {
           "command": "codexPlus.deleteArchivedThread",
           "when": "view == codexPlus.sessions && viewItem == codexPlusThreadArchived",
+          "group": "9_delete@1"
+        },
+        {
+          "command": "codexPlus.renameGroup",
+          "when": "view == codexPlus.sessions && viewItem == codexPlusGroup-section && !codexPlus.noGroups",
+          "group": "2_group@1"
+        },
+        {
+          "command": "codexPlus.deleteGroup",
+          "when": "view == codexPlus.sessions && viewItem == codexPlusGroup-section && !codexPlus.noGroups",
           "group": "9_delete@1"
         }
       ],
@@ -285,6 +331,26 @@
         },
         {
           "command": "codexPlus.downloadPython",
+          "when": "false"
+        },
+        {
+          "command": "codexPlus.newGroupFromThreads",
+          "when": "false"
+        },
+        {
+          "command": "codexPlus.renameGroup",
+          "when": "false"
+        },
+        {
+          "command": "codexPlus.deleteGroup",
+          "when": "false"
+        },
+        {
+          "command": "codexPlus.removeFromGroup",
+          "when": "false"
+        },
+        {
+          "command": "codexPlus.newGroup",
           "when": "false"
         }
       ],

@@ -5,7 +5,7 @@
 'use strict';
 /*
  * The session list and the conversation page offer the same actions as Claude Code's: rename, archive or unarchive,
- * move to one of Codex's sections, and mark as unread. The first four are sent to Codex's app-server on
+ * add to one of Codex's sections, and mark as unread. The first four are sent to Codex's app-server on
  * Codex's own connection (src/patching.js hostRequest); the method names and parameters are the ones an offline
  * app-server of Codex 26.1021.22027 accepted. Mark as unread is kept in this extension's own read record
  * (src/seen.js), not in Codex.
@@ -61,7 +61,8 @@ module.exports = async ({ eq, tmp, root }) => {
   };
   const provider = { codexMcpConnection: conn, postMessageToWebview() {}, sendMessageToPanel() {} };
   const row = (t, group = 'ungrouped') => ({ kind: 'thread', thread: { id: t.id }, group });
-  const run = async (cmd, ...args) => { requests.length = 0; await control.state.handlers[`codexPlus.${cmd}`](...args); await tick(); return requests.map((r) => [r.method, r.params]); };
+  const run = async (cmd, ...args) => { requests.length = 0; await control.state.handlers[`codexPlus.${cmd}`](...args); await tick();
+    return requests.filter((r) => r.method !== 'threadSection/list').map((r) => [r.method, r.params]); };
   try {
     /* Before the patch hands over the connection, a short-lived app-server is used instead. No codex program is
        found in this test, so that fails, and the user is told. */
@@ -85,10 +86,7 @@ module.exports = async ({ eq, tmp, root }) => {
 
     control.state.pickAnswer = (items) => items.find((i) => i.label === 'Pinned');
     eq(await run('moveThreadToSection', row(made[1])), [['thread/section/move', { threadId: made[1].id, sectionId: 'sec-1' }]],
-      'Move to Section offers Codex\'s sections and moves the conversation into the one picked');
-    control.state.pickAnswer = (items) => items.find((i) => i.sectionId === null);
-    eq(await run('moveThreadToSection', row(made[1])), [['thread/section/move', { threadId: made[1].id, sectionId: null }]],
-      'and its last choice takes it out of any section');
+      'Add to Group offers Codex\'s sections and moves the conversation into the one picked');
 
     answer = (r) => ({ id: r.id, error: { code: -32600, message: 'thread not found' } });
     control.state.said.length = 0;

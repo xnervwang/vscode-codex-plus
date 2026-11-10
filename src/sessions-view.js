@@ -32,6 +32,7 @@
  * from the reader's latest snapshot (src/codex-reader.js), so drawing it reads no file.
  */
 const { folderTest } = require('./folders');
+const { PINNED_SECTION } = require('./session-groups');
 
 /* The colours a title can be given: the eight Claude Code's /color offers, as theme colours. */
 const COLORS = {
@@ -129,7 +130,7 @@ function placeOf(t, sections) {
 }
 
 class SessionsProvider {
-  constructor(vscode, { memory, memento, settings, stateOf, reader, wantState = () => {}, sidebarShowing = () => '' }) {
+  constructor(vscode, { memory, memento, settings, stateOf, reader, wantState = () => {}, sidebarShowing = () => '', sections = null }) {
     this.vscode = vscode;
     this.reader = reader;
     this.memory = memory;
@@ -142,6 +143,8 @@ class SessionsProvider {
     /* The conversation Codex's sidebar shows now, which counts as open in this window as a tab does. */
     this.sidebarShowing = sidebarShowing;
     this.sidebarNow = '';
+    /* Codex's sections in the order the list draws them (src/session-groups.js); the snapshot's order otherwise. */
+    this.sectionsOf = sections || (() => reader.sections());
     this.emitter = new vscode.EventEmitter();
     this.onDidChangeTreeData = this.emitter.event;
     this.decoEmitter = new vscode.EventEmitter();
@@ -168,7 +171,7 @@ class SessionsProvider {
 
   refresh() {
     this.threads = this.reader.threads() || [];
-    this.sections = this.reader.sections();
+    this.sections = this.sectionsOf();
     const folders = (this.vscode.workspace.workspaceFolders || []).map((f) => f.uri.fsPath);
     /*
      * Real paths, not the strings: VS Code gives the workspace folder as /home/<user>/... where Codex recorded the
@@ -236,7 +239,8 @@ class SessionsProvider {
       item.id = `group:${g.key}`;
       // An empty group says so in a row of its own instead of carrying a nought.
       if (g.threads.length) item.description = String(g.threads.length);
-      item.contextValue = `codexPlusGroup-${g.key}`;
+      item.contextValue = g.key === `section:${PINNED_SECTION}` ? 'codexPlusGroup-pinned'
+        : g.key.startsWith('section:') ? 'codexPlusGroup-section' : `codexPlusGroup-${g.key}`;
       return item;
     }
     const t = element.thread;
@@ -251,7 +255,8 @@ class SessionsProvider {
     item.description = dateSpan(t.createdMs, t.updatedMs);
     item.iconPath = new vscode.ThemeIcon(look.icon, new vscode.ThemeColor(look.color));
     const open = element.group === 'open';
-    item.contextValue = t.archived ? 'codexPlusThreadArchived' : open ? 'codexPlusThreadOpen' : 'codexPlusThread';
+    item.contextValue = (t.archived ? 'codexPlusThreadArchived' : open ? 'codexPlusThreadOpen' : 'codexPlusThread')
+      + (t.section && this.sections.has(t.section) ? ' grouped' : '');
     const md = new vscode.MarkdownString();
     md.appendMarkdown(`**${(t.title || '(untitled)').replace(/[*_`[\]]/g, '\\$&')}**\n\n`);
     const place = placeOf(t, this.sections);
