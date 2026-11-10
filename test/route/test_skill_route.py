@@ -1363,7 +1363,7 @@ class J_Quality(unittest.TestCase):
 
     def test_floors(self):
         """the right skill is in the top five for 85% or more of the requests, first for 92% of those that name it,
-        and the negative sentences get no skills"""
+        and none of the sentences that should match no skill gets one"""
         top5, first, negatives = self.rates()
         self.assertGreaterEqual(top5, self.TOP5_FLOOR)
         self.assertGreaterEqual(first, self.BY_NAME_FLOOR)

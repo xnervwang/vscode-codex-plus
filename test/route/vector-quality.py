@@ -9,9 +9,8 @@
 
 <codex home> is a Codex home whose config.toml sets the Amazon Bedrock provider with credentials (its credential_export,
 profile, or the AWS environment variables), the same way Codex is set up. It reads only that config.toml and writes only
-to a temporary folder. It is not part of the suite, since it needs
-credentials and the network: it makes one request at a time, waits and retries on a throttle, and sends the catalogue's
-descriptions and the requests of corpus.py, nothing else.
+to a temporary folder. It is not part of the suite, since it needs credentials and the network: it makes one request at
+a time, waits and retries on a throttle, and sends only the skill descriptions and requests in corpus.py.
 
 It prints the top-five hit rate, the first-place rate for name-only requests, and how many skills the negative
 sentences get, for both the vector and the keyword search.
