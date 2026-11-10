@@ -51,7 +51,8 @@ function create() {
   const extChanged = new EventEmitter();
   const groups = [{ viewColumn: 1, tabs: [], activeTab: null, isActive: true }];
   const state = { commands: [], context: {}, extensions: new Map(), clipboard: '', views: [], status: [], log: [], registered: [],
-    said: [], answers: [], handlers: {}, external: [], externalAnswer: true, picks: [], quickPicks: [], treeViews: {}, inputs: [], statusMessages: [] };
+    said: [], answers: [], handlers: {}, external: [], externalAnswer: true, picks: [], quickPicks: [], treeViews: {}, inputs: [], statusMessages: [],
+    webviewViews: {} };
   /* A notification is answered with the button the test set for text it contains (control.answer), else dismissed. */
   const answer = async (message, ...rest) => {
     const buttons = rest.filter((b) => typeof b === 'string');
@@ -81,7 +82,7 @@ function create() {
         return view;
       },
       registerTreeDataProvider: (id) => { state.views.push(id); return { dispose() {} }; },
-      registerWebviewViewProvider: (id) => { state.views.push(id); return { dispose() {} }; },
+      registerWebviewViewProvider: (id, provider) => { state.views.push(id); state.webviewViews[id] = provider; return { dispose() {} }; },
       registerFileDecorationProvider: () => ({ dispose() {} }),
       createStatusBarItem: () => { const item = { text: '', show() { item.shown = true; state.status.push(item); }, hide() { item.shown = false; }, dispose() {} }; return item; },
       createOutputChannel: () => ({ appendLine: (l) => state.log.push(l), show() {}, dispose() {} }),
@@ -128,6 +129,22 @@ function create() {
     answer(match, pick) { state.answers.push([match, pick]); },
     codexTab(thread) { return { label: 't', input: new TabInputCustom(Uri.from({ scheme: 'openai-codex', authority: 'route', path: `/local/${thread}` }), 'chatgpt.conversationEditor') }; },
     fileTab(p) { return { label: path.basename(p), input: new TabInputText(Uri.file(p)) }; },
+    /*
+     * Shows the webview view registered as `id`, as VS Code does when it comes into view: a view whose webview records
+     * what is posted to it (`posted`) and whose page can be made to send a message (`fromPage`).
+     */
+    showWebviewView(id) {
+      const provider = state.webviewViews[id];
+      const received = new EventEmitter(), shown = new EventEmitter(), gone = new EventEmitter();
+      const view = { visible: true, posted: [],
+        webview: { options: {}, html: '', cspSource: 'vscode-resource:', asWebviewUri: (u) => u,
+          postMessage: async (m) => { view.posted.push(JSON.parse(JSON.stringify(m))); return true; }, onDidReceiveMessage: received.event },
+        onDidChangeVisibility: shown.event, onDidDispose: gone.event,
+        fromPage: async (m) => { for (const fn of [...received.listeners]) await fn(m); },
+        setVisible(v) { view.visible = v; shown.fire(); }, dispose() { gone.fire(); } };
+      provider.resolveWebviewView(view, {}, {});
+      return view;
+    },
   };
   return { vscode, control };
 }

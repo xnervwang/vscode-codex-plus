@@ -60,9 +60,9 @@
     'quickInput-foreground': '#cccccc', 'chat-requestBackground': 'rgba(31,31,31,0.62)',
   };
   var root = document.documentElement;
-  var css = '';
-  Object.keys(THEME).forEach(function (k) { css += '--vscode-' + k + ':' + THEME[k] + ';'; });
-  root.setAttribute('style', css);
+  /* Set one by one through the style object, which a content policy without 'unsafe-inline' still allows, as the
+     session list's page has; a style attribute it would refuse. */
+  Object.keys(THEME).forEach(function (k) { root.style.setProperty('--vscode-' + k, THEME[k]); });
   root.style.colorScheme = 'dark';
   /* VS Code adds these to <body> once it exists; the layout sample shows the two Codex's tab had. */
   function bodyClasses() { document.body.classList.add('vscode-dark', 'vscode-reduce-motion'); document.body.setAttribute('data-vscode-theme-kind', 'vscode-dark'); document.body.setAttribute('data-vscode-theme-id', 'Default Dark Modern'); }

@@ -111,12 +111,33 @@ module.exports = async ({ eq, tmp, root }) => {
     eq(await run('newGroupFromThreads', row(made[1]), [row(made[0])]).then((r) => r.filter(([m]) => m === 'thread/section/move').map(([, p]) => p.threadId)),
       [made[1].id], 'a right-click on a row outside the selection acts on that row alone, as in a file explorer');
 
-    const tree = control.state.treeViews['codexPlus.sessions'].opts.treeDataProvider;
-    tree.refresh();
-    const items = tree.getChildren().map((r) => tree.getTreeItem(r));
-    const inGroup = tree.getChildren(tree.getChildren().find((r) => r.group.key === 'section:sec-1')).map((r) => tree.getTreeItem(r).contextValue);
-    eq([items.find((i) => i.label === 'Pinned').contextValue, inGroup], ['codexPlusGroup-section', ['codexPlusThread grouped']],
-      'a section\'s header and a row in a section carry what their right-click menus are chosen by');
+    const page = control.showWebviewView('codexPlus.sessions');
+    await page.fromPage({ kind: 'ready' });
+    const m = page.posted.filter((x) => x.type === 'model').pop().model;
+    const sec = m.groups.find((x) => x.key === 'section:sec-1');
+    eq([sec.label, sec.made, sec.rows.map((r) => r.grouped)], ['Pinned', true, [true]],
+      'a section and a row in it carry what their right-click menus are chosen by: a group the user made, and a row in a group');
+    requests.length = 0;
+    await page.fromPage({ kind: 'move', ids: [made[1].id], key: 'section:sec-1' });
+    await page.fromPage({ kind: 'move', ids: [made[0].id], key: 'ungrouped' });
+    await page.fromPage({ kind: 'move', ids: [made[0].id], key: 'section:sec-1' });
+    await tick();
+    eq(requests.filter((r) => r.method === 'thread/section/move').map((r) => r.params),
+      [{ threadId: made[1].id, sectionId: 'sec-1' }, { threadId: made[0].id, sectionId: null }],
+      'rows dropped on a group are moved into it, on Ungrouped out of any group, and a drop on the group a row is already in does nothing');
+    requests.length = 0;
+    await page.fromPage({ kind: 'renameGroup', key: 'section:sec-1', name: ' Reading ' });
+    await page.fromPage({ kind: 'rename', id: made[1].id, title: 'New  title' });
+    await tick();
+    eq(requests.map((r) => [r.method, r.params]).filter(([meth]) => meth !== 'threadSection/list'),
+      [['threadSection/update', { sectionId: 'sec-1', name: 'Reading' }], ['thread/name/set', { threadId: made[1].id, name: 'New title' }]],
+      'a group\'s name and a title edited where they are drawn are sent as Rename Group and Rename send them');
+    page.posted.length = 0;
+    requests.length = 0;
+    await page.fromPage({ kind: 'newGroup' });
+    await tick();
+    eq([requests.filter((r) => r.method === 'threadSection/create').map((r) => r.params.name), page.posted.filter((x) => x.type === 'startRenameGroup').map((x) => x.key)],
+      [['New group'], [`section:sec-new-${made2}`]], 'New group in the list makes "New group" and has the page edit its name where it is drawn, as Claude Code\'s does');
   } finally {
     for (const d of subs) { try { d.dispose(); } catch (_) { /* gone */ } }
     ext.deactivate();

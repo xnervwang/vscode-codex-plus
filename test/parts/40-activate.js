@@ -202,17 +202,10 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
   if (restricted.registered.length === 1 && !restricted.wroteSettings) ok('in Restricted Mode it still registers, and writes nothing');
   else bad(`restricted: ${JSON.stringify([restricted.registered.length, restricted.wroteSettings])}`);
 
-  /* ── the session list's own title bar: what a reader sees on it, and what is a click further away ── */
+  /* ── the session list's own title bar: empty, since the page draws New in tab, New in sidebar, search and New group ── */
   const title = (pkg.contributes.menus['view/title'] || []).filter((m) => /codexPlus\.sessions/.test(m.when || ''));
-  const onBar = title.filter((m) => /^navigation/.test(m.group || ''));
   const byCommand = new Map(pkg.contributes.commands.map((c) => [c.command, c]));
-  eq(onBar.sort((a, b) => a.group.localeCompare(b.group)).map((m) => m.command),
-    ['codexPlus.newInTab', 'codexPlus.newInSidebar', 'codexPlus.findThread', 'codexPlus.newGroup'],
-    'the bar holds the two for opening a conversation, then search and New Group: the list redraws itself, so there is no Refresh');
-  eq(onBar.filter((m) => !byCommand.get(m.command) || !byCommand.get(m.command).icon).map((m) => m.command), [],
-    'each of them has an icon, or it would show as a word on the bar');
-  eq(title.filter((m) => !/^navigation/.test(m.group || '')).map((m) => m.command), [],
-    'and its ... menu holds nothing of this extension\'s; Settings is in the command palette');
+  eq(title.map((m) => m.command), [], 'the bar holds nothing: the list\'s own buttons are in the list, as Claude Code\'s are, and it redraws itself, so there is no Refresh');
   const menus = [].concat(...Object.values(pkg.contributes.menus)).map((m) => m.command);
   eq(menus.filter((c) => !byCommand.has(c)), [], 'every command a menu names is declared');
 

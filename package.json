@@ -181,113 +181,14 @@
     "views": {
       "codexPlus": [
         {
+          "type": "webview",
           "id": "codexPlus.sessions",
           "name": "Codex sessions",
           "when": "config.codexPlus.sessionList"
         }
       ]
     },
-    "viewsWelcome": [
-      {
-        "view": "codexPlus.sessions",
-        "contents": "No sessions yet"
-      }
-    ],
     "menus": {
-      "view/title": [
-        {
-          "command": "codexPlus.newInTab",
-          "when": "view == codexPlus.sessions",
-          "group": "navigation@0"
-        },
-        {
-          "command": "codexPlus.newInSidebar",
-          "when": "view == codexPlus.sessions",
-          "group": "navigation@1"
-        },
-        {
-          "command": "codexPlus.findThread",
-          "when": "view == codexPlus.sessions",
-          "group": "navigation@2"
-        },
-        {
-          "command": "codexPlus.newGroup",
-          "when": "view == codexPlus.sessions && !codexPlus.noGroups",
-          "group": "navigation@3"
-        }
-      ],
-      "view/item/context": [
-        {
-          "command": "codexPlus.renameThread",
-          "when": "view == codexPlus.sessions && viewItem =~ /^codexPlusThread(Open)?( grouped)?( unread)?$/",
-          "group": "inline@1"
-        },
-        {
-          "command": "codexPlus.openThreadInTab",
-          "when": "view == codexPlus.sessions && viewItem =~ /^codexPlusThread(Open)?( grouped)?( unread)?$/",
-          "group": "1_open@1"
-        },
-        {
-          "command": "codexPlus.openThreadInSidebar",
-          "when": "view == codexPlus.sessions && viewItem =~ /^codexPlusThread(Open)?( grouped)?( unread)?$/",
-          "group": "1_open@2"
-        },
-        {
-          "command": "codexPlus.renameThread",
-          "when": "view == codexPlus.sessions && viewItem =~ /^codexPlusThread(Open)?( grouped)?( unread)?$/",
-          "group": "2_edit@1"
-        },
-        {
-          "command": "codexPlus.newGroupFromThreads",
-          "when": "view == codexPlus.sessions && viewItem =~ /^codexPlusThread(Open)?( grouped)?( unread)?$/ && !codexPlus.noGroups",
-          "group": "2_edit@3"
-        },
-        {
-          "command": "codexPlus.moveThreadToSection",
-          "when": "view == codexPlus.sessions && viewItem =~ /^codexPlusThread(Open)?( grouped)?( unread)?$/ && !codexPlus.noGroups",
-          "group": "2_edit@3"
-        },
-        {
-          "command": "codexPlus.removeFromGroup",
-          "when": "view == codexPlus.sessions && viewItem =~ /^codexPlusThread(Open)? grouped( unread)?$/",
-          "group": "2_edit@3"
-        },
-        {
-          "command": "codexPlus.markThreadUnread",
-          "when": "view == codexPlus.sessions && viewItem =~ /^codexPlusThread(Open)?( grouped)?$/",
-          "group": "2_edit@4"
-        },
-        {
-          "command": "codexPlus.markThreadRead",
-          "when": "view == codexPlus.sessions && viewItem =~ /^codexPlusThread(Open)?( grouped)? unread$/",
-          "group": "2_edit@4"
-        },
-        {
-          "command": "codexPlus.setTitleColor",
-          "when": "view == codexPlus.sessions && viewItem =~ /^codexPlusThread(Open)?( grouped)?( unread)?$/",
-          "group": "3_look@1"
-        },
-        {
-          "command": "codexPlus.newThreadInGroup",
-          "when": "view == codexPlus.sessions && viewItem == codexPlusGroup-section && !codexPlus.noGroups",
-          "group": "1_new@1"
-        },
-        {
-          "command": "codexPlus.newGroup",
-          "when": "view == codexPlus.sessions && viewItem =~ /^codexPlusGroup-(section|ungrouped)$/ && !codexPlus.noGroups",
-          "group": "1_new@2"
-        },
-        {
-          "command": "codexPlus.renameGroup",
-          "when": "view == codexPlus.sessions && viewItem == codexPlusGroup-section && !codexPlus.noGroups",
-          "group": "2_group@1"
-        },
-        {
-          "command": "codexPlus.deleteGroup",
-          "when": "view == codexPlus.sessions && viewItem == codexPlusGroup-section && !codexPlus.noGroups",
-          "group": "9_delete@1"
-        }
-      ],
       "commandPalette": [
         {
           "command": "codexPlus.openThreadInTab",
@@ -353,6 +254,71 @@
         }
       ],
       "webview/context": [
+        {
+          "command": "codexPlus.openThreadInTab",
+          "when": "webviewId == 'codexPlus.sessions' && webviewSection == 'thread'",
+          "group": "1_open@1"
+        },
+        {
+          "command": "codexPlus.openThreadInSidebar",
+          "when": "webviewId == 'codexPlus.sessions' && webviewSection == 'thread'",
+          "group": "1_open@2"
+        },
+        {
+          "command": "codexPlus.newGroupFromThreads",
+          "when": "webviewId == 'codexPlus.sessions' && webviewSection == 'thread' && !codexPlus.noGroups",
+          "group": "2_group@1"
+        },
+        {
+          "command": "codexPlus.moveThreadToSection",
+          "when": "webviewId == 'codexPlus.sessions' && webviewSection == 'thread' && !codexPlus.noGroups",
+          "group": "2_group@2"
+        },
+        {
+          "command": "codexPlus.removeFromGroup",
+          "when": "webviewId == 'codexPlus.sessions' && webviewSection == 'thread' && codexPlusGrouped",
+          "group": "2_group@3"
+        },
+        {
+          "command": "codexPlus.markThreadUnread",
+          "when": "webviewId == 'codexPlus.sessions' && webviewSection == 'thread' && !codexPlusUnread",
+          "group": "3_read@1"
+        },
+        {
+          "command": "codexPlus.markThreadRead",
+          "when": "webviewId == 'codexPlus.sessions' && webviewSection == 'thread' && codexPlusUnread",
+          "group": "3_read@1"
+        },
+        {
+          "command": "codexPlus.renameThread",
+          "when": "webviewId == 'codexPlus.sessions' && webviewSection == 'thread'",
+          "group": "4_edit@1"
+        },
+        {
+          "command": "codexPlus.setTitleColor",
+          "when": "webviewId == 'codexPlus.sessions' && webviewSection == 'thread'",
+          "group": "5_look@1"
+        },
+        {
+          "command": "codexPlus.newThreadInGroup",
+          "when": "webviewId == 'codexPlus.sessions' && webviewSection == 'group' && codexPlusMade && !codexPlus.noGroups",
+          "group": "1_new@1"
+        },
+        {
+          "command": "codexPlus.newGroup",
+          "when": "webviewId == 'codexPlus.sessions' && webviewSection == 'group' && !codexPlus.noGroups",
+          "group": "1_new@2"
+        },
+        {
+          "command": "codexPlus.renameGroup",
+          "when": "webviewId == 'codexPlus.sessions' && webviewSection == 'group' && codexPlusMade && !codexPlus.noGroups",
+          "group": "2_group@1"
+        },
+        {
+          "command": "codexPlus.deleteGroup",
+          "when": "webviewId == 'codexPlus.sessions' && webviewSection == 'group' && codexPlusMade && !codexPlus.noGroups",
+          "group": "9_delete@1"
+        },
         {
           "command": "codexPlus.markThreadUnread",
           "when": "webviewId == 'chatgpt.conversationEditor'",

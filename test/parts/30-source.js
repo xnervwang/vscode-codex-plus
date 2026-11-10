@@ -276,7 +276,7 @@ module.exports = async ({ ok, bad, eq, tmp }) => {
     }
 
     /* ── session list ── */
-    const { group, dateSpan, looksLikeId, SessionsProvider } = require('../../src/sessions-view');
+    const { group, dateSpan, looksLikeId, SessionsModel } = require('../../src/sessions-view');
     const threads = inWorker.threads();
     const groups = group(threads, { open: [working.id], closed: [{ thread: idle.id, title: 'Idle here', at: 1 }, { thread: working.id, at: 2 }],
       sections: new Map(), hideBackground: true });
@@ -288,10 +288,10 @@ module.exports = async ({ ok, bad, eq, tmp }) => {
     const day = 86400e3, t0 = new Date(2026, 8, 5, 12).getTime();
     eq(dateSpan(t0, t0 + 11 * day, t0 + 22 * day), '11d · 09/05→09/16', 'the date span reads like the session list\'s');
     eq([looksLikeId('69f9'), looksLikeId('69f'), looksLikeId('fix bug')], [true, false, false], 'four hex characters search the id');
-    const provider = new SessionsProvider(vscode, { memory: { openThreads: () => [], recentlyClosed: () => [], frontAt: () => 0 }, memento: fake.memento(),
+    const provider = new SessionsModel(vscode, { memory: { openThreads: () => [], recentlyClosed: () => [], frontAt: () => 0 }, memento: fake.memento(),
       settings: () => ({ recentClosedSessions: 10, hideBackgroundSessions: true }), stateOf: () => null, reader: inWorker });
     provider.refresh();
-    eq(provider.getChildren().map((e) => e.group.key), ['section:sec-1', 'ungrouped'], 'the session list draws from the reader\'s snapshot');
+    eq(provider.model().groups.map((g) => g.key), ['section:sec-1', 'ungrouped'], 'the session list draws from the reader\'s snapshot');
 
     /* ── what the window remembers ── */
     const { TabMemory, OPEN_KEY, LAST_KEY } = require('../../src/tab-memory');

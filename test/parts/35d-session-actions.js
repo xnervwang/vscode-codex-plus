@@ -110,10 +110,10 @@ module.exports = async ({ eq, tmp, root }) => {
 
   /* ── the manifest ── */
   const menus = pkg.contributes.menus;
-  const item = (cmd) => (menus['view/item/context'] || []).filter((m) => m.command === `codexPlus.${cmd}`);
-  eq(item('renameThread').some((m) => /^inline/.test(m.group)), true, 'Rename is a button on a row, shown on hover');
-  eq(['moveThreadToSection', 'markThreadUnread'].map((c) => item(c).some((m) => !/^inline/.test(m.group))), [true, true],
-    'Add to Group and Mark as Unread are in a row\'s right-click menu');
+  const item = (cmd) => (menus['webview/context'] || []).filter((m) => m.command === `codexPlus.${cmd}` && /webviewId == 'codexPlus\.sessions' && webviewSection == 'thread'/.test(m.when));
+  const page = fs.readFileSync(path.join(root, 'src', 'page', 'sessions-page.js'), 'utf8');
+  eq([/dataset\.act = 'rename'/.test(page), item('renameThread').length], [true, 1], 'Rename is a button on a row, shown on hover, and in its right-click menu');
+  eq(['moveThreadToSection', 'markThreadUnread'].map((c) => item(c).length), [1, 1], 'Add to Group and Mark as Unread are in a row\'s right-click menu');
   const onPage = (menus['webview/context'] || []).filter((m) => m.when === "webviewId == 'chatgpt.conversationEditor'").map((m) => m.command).sort();
   eq(onPage, ['codexPlus.markThreadUnread', 'codexPlus.moveThreadToSection', 'codexPlus.renameThread'],
     'a conversation tab\'s own right-click menu has Rename, Mark as Unread and Add to Group, as Claude Code\'s has its three');

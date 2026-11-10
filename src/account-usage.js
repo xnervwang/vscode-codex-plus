@@ -43,16 +43,18 @@ function mergeLimits(into, over) {
 const hasWindow = (w) => !!(w && typeof w.usedPercent === 'number' && Number.isFinite(w.usedPercent));
 
 /*
- * What the section draws, or null when there is nothing to say: { account, windows: [{ name, usedPercent, resetsAt }],
- * tokens: [{ label, value }] }. resetsAt is in seconds since the epoch, for the page to write in the reader's zone.
+ * What the section draws, or null when there is nothing to say: { account: [{ label, value }], windows: [{ name, usedPercent, resetsAt }],
+ * tokens: [{ label, value }] }. resetsAt is in seconds since the epoch, for the page to write in the reader's zone,
+ * which is the zone its browser runs in.
  */
 function viewOf({ account, limits, usage }, today = new Date().toISOString().slice(0, 10)) {
   if (!account || !ACCOUNT_KINDS[account.type]) return null;
-  let line = ACCOUNT_KINDS[account.type];
+  /* Claude Code's Account block is an Email line; Codex's own menu says "Logged in with Amazon Bedrock". */
+  const rows = [];
   if (account.type === 'chatgpt') {
-    const plan = PLAN_NAMES[account.planType] || '';
-    line = [account.email || 'ChatGPT', plan].filter(Boolean).join(' · ');
-  }
+    rows.push(account.email ? { label: 'Email', value: account.email } : { label: 'Signed in with', value: 'ChatGPT' });
+    if (PLAN_NAMES[account.planType]) rows.push({ label: 'Plan', value: PLAN_NAMES[account.planType] });
+  } else rows.push({ label: 'Signed in with', value: ACCOUNT_KINDS[account.type] });
   const windows = [];
   for (const w of [limits && limits.primary, limits && limits.secondary]) {
     if (!hasWindow(w)) continue;
@@ -65,7 +67,7 @@ function viewOf({ account, limits, usage }, today = new Date().toISOString().sli
   if (todayBucket && Number.isFinite(+todayBucket.tokens)) tokens.push({ label: 'Tokens today', value: +todayBucket.tokens });
   const total = usage && usage.summary && usage.summary.lifetimeTokens;
   if (Number.isFinite(+total) && total !== null && +total > 0) tokens.push({ label: 'Tokens in all', value: +total });
-  return { account: line, windows, tokens };
+  return { account: rows, windows, tokens };
 }
 
 /*
@@ -118,21 +120,4 @@ function createAccountUsage({ ask, onChange = () => {}, now = Date.now }) {
   };
 }
 
-/* `resets 14:05`, or with the date when that is not within the next day, in `zone` when it is a valid time zone. */
-function resetText(sec, zone = '', now = Date.now()) {
-  if (!sec) return '';
-  const opts = { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' };
-  if (sec * 1000 - now > 24 * 3600e3) Object.assign(opts, { month: '2-digit', day: '2-digit' });
-  try { return `resets ${new Intl.DateTimeFormat('en-US', zone ? { ...opts, timeZone: zone } : opts).format(new Date(sec * 1000)).replace(',', '')}`; }
-  catch (_) { return `resets ${new Intl.DateTimeFormat('en-US', opts).format(new Date(sec * 1000)).replace(',', '')}`; }
-}
-
-/* The section as rows of a label and a value, for a list that draws text only. */
-function rowsOf(view, zone, now = Date.now()) {
-  if (!view) return [];
-  return [{ label: 'Account', value: view.account },
-    ...view.windows.map((w) => ({ label: w.name, value: [`${w.usedPercent}% used`, resetText(w.resetsAt, zone, now)].filter(Boolean).join(' · ') })),
-    ...view.tokens.map((k) => ({ label: k.label, value: k.value.toLocaleString('en-US') }))];
-}
-
-module.exports = { createAccountUsage, viewOf, mergeLimits, windowName, resetText, rowsOf, RELOAD_MS };
+module.exports = { createAccountUsage, viewOf, mergeLimits, windowName, RELOAD_MS };

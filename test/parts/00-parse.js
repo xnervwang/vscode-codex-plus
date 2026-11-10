@@ -39,8 +39,8 @@ module.exports = ({ ok, bad, eq, root }) => {
   const c = pkg.contributes;
   eq([c.viewsContainers.activitybar, Object.keys(c.views), c.views.codexPlus],
     [[{ id: 'codexPlus', title: 'Codex Plus', icon: 'images/sidebar.svg' }], ['codexPlus'],
-      [{ id: 'codexPlus.sessions', name: 'Codex sessions', when: 'config.codexPlus.sessionList' }]],
-  'the session list has its own activity bar container, so it does not sit in the work plan sidebar of whichever agent is in front');
+      [{ type: 'webview', id: 'codexPlus.sessions', name: 'Codex sessions', when: 'config.codexPlus.sessionList' }]],
+  'the session list is a webview view in its own activity bar container, so it does not sit in the work plan sidebar of whichever agent is in front');
   eq(fs.existsSync(path.join(root, 'images', 'sidebar.svg')), true, 'that container icon is in the repository');
   const commands = c.commands.map((x) => x.command);
   const gone = ['refreshWorkPlan', 'openWorkPlanFile', 'showWorkPlanDetail', 'showConversations', 'answerQuestion', 'openConversation',

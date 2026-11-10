@@ -30,12 +30,11 @@ module.exports = async ({ eq, note, tmp, root }) => {
   const fake = require(path.join(core, 'test', 'fake-vscode.js'));
   const { vscode, control } = fake.create();
   vscode.window.registerTreeDataProvider = (id, provider) => { control.state.views[id] = { id, provider }; return { dispose() {} }; };
-  /* The session list follows the conversation in front through its tree view's reveal. */
-  const plainTree = vscode.window.createTreeView;
-  vscode.window.createTreeView = (id, opts) => {
-    const view = plainTree(id, opts);
-    if (typeof view.reveal !== 'function') view.reveal = async () => {};
-    return view;
+  /* The session list is a webview view of this extension's own. */
+  const plainWebview = vscode.window.registerWebviewViewProvider;
+  vscode.window.registerWebviewViewProvider = (id, provider, ...rest) => {
+    if (id === 'codexPlus.sessions') { control.state.views[id] = { id, provider }; return { dispose() {} }; }
+    return plainWebview(id, provider, ...rest);
   };
   vscode.window.registerFileDecorationProvider = () => ({ dispose() {} });
   vscode.FileDecoration = class { constructor(badge, tooltip, color) { Object.assign(this, { badge, tooltip, color }); } };

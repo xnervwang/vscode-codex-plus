@@ -35,7 +35,8 @@ module.exports = async ({ ok, bad, eq, tmp }) => {
   fake.install(vscode);
   const { folderTest, realPath } = require('../../src/folders');
   const tabs = require('../../src/codex-tabs');
-  const { SessionsProvider } = require('../../src/sessions-view');
+  const { SessionsModel } = require('../../src/sessions-view');
+  const keysOf = (m) => [...(m.closed.length ? ['closed'] : []), ...(m.open.length ? ['open'] : []), ...m.groups.map((g) => g.key)];
   const { unnamedTabThread, createCodexSource } = require('../../src/codex-source');
 
   /* ── the workspace filter, through a symbolic link ── */
@@ -66,13 +67,13 @@ module.exports = async ({ ok, bad, eq, tmp }) => {
   const outsideB = path.join(base, 'other2');
   const threads = [thread(1, inside), thread(2, outsideA), thread(3, outsideB)];
   vscode.workspace.workspaceFolders = [{ uri: vscode.Uri.file(linked ? path.join(link, 'ws') : path.join(base, 'ws')) }];
-  const provider = new SessionsProvider(vscode, { memory: stubMemory(), memento: fake.memento(), reader: stubReader(threads),
+  const provider = new SessionsModel(vscode, { memory: stubMemory(), memento: fake.memento(), reader: stubReader(threads),
     stateOf: () => null, settings: () => ({ recentClosedSessions: 10, hideBackgroundSessions: true }) });
   provider.refresh();
   const ungrouped = provider.groups.find((g) => g.key === 'ungrouped');
   eq([ungrouped.threads.map((t) => t.title), provider.groups.some((g) => g.threads.some((t) => t.title === 't2' || t.title === 't3'))],
     [['t1'], false], 'the conversation in this workspace is listed even though its folder is the one behind the link, and those of other folders are not');
-  eq(provider.getChildren().map((r) => r.group.label).includes('Other folders'), false, 'and there is no group for other folders');
+  eq(provider.model().groups.map((g) => g.label).includes('Other folders'), false, 'and there is no group for other folders');
   vscode.workspace.workspaceFolders = [];
   provider.refresh();
   eq(provider.groups.find((g) => g.key === 'ungrouped').threads.length, 3, 'a window with no folder open lists every conversation');
@@ -159,30 +160,29 @@ module.exports = async ({ ok, bad, eq, tmp }) => {
     'the one a reader opens only when looking for something starts collapsed');
 
   /* ── an empty Open sessions is left out, as Claude Code Plus leaves it out ── */
-  const bare = new SessionsProvider(vscode, { memory: stubMemory(), memento: fake.memento(), reader: stubReader([thread(1, inside)]),
+  const bare = new SessionsModel(vscode, { memory: stubMemory(), memento: fake.memento(), reader: stubReader([thread(1, inside)]),
     stateOf: () => null, settings: () => ({ recentClosedSessions: 10, hideBackgroundSessions: true }) });
   bare.refresh();
-  eq(bare.getChildren().map((r) => r.group.key), ['ungrouped'], 'with nothing open there is no Open sessions group at all');
-  eq(bare.getTreeItem(bare.getChildren().find((r) => r.group.key === 'ungrouped')).description, '1', 'a group that holds something counts it after its name');
+  eq(keysOf(bare.model()), ['ungrouped'], 'with nothing open there is no Open sessions group at all');
+  eq(bare.model().groups.find((g) => g.key === 'ungrouped').rows.length, 1, 'a group that holds something has its rows, which the page counts');
 
   /* ── a conversation the user has not read gets no dot, and asks for one when its group opens ── */
   const asked = [];
   const old = thread(7, inside, { updatedMs: 50 });
   const unreadReader = { ...stubReader([thread(1, inside), old]), state: (id) => (id === ID(1) ? { working: false } : null) };
-  const lazy = new SessionsProvider(vscode, { memory: stubMemory(), memento: fake.memento(), reader: unreadReader,
+  const lazy = new SessionsModel(vscode, { memory: stubMemory(), memento: fake.memento(), reader: unreadReader,
     stateOf: () => ({ state: 'idle' }), wantState: (ids) => asked.push(...ids),
     settings: () => ({ recentClosedSessions: 10, hideBackgroundSessions: true }) });
   lazy.refresh();
-  const groupRow = lazy.getChildren().find((r) => r.group.key === 'ungrouped');
-  const kids = lazy.getChildren(groupRow);
-  const known = lazy.getTreeItem(kids.find((k) => k.thread.id === ID(1)));
-  const notRead = lazy.getTreeItem(kids.find((k) => k.thread.id === ID(7)));
-  eq([known.iconPath.id, notRead.iconPath.id], ['circle-filled', 'blank'],
+  const kids = lazy.model().groups.find((g) => g.key === 'ungrouped').rows;
+  eq([kids.find((r) => r.id === ID(1)).dot, kids.find((r) => r.id === ID(7)).dot], ['idle', 'unknown'],
     'the one whose rollout was read carries its status dot; the one that was not carries none rather than an idle one');
-  eq(asked, [ID(7)], 'opening the group asks for that one rollout, and only that one');
+  eq(asked, [], 'working out the list asks for no rollout');
+  lazy.expanded(['ungrouped']);
+  eq(asked, [ID(7)], 'the page saying the group is open asks for that one rollout, and only that one');
   asked.length = 0;
-  lazy.getChildren(groupRow);
-  eq(asked, [ID(7)], 'a group nobody opened asks for nothing, so the cost follows what is on screen');
+  lazy.expanded(['open', 'closed']);
+  eq(asked, [], 'a group nobody opened asks for nothing, so the cost follows what is on screen');
 
   /* ── what Recently closed does with its setting ── */
   const closedList = [{ thread: ID(8), title: 'closed one', at: 9 }];
@@ -227,13 +227,12 @@ module.exports = async ({ ok, bad, eq, tmp }) => {
     hear();
     eq([patching.sidebarShowing(), redraws], ['', 2], 'a sidebar that is hidden shows nothing, which its own visibility event says');
     view.visible = true;
-    const listing = new SessionsProvider(vscode, { memory: stubMemory(), memento: fake.memento(), reader: stubReader([t1, t2]),
+    const listing = new SessionsModel(vscode, { memory: stubMemory(), memento: fake.memento(), reader: stubReader([t1, t2]),
       settings: () => ({ hideBackgroundSessions: true, recentClosedSessions: 10 }),
       stateOf: () => null, sidebarShowing: () => patching.sidebarShowing() });
     listing.refresh();
-    const open = listing.getChildren(listing.getChildren().find((r) => r.group.key === 'open'));
-    const row = listing.getTreeItem(open[0]);
-    eq([open.length, row.command.command], [1, 'codexPlus.openThreadInSidebar'], 'its row goes to the sidebar when clicked');
+    const open = listing.model().open;
+    eq([open.length, open[0].sidebar], [1, true], 'its row is marked as the sidebar\'s, so a click on it goes to the sidebar');
     patching._approvals.clear();
   }
 };

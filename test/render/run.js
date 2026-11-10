@@ -39,7 +39,7 @@ if (found.missing.length) {
   for (const m of found.missing) console.log(`  - ${m}`);
   process.exit(0);
 }
-/* --only <name>[,<name>] runs those scenes alone: conversation, narrow, wide, approval, background, compact, chime, long. */
+/* --only <name>[,<name>] runs those scenes alone: conversation, narrow, wide, approval, background, compact, chime, long, sessions. */
 const ONLY = arg('--only') ? arg('--only').split(',') : null;
 const want = (name) => !ONLY || ONLY.includes(name);
 const OUT = path.resolve(arg('--out') || fs.mkdtempSync(path.join(os.tmpdir(), 'codex-plus-render-')));
@@ -626,6 +626,9 @@ function selfchecked(r, where, { turns, users, rows, replies = turns }) {
     geometry(await measured(s, 'long', 'top'), 'long, top');
     results.blocked.push(...s.b.blocked);
   } finally { await s.close(); }
+
+  /* The session list's own page, which is this extension's rather than Codex's (lib/sessions-scene.js). */
+  if (want('sessions')) await require('./lib/sessions-scene').run({ env: ENV, check, shots: SHOTS, out: OUT, results });
 
   results.passed = passed;
   results.failed = failed;

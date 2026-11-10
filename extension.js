@@ -25,7 +25,7 @@ const { createSeen } = require('./src/seen');
 const { CodexReader } = require('./src/codex-reader');
 const hostLink = require('./src/host-link');
 const { TabMemory } = require('./src/tab-memory');
-const { SessionsProvider, createFollower, COLORS, looksLikeId } = require('./src/sessions-view');
+const { SessionsModel, SessionsView, COLORS, looksLikeId } = require('./src/sessions-view');
 const { createGroups, createPlacer } = require('./src/session-groups');
 const accountUsage = require('./src/account-usage');
 const patching = require('./src/patching');
@@ -201,29 +201,35 @@ async function activate(context) {
   context.subscriptions.push(memory, patching.onPanelClosed((thread, opened) => memory.panelClosed(thread, opened)));
   let lastConversations = new Map();
   const groups = createGroups({ ask: askAppServer, sections: () => reader.sections(), memento: context.globalState });
-  let sessionsProvider = null;
-  const account = accountUsage.createAccountUsage({ ask: askAppServer, onChange: () => { if (sessionsProvider) sessionsProvider.refresh(); } });
+  let sessionsModel = null;
+  const account = accountUsage.createAccountUsage({ ask: askAppServer, onChange: () => { if (sessionsModel) sessionsModel.refresh(); } });
   context.subscriptions.push(patching.onAccountNotification((method, params) => account.heard(method, params)));
-  sessionsProvider = new SessionsProvider(vscode, { memory, memento: context.globalState, settings, reader,
-    stateOf: (id) => lastConversations.get(id), wantState: (ids) => source.wantState(ids),
-    sidebarShowing: () => patching.sidebarShowing(), sections: () => new Map(groups.list()),
-    account: () => accountUsage.rowsOf(account.view(), context.globalState.get('codexPlus.clientTimeZone') || '') });
-  const sessionsView = vscode.window.createTreeView('codexPlus.sessions', { treeDataProvider: sessionsProvider, canSelectMany: true });
-  context.subscriptions.push(sessionsView);
-  context.subscriptions.push(vscode.window.registerFileDecorationProvider(sessionsProvider));
   /* The conversation in front: the active tab's when it is Codex's, else the one Codex's sidebar shows. */
-  const follow = createFollower(sessionsView, sessionsProvider, () => {
+  const frontNow = () => {
     const tab = (vscode.window.tabGroups.activeTabGroup || {}).activeTab;
     const id = tab ? source.sessionForTab(tab) : null;
     return typeof id === 'string' ? id : patching.sidebarShowing();
-  });
+  };
+  sessionsModel = new SessionsModel(vscode, { memory, memento: context.globalState, settings, reader,
+    stateOf: (id) => lastConversations.get(id), wantState: (ids) => source.wantState(ids),
+    sidebarShowing: () => patching.sidebarShowing(), sections: () => new Map(groups.list()),
+    account: () => account.view(), front: frontNow, noGroups: () => groups.supported() === false });
   /* Whether this Codex can make groups is asked on Codex's own connection once the list is on screen, and never by
      starting an app-server for it; until it is known the group commands are offered. */
+  let sessionsView = null;
   const probeGroups = () => {
-    if (groups.supported() !== null || !sessionsView.visible) return;
-    groups.probe({ fallback: false }).then((yes) => { if (yes === false) vscode.commands.executeCommand('setContext', 'codexPlus.noGroups', true); })
-      .catch(() => { /* asked again on the next redraw */ });
+    if (groups.supported() !== null || !sessionsView || !sessionsView.visible) return;
+    groups.probe({ fallback: false }).then((yes) => {
+      if (yes !== false) return;
+      vscode.commands.executeCommand('setContext', 'codexPlus.noGroups', true);
+      sessionsModel.refresh();
+    }).catch(() => { /* asked again on the next redraw */ });
   };
+  /* ACCOUNT & USAGE is asked for when the list comes into view (src/account-usage.js). */
+  const showAccount = () => { if (sessionsView && sessionsView.visible) account.load().catch(() => { /* the section stays as it was */ }); };
+  sessionsView = new SessionsView(vscode, { model: sessionsModel, extensionUri: context.extensionUri || vscode.Uri.file(context.extensionPath || __dirname),
+    onVisible: () => { showAccount(); probeGroups(); } });
+  context.subscriptions.push(vscode.window.registerWebviewViewProvider('codexPlus.sessions', sessionsView));
   /* Start New Session in This Group, waiting for its conversation to exist (src/session-groups.js createPlacer). */
   const placer = createPlacer({ threads: () => reader.threads(), shown: () => patching.panelThreads(), move: (ids, id) => groups.move(ids, id) });
   const place = () => {
@@ -233,15 +239,13 @@ async function activate(context) {
       else source._poll();
     }).catch(() => { /* left where Codex put it */ });
   };
-  const relist = () => { sessionsProvider.refresh(); follow(); probeGroups(); place(); };
-  /* ACCOUNT & USAGE is asked for when the list comes into view (src/account-usage.js). */
-  const showAccount = () => { if (sessionsView.visible) account.load().catch(() => { /* the section stays as it was */ }); };
-  if (typeof sessionsView.onDidChangeVisibility === 'function') context.subscriptions.push(sessionsView.onDidChangeVisibility(showAccount));
-  showAccount();
+  const relist = () => { sessionsModel.refresh(); probeGroups(); place(); };
   const redrawSessions = async () => {
     try { lastConversations = new Map((await source.listConversations()).map((c) => [c.sessionId, c])); } catch (_) { /* the last one stays */ }
     relist();
   };
+  /* The conversation in front changed: its row is drawn as the current one. */
+  const follow = () => sessionsModel.refresh();
   context.subscriptions.push(source.onDidChangeConversations(redrawSessions), memory.onDidChange(relist), patching.onSidebarChanged(relist),
     source.onDidFocus(() => follow()));
   if (typeof vscode.window.tabGroups.onDidChangeTabs === 'function') context.subscriptions.push(vscode.window.tabGroups.onDidChangeTabs(() => follow()));
@@ -255,7 +259,7 @@ async function activate(context) {
   redrawSessions();
 
   context.subscriptions.push(vscode.workspace.onDidChangeConfiguration((e) => {
-    if (e.affectsConfiguration(CONFIG)) { writeHookSettings(context); sessionsProvider.refresh(); }
+    if (e.affectsConfiguration(CONFIG)) { writeHookSettings(context); sessionsModel.refresh(); }
     /* The time stamps, the message list and the colours live in Codex's page, and this is how a change to one of them
        gets there: the same redraw the figures use, rather than a watcher of its own. The master switch is in the list
        because it decides all three, and a page has to be told when it goes either way. */
@@ -280,7 +284,7 @@ async function activate(context) {
   const userTimes = (id) => reader.request('userTimes', { home: files.codexHome(), id });
   /* How long Codex's pages took to open, from Codex's own log; read only when Show Status or its command asks. */
   const opens = openTimes.createOpenTimes(openTimes.whereLogs(context.logUri && context.logUri.fsPath));
-  registerCommands(context, { source, memory, sessionsProvider, say, link, opens, groups, placer });
+  registerCommands(context, { source, memory, sessionsModel, sessionsView, say, link, opens, groups, placer });
 
   /* Delayed start-up work is cancelled with the extension, so a window that closes within the delay starts none of it. */
   const later = (fn, ms) => {
@@ -340,9 +344,13 @@ async function newConversationInTab(say) {
   await vscode.commands.executeCommand('chatgpt.newCodexPanel');
 }
 
-function registerCommands(context, { source, memory, sessionsProvider, say, link, opens, groups, placer }) {
+function registerCommands(context, { source, memory, sessionsModel, sessionsView, say, link, opens, groups, placer }) {
   const reg = (name, fn) => context.subscriptions.push(vscode.commands.registerCommand(`${CONFIG}.${name}`, fn));
-  const threadArg = (arg) => (typeof arg === 'string' ? arg : arg && arg.thread ? arg.thread.id : arg && arg.sessionId) || '';
+  /* A conversation as a command is given it: its id, a row of the session list (data-vscode-context), or Agent Plus's. */
+  const threadArg = (arg) => (typeof arg === 'string' ? arg : arg && typeof arg.threadId === 'string' ? arg.threadId
+    : arg && arg.thread ? arg.thread.id : arg && arg.sessionId) || '';
+  /* Whether a command came from the session list's own right-click menu. */
+  const fromList = (arg) => !!(arg && arg.webview === 'codexPlus.sessions');
   const restricted = () => {
     if (trusted()) return false;
     vscode.window.showInformationMessage('Codex Plus: in Restricted Mode nothing is installed or changed. Trust the workspace first.');
@@ -407,7 +415,7 @@ function registerCommands(context, { source, memory, sessionsProvider, say, link
       await context.globalState.update(patching.PATCH_REMOVED_KEY, false);
     }
     if (settings().enabled !== on) await vscode.workspace.getConfiguration(CONFIG).update('enabled', on, vscode.ConfigurationTarget.Global);
-    sessionsProvider.refresh();
+    sessionsModel.refresh();
     patching.refreshPanels().catch((e) => say(`redrawing the Codex pages: ${e.message}`));
     /* Only the patch is applied again here. Activation already added the hooks and listeners; adding them on every
        Turn On would stack up copies, and each copy redraws every panel on each change. */
@@ -491,7 +499,7 @@ function registerCommands(context, { source, memory, sessionsProvider, say, link
     const id = threadArg(arg);
     if (!id) return;
     const pick = await vscode.window.showQuickPick([...Object.keys(COLORS), 'none'].map((label) => ({ label })), { placeHolder: 'Title colour' });
-    if (pick) await sessionsProvider.setColor(id, pick.label === 'none' ? '' : pick.label);
+    if (pick) await sessionsModel.setColor(id, pick.label === 'none' ? '' : pick.label);
   });
   reg('findThread', async () => {
     /* The same conversations the list holds: this workspace's, as the Codex sessions view filters them. */
@@ -513,6 +521,7 @@ function registerCommands(context, { source, memory, sessionsProvider, say, link
      the right-clicked row, as in a file explorer. */
   const chosen = (arg, selected) => {
     if (!threadArg(arg)) return [inFront()].filter(Boolean);
+    if (!Array.isArray(selected) && fromList(arg)) selected = sessionsView.selection;
     const ids = Array.isArray(selected) && selected.length && selected.some((s) => threadArg(s) === threadArg(arg))
       ? selected.map(threadArg) : [threadArg(arg)];
     return [...new Set(ids.filter(Boolean))];
@@ -539,6 +548,8 @@ function registerCommands(context, { source, memory, sessionsProvider, say, link
     if (restricted()) return;
     const id = chosen(arg)[0];
     if (!id) return;
+    /* In the list the title is edited where it is, as in Claude Code's list. */
+    if (fromList(arg) && sessionsView.tell({ type: 'startRename', id })) return;
     const was = (reader.thread(id) || {}).title || '';
     const name = await vscode.window.showInputBox({ prompt: 'A new title for this Codex conversation', value: was, valueSelection: [0, was.length] });
     if (name === undefined || !name.trim() || name.trim() === was) return;
@@ -557,21 +568,24 @@ function registerCommands(context, { source, memory, sessionsProvider, say, link
     return yes !== false;
   };
   const sectionArg = (arg) => {
-    const key = arg && arg.group && typeof arg.group.key === 'string' ? arg.group.key : typeof arg === 'string' ? `section:${arg}` : '';
+    const key = arg && typeof arg.groupKey === 'string' ? arg.groupKey : arg && arg.group && typeof arg.group.key === 'string' ? arg.group.key
+      : typeof arg === 'string' ? `section:${arg}` : '';
     return key.startsWith('section:') ? key.slice('section:'.length) : '';
   };
   const askName = (prompt, value) => vscode.window.showInputBox({ prompt, value, valueSelection: [0, value.length] })
     .then((name) => (name === undefined || !name.trim() ? '' : name.trim()));
-  const newGroup = async (ids) => {
+  /* From the list, as in Claude Code's: the group is made as "New group" and its name is then edited where it is drawn. */
+  const newGroup = async (ids, inList) => {
     if (restricted() || !await groupsHere()) return;
-    const name = await askName('A name for the new group', 'New group');
+    const name = inList ? 'New group' : await askName('A name for the new group', 'New group');
     if (!name) return;
     const r = await groups.create(name);
     if (r.outcome !== 'done') { done('make the group', r); return; }
     done('move it', ids.length ? await groups.move(ids, r.id) : r);
+    if (inList) sessionsView.tell({ type: 'startRenameGroup', key: `section:${r.id}` });
   };
-  reg('newGroup', () => newGroup([]));
-  reg('newGroupFromThreads', (arg, selected) => newGroup(chosen(arg, selected)));
+  reg('newGroup', (arg) => newGroup([], fromList(arg)));
+  reg('newGroupFromThreads', (arg, selected) => newGroup(chosen(arg, selected), fromList(arg)));
   reg('newThreadInGroup', async (arg) => {
     const id = sectionArg(arg);
     if (!id || restricted() || !await groupsHere()) return;
@@ -581,6 +595,7 @@ function registerCommands(context, { source, memory, sessionsProvider, say, link
   reg('renameGroup', async (arg) => {
     const id = sectionArg(arg);
     if (!id || restricted() || !await groupsHere()) return;
+    if (fromList(arg) && sessionsView.tell({ type: 'startRenameGroup', key: `section:${id}` })) return;
     const was = reader.sections().get(id) || '';
     const name = await askName('A new name for this group', was);
     if (!name || name === was) return;
@@ -607,6 +622,30 @@ function registerCommands(context, { source, memory, sessionsProvider, say, link
     done('take it out of its group', await groups.move(ids, null));
   });
   reg('markThreadUnread', (arg, selected) => { for (const id of chosen(arg, selected)) source.markUnread(id); });
+  /*
+   * What the session list's page sends: a click on a row, its two new-conversation buttons and New group, a title or a
+   * group's name edited where it is drawn, and rows dropped on a group. Each is done as the matching command does it.
+   */
+  sessionsView.receive = async (msg) => {
+    const id = typeof msg.id === 'string' ? msg.id : '';
+    if (msg.kind === 'open' && id) await vscode.commands.executeCommand(msg.where === 'sidebar' ? 'codexPlus.openThreadInSidebar' : 'codexPlus.openThreadInTab', id);
+    else if (msg.kind === 'newInTab') await vscode.commands.executeCommand('codexPlus.newInTab');
+    else if (msg.kind === 'newInSidebar') await vscode.commands.executeCommand('codexPlus.newInSidebar');
+    else if (msg.kind === 'newGroup') await newGroup([], true);
+    else if (msg.kind === 'rename' && id && typeof msg.title === 'string') {
+      const was = (reader.thread(id) || {}).title || '';
+      const title = msg.title.replace(/\s+/g, ' ').trim();
+      if (title && title !== was && !restricted()) await changeThread('rename it', 'thread/name/set', { threadId: id, name: title });
+    } else if (msg.kind === 'renameGroup' && typeof msg.name === 'string') {
+      const sec = sectionArg({ groupKey: msg.key });
+      const name = msg.name.trim();
+      if (sec && name && name !== (reader.sections().get(sec) || '') && !restricted()) done('rename the group', await groups.rename(sec, name));
+    } else if (msg.kind === 'move' && Array.isArray(msg.ids) && typeof msg.key === 'string') {
+      const sec = msg.key === 'ungrouped' ? null : sectionArg({ groupKey: msg.key });
+      const ids = msg.ids.filter((x) => typeof x === 'string' && (reader.thread(x) || {}).section !== (sec || ''));
+      if ((sec || msg.key === 'ungrouped') && ids.length && !restricted() && await groupsHere()) done('move it', await groups.move(ids, sec));
+    }
+  };
   reg('markThreadRead', (arg, selected) => { for (const id of chosen(arg, selected)) source.markRead(id); });
 
 }

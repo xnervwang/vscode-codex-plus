@@ -13,6 +13,10 @@
  * of script goes wrong: the timers so a debounce can be stepped through, the observer so the records it is handed can
  * be chosen, including the records the script's own writes generate).
  *
+ * It also carries what the session list's page (src/page/sessions-page.js) uses on top of that: classList.toggle,
+ * dataset, append and replaceChildren, contentEditable, getElementById, and bubble(), which hands an event to an element
+ * and then to each of its ancestors, as a click reaches a listener on the page's root.
+ *
  * The selector engine takes a comma-separated list of selectors, each a chain of `tag`, `*`, `.class`,
  * `[attr]`/`[attr="value"]` and `:not(...)` pieces joined by spaces for descendant, which is every selector that
  * script uses. The approval card's is Codex's own and uses all of it:
@@ -129,11 +133,40 @@ class El {
     this.scrolledIntoView = 0;
     this.scrolledTo = [];
     const el = this;
+    this.offsetWidth = 0;
+    this.offsetHeight = 0;
     this.classList = {
       contains: (n) => el.className.split(/\s+/).includes(n),
       add(n) { if (!this.contains(n)) el.setAttribute('class', (el.className + ' ' + n).trim()); },
       remove(n) { el.setAttribute('class', el.className.split(/\s+/).filter((x) => x && x !== n).join(' ')); },
+      toggle(n, force) {
+        const on = force === undefined ? !this.contains(n) : !!force;
+        if (on) this.add(n); else this.remove(n);
+        return on;
+      },
     };
+    const name = (k) => `data-${String(k).replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)}`;
+    this.dataset = new Proxy({}, {
+      get: (_, k) => (typeof k === 'string' && el.hasAttribute(name(k)) ? el.getAttribute(name(k)) : undefined),
+      set: (_, k, v) => { el.setAttribute(name(k), v); return true; },
+    });
+  }
+
+  get contentEditable() { return this.editable || 'inherit'; }
+  set contentEditable(v) { this.editable = String(v); this.isContentEditable = this.editable === 'true'; }
+  get lastChild() { return this.childNodes[this.childNodes.length - 1] || null; }
+  append(...nodes) { for (const n of nodes) this.appendChild(typeof n === 'string' ? new Text(n) : n); }
+  replaceChildren(...nodes) { while (this.childNodes.length) this.removeChild(this.childNodes[0]); this.append(...nodes); }
+  /* `event` handed to this element's listeners and then up through its ancestors, until one stops it. */
+  bubble(type, event = {}) {
+    let stopped = false;
+    const e = Object.assign({ type, target: this, defaultPrevented: false, preventDefault() { this.defaultPrevented = true; },
+      stopPropagation() { stopped = true; } }, event);
+    for (let n = this; n && !stopped; n = n.parentNode) {
+      e.currentTarget = n;
+      for (const fn of ((n.listeners || {})[type] || []).slice()) fn(e);
+    }
+    return e;
   }
 
   get className() { const v = this.getAttribute('class'); return v === null ? '' : String(v); }
@@ -234,6 +267,8 @@ function createDom() {
     dispatch(type, event) { for (const fn of (document.listeners[type] || []).slice()) fn(Object.assign({ target: null }, event)); },
     querySelector(sel) { return document.root ? document.root.querySelector(sel) : null; },
     querySelectorAll(sel) { return document.root ? document.root.querySelectorAll(sel) : []; },
+    getElementById(id) { return document.root ? document.root.querySelector(`[id="${id}"]`) : null; },
+    createRange: () => ({ selectNodeContents() {} }),
     /* Every change of children, for the observers to be handed when the test says so. */
     pending: [],
     mutate(target) { document.pending.push({ type: 'childList', target }); },

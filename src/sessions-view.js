@@ -4,33 +4,33 @@
 
 'use strict';
 /*
- * The Codex session list: every conversation, grouped the way a person looks for one.
+ * The Codex session list: every conversation of this workspace, laid out as Claude Code's own list with Claude Code
+ * Plus lays out its own.
  *
- *   Recently closed       tabs closed in this workspace, newest first (collapsed)
- *   Open sessions         the Codex tabs of this window, the one last in front first, each with its status colour
- *   <groups>              Codex's sections (src/session-groups.js)
- *   Ungrouped             the rest of this workspace's
+ *   ACCOUNT & USAGE       how Codex is signed in, and its usage when Codex has the figures (src/account-usage.js)
+ *   RECENTLY CLOSED       tabs closed in this workspace, newest first (collapsed)
+ *   OPEN SESSIONS         the Codex tabs of this window and the conversation Codex's sidebar shows, the one last in front first
+ *   SESSION MANAGER       New in tab and New in sidebar, the filter row, then the groups (Codex's sections,
+ *                         src/session-groups.js) and Ungrouped
  *
- * The group names are Claude Code's, so that both lists read the same way. Each carries its count. A group the user
- * made is drawn even while empty, so it can be found and filled; the others are left out while empty, Codex's built-in
- * Pinned section among them. An archived conversation is not listed: VS Code's Codex has no page that shows one, so
- * the list offers no way to archive either.
+ * A group the user made is drawn even while empty, so it can be found and filled; the others are left out while empty,
+ * Codex's built-in Pinned section among them. An archived conversation is not listed: VS Code's Codex has no page that
+ * shows one, so the list offers no way to archive either.
  *
  * Like Claude Code's list, it holds this workspace's conversations only, and every conversation in a window with no
- * folder open. The workspace filter compares real paths (src/folders.js): the same directory reached through a symbolic link used to
- * match nothing, and the whole view came up empty with no reason shown.
+ * folder open. The workspace filter compares real paths (src/folders.js): the same directory reached through a symbolic
+ * link used to match nothing, and the whole view came up empty with no reason shown.
  *
- * Grouping, sorting and filtering are arithmetic over the snapshot already in memory, and read no file of their own.
- * Conversations the user skipped carry no status dot until their group is expanded, which is the only moment their
- * rollout is asked for, and the answer comes back on the next scheduled poll (getChildren, ask).
+ * The list is a webview view drawn by src/page/sessions-page.js. Grouping, the dots and the time text are worked out
+ * here, from the snapshot already in memory, into a model of plain values (SessionsModel.model); filtering and searching
+ * are done by the page on that model. Nothing here reads a file. The model is posted only when it changed and the view
+ * is visible, and the page redraws only the rows that changed. The view keeps no page while hidden.
+ *
+ * Conversations whose rollout was not read carry no status dot until their group is expanded, which is the only moment
+ * their rollout is asked for; the answer comes back on the next scheduled poll (SessionsModel.expanded).
  *
  * Threads Codex started by itself - sub-agents, the reviews of approval requests - and `codex exec` runs are left out
- * unless codexPlus.hideBackgroundSessions is off, when they are listed with the rest. Clicking a conversation opens it
- * in a tab. The hover gives the group it sits in and its thread id, and the title can be given a colour.
- *
- * It is drawn in this extension's own activity bar container, so it does not sit in the work plan sidebar while another
- * agent's conversation is in front. The threads come
- * from the reader's latest snapshot (src/codex-reader.js), so drawing it reads no file.
+ * unless codexPlus.hideBackgroundSessions is off, when they are listed with the rest.
  */
 const { folderTest } = require('./folders');
 const { PINNED_SECTION } = require('./session-groups');
@@ -41,7 +41,6 @@ const COLORS = {
   cyan: 'terminal.ansiCyan', blue: 'charts.blue', purple: 'charts.purple', pink: 'terminal.ansiMagenta',
 };
 const COLOR_KEY = 'codexPlus.titleColors';
-const SCHEME = 'codex-extras-thread';
 /* The same dots Claude Code's list uses: green running, blue waiting for you, red replied and unread or last turn
    failed, grey idle. A conversation running or waiting in another window gets a ring in that colour. */
 const STATE_LOOK = {
@@ -62,14 +61,15 @@ const STATE_LOOK = {
  * another window. A conversation with an approval counted in this window, or with a turn running on this window's
  * app-server, is always this window's.
  */
-function lookOf(conv, here) {
+function lookKey(conv, here) {
   const state = (conv && conv.state) || 'idle';
   const ours = here || !!(conv && (conv.runningHere || conv.decide || conv.soon));
-  if (state === 'working') return ours ? STATE_LOOK.working : STATE_LOOK.workingElsewhere;
-  if (state === 'prompt') return ours ? STATE_LOOK.prompt : STATE_LOOK.promptElsewhere;
-  if (conv && conv.failed) return STATE_LOOK.failed;
-  return STATE_LOOK[state] || STATE_LOOK.idle;
+  if (state === 'working') return ours ? 'working' : 'workingElsewhere';
+  if (state === 'prompt') return ours ? 'prompt' : 'promptElsewhere';
+  if (conv && conv.failed) return 'failed';
+  return STATE_LOOK[state] ? state : 'idle';
 }
+const lookOf = (conv, here) => STATE_LOOK[lookKey(conv, here)];
 
 const pad = (n) => String(n).padStart(2, '0');
 /* How long ago, as Claude Code's own list writes it: now, then whole minutes, hours, days, months of 30 days, years. */
@@ -92,7 +92,7 @@ function dateSpan(createdMs, updatedMs, now = Date.now()) {
   return `${ago(updatedMs, now)} · ${body}`;
 }
 
-/** Group a list of threads for the tree. Pure, so the test can hold it to the order above. */
+/** Group a list of threads for the list. Pure, so the test can hold it to the order above. */
 function group(threads, { open = [], closed = [], sections = new Map(), hideBackground = true, cwdFilter = null, frontAt = () => 0,
   sidebar = '' }) {
   if (sidebar && !open.includes(sidebar)) open = [...open, sidebar];
@@ -124,9 +124,12 @@ function placeOf(t, sections) {
   return t.section && sections.has(t.section) ? sections.get(t.section) || 'Group' : 'Ungrouped';
 }
 
-class SessionsProvider {
+/*
+ * The list as plain values, for the page. `groups()` is the order of the drawn groups the view holds now.
+ */
+class SessionsModel {
   constructor(vscode, { memory, memento, settings, stateOf, reader, wantState = () => {}, sidebarShowing = () => '', sections = null,
-    account = () => [] }) {
+    account = () => null, front = () => '', noGroups = () => false }) {
     this.vscode = vscode;
     this.reader = reader;
     this.memory = memory;
@@ -141,15 +144,18 @@ class SessionsProvider {
     this.sidebarNow = '';
     /* Codex's sections in the order the list draws them (src/session-groups.js); the snapshot's order otherwise. */
     this.sectionsOf = sections || (() => reader.sections());
-    /* ACCOUNT & USAGE as rows of { label, value } (src/account-usage.js rowsOf); none, and no section, when unknown. */
-    this.accountRows = account;
+    /* ACCOUNT & USAGE (src/account-usage.js viewOf), or null for no section. */
+    this.accountOf = account;
+    /* The conversation in front, whose row is drawn as the current one. */
+    this.frontOf = front;
+    this.noGroups = noGroups;
     this.emitter = new vscode.EventEmitter();
-    this.onDidChangeTreeData = this.emitter.event;
-    this.decoEmitter = new vscode.EventEmitter();
-    this.onDidChangeFileDecorations = this.decoEmitter.event;
+    this.onDidChange = this.emitter.event;
     this.threads = [];
     this.sections = new Map();
     this.groups = [];
+    this.json = '';
+    this.value = null;
   }
 
   colors() { return this.memento.get(COLOR_KEY) || {}; }
@@ -157,16 +163,10 @@ class SessionsProvider {
     const all = { ...this.colors() };
     if (name && COLORS[name]) all[thread] = name; else delete all[thread];
     await this.memento.update(COLOR_KEY, all);
-    this.decoEmitter.fire(this.vscode.Uri.from({ scheme: SCHEME, path: `/${thread}` }));
+    this.refresh();
   }
 
-  /* FileDecorationProvider: a title colour is drawn as the decoration colour of the row's resource. */
-  provideFileDecoration(uri) {
-    if (uri.scheme !== SCHEME) return undefined;
-    const name = this.colors()[uri.path.slice(1)];
-    return name ? new this.vscode.FileDecoration(undefined, undefined, new this.vscode.ThemeColor(COLORS[name])) : undefined;
-  }
-
+  /* Works the model out again, and tells the view when it changed. */
   refresh() {
     this.threads = this.reader.threads() || [];
     this.sections = this.sectionsOf();
@@ -184,119 +184,143 @@ class SessionsProvider {
       sections: this.sections, hideBackground: this.settings().hideBackgroundSessions, cwdFilter,
       frontAt: (id) => this.memory.frontAt(id),
     });
+    const value = this.build();
+    const json = JSON.stringify(value);
+    if (json === this.json) return false;
+    this.json = json;
+    this.value = value;
     this.emitter.fire();
+    return true;
   }
 
-  /*
-   * VS Code asks for a group's children only once it is expanded, so this is where the rollout state of conversations
-   * the user skipped is asked for. Nothing is read for a group nobody opened, and the answer arrives on the poll that
-   * was due anyway rather than on a timer of its own.
-   */
-  getChildren(element) {
-    if (!element) {
-      let info = [];
-      try { info = this.accountRows() || []; } catch (_) { info = []; }
-      const top = info.length ? [{ kind: 'group', group: { key: 'account', label: 'Account & usage', expanded: true, threads: [], info } }] : [];
-      return top.concat(drawn(this.groups).map((g) => ({ kind: 'group', group: g })));
-    }
-    if (element.kind === 'group' && element.group.key === 'account') return element.group.info.map((r, i) => ({ kind: 'info', row: r, at: i }));
-    if (element.kind === 'group') {
-      const g = element.group;
-      this.ask(g.threads);
-      return g.threads.map((t) => ({ kind: 'thread', thread: t, group: g.key }));
-    }
-    return [];
+  model() { return this.value || (this.refresh(), this.value); }
+
+  build() {
+    const now = Date.now();
+    const colors = this.colors();
+    const open = new Set(this.memory.openThreads());
+    let front = '';
+    try { front = this.frontOf() || ''; } catch (_) { front = ''; }
+    const row = (t, where) => {
+      const here = open.has(t.id) || t.id === this.sidebarNow;
+      /* A conversation whose rollout the user has not read gets no status dot rather than a wrong one: not read is
+         not the same as idle, and reading every old rollout to colour a dot is what the window must not pay for. */
+      const conv = this.stateOf(t.id);
+      const dot = this.reader.state(t.id) ? lookKey(conv, here) : 'unknown';
+      return { id: t.id, title: t.title || '(untitled)', time: dateSpan(t.createdMs, t.updatedMs, now), dot,
+        color: COLORS[colors[t.id]] || '', open: open.has(t.id), sidebar: where === 'open' && t.id === this.sidebarNow && !open.has(t.id),
+        unread: !!(conv && conv.state === 'unread'), grouped: !!(t.section && this.sections.has(t.section)),
+        group: placeOf(t, this.sections), branch: t.branch || '' };
+    };
+    const keep = (key) => this.groups.find((g) => g.key === key);
+    const rowsOf = (g) => (g ? g.threads.map((t) => row(t, g.key)) : []);
+    let account = null;
+    try { account = this.accountOf() || null; } catch (_) { account = null; }
+    const manager = drawn(this.groups.filter((g) => g.key !== 'closed' && g.key !== 'open'));
+    return {
+      account,
+      closed: rowsOf(keep('closed')),
+      open: rowsOf(keep('open')),
+      groups: manager.map((g) => ({ key: g.key, label: g.label, made: !!g.made, rows: rowsOf(g) })),
+      front,
+      noGroups: !!this.noGroups(),
+    };
   }
 
-  /* A row's group, which is what VS Code walks up through to reveal the row. */
-  getParent(element) {
-    if (!element || element.kind !== 'thread') return undefined;
-    const g = this.groups.find((x) => x.key === element.group);
-    return g ? { kind: 'group', group: g } : undefined;
-  }
-
-  /** The row a conversation open in this window has in Open sessions, or null. */
-  rowOf(id) {
-    const open = this.groups.find((g) => g.key === 'open');
-    const t = open && open.threads.find((x) => x.id === id);
-    return t ? { kind: 'thread', thread: t, group: 'open' } : null;
-  }
-
-  /** Ask for the state of those of `threads` the user has not read. */
-  ask(threads) {
-    const want = threads.filter((t) => t && t.id && !this.reader.state(t.id)).map((t) => t.id);
-    if (want.length) { try { this.wantState(want); } catch (_) { /* the rows show no dot, which is what they already do */ } }
-  }
-
-  getTreeItem(element) {
-    const vscode = this.vscode;
-    if (element.kind === 'info') {
-      const item = new vscode.TreeItem(element.row.label, vscode.TreeItemCollapsibleState.None);
-      item.id = `account:${element.at}`;
-      item.description = element.row.value;
-      item.contextValue = 'codexPlusInfo';
-      return item;
-    }
-    if (element.kind === 'group' && element.group.key === 'account') {
-      const item = new vscode.TreeItem(element.group.label, vscode.TreeItemCollapsibleState.Expanded);
-      item.id = 'group:account';
-      item.contextValue = 'codexPlusGroup-account';
-      return item;
-    }
-    if (element.kind === 'group') {
-      const g = element.group;
-      const item = new vscode.TreeItem(g.label, g.expanded ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed);
-      item.id = `group:${g.key}`;
-      item.description = String(g.threads.length);
-      item.contextValue = g.key === `section:${PINNED_SECTION}` ? 'codexPlusGroup-pinned'
-        : g.key.startsWith('section:') ? 'codexPlusGroup-section' : `codexPlusGroup-${g.key}`;
-      return item;
-    }
-    const t = element.thread;
-    const conv = this.stateOf(t.id);
-    /* A conversation whose rollout the user has not read gets no status dot rather than a wrong one: not read is not
-       the same as idle, and reading every old rollout to colour a dot is what the window must not pay for. */
-    const here = this.memory.openThreads().includes(t.id) || t.id === this.sidebarNow;
-    const look = this.reader.state(t.id) ? lookOf(conv, here) : STATE_LOOK.unknown;
-    const item = new vscode.TreeItem(t.title || '(untitled)', vscode.TreeItemCollapsibleState.None);
-    item.id = `${element.group}:${t.id}`;
-    item.resourceUri = vscode.Uri.from({ scheme: SCHEME, path: `/${t.id}` });
-    item.description = dateSpan(t.createdMs, t.updatedMs);
-    item.iconPath = new vscode.ThemeIcon(look.icon, new vscode.ThemeColor(look.color));
-    const open = element.group === 'open';
-    item.contextValue = (open ? 'codexPlusThreadOpen' : 'codexPlusThread') + (t.section && this.sections.has(t.section) ? ' grouped' : '')
-      + (conv && conv.state === 'unread' ? ' unread' : '');
-    const inSidebar = open && t.id === this.sidebarNow && !this.memory.openThreads().includes(t.id);
-    item.tooltip = `Group: ${placeOf(t, this.sections)}\nSession ID: ${t.id}`;
-    item.command = inSidebar ? { command: 'codexPlus.openThreadInSidebar', title: 'Show in the sidebar', arguments: [t.id] }
-      : { command: 'codexPlus.openThreadInTab', title: 'Open in a tab', arguments: [t.id] };
-    return item;
+  /* The page expanded `keys`: ask for the state of their conversations the user has not read. */
+  expanded(keys) {
+    const want = new Set(Array.isArray(keys) ? keys : []);
+    const ids = this.groups.filter((g) => want.has(g.key)).flatMap((g) => g.threads)
+      .filter((t) => t && t.id && !this.reader.state(t.id)).map((t) => t.id);
+    if (ids.length) { try { this.wantState([...new Set(ids)]); } catch (_) { /* the rows show no dot, which is what they already do */ } }
+    return ids;
   }
 }
 
 /*
- * Keeps the list on the conversation in front, like Claude Code's list: its row in Open sessions is selected and
- * scrolled into view without taking the focus. Nothing happens while the list is hidden, because revealing a row of a
- * hidden view opens the view. Returns a function to call whenever the front may have changed; `frontOf` returns the id
- * of the conversation in front, or ''.
+ * The webview view itself. It keeps no page while hidden (no retainContextWhenHidden): a page that comes back asks for
+ * the model and is sent the one in memory. `receive(msg)` is given each message the page sends.
  */
-function createFollower(view, provider, frontOf) {
-  let followed = '';
-  const follow = () => {
-    let front = '';
-    try { front = frontOf() || ''; } catch (_) { front = ''; }
-    if (!front) { followed = ''; return; }
-    if (front === followed || !view.visible) return;
-    const row = provider.rowOf(front);
-    if (!row) return;
-    followed = front;
-    Promise.resolve(view.reveal(row, { select: true, focus: false })).catch(() => { followed = ''; });
-  };
-  if (typeof view.onDidChangeVisibility === 'function') view.onDidChangeVisibility(() => { followed = ''; follow(); });
-  return follow;
+const PAGE_FILES = ['sessions-page.js', 'sessions-page.css'];
+class SessionsView {
+  constructor(vscode, { model, extensionUri, receive = () => {}, onVisible = () => {} }) {
+    this.vscode = vscode;
+    this.modelOf = model;
+    this.extensionUri = extensionUri;
+    this.receive = receive;
+    this.onVisible = onVisible;
+    this.view = null;
+    this.posted = '';
+    this.selection = [];
+    model.onDidChange(() => this.post());
+  }
+
+  get visible() { return !!(this.view && this.view.visible); }
+
+  resolveWebviewView(view) {
+    const vscode = this.vscode;
+    this.view = view;
+    this.posted = '';
+    const dir = vscode.Uri.joinPath(this.extensionUri, 'src', 'page');
+    view.webview.options = { enableScripts: true, localResourceRoots: [dir] };
+    const [js, css] = PAGE_FILES.map((f) => view.webview.asWebviewUri(vscode.Uri.joinPath(dir, f)));
+    view.webview.html = pageHtml({ js: String(js), css: String(css), csp: view.webview.cspSource, nonce: nonce() });
+    const subs = [
+      view.webview.onDidReceiveMessage((msg) => {
+        if (msg && msg.kind === 'ready') { this.posted = ''; this.post(); }
+        if (msg && msg.kind === 'select' && Array.isArray(msg.ids)) this.selection = msg.ids.filter((x) => typeof x === 'string').slice(0, 1000);
+        if (msg && msg.kind === 'expanded') this.modelOf.expanded(msg.keys);
+        try { this.receive(msg || {}); } catch (_) { /* the page asks again */ }
+      }),
+      view.onDidChangeVisibility(() => { if (view.visible) { this.post(); this.onVisible(); } }),
+    ];
+    view.onDidDispose(() => { for (const d of subs) { try { d.dispose(); } catch (_) { /* gone */ } } if (this.view === view) this.view = null; });
+    this.onVisible();
+  }
+
+  /* The model, when it differs from what the page has and the page is on screen. */
+  post() {
+    if (!this.visible) return false;
+    const m = this.modelOf.model();
+    const json = this.modelOf.json;
+    if (json === this.posted) return false;
+    this.posted = json;
+    Promise.resolve(this.view.webview.postMessage({ type: 'model', model: m })).catch(() => { this.posted = ''; });
+    return true;
+  }
+
+  /* Anything else for the page: { type: 'startRename', id } and the like. */
+  tell(msg) {
+    if (!this.view) return false;
+    Promise.resolve(this.view.webview.postMessage(msg)).catch(() => {});
+    return true;
+  }
+}
+
+function nonce() {
+  const abc = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  let out = '';
+  for (let i = 0; i < 32; i++) out += abc[Math.floor(Math.random() * abc.length)];
+  return out;
+}
+
+function pageHtml({ js, css, csp, nonce: n }) {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${csp}; script-src 'nonce-${n}'; img-src ${csp} data:;">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="stylesheet" href="${css}">
+</head>
+<body>
+<div id="root" class="cp-root" tabindex="0" data-vscode-context='{"preventDefaultContextMenuItems":true}'></div>
+<script nonce="${n}" src="${js}"></script>
+</body>
+</html>`;
 }
 
 /* Whether a search string is meant as part of a thread id: four or more characters of hex and hyphens. */
 const looksLikeId = (q) => /^[0-9a-f-]{4,}$/i.test(String(q || '').trim());
 
-module.exports = { SessionsProvider, createFollower, group, dateSpan, placeOf, looksLikeId, lookOf, COLORS, COLOR_KEY, SCHEME, STATE_LOOK };
+module.exports = { SessionsModel, SessionsView, pageHtml, group, drawn, dateSpan, placeOf, looksLikeId, lookOf, lookKey, COLORS, COLOR_KEY, STATE_LOOK, PAGE_FILES };

@@ -20,7 +20,7 @@ module.exports = async ({ eq, root }) => {
   const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
   const { vscode } = fake.create();
   fake.install(vscode);
-  const { group, SessionsProvider } = require('../../src/sessions-view');
+  const { group, SessionsModel } = require('../../src/sessions-view');
   const { PINNED_SECTION } = require('../../src/session-groups');
 
   const t = (n, extra = {}) => ({ id: ID(n), title: `t${n}`, kind: 'user', cwd: '/w', archived: false, pinned: false, section: '',
@@ -38,19 +38,16 @@ module.exports = async ({ eq, root }) => {
   eq(keys(group(threads, { sections, hideBackground: false })).pop(), 'ungrouped:t1|t2|t3',
     'with the background filter off, Codex\'s own threads are listed among the rest, as Claude Code has no group for them');
 
-  const provider = new SessionsProvider(vscode, { memory: { openThreads: () => [], recentlyClosed: () => [], frontAt: () => 0 }, memento: fake.memento(),
+  const provider = new SessionsModel(vscode, { memory: { openThreads: () => [], recentlyClosed: () => [], frontAt: () => 0 }, memento: fake.memento(),
     reader: { threads: () => threads, sections: () => sections, state: () => null, thread: () => null }, stateOf: () => null,
     settings: () => ({ recentClosedSessions: 10, hideBackgroundSessions: true }) });
-  provider.refresh();
-  const top = provider.getChildren();
-  eq(top.map((r) => r.group.key), [`section:${PINNED_SECTION}`, 'section:sec-a', 'section:sec-empty', 'ungrouped'],
-    'with nothing open and nothing closed, neither Open sessions nor Recently closed is drawn, and the empty group made by the user is');
-  eq(provider.getTreeItem(top.find((r) => r.group.key === 'section:sec-empty')).description, '0', 'which counts its nought, as Claude Code\'s does');
-  const ungrouped = provider.getChildren(top.find((r) => r.group.key === 'ungrouped'));
-  const grouped = provider.getChildren(top.find((r) => r.group.key === 'section:sec-a'));
-  eq([provider.getTreeItem(ungrouped[0]).tooltip, provider.getTreeItem(grouped[0]).tooltip],
-    [`Group: Ungrouped\nSession ID: ${ID(1)}`, `Group: Alpha\nSession ID: ${ID(5)}`],
-    'the hover says the group and the session ID, in Claude Code Plus\'s two lines');
+  const m = provider.model();
+  eq([m.closed.length, m.open.length, m.groups.map((g) => g.key)], [0, 0, [`section:${PINNED_SECTION}`, 'section:sec-a', 'section:sec-empty', 'ungrouped']],
+    'with nothing open and nothing closed, neither Open sessions nor Recently closed has a row, and the empty group made by the user is drawn');
+  eq(m.groups.find((g) => g.key === 'section:sec-empty').rows.length, 0, 'with no rows, so the page counts its nought, as Claude Code\'s does');
+  const rowOf = (key) => m.groups.find((g) => g.key === key).rows[0];
+  eq([[rowOf('ungrouped').group, rowOf('ungrouped').id], [rowOf('section:sec-a').group, rowOf('section:sec-a').id]],
+    [['Ungrouped', ID(1)], ['Alpha', ID(5)]], 'each row carries its group and its session ID, which the page\'s hover shows in Claude Code Plus\'s two lines');
 
   const all = Object.values(pkg.contributes.menus).flat().map((m) => m.command).concat(pkg.contributes.commands.map((c) => c.command));
   eq(['codexPlus.archiveThread', 'codexPlus.unarchiveThread', 'codexPlus.deleteArchivedThread'].filter((c) => all.includes(c)), [],

@@ -15,7 +15,8 @@ const ID = (n) => `01a1f0f0-0000-7000-8000-${String(n).padStart(12, '0')}`;
 module.exports = async ({ eq }) => {
   const { vscode } = fake.create();
   fake.install(vscode);
-  const { SessionsProvider } = require('../../src/sessions-view');
+  const { SessionsModel } = require('../../src/sessions-view');
+  const css = require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'src', 'page', 'sessions-page.css'), 'utf8');
   const { conversationOf } = require('../../src/codex-source');
 
   /* ── a failed last turn is carried with the conversation ── */
@@ -30,17 +31,18 @@ module.exports = async ({ eq }) => {
   const threads = Object.keys(states).map((n) => ({ id: ID(n), title: `t${n}`, kind: 'user', cwd: '/w', updatedMs: Date.now() - 60e3, createdMs: Date.now() - 120e3 }));
   const reader = { threads: () => threads, sections: () => new Map(), state: () => ({ working: false }), thread: (id) => threads.find((t) => t.id === id) || null };
   const memory = { openThreads: () => [ID(1), ID(3)], recentlyClosed: () => [], frontAt: () => 0 };
-  const provider = new SessionsProvider(vscode, { memory, memento: fake.memento(), reader,
+  const provider = new SessionsModel(vscode, { memory, memento: fake.memento(), reader,
     stateOf: (id) => ({ state: states[Number(id.slice(-12))], failed: id === ID(6) }),
     settings: () => ({ recentClosedSessions: 10, hideBackgroundSessions: true }) });
-  provider.refresh();
-  const rows = provider.getChildren().flatMap((g) => provider.getChildren(g)).filter((r) => r.kind === 'thread' && r.group !== 'open');
-  const look = (n) => { const it = provider.getTreeItem(rows.find((r) => r.thread.id === ID(n))); return [it.iconPath.id, it.iconPath.color.id]; };
-  eq([look(1), look(3), look(5), look(4)],
-    [['circle-filled', 'charts.green'], ['circle-filled', 'charts.blue'], ['circle-filled', 'charts.red'], ['circle-filled', 'disabledForeground']],
-    'running green, waiting for you blue, replied and unread red, and idle a grey dot rather than a ring');
-  eq(look(2), ['circle-outline', 'charts.green'], 'running with no tab of it in this window, that is in another window, is a ring of the same green');
-  const failed = provider.getTreeItem(rows.find((r) => r.thread.id === ID(6)));
-  eq([failed.iconPath.id, failed.iconPath.color.id], ['circle-filled', 'charts.red'], 'a conversation whose last turn failed is red');
-
+  const rows = provider.model().groups.flatMap((g) => g.rows);
+  const dot = (n) => rows.find((r) => r.id === ID(n)).dot;
+  eq([dot(1), dot(3), dot(5), dot(4), dot(2), dot(6)], ['working', 'prompt', 'unread', 'idle', 'workingElsewhere', 'failed'],
+    'running, waiting for you, replied and unread, idle, running in another window, and a failed last turn');
+  /* What the page draws for each, as the stylesheet says. */
+  const rule = (k) => { const m = new RegExp(`\\.cp-dot\\.d-${k}\\b[^{]*\\{([^}]*)\\}`).exec(css) || new RegExp(`\\.d-${k}\\b[^{]*\\{([^}]*)\\}`).exec(css); return m ? m[1].trim() : ''; };
+  eq([rule('working'), rule('prompt'), rule('unread'), rule('workingElsewhere')],
+    ['background: var(--vscode-charts-green);', 'background: var(--vscode-charts-blue);', 'background: var(--vscode-charts-red);', 'border: 2px solid var(--vscode-charts-green);'],
+    'green running, blue waiting for you, red unread, and a ring of the same green for one running in another window, in the theme\'s colours');
+  eq([/\.cp-dot\s*\{[^}]*width: 8px; height: 8px; border-radius: 50%/.test(css), /\.d-idle\s*\{[^}]*opacity: \.4/.test(css)], [true, true],
+    'an 8 px dot, as Claude Code draws it, and idle a grey one at 40%');
 };

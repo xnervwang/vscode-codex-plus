@@ -21,7 +21,7 @@ module.exports = async ({ eq, root }) => {
   fake.install(vscode);
   const { createSeen } = require('../../src/seen');
   const { createPlacer, PLACE_MS } = require('../../src/session-groups');
-  const { SessionsProvider } = require('../../src/sessions-view');
+  const { SessionsModel } = require('../../src/sessions-view');
 
   /* ── Mark as Read ── */
   let now = 1000;
@@ -33,24 +33,33 @@ module.exports = async ({ eq, root }) => {
     'Mark as Read clears the mark and counts the conversation as looked at now; a later reply is unread again');
   const threads = [{ id: ID(1), title: 'a', kind: 'user', cwd: '/w', section: '', createdMs: 1, updatedMs: 2 },
     { id: ID(2), title: 'b', kind: 'user', cwd: '/w', section: '', createdMs: 1, updatedMs: 3 }];
-  const provider = new SessionsProvider(vscode, { memory: { openThreads: () => [], recentlyClosed: () => [], frontAt: () => 0 }, memento: fake.memento(),
+  const provider = new SessionsModel(vscode, { memory: { openThreads: () => [], recentlyClosed: () => [], frontAt: () => 0 }, memento: fake.memento(),
     reader: { threads: () => threads, sections: () => new Map(), state: () => ({}), thread: () => null },
     stateOf: (id) => ({ state: id === ID(1) ? 'unread' : 'idle' }), settings: () => ({ recentClosedSessions: 10, hideBackgroundSessions: true }) });
-  provider.refresh();
-  const rows = provider.getChildren(provider.getChildren()[0]).map((r) => provider.getTreeItem(r).contextValue);
-  const menus = pkg.contributes.menus['view/item/context'];
-  const offered = (cv) => menus.filter((m) => {
-    const re = /viewItem =~ \/(.*)\/(?:\s|$)/.exec(m.when);
-    const eqv = /viewItem == (\S+)/.exec(m.when);
-    return re ? new RegExp(re[1]).test(cv) : eqv ? eqv[1] === cv : false;
-  }).map((m) => m.command.replace('codexPlus.', ''));
-  eq([offered(rows[1]).filter((c) => /^markThread/.test(c)), offered(rows[0]).filter((c) => /^markThread/.test(c))],
+  const rows = provider.model().groups[0].rows;
+  /* The when clauses of the list's right-click menu, against what the page puts on a row or a header
+     (data-vscode-context), with VS Code's own key for the view. Only `a == 'b'`, `x` and `!x` joined by && are used. */
+  const menus = pkg.contributes.menus['webview/context'];
+  const holds = (when, ctx) => when.split('&&').map((p) => p.trim()).every((p) => {
+    const m = /^([\w.]+) == '([^']*)'$/.exec(p);
+    if (m) return String(ctx[m[1]]) === m[2];
+    return p.startsWith('!') ? !ctx[p.slice(1)] : !!ctx[p];
+  });
+  const offered = (ctx) => menus.filter((m) => holds(m.when, { webviewId: 'codexPlus.sessions', ...ctx }))
+    .sort((a, b) => a.group.localeCompare(b.group)).map((m) => m.command.replace('codexPlus.', ''));
+  const rowCtx = (r) => ({ webviewSection: 'thread', threadId: r.id, codexPlusGrouped: r.grouped, codexPlusUnread: r.unread });
+  const unreadRow = rows.find((r) => r.id === ID(1)), readRow = rows.find((r) => r.id === ID(2));
+  eq([offered(rowCtx(readRow)).filter((c) => /^markThread/.test(c)), offered(rowCtx(unreadRow)).filter((c) => /^markThread/.test(c))],
     [['markThreadUnread'], ['markThreadRead']], 'a read conversation offers Mark as Unread, an unread one Mark as Read');
+  eq(offered(rowCtx(readRow)), ['openThreadInTab', 'openThreadInSidebar', 'newGroupFromThreads', 'moveThreadToSection', 'markThreadUnread', 'renameThread', 'setTitleColor'],
+    'a row offers Resume, New Group from Conversation, Add to Group, Mark as Unread, Rename and Text Color; Remove from Group only in a group');
+  eq(offered({ ...rowCtx(readRow), codexPlusGrouped: true }).includes('removeFromGroup'), true, 'and a row in a group offers Remove from Group');
+  eq(offered({ ...rowCtx(readRow), 'codexPlus.noGroups': true }).filter((c) => /Group|Section/.test(c)), [], 'with no groups in this Codex, none of the group items');
 
   /* ── a group header's menu ── */
-  eq(offered('codexPlusGroup-section'),
+  eq(offered({ webviewSection: 'group', groupKey: 'section:a', codexPlusMade: true }),
     ['newThreadInGroup', 'newGroup', 'renameGroup', 'deleteGroup'], 'a group header offers Claude Code\'s four, in its order');
-  eq(offered('codexPlusGroup-ungrouped'), ['newGroup'], 'Ungrouped offers only New Group');
+  eq(offered({ webviewSection: 'group', groupKey: 'ungrouped', codexPlusMade: false }), ['newGroup'], 'Ungrouped offers only New Group');
 
   /* ── Start New Session in This Group ── */
   let t = 10000;
@@ -70,8 +79,9 @@ module.exports = async ({ eq, root }) => {
   eq([await placer.check(), moved.length], [null, 1], 'after half an hour it stops waiting');
 
   /* ── the words for an empty list, and the prefix ── */
-  eq((pkg.contributes.viewsWelcome || []).filter((w) => w.view === 'codexPlus.sessions').map((w) => w.contents), ['No sessions yet'],
-    'a list with nothing in it says "No sessions yet", as Claude Code\'s does');
+  const page = require('fs').readFileSync(path.join(root, 'src', 'page', 'sessions-page.js'), 'utf8');
+  eq([/'No sessions yet'/.test(page), /'No sessions found'/.test(page)], [true, true],
+    'a list with nothing in it says "No sessions yet", and a search that finds nothing "No sessions found", as Claude Code\'s do');
   const titled = new Map(pkg.contributes.commands.map((c) => [c.command, c.title]));
   const onList = [...new Set(menus.filter((m) => /codexPlus\.sessions/.test(m.when)).map((m) => m.command))];
   eq(onList.filter((c) => !/^Codex Plus: /.test(titled.get(c) || '')), [], 'every item of the list\'s right-click menus starts "Codex Plus: "');
