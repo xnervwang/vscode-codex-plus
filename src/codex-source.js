@@ -242,7 +242,7 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
   };
   const endedOf = (id) => turnOf(reader.state(id), heardOf(id), Date.now(), 0).endedMs;
   /* Marks what is in front as seen now, and returns true when that cleared an unread state, so the views redraw at
-     once. Conversations that were in front on the previous call and are not now are reported to seen.left(). */
+     once. */
   let wasFront = [];
   function markFront() {
     let cleared = false;

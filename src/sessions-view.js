@@ -78,7 +78,7 @@ function ago(ms, now = Date.now()) {
 }
 /* `2d · 11/05→11/09`: how long ago it was last active, then the dates it spans, or one date if both are the same day.
    Month comes before day, as elsewhere in the panel, and a year other than the current one goes in front, once for a
-   span within that year: `2025/11/05→11/09`, `2025/12/30→01/02`. This is Claude Code Plus's format. */
+   span within that year: `2025/11/05→11/09`, `2025/12/30→01/02`. */
 function dateSpan(createdMs, updatedMs, now = Date.now()) {
   if (!updatedMs) return '';
   const year = new Date(now).getFullYear();

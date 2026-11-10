@@ -6,8 +6,8 @@
 /*
  * The reader's time zone reaches Agent Plus through the protocol's timeZone(): Codex's page reports the zone it runs
  * in, and the registered source returns it, so the work plan view shows times in that zone instead of the zone of the
- * machine running the extension host. The answer is read with the core's own timeZoneOf, from its checkout, since that
- * is what the core accepts.
+ * machine running the extension host. The answer is read with the core's own timeZoneOf, since that is what the core
+ * accepts.
  */
 const fs = require('fs');
 const path = require('path');
