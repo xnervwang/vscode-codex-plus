@@ -14,6 +14,7 @@
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
+const { writeAtomic } = require('./files');
 
 /* The palette iconsFor uses when it is given none. */
 const DOT = { prompt: '#f59e0b', needs: '#f59e0b', working: '#3b82f6', unread: '#22c55e', idle: '#8b8b8b' };
@@ -38,18 +39,9 @@ function withDot(svg, color, { r = R, gap = GAP } = {}) {
     + `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${color}"/></svg>`;
 }
 
-/* Written under another name and moved into place: a file is named by its content and never rewritten once it is
-   there, so one cut off half way would stay broken for as long as that name is asked for. */
-function writeWhole(file, text) {
-  const tmp = `${file}.${process.pid}.${crypto.randomBytes(4).toString('hex')}`;
-  try {
-    fs.writeFileSync(tmp, text);
-    fs.renameSync(tmp, file);
-  } catch (e) {
-    try { fs.unlinkSync(tmp); } catch (_) { /* never written */ }
-    throw e;
-  }
-}
+/* Written under another name and moved into place (writeAtomic): a file is named by its content and never rewritten once
+   it is there, so one cut off half way would stay broken for as long as that name is asked for. */
+const writeWhole = (file, text) => writeAtomic(file, text);
 
 /*
  * Icon paths for every state, { [state]: { light, dark } } as file paths, written into `dir` once per logo version; null

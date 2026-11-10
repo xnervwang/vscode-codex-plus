@@ -47,6 +47,7 @@
 const fs = require('fs');
 const path = require('path');
 const targets = require('./adapters');
+const { applyAll } = require('./patch-target');
 const { activeThread } = require('./codex-tabs');
 const { iconsFor } = require('./logo-dot');
 const { createApprovals } = require('./approvals');
@@ -1029,15 +1030,11 @@ async function ensurePatched(vscode, context, log, mode) {
     return;
   }
   const refresh = states.every((s) => s === 'patched' || s === 'outdated');
-  const results = [];
-  for (const t of targets) {
-    try { results.push([t.name, t.apply(dir)]); } catch (e) { results.push([t.name, { current: false, message: e.message }]); }
-  }
+  // All or nothing across the targets: a page patch without the host patch would post to nobody.
+  const results = applyAll(targets, dir, { allOrNothing: true });
   for (const [name, r] of results) log(`patch ${name}: ${r.message}`);
   const failed = results.filter(([, r]) => !r.current);
   if (failed.length) {
-    // All or nothing across the targets: a page patch without the host patch would post to nobody.
-    for (const t of targets) { try { t.restore(dir); } catch (_) { /* nothing to restore */ } }
     state.reason = `not patched: ${failed.map(([n, r]) => `${n}: ${r.message}`).join('; ')}`;
     return;
   }

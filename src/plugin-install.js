@@ -26,6 +26,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const { withAppServer } = require('./appserver');
+const hookSettings = require('./hook-settings');
 
 const MARKETPLACE = 'codex-extras';
 const PLUGIN = 'agent-work-plan';
@@ -283,28 +284,12 @@ function fitHooks(dir, python) {
 
 /*
  * What the hooks are told by this editor: written into the plugin's data directory as config.json (plan_path.py reads
- * it). `values` holds only keys the hooks know.
- *
- * `marker` is this editor's global storage directory for this extension. Every editor sharing the Codex home lists its
- * own in extensionMarkers, and a directory that is gone is dropped. VS Code deletes that directory once no copy of this
- * extension is left in its extensions folder, and not on an update, so a list in which none of them exists any more is
- * a plugin whose extension was uninstalled everywhere, and its hooks then do nothing (plan_path.py settings).
+ * it), with this editor's global storage directory listed as its marker (src/hook-settings.js). A plugin whose markers
+ * are all gone is one whose extension was uninstalled everywhere, and its hooks then do nothing (plan_path.py
+ * settings).
  */
 function writeHookSettings(home, values, { marker = '' } = {}) {
-  const dir = planDir(home);
-  fs.mkdirSync(dir, { recursive: true });
-  const file = path.join(dir, 'config.json');
-  const out = { ...values };
-  if (marker) {
-    fs.mkdirSync(marker, { recursive: true });
-    let before = [];
-    try { const v = JSON.parse(fs.readFileSync(file, 'utf8')).extensionMarkers; if (Array.isArray(v)) before = v; } catch (_) { /* none yet */ }
-    out.extensionMarkers = before.filter((d) => typeof d === 'string' && path.isAbsolute(d) && d !== marker && fs.existsSync(d))
-      .concat(marker);
-  }
-  const tmp = `${file}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(out, null, 2) + '\n');
-  fs.renameSync(tmp, file);
+  return hookSettings.writeHookSettings(planDir(home), values, { marker });
 }
 
 /*
@@ -312,21 +297,7 @@ function writeHookSettings(home, values, { marker = '' } = {}) {
  * reads a half-written file leaves the zone out of that turn. Returns whether it wrote.
  */
 function writeClientZone(home, zone) {
-  if (!zone) return false;
-  const dir = planDir(home);
-  const file = path.join(dir, 'client-time-zone.json');
-  const next = JSON.stringify({ timeZone: zone }) + '\n';
-  try { if (fs.readFileSync(file, 'utf8') === next) return false; } catch (_) { /* not there yet */ }
-  fs.mkdirSync(dir, { recursive: true });
-  const tmp = `${file}.${process.pid}.tmp`;
-  try {
-    fs.writeFileSync(tmp, next);
-    fs.renameSync(tmp, file);
-  } catch (e) {
-    try { fs.unlinkSync(tmp); } catch (_) { /* never written */ }
-    throw e;
-  }
-  return true;
+  return hookSettings.writeClientZone(planDir(home), zone);
 }
 
 /*

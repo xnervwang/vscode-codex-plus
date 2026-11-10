@@ -31,15 +31,15 @@
  *                           coordinators Codex hands these to are each behind a feature switch, so hooking those
  *                           would report nothing whenever a switch is off
  *
- * Same discipline as claude-code-extras: every edit must match exactly once on a pristine bundle, all or nothing, the
- * result must parse, the untouched original is kept beside the file, the replacement is atomic, and the marker carries
- * a digest of the edits so an older patch is recognised as outdated.
+ * Every edit must match exactly once on a pristine bundle, all or nothing, and the result must parse; the marker carries
+ * a digest of the edits so an older patch is recognised as outdated. Backing up, writing and restoring are the steps
+ * every patch target shares (src/patch-target.js).
  */
 const crypto = require('crypto');
-const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
-const { applyEdits, shapesOf, moveBack } = require('./edits');
+const { applyEdits, shapesOf } = require('./edits');
+const { patchTarget } = require('./patch-target');
 
 const VERSION = 1;
 const ANY_MARK = '/* CODEX-EXTRAS-HOST v';
@@ -120,7 +120,7 @@ function hostFile(codexExtensionPath) { return path.join(codexExtensionPath, 'ou
 /** Pure transform. Returns { out, chosen } or { error }. Never partially applies. */
 function patchSource(src) {
   if (src.includes(ANY_MARK)) return { error: 'the source to patch already carries a host patch' };
-  const r = applyEdits(src, EDITS);
+  const r = applyEdits(src, EDITS, 'Codex');
   if (r.error) return { error: r.error };
   const out = MARK + '\n' + r.out;
   try { new vm.Script(out, { filename: 'extension.js' }); }
@@ -128,73 +128,24 @@ function patchSource(src) {
   return { out, chosen: r.chosen };
 }
 
-/** 'patched' (this version), 'outdated' (another version of this patch), 'clean', 'missing'. */
-function status(codexExtensionPath) {
-  const file = hostFile(codexExtensionPath);
-  if (!fs.existsSync(file)) return 'missing';
-  const src = fs.readFileSync(file, 'utf8');
-  if (src.includes(MARK)) return 'patched';
-  if (src.includes(ANY_MARK)) return 'outdated';
-  return 'clean';
-}
-
-/* A temporary name per process with a random part: every window patches the same file. */
-function writeAtomic(file, text) {
-  const tmp = `${file}${TMP_SUFFIX}.${process.pid}.${crypto.randomBytes(4).toString('hex')}`;
-  try {
-    fs.writeFileSync(tmp, text);
-    fs.renameSync(tmp, file);
-  } catch (e) {
-    try { fs.unlinkSync(tmp); } catch (_) { /* never written */ }
-    throw e;
-  }
-}
-
-/* Apply or upgrade. Returns { changed, current, message }; `current` means the file carries this patch. */
-function apply(codexExtensionPath) {
-  const file = hostFile(codexExtensionPath);
-  const backup = file + BACKUP_SUFFIX;
-  const state = status(codexExtensionPath);
-  const no = (message) => ({ changed: false, current: false, message });
-  if (state === 'missing') return no(`Codex host bundle not found at ${file}`);
-  if (state === 'patched') return { changed: false, current: true, message: 'already patched' };
-  let original;
-  if (state === 'outdated') {
-    if (!fs.existsSync(backup)) return no('an older patch is present but its backup is missing; reinstall Codex');
-    original = fs.readFileSync(backup, 'utf8');
-    if (original.includes(ANY_MARK)) return no('an older patch is present and its backup carries one too; reinstall Codex');
-  } else {
-    original = fs.readFileSync(file, 'utf8');
-  }
-  const r = patchSource(original);
-  if (r.error) return no(r.error);
-  /* Written as the patched file is: a backup cut short would be put back over Codex's file by the next restore. */
-  if (state === 'clean') writeAtomic(backup, original);
-  writeAtomic(file, r.out);
-  /* A restore in another window can have moved the backup over the file since it was read; the file is patched now, so
-     its backup is put back from the copy just patched from. */
-  if (!fs.existsSync(backup)) writeAtomic(backup, original);
-  return { changed: true, current: true, message: 'patched' };
-}
-
-/* Whether a backup can stand for Codex's bundle: something that parses. Anything else is not put back over it. */
+/* A backup can stand for Codex's bundle when it parses. Anything else is not put back over it. */
 function usableBackup(text) {
   if (!text.trim()) return false;
   try { new vm.Script(text, { filename: 'extension.js' }); return true; } catch (_) { return false; }
 }
 
-/** Put the original bundle back and remove the backup. */
-function restore(codexExtensionPath) {
-  const file = hostFile(codexExtensionPath);
-  const backup = file + BACKUP_SUFFIX;
-  if (!fs.existsSync(backup)) return { changed: false, message: 'nothing to restore' };
-  const original = fs.readFileSync(backup, 'utf8');
-  if (original.includes(ANY_MARK)) return { changed: false, message: 'backup is itself patched; not restored' };
-  if (!usableBackup(original)) return { changed: false, message: 'backup is empty or does not parse; not restored, reinstall Codex' };
-  return moveBack(backup, file);
-}
+const target = patchTarget({
+  file: hostFile, mark: MARK, anyMark: ANY_MARK, backupSuffix: BACKUP_SUFFIX, tmpTag: TMP_SUFFIX,
+  transform: patchSource, usableBackup,
+  say: {
+    missing: (file) => `Codex host bundle not found at ${file}`,
+    noBackup: 'an older patch is present but its backup is missing; reinstall Codex',
+    markedBackup: 'an older patch is present and its backup carries one too; reinstall Codex',
+    badBackup: 'backup is empty or does not parse; not restored, reinstall Codex',
+  },
+});
 
 module.exports = {
   id: 'openai.chatgpt', name: 'Codex host', VERSION, MARK, ANY_MARK, BACKUP_SUFFIX, EDITS,
-  patchSource, status, apply, restore, targetFile: hostFile,
+  patchSource, status: target.status, apply: target.apply, restore: target.restore, targetFile: hostFile,
 };

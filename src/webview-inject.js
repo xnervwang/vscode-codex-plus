@@ -16,7 +16,9 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
-const { applyEdits, moveBack } = require('./edits');
+const { applyEdits } = require('./edits');
+const { writeAtomic } = require('./files');
+const { patchTarget } = require('./patch-target');
 
 const PAGE_FILE = 'codex-extras-page.js';
 const PAGE_SOURCE = path.join(__dirname, 'page', PAGE_FILE);
@@ -39,68 +41,33 @@ const htmlFile = (codexExtensionPath) => path.join(codexExtensionPath, 'webview'
 function patchSource(html) {
   if (html.includes(ANY_MARK)) return { error: 'the page already carries a patch' };
   try { new vm.Script(pageScript(), { filename: PAGE_FILE }); } catch (e) { return { error: `the page script does not parse: ${e.message}` }; }
-  const r = applyEdits(html, EDITS);
+  const r = applyEdits(html, EDITS, 'Codex');
   return r.error ? { error: r.error } : { out: r.out, chosen: r.chosen };
 }
 
-function status(codexExtensionPath) {
-  const file = htmlFile(codexExtensionPath);
-  if (!fs.existsSync(file)) return 'missing';
-  const html = fs.readFileSync(file, 'utf8');
-  if (html.includes(mark()) && fs.existsSync(path.join(path.dirname(file), PAGE_FILE))) return 'patched';
-  if (html.includes(ANY_MARK)) return 'outdated';
-  return 'clean';
-}
+const OLDER = 'an older page patch is present without a clean backup; reinstall Codex';
+const pageFile = (codexExtensionPath) => path.join(path.dirname(htmlFile(codexExtensionPath)), PAGE_FILE);
 
-function writeAtomic(file, text) {
-  const tmp = `${file}.codex-extras.${process.pid}.${crypto.randomBytes(4).toString('hex')}`;
-  try {
-    fs.writeFileSync(tmp, text);
-    fs.renameSync(tmp, file);
-  } catch (e) {
-    try { fs.unlinkSync(tmp); } catch (_) { /* never written */ }
-    throw e;
-  }
-}
-
-function apply(codexExtensionPath) {
-  const file = htmlFile(codexExtensionPath);
-  const backup = file + BACKUP_SUFFIX;
-  const state = status(codexExtensionPath);
-  if (state === 'missing') return { changed: false, current: false, message: `Codex page not found at ${file}` };
-  if (state === 'patched') return { changed: false, current: true, message: 'already patched' };
-  const original = state === 'outdated' ? (fs.existsSync(backup) ? fs.readFileSync(backup, 'utf8') : '') : fs.readFileSync(file, 'utf8');
-  if (!original || original.includes(ANY_MARK)) return { changed: false, current: false, message: 'an older page patch is present without a clean backup; reinstall Codex' };
-  const r = patchSource(original);
-  if (r.error) return { changed: false, current: false, message: r.error };
-  /* Written as the patched file is: a backup cut short would be put back over Codex's page by the next restore. */
-  if (state === 'clean') writeAtomic(backup, original);
-  writeAtomic(path.join(path.dirname(file), PAGE_FILE), pageScript());
-  writeAtomic(file, r.out);
-  /* A restore in another window can have moved the backup over the page since it was read; the page is patched now,
-     so its backup is put back from the copy just patched from. */
-  if (!fs.existsSync(backup)) writeAtomic(backup, original);
-  return { changed: true, current: true, message: 'patched' };
-}
-
-/* Whether a backup can stand for Codex's page: one holding the entry script the patch anchors on, as the page it was
-   taken from did. Anything else is not put back over it. */
-const usableBackup = (html) => new RegExp(EDITS[0].re.source).test(html);
-
-function restore(codexExtensionPath) {
-  const file = htmlFile(codexExtensionPath);
-  const backup = file + BACKUP_SUFFIX;
-  if (!fs.existsSync(backup)) return { changed: false, message: 'nothing to restore' };
-  const original = fs.readFileSync(backup, 'utf8');
-  if (original.includes(ANY_MARK)) return { changed: false, message: 'backup is itself patched; not restored' };
-  if (!usableBackup(original)) return { changed: false, message: 'backup is not a Codex page; not restored, reinstall Codex' };
-  const r = moveBack(backup, file);
-  /* Unless another window has patched the page again since the move: the script then belongs to that patch. */
-  let clean = false;
-  try { clean = !fs.readFileSync(file, 'utf8').includes(ANY_MARK); } catch (_) { /* gone */ }
-  if (r.changed && clean) { try { fs.unlinkSync(path.join(path.dirname(file), PAGE_FILE)); } catch (_) { /* never copied */ } }
-  return r;
-}
+const target = patchTarget({
+  file: htmlFile, mark, anyMark: ANY_MARK, backupSuffix: BACKUP_SUFFIX, tmpTag: '.codex-extras',
+  /* An empty page is no Codex page to patch. */
+  transform: (html) => (html ? patchSource(html) : { error: OLDER }),
+  /* A backup can stand for Codex's page when it holds the entry script the patch anchors on, as the page it was taken
+     from did. Anything else is not put back over it. */
+  usableBackup: (html) => new RegExp(EDITS[0].re.source).test(html),
+  ready: (dir) => fs.existsSync(pageFile(dir)),
+  beforeWrite: (dir) => writeAtomic(pageFile(dir), pageScript(), undefined, { tag: '.codex-extras' }),
+  /* The page script goes with the patch, unless another window has patched the page again since the move. */
+  afterRestore: (dir, r) => {
+    let clean = false;
+    try { clean = !fs.readFileSync(htmlFile(dir), 'utf8').includes(ANY_MARK); } catch (_) { /* gone */ }
+    if (r.changed && clean) { try { fs.unlinkSync(pageFile(dir)); } catch (_) { /* never copied */ } }
+  },
+  say: {
+    missing: (file) => `Codex page not found at ${file}`, noBackup: OLDER, markedBackup: OLDER,
+    badBackup: 'backup is not a Codex page; not restored, reinstall Codex',
+  },
+});
 
 module.exports = { id: 'openai.chatgpt', name: 'Codex page', VERSION, ANY_MARK, BACKUP_SUFFIX, PAGE_FILE, EDITS, mark,
-  patchSource, status, apply, restore, targetFile: htmlFile };
+  patchSource, status: target.status, apply: target.apply, restore: target.restore, targetFile: htmlFile };

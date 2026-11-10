@@ -31,6 +31,7 @@ const files = require('./codex-files');
 const tabs = require('./codex-tabs');
 const install = require('./plugin-install');
 const { createSeen } = require('./seen');
+const { oncePerDelivery } = require('./core-link');
 
 /* A turn whose rollout has been silent this long is no longer running, whatever its last line says: the process that
    was writing it is gone (a closed window, a crash). Long tool calls write nothing while they run, so this is generous. */
@@ -175,9 +176,12 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
   const noticeChanged = new vscode.EventEmitter();
   let notice = null;
   let timer = null;
-  /* Delivery ids already handled, so an answer handed over twice is typed once. Never trimmed: an id that fell off the
-     end would be typed a second time, which is the one thing it is here to prevent. */
-  const delivered = new Set();
+  /* An answer handed over twice under one delivery id is typed once, including a second request that arrives while the
+     first is still running (src/core-link.js). */
+  const deliverOnce = oncePerDelivery(async (sessionId, text) => {
+    if (!trusted() || !patching) return { outcome: 'notReceived', reason: 'this window cannot type into Codex' };
+    return patching.deliver(sessionId, text);
+  });
   const subs = [];
   /*
    * Whether the user has gone somewhere else since Codex's sidebar last came to the front. The sidebar has no signal
@@ -397,14 +401,7 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
      * Codex fills its message box from the route it is navigated with, only when the box is empty, and nothing reports
      * back which happened, so the outcome is uncertain. Asked again with a delivery id it has seen, it types nothing.
      */
-    async deliverAnswer(sessionId, text, opts) {
-      const id = opts && typeof opts.deliveryId === 'string' ? opts.deliveryId : '';
-      if (id && delivered.has(id)) return { outcome: 'uncertain' };
-      if (!trusted() || !patching) return { outcome: 'notReceived', reason: 'this window cannot type into Codex' };
-      const r = await patching.deliver(sessionId, text);
-      if (id && r.outcome !== 'notReceived') delivered.add(id);
-      return r;
-    },
+    deliverAnswer(sessionId, text, opts) { return deliverOnce(sessionId, text, opts); },
     /* For the patch: a conversation came to the front outside an editor tab (Codex's sidebar). The user acted in the
        sidebar to make that happen, so this is where they are looking until a tab says otherwise. */
     _focus(sessionId) {

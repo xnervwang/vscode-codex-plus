@@ -1,21 +1,16 @@
 // BSD 3-Clause License
 // Copyright (c) 2026, Xnerv Wang
 // All rights reserved.
+// Source: vscode-agent-plus src/folders.js; sync-shared.js copies it, so edit it there.
 
 'use strict';
 /*
- * Whether a conversation's starting directory is in this window's workspace, comparing real paths.
+ * Whether a conversation's folder is in this window's workspace, and which rows of a plan wait on the user. Agent Plus
+ * filters Conversations with the first, and Claude Code Plus and Codex Plus each ship a copy.
  *
- * Same shape as folderTest() in Agent Plus's src/folders.js, which cannot be required from here because the two
- * are separate extensions. Two differences matter for Codex's threads:
- *
- *   - a directory that no longer exists still resolves, through the nearest ancestor that does, so a conversation
- *     started in a folder since deleted is still placed in the workspace that held it
- *   - names are folded on darwin as well as win32
- *
- * The paths have to be resolved because VS Code reports this machine's workspace folder as /home/<user>/... while
- * Codex records the thread's cwd as /local/home/<user>/..., /home/<user> being a symbolic link. Comparing the strings
- * puts every conversation outside the workspace and leaves the session list empty.
+ * Paths are compared after resolving symbolic links, because VS Code can report a workspace folder as /home/<user>/...
+ * while an agent records the same folder as /local/home/<user>/..., /home/<user> being a link. Compared as strings,
+ * every conversation would fall outside the workspace.
  */
 const fs = require('fs');
 const path = require('path');
@@ -62,4 +57,17 @@ function folderTest(folders, memo) {
   };
 }
 
-module.exports = { folderTest, realPath, MAX_WALK_UP };
+/** The rows of a plan that wait on the user, each with the number shown in front of it. */
+function planQuestions(nodes, prefix = '', out = []) {
+  (nodes || []).forEach((n, i) => {
+    const num = (prefix ? prefix + '.' : '') + (i + 1);
+    if (n.waitingOn === 'user' && (n.state === 'waiting' || n.state === 'discussing')) {
+      out.push({ num, title: n.title, question: n.question || n.title, since: n.asked || n.since || 0, state: n.state,
+        note: n.note || '', detail: n.detail || '' });
+    }
+    planQuestions(n.children, num, out);
+  });
+  return out;
+}
+
+module.exports = { folderTest, realPath, planQuestions, MAX_WALK_UP };
