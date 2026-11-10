@@ -301,7 +301,7 @@
         "codexPlus.chime": {
           "type": "boolean",
           "default": true,
-          "markdownDescription": "With the patch: a short sound in a Codex tab when a turn there finishes, or when it stops for your permission or for an answer to a question it asked. Three notes is the permission one. A conversation with no tab open in this window cannot make a sound, since the sound is made in the tab's page."
+          "markdownDescription": "With the patch: a short sound in a Codex tab when a turn there finishes, or when it stops for your permission or for an answer to a question it asked. Three notes is the permission one. Codex's sidebar rings too, for the conversation it shows when no tab here shows it. A conversation shown in neither cannot make a sound, since the sound is made in its page."
         },
         "codexPlus.chimeButton": {
           "type": "boolean",

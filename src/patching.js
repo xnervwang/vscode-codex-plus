@@ -703,8 +703,17 @@ async function refreshPanels() {
   /* The net under the two signals that end a request. It is weighed against the rollout's own answer rather than
      against `state`, which `prompt` has already won by the time it gets here. */
   if (approvals.prune((t) => { const c = now.get(t); return !!(c && c.working); }).length) approvalsChanged();
-  /* A chime for a conversation that now owes the user an answer, whether a tab here shows it or not - but the sound
-     can only be made in a page, so one with no tab in this window goes unheard (README says so). */
+  const side = sidebarShowing();
+  /* A chime rings in the pages of this window that show the conversation: its tabs, or else Codex's sidebar while that
+     shows it, so a conversation in both is heard once. The sound can only be made in a page, so one shown in neither
+     goes unheard (README says so). */
+  const ring = (thread, kind) => {
+    const msg = { type: 'codex-extras-chime', kind };
+    const set = panels.get(thread) || [];
+    for (const panel of set) postTo(panel, msg);
+    if (!set.length && side && side === thread) postToSidebar(msg);
+  };
+  /* A chime for a conversation that now owes the user an answer, whether a tab here shows it or not. */
   if (deps.settings().chime) {
     for (const thread of approvals.threads()) {
       const n = approvals.of(thread).decide;
@@ -712,8 +721,7 @@ async function refreshPanels() {
       if (n <= was.decide) continue;
       /* The question chime only when every new answer owed is the model asking something; a permission among them
          rings the permission chime. */
-      const kind = approvals.asking(thread) - was.asking >= n - was.decide ? 'question' : 'approval';
-      for (const panel of panels.get(thread) || []) postTo(panel, { type: 'codex-extras-chime', kind });
+      ring(thread, approvals.asking(thread) - was.asking >= n - was.decide ? 'question' : 'approval');
     }
   }
   owed.clear();
@@ -726,7 +734,6 @@ async function refreshPanels() {
   /* The sidebar's page draws from the same settings; the times and figures of its conversation are worth reading only
      while it is showing. */
   postToSidebar(view);
-  const side = sidebarShowing();
   if (!registry.size && !side) return;
   /* The settings reach a page whose conversation is not known yet as well: it draws from them as soon as one starts. */
   for (const [panel, rec] of registry) if (!rec.thread && isConversationPanel(rec)) postTo(panel, view);
@@ -772,7 +779,12 @@ async function refreshPanels() {
     if (c) last.set(thread, { state: c.state, working: !!c.working });
   }
   if (side) {
-    postToSidebar((figuresOn && figuresOf(now.get(side), runningCommands(side).length)) || NO_FIGURES);
+    const c = now.get(side), was = last.get(side);
+    if (!panels.has(side)) {
+      if (deps.settings().chime && was && was.working && c && !c.working) ring(side, turnEndChime(c));
+      if (c) last.set(side, { state: c.state, working: !!c.working });
+    }
+    postToSidebar((figuresOn && figuresOf(c, runningCommands(side).length)) || NO_FIGURES);
     postToSidebar(meterOn ? usageOf(now.get(side), limit) : NO_USAGE);
     if (whens.has(side)) postToSidebar({ type: 'codex-extras-user-times', ...whens.get(side) });
   }
