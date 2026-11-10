@@ -51,9 +51,9 @@ const PER_TURN = 8;
  */
 const INJECTED = /^\s*<[a-z][a-z0-9_]*>/;
 /*
- * How the block the work plan plugin's skill search puts in front of the model begins (MARK in
- * codex-plugin/agent-work-plan/hooks/skill_route.py). Codex records it in the rollout as a developer message, one line
- * per skill under that first line, each "- <name>: <description> (file: <path>)".
+ * First words of the block the skill search injects (MARK in codex-plugin/agent-work-plan/hooks/skill_route.py).
+ * Codex records it in the rollout as a developer message, one line per skill under that first line, each
+ * "- <name>: <description> (file: <path>)".
  */
 const ROUTE_MARK = 'Skills that may fit this message';
 /* The hook gives a turn at most ten skills. */

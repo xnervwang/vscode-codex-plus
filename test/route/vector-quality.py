@@ -3,7 +3,7 @@
 # Copyright (c) 2026, Xnerv Wang
 # All rights reserved.
 
-"""How well the search by meaning finds the right skill in the made-up catalogue of corpus.py, against Amazon Bedrock.
+"""Vector search hit rates on the made-up catalogue of corpus.py, measured against Amazon Bedrock.
 
     python3 test/route/vector-quality.py <codex home>
 
@@ -73,7 +73,7 @@ def main(argv):
             with open(os.path.join(d, "SKILL.md"), "w", encoding="utf-8") as fh:
                 fh.write("---\nname: %s\ndescription: %s\n---\n" % (name, json.dumps(desc, ensure_ascii=False)))
         index = route.build(data, home, "", route.settings(data))
-        # Skills of the folders every Codex reads (~/.agents/skills and the like) are indexed too; only the
+        # The index also holds skills from the user's own folders (~/.agents/skills and the like); only the
         # catalogue's are ranked.
         mine = [i for i, s in enumerate(index["skills"]) if s["kind"] == "extra"]
         if not index.get("dim") or not all(index["has"][i] for i in mine):

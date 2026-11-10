@@ -4,8 +4,8 @@
 
 'use strict';
 /*
- * Which skills a turn was given by the work plan plugin's skill search (codex-plugin/agent-work-plan/hooks/
- * route-skills.py), shown after that turn's figures on the line under its reply. Codex records each hook's injected text
+ * The skill names the skill search (codex-plugin/agent-work-plan/hooks/route-skills.py) injected into a turn, shown
+ * after that turn's figures on the line under its reply. Codex records each hook's injected text
  * in the rollout as a developer message carrying the turn's id, and the host reads the skill names out of the block that
  * begins with the plugin's fixed first words (src/user-times.js ROUTE_MARK).
  */

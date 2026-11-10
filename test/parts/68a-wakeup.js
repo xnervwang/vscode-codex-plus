@@ -4,11 +4,10 @@
 
 'use strict';
 /*
- * A conversation's wake-up: the model sets it with the work plan's MCP tool set_wakeup, which leaves <thread>.wakeup in
- * the plugin's data folder, and each window's timer (src/wakeup.js) puts the prompt in that conversation's queue when it
- * is due, so Codex sends it the moment the conversation is idle. Only conversations this window's app-server has loaded
- * are woken, and only through Codex's own connection, never through an app-server started for the purpose: a message
- * queued for a conversation nobody has open would wait there and be sent the next time it is opened.
+ * Wake-ups: set_wakeup writes <thread>.wakeup in the plugin's data folder, and each window's timer (src/wakeup.js)
+ * queues the prompt for that conversation when it is due; Codex sends it once the conversation is idle. Only
+ * conversations loaded in this window's app-server are woken, through hostRequest and never through a separate
+ * app-server: a message queued for a conversation nobody has open would be sent whenever it is next opened.
  */
 const cp = require('child_process');
 const fs = require('fs');

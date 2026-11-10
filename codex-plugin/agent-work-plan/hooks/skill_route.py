@@ -60,8 +60,8 @@ INDEX_VERSION = 4
 # What the injected block starts with. The VS Code extension finds the block in the rollout by this text
 # (src/user-times.js ROUTE_MARK) to show which skills a turn was given.
 MARK = "Skills that may fit this message"
-# A request shorter than this many characters is a "yes" or a "go on", which no skill is for. Measured over 20,114
-# requests, the cut skips 6.8% of them and misses 2.0% of those that loaded a skill.
+# Messages under this many characters ("yes", "go on") are skipped. Measured over 20,114 requests, the cut skips 6.8%
+# of them and misses 2.0% of those that loaded a skill.
 MIN_CHARS = 6
 QUERY_CHARS = 1500       # characters of the message sent to be embedded
 KEYWORD_CHARS = 300      # characters of the message the keyword search reads
@@ -323,7 +323,7 @@ def profiled(conf, key):
 These are the folders Codex itself reads (codex-rs/ext/skills/src/host_roots.rs): the repository's .agents/skills and
 .codex/skills from the working directory up to the repository's root, $CODEX_HOME/skills, ~/.agents/skills, the system
 skills, /etc/codex/skills, and the skills of every plugin config.toml enables. Two more kinds of folder come from the
-settings: extra folders (by default ~/.claude/skills, where a person who also uses Claude Code keeps their own skills),
+settings: extra folders (by default ~/.claude/skills, Claude Code's folder of personal skills),
 and the plugins installed for Claude Code that are named in skillRouteClaudePlugins. Codex cannot read either kind
 itself, but the injected path lets the model read the file.
 
@@ -1018,9 +1018,9 @@ def model_candidates(region):
 """Whether the vector search is off for now.
 
 A lasting failure (no credentials that can be read, access denied, no such model in the region, a vector of the wrong
-length, a TLS failure) is written down with what the configuration was, and the search
-stays off for OFF_SECONDS or until the provider, the region, the credential source or the setting changes. A timeout,
-a throttle or a server error is not written down: the next turn tries again.
+length, a TLS failure) is written down with what the configuration was, and the search stays off for OFF_SECONDS or
+until the provider, the region, the credential source or the setting changes. Timeouts, throttling and server errors
+are not recorded.
 """
 
 
@@ -1063,7 +1063,7 @@ def vector_wanted(given, conf):
     return bedrock_provider(conf)
 
 
-"""Building the index, in a process of its own.
+"""Rebuilding the index in a background process.
 
 A turn that finds the index out of date starts `skill_route.py --build`, detached and with none of the hook's open
 files, and carries on with the old one: Codex waits for a hook's output to close, so a rebuild holding the hook's pipe

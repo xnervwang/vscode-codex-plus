@@ -17,8 +17,7 @@
  * are not woken: a queued message would sit there and be sent whenever the conversation is next opened.
  *
  * When the user stops a turn (turn/completed with the status interrupted), Codex itself holds back what is queued until
- * they send something. The wake-up is taken out of the queue and paused as well, until a turn starts again, so a stopped
- * conversation is not restarted by the timer behind the user's back.
+ * they send something. The wake-up is taken out of the queue and paused as well, until a turn starts again.
  *
  * <thread>.woke beside it says when it was last queued and whether it is paused. A lock folder keeps two windows that
  * find it due at the same moment from both queueing it.

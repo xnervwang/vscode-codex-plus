@@ -121,11 +121,11 @@ DEFAULTS = {
     "skillRouteVector": False,
     # How many skills a turn is given.
     "skillRouteCount": 5,
-    # Folders of skills Codex does not read itself, searched as well. ~/.claude/skills is where a person who also uses
-    # Claude Code keeps their own; a folder that does not exist is passed over.
+    # Folders of skills Codex does not read itself, searched as well (missing ones are skipped). ~/.claude/skills is
+    # Claude Code's folder of personal skills.
     "skillRouteExtraDirs": ["~/.claude/skills"],
     # Plugins installed for Claude Code but not for Codex whose skills are searched too ("*" for all of them). None by
-    # default: a skill only Claude Code can run tends to lead Codex astray.
+    # default, since Codex cannot run them.
     "skillRouteClaudePlugins": [],
 }
 
