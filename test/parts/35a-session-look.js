@@ -36,13 +36,13 @@ module.exports = async ({ eq }) => {
     settings: () => ({ recentClosedSessions: 10, hideBackgroundSessions: true }) });
   const rows = provider.model().groups.flatMap((g) => g.rows);
   const dot = (n) => rows.find((r) => r.id === ID(n)).dot;
-  eq([dot(1), dot(3), dot(5), dot(4), dot(2), dot(6)], ['working', 'prompt', 'unread', 'idle', 'workingElsewhere', 'failed'],
-    'running, waiting for you, replied and unread, idle, running in another window, and a failed last turn');
+  eq([dot(1), dot(3), dot(5), dot(4), dot(2), dot(6)], ['working', 'prompt', 'unread', 'none', 'workingElsewhere', 'failed'],
+    'running, waiting for you, replied and unread, no dot for one idle and not open here, running in another window, and a failed last turn');
   /* What the page draws for each, as the stylesheet says. */
   const rule = (k) => { const m = new RegExp(`\\.cp-dot\\.d-${k}\\b[^{]*\\{([^}]*)\\}`).exec(css) || new RegExp(`\\.d-${k}\\b[^{]*\\{([^}]*)\\}`).exec(css); return m ? m[1].trim() : ''; };
   eq([rule('working'), rule('prompt'), rule('unread'), rule('workingElsewhere')],
-    ['background: var(--vscode-charts-green);', 'background: var(--vscode-charts-blue);', 'background: var(--vscode-charts-red);', 'border: 2px solid var(--vscode-charts-green);'],
-    'green running, blue waiting for you, red unread, and a ring of the same green for one running in another window, in the theme\'s colours');
+    ['background: #22c55e;', 'background: #3b82f6;', 'background: #ef4444;', 'border: 2px solid #22c55e;'],
+    'green running, blue waiting for you, red unread, and a ring of the same green for one running in another window, in Claude Code Plus\'s colours');
   eq([/\.cp-dot\s*\{[^}]*width: 8px; height: 8px; border-radius: 50%/.test(css), /\.d-idle\s*\{[^}]*opacity: \.4/.test(css)], [true, true],
     'an 8 px dot, as Claude Code draws it, and idle a grey one at 40%');
 };

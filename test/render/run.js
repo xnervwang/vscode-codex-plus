@@ -502,6 +502,7 @@ function selfchecked(r, where, { turns, users, rows, replies = turns }) {
           title: [h.textContent, getComputedStyle(h).fontSize, getComputedStyle(h).fontWeight],
           sections: [...d.querySelectorAll('[data-codex-extras^="map-"]')].map((x) => x.getAttribute('data-codex-extras')).filter((k) => /^map-(wakeups|goal|agents)$/.test(k)),
           rows, dots: [...d.querySelectorAll('[data-codex-extras="map-agent"] [data-codex-extras-dot]')].map((x) => Math.round(x.getBoundingClientRect().width)),
+          tones: [...d.querySelectorAll('[data-codex-extras="map-agent"] [data-codex-extras-dot]')].map((x) => [x.getAttribute('data-codex-extras-dot'), getComputedStyle(x).backgroundColor]),
           focused: document.activeElement === d };
       })()`);
       results.scenes[name].measures.dialog = { ...dlg, openMs: +(opened2 - t0).toFixed(1) };
@@ -511,6 +512,7 @@ function selfchecked(r, where, { turns, users, rows, replies = turns }) {
       check(!!dlg && dlg.sections.join() === 'map-wakeups,map-goal,map-agents' && dlg.box[0] >= 16 && dlg.box[2] <= dlg.vw - 16 && dlg.box[1] >= 0 && dlg.box[3] <= dlg.vh
         && dlg.rows.every(([w, rad]) => w === Math.min(300, dlg.box[2] - dlg.box[0] - 32 - 8) && rad === '4px') && dlg.dots.length === 2 && dlg.dots.every((x) => x === 8),
       `${name}: it holds the wake-up, the goal and the sub-agents in that order, inside the page, each agent a 4 px rounded row with an 8 px dot`, dlg);
+      check(!!dlg && dlg.tones.some(([k, c]) => k === 'working' && c === 'rgb(34, 197, 94)'), `${name}: a working sub-agent's dot is the session list's green, #22c55e`, dlg && dlg.tones);
       const press = async (sel) => { const c = await centre(s, sel); if (c) { await s.b.click(c[0], c[1]); await sleep(150); } return !!c; };
       await s.b.evaluate('window.__posted.length = 0');
       const pressed = [await press('[data-codex-extras-act="removeWakeup"]'), await press('[data-codex-extras-act="pauseGoal"]')];

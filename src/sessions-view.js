@@ -26,7 +26,9 @@
  * the model only when it changed and the view is visible.
  *
  * Conversations whose rollout was not read carry no status dot until their group is expanded, which is the only moment
- * their rollout is asked for; the answer comes back on the next scheduled poll (SessionsModel.expanded).
+ * their rollout is asked for; the answer comes back on the next scheduled poll (SessionsModel.expanded). As in Claude
+ * Code's list, an idle conversation that is not open in this window has no dot either, and its title starts where the
+ * dot would be.
  *
  * Threads Codex started by itself - sub-agents, the reviews of approval requests - and `codex exec` runs are left out
  * unless codexPlus.hideBackgroundSessions is off, when they are listed with the rest. A sub-agent whose parent is listed
@@ -78,7 +80,8 @@ const LIST_MENU = [
   return submenu ? { command, title: title.replace(/\.\.\.$/, ''), group, when, submenu } : { command, title, group, when };
 });
 /* The same dots Claude Code's list uses: green running, blue waiting for you, red replied and unread or last turn
-   failed, grey idle. A conversation running or waiting in another window gets a ring in that colour. */
+   failed, grey idle. A conversation running or waiting in another window gets a ring in that colour. The list draws
+   the grey one only for a conversation open in this window (SessionsModel.build). */
 const STATE_LOOK = {
   working: { icon: 'circle-filled', color: 'charts.green', word: 'working' },
   workingElsewhere: { icon: 'circle-outline', color: 'charts.green', word: 'working in another window' },
@@ -255,7 +258,8 @@ class SessionsModel {
       /* No dot for a conversation whose rollout has not been read: unread state is unknown, not idle, and reading
          every old rollout just to colour dots costs too much. */
       const conv = this.stateOf(t.id);
-      const dot = this.reader.state(t.id) ? lookKey(conv, here) : 'unknown';
+      const look = this.reader.state(t.id) ? lookKey(conv, here) : 'unknown';
+      const dot = look === 'idle' && !here && where !== 'open' ? 'none' : look;
       const goal = typeof this.reader.goal === 'function' ? this.reader.goal(t.id) : null;
       /* `here` leaves Resume in Tab and Resume in Sidebar out of the row's menu, as Claude Code Plus offers them only for
          a conversation that is not open; a sub-agent drawn under its parent in Open sessions counts as open too. */

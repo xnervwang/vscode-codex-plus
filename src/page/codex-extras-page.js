@@ -494,8 +494,8 @@
   var DIM = 'var(--vscode-descriptionForeground,#9d9d9d)';
   var EDGE = 'var(--vscode-inlineChatInput-border,var(--vscode-input-border,var(--vscode-widget-border,#7f7f7f66)))';
   /* The session list's dots (src/page/sessions-page.css). */
-  var DOT_TONE = { working: 'var(--vscode-charts-green,#89d185)', prompt: 'var(--vscode-charts-blue,#3794ff)',
-    unread: 'var(--vscode-charts-red,#f14c4c)', failed: 'var(--vscode-charts-red,#f14c4c)', idle: DIM };
+  var DOT_TONE = { working: '#22c55e', prompt: '#3b82f6',
+    unread: '#ef4444', failed: 'var(--vscode-errorForeground,#f85149)', idle: DIM };
   var GOAL_SHORT = { active: 'goal', paused: 'goal paused', blocked: 'goal blocked', usageLimited: 'goal: usage limit',
     budgetLimited: 'goal: budget spent', complete: 'goal done' };
   var GOAL_STATE = { active: 'in progress', paused: 'paused', blocked: 'blocked', usageLimited: 'stopped at the usage limit',

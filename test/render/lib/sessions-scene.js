@@ -26,8 +26,10 @@ const TITLES = ['Fix the retry delay in the inventory sync', 'Why does the night
 
 /* A model of `n` conversations in three groups and Ungrouped, as SessionsModel.model() makes one. */
 function fakeModel(n, { stamp = '' } = {}) {
+/* An idle conversation not open in this window has no dot, as the host draws it (SessionsModel.build). */
+  const dotOf = (i) => (DOTS[i % DOTS.length] === 'idle' && i >= 2 ? 'none' : DOTS[i % DOTS.length]);
   const row = (i, extra = {}) => ({ id: ID(i), title: `${TITLES[i % TITLES.length]}${i >= TITLES.length ? ` (${i})` : ''}`,
-    time: `${(i % 9) + 1}d · 11/0${(i % 9) + 1}→11/09${stamp}`, dot: DOTS[i % DOTS.length], color: i % 7 === 3 ? 'charts.purple' : '',
+    time: `${(i % 9) + 1}d · 11/0${(i % 9) + 1}→11/09${stamp}`, dot: dotOf(i), color: i % 7 === 3 ? 'charts.purple' : '',
     open: i < 2, sidebar: false, unread: DOTS[i % DOTS.length] === 'unread', grouped: false, group: 'Ungrouped', branch: i % 4 ? '' : `fix/${i}`, ...extra });
   const rows = Array.from({ length: n }, (_, i) => row(i));
   const groups = [{ key: 'section:a', label: 'Release 1.2', made: true, rows: [] }, { key: 'section:b', label: 'Investigations', made: true, rows: [] },
@@ -135,7 +137,7 @@ async function run({ env, check, shots, out, results }) {
     r.measures.list = m;
     check(m.rowH.length > 0 && m.rowH.every((h) => h === 28), 'sessions: every row is 28 px high, as in Claude Code\'s list', m.rowH);
     check(m.rowRadius === '6px' && m.rowGap === '8px', 'sessions: rows have 6 px corners and 8 px between their parts', [m.rowRadius, m.rowGap]);
-    check(m.dots.every(([w, h]) => w === 8 && h === 8), 'sessions: every status dot is 8 by 8 px', m.dots);
+    check(m.dots.some(([w]) => w > 0) && m.dots.filter(([w]) => w > 0).every(([w, h]) => w === 8 && h === 8), 'sessions: every status dot drawn is 8 by 8 px', m.dots);
     check(m.timeRight.every((x) => x === 8), 'sessions: every time ends at the row\'s right edge, inside its 8 px padding', m.timeRight);
     check(m.titleEnds.every((x) => x >= 8), 'sessions: the title stops at least 8 px short of the time', m.titleEnds);
     const px = (v, want) => Math.abs(parseFloat(v) - want) < 0.01;
@@ -148,6 +150,24 @@ async function run({ env, check, shots, out, results }) {
       'sessions: New in tab and New in sidebar are side by side, each half the width', m.news);
     check(m.headH === 26 && m.sectionH === 26, 'sessions: group and section headers are 26 px high', [m.headH, m.sectionH]);
     check(new Set(m.filterRow).size === 1, 'sessions: the filter row\'s controls sit on one line', m.filterRow);
+
+    /* Where both lists have the same thing, the look is Claude Code Plus's (test/parts/35p-sessions-style.js has the values). */
+    const look = await b.evaluate(`(() => {
+      const st = (e) => getComputedStyle(e);
+      const rows = [...document.querySelectorAll('.cp-row')].filter((x) => x.offsetParent);
+      const dot = (x) => { const d = x.querySelector('.cp-dot'); const c = st(d); return [d.className.replace('cp-dot d-', ''), c.display === 'none' ? '' : c.backgroundColor, c.borderTopColor]; };
+      return {
+        dots: rows.map(dot),
+        noDot: rows.filter((x) => st(x.querySelector('.cp-dot')).display === 'none').map((x) => Math.round(x.querySelector('.cp-title').getBoundingClientRect().left - x.getBoundingClientRect().left)),
+      };
+    })()`);
+    r.measures.look = look;
+    const TONE = { working: ['rgb(34, 197, 94)'], prompt: ['rgb(59, 130, 246)'], unread: ['rgb(239, 68, 68)'], failed: ['rgb(248, 81, 73)'],
+      workingElsewhere: ['rgba(0, 0, 0, 0)', 'rgb(34, 197, 94)'], promptElsewhere: ['rgba(0, 0, 0, 0)', 'rgb(59, 130, 246)'] };
+    check(Object.keys(TONE).every((k) => look.dots.some(([s]) => s === k)) && look.dots.every(([s, bg, edge]) => !TONE[s] || (bg === TONE[s][0] && (!TONE[s][1] || edge === TONE[s][1]))),
+      'sessions: the dots are Claude Code Plus\'s #22c55e, #3b82f6 and #ef4444, rings in the same colours, failed in errorForeground', look.dots);
+    check(look.dots.some(([s]) => s === 'none') && look.noDot.length > 0 && look.noDot.every((x) => x === 8),
+      'sessions: an idle row not open here has no dot, and its title starts at the row\'s 8 px padding, as in Claude Code\'s list', look.noDot);
 
     /* An expanded section leaves 10 px under its last row before the next section; a collapsed one leaves none. */
     const gapBelowOpen = () => b.evaluate(`(() => {

@@ -171,11 +171,11 @@ module.exports = async ({ ok, bad, eq, tmp }) => {
   const old = thread(7, inside, { updatedMs: 50 });
   const unreadReader = { ...stubReader([thread(1, inside), old]), state: (id) => (id === ID(1) ? { working: false } : null) };
   const lazy = new SessionsModel(vscode, { memory: stubMemory(), memento: fake.memento(), reader: unreadReader,
-    stateOf: () => ({ state: 'idle' }), wantState: (ids) => asked.push(...ids),
+    stateOf: (id) => ({ state: id === ID(1) ? 'unread' : 'idle' }), wantState: (ids) => asked.push(...ids),
     settings: () => ({ recentClosedSessions: 10, hideBackgroundSessions: true }) });
   lazy.refresh();
   const kids = lazy.model().groups.find((g) => g.key === 'ungrouped').rows;
-  eq([kids.find((r) => r.id === ID(1)).dot, kids.find((r) => r.id === ID(7)).dot], ['idle', 'unknown'],
+  eq([kids.find((r) => r.id === ID(1)).dot, kids.find((r) => r.id === ID(7)).dot], ['unread', 'unknown'],
     'the one whose rollout was read carries its status dot; the one that was not carries none rather than an idle one');
   eq(asked, [], 'working out the list asks for no rollout');
   lazy.expanded(['ungrouped']);
