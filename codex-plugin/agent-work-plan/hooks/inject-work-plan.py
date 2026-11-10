@@ -35,8 +35,8 @@ sys.dont_write_bytecode = True
 # the import path, and plan_path is in it.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from plan_path import (MCP_TOOLS, OPEN_STATES, WAITING_ON, any_in, children, epoch, listed, plan_file, read_payload,
-                       row_command, settings, write_turn)
+from plan_path import (MCP_TOOLS, OPEN_STATES, WAITING_ON, any_in, children, epoch, launcher_quoted, listed, plan_file,
+                       read_payload, row_command, settings, write_turn)
 
 GLYPH = {"discussing": "?", "todo": "o", "doing": ">", "waiting": "~", "parked": "=", "done": "+", "dropped": "x"}
 # Row cap for the injected block. Top-level rows are always drawn; only the rows under them are cut (see rows).
@@ -192,6 +192,7 @@ def main():
     if closed:
         head += " · %d closed" % closed
     command = row_command(path)
+    powershell = " In PowerShell, put & and a space in front of that command line." if launcher_quoted() else ""
     missing = unsaid(nodes)
     # What is said about `doing` is here rather than only in the skill because here is the one moment that comes BEFORE
     # the work, and the skill is rarely loaded at all. A row marked as the work starts shows up in the tree while the
@@ -215,7 +216,7 @@ def main():
         "To change a row, use %s with plan=%s: set_row takes row, state, note, detail, waiting_on and question; "
         "add_row takes state, title, under, note, waiting_on and question. Both read the clock themselves and need no "
         "approval. The same changes from a shell are %s set|add ..., but a shell command cannot write this file "
-        "without an approval in the sandbox." % (MCP_TOOLS, path, command),
+        "without an approval in the sandbox.%s" % (MCP_TOOLS, path, command, powershell),
         "Codex's own update_plan checklist is a different thing: use it for the steps of this turn if you like, and "
         "keep this plan for work that outlives the turn.",
     ] + ([("%d waiting row%s %s not say who %s for (shown `on ?`). Give each one waiting_on when you next touch "
