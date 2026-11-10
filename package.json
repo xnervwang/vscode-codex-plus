@@ -110,6 +110,10 @@
         "title": "Codex Plus: Resume in Sidebar"
       },
       {
+        "command": "codexPlus.reopenClosedSession",
+        "title": "Codex Plus: Reopen Closed Codex Conversation"
+      },
+      {
         "command": "codexPlus.setTitleColor",
         "title": "Codex Plus: Text Color..."
       },
@@ -336,6 +340,14 @@
         }
       ]
     },
+    "keybindings": [
+      {
+        "command": "codexPlus.reopenClosedSession",
+        "key": "ctrl+shift+t",
+        "mac": "cmd+shift+t",
+        "when": "codexPlus.lastClosedWasCodex && config.codexPlus.reopenClosedSessionShortcut"
+      }
+    ],
     "configuration": {
       "title": "Codex Plus",
       "properties": {
@@ -366,6 +378,11 @@
           "markdownDescription": "How many conversations **Recently closed** lists. 0 hides it.",
           "minimum": 0,
           "maximum": 50
+        },
+        "codexPlus.reopenClosedSessionShortcut": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Ctrl+Shift+T (Cmd+Shift+T on a Mac) reopens the Codex conversation closed last, while the tab closed last was a Codex tab. After any other tab it is VS Code's Reopen Closed Editor, as before."
         },
         "codexPlus.reopenDroppedTabs": {
           "type": "boolean",

@@ -48,6 +48,8 @@ class TabMemory {
     /* The URI's conversation -> the one its panel showed when disposed, for the tab event that comes after: { thread, at }. */
     this.replaced = new Map();
     this.codexClosedAt = 0;
+    /* Every tab closed in this window, newest last: { codex, thread }, for which tab Ctrl/Cmd+Shift+T reopens. */
+    this.closeOrder = [];
     this.emitter = new vscode.EventEmitter();
     this.onDidChange = this.emitter.event;
     this.startedWith = (memento.get(OPEN_KEY) || []).slice();
@@ -94,7 +96,7 @@ class TabMemory {
     const closed = [];
     const now = Date.now();
     for (const tab of e.closed || []) {
-      if (!tabs.isCodexTab(this.vscode, tab)) continue;
+      if (!tabs.isCodexTab(this.vscode, tab)) { this.closeOrder.push({ codex: false, thread: '' }); continue; }
       this.codexClosedAt = now;
       const named = tabs.threadOfTab(this.vscode, tab);
       const swap = named && this.replaced.get(named);
@@ -102,13 +104,45 @@ class TabMemory {
       let t = swap && now - swap.at <= CLOSE_PAIR_MS ? swap.thread : '';
       if (!t && named) { try { t = this.nowShowing(named) || named; } catch (_) { t = named; } }
       if (t) closed.push({ thread: t, title: this.titleOf(t) || tab.label || '', at: now });
+      this.closeOrder.push({ codex: true, thread: t });
     }
     if (this.codexClosedAt === now) {
       for (const d of this.disposed.splice(0)) {
-        if (now - d.at <= CLOSE_PAIR_MS && !closed.some((c) => c.thread === d.thread)) closed.push({ thread: d.thread, title: this.titleOf(d.thread), at: now });
+        if (now - d.at <= CLOSE_PAIR_MS && !closed.some((c) => c.thread === d.thread)) {
+          closed.push({ thread: d.thread, title: this.titleOf(d.thread), at: now });
+          this.nameLastClosed(d.thread);
+        }
       }
     }
+    this.closeOrder = this.closeOrder.slice(-KEEP_CLOSED);
     this.record(closed);
+  }
+
+  /* A Codex tab closed last whose URI named nothing gets the conversation its panel showed. */
+  nameLastClosed(thread) {
+    const top = this.closeOrder[this.closeOrder.length - 1];
+    if (top && top.codex && !top.thread) top.thread = thread;
+  }
+
+  /** Whether the tab closed last in this window was a Codex tab, which is when Ctrl/Cmd+Shift+T is this extension's. */
+  lastClosedWasCodex() {
+    const top = this.closeOrder[this.closeOrder.length - 1];
+    return !!(top && top.codex);
+  }
+
+  /** The conversation Ctrl/Cmd+Shift+T reopens: the one closed last, or '' if none is known. */
+  reopenTarget() {
+    const top = this.closeOrder[this.closeOrder.length - 1];
+    if (top && top.codex && top.thread) return top.thread;
+    const last = this.recentlyClosed(1)[0];
+    return last ? last.thread : '';
+  }
+
+  /* The tab closed last was opened again: the key goes to whatever was closed before it. */
+  reopened() {
+    const top = this.closeOrder[this.closeOrder.length - 1];
+    if (top && top.codex) this.closeOrder.pop();
+    this.emitter.fire();
   }
 
   /*
@@ -122,7 +156,7 @@ class TabMemory {
       this.replaced.set(opened, { thread, at: now });
       while (this.replaced.size > KEEP_CLOSED) this.replaced.delete(this.replaced.keys().next().value);
     }
-    if (now - this.codexClosedAt <= CLOSE_PAIR_MS) { this.record([{ thread, title: this.titleOf(thread), at: now }]); return; }
+    if (now - this.codexClosedAt <= CLOSE_PAIR_MS) { this.nameLastClosed(thread); this.record([{ thread, title: this.titleOf(thread), at: now }]); return; }
     this.disposed = this.disposed.filter((d) => now - d.at <= CLOSE_PAIR_MS && d.thread !== thread).concat({ thread, at: now });
   }
 

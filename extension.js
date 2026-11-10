@@ -199,6 +199,16 @@ async function activate(context) {
     nowShowing: (id) => patching.nowShowing(id),
   });
   context.subscriptions.push(memory, patching.onPanelClosed((thread, opened) => memory.panelClosed(thread, opened)));
+  /* Ctrl/Cmd+Shift+T is this extension's only while the tab closed last was a Codex tab (codexPlus.reopenClosedSession). */
+  let reopenKey = null;
+  const keepReopenKey = () => {
+    const on = memory.lastClosedWasCodex();
+    if (on === reopenKey) return;
+    reopenKey = on;
+    Promise.resolve(vscode.commands.executeCommand('setContext', 'codexPlus.lastClosedWasCodex', on)).catch(() => {});
+  };
+  context.subscriptions.push(memory.onDidChange(keepReopenKey));
+  keepReopenKey();
   let lastConversations = new Map();
   const groups = createGroups({ ask: askAppServer, sections: () => reader.sections(), memento: context.globalState });
   let sessionsModel = null;
@@ -486,6 +496,12 @@ function registerCommands(context, { source, memory, sessionsModel, sessionsView
     // A tab already showing it without naming it in its URI: raise that panel, or opening the URI leaves a second tab
     // on the same conversation.
     if (!tabs.codexTabs(vscode).some((t) => t.thread === id) && patching.revealPanel(id)) return;
+    if (!(await tabs.openInTab(vscode, id))) vscode.window.showWarningMessage('Codex could not open that conversation in a tab.');
+  });
+  reg('reopenClosedSession', async () => {
+    const id = memory.reopenTarget();
+    memory.reopened();
+    if (!id) { await vscode.commands.executeCommand('workbench.action.reopenClosedEditor'); return; }
     if (!(await tabs.openInTab(vscode, id))) vscode.window.showWarningMessage('Codex could not open that conversation in a tab.');
   });
   reg('openThreadInSidebar', async (arg) => {
