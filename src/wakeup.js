@@ -13,8 +13,8 @@
  * puts the prompt in that conversation's queue (thread/queue/add), and Codex sends it as soon as the conversation is
  * idle, after the turn running now if there is one. A wake-up still waiting in the queue is not queued a second time.
  *
- * Every request goes over Codex's own connection to this window's app-server. A conversation that no window has open is
- * not woken: a message queued for it would wait there and be sent the moment it was next opened, out of its time.
+ * Requests go through hostRequest (src/patching.js) to this window's app-server. Conversations not loaded in any window
+ * are not woken: a queued message would sit there and be sent whenever the conversation is next opened.
  *
  * When the user stops a turn (turn/completed with the status interrupted), Codex itself holds back what is queued until
  * they send something. The wake-up is taken out of the queue and paused as well, until a turn starts again, so a stopped

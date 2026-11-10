@@ -14,10 +14,9 @@
  *                               the list and does not run it when it is named with $name either. A plugin's skill is
  *                               named with its plugin's name in front, which is the only form Codex matches.
  *
- * What this extension last wrote is kept in its global state, and a setting back at its default takes out exactly that:
- * 0 removes the budget it set, and a name taken off the list removes that name's entry. A value the user wrote into
- * config.toml by hand is left as it is. A request Codex refuses is not remembered, so it is asked again the next time
- * the settings are applied.
+ * The values last written are kept in the extension's global state. Setting the budget back to 0 removes the value
+ * written earlier, and removing a name removes its entry; a value the user wrote into config.toml by hand is left as it
+ * is. A refused request is retried the next time the settings are applied.
  */
 const APPLIED_KEY = 'codexPlus.skillSettingsApplied';
 const MAX_TOKENS = 10000;

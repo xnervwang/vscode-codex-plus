@@ -4,8 +4,8 @@
 
 'use strict';
 /*
- * A conversation's goal, which Codex keeps working toward on its own: each time the conversation goes idle it starts
- * another turn, until the goal is done, blocked or out of budget. The session list sets, pauses, resumes and clears one
+ * Goals: while a conversation with a goal is idle, Codex keeps starting turns toward it until the goal is done, blocked
+ * or out of budget. The session list sets, pauses, resumes and clears one
  * with the requests Codex's app-server takes for that (thread/goal/set and thread/goal/clear, sent as the user's), and
  * each row shows the goal's state, read from Codex's goals database.
  */

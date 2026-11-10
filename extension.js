@@ -680,8 +680,8 @@ function registerCommands(context, { source, memory, sessionsModel, sessionsView
   reg('markThreadUnread', (arg, selected) => { for (const id of chosen(arg, selected)) source.markUnread(id); });
   /*
    * A conversation's goal, which Codex works toward on its own: each time the conversation goes idle it starts another
-   * turn, until the goal is done, blocked or has used its token budget. Each change is sent as the user's own (origin
-   * user), which the app-server takes as the user's say-so to start or stop that work.
+   * turn, until the goal is done, blocked or has used its token budget. Each change carries origin: user, which the
+   * app-server requires before it starts or stops that work for the user.
    */
   const goalThread = (arg) => threadArg(arg) || inFront();
   reg('setGoal', async (arg) => {

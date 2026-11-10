@@ -4,10 +4,9 @@
 
 'use strict';
 /*
- * The skill search's settings reach the plugin's hooks the way the work plan's do: written into the plugin's
- * config.json under CODEX_HOME by writeHookSettings, under the names codex-plugin/agent-work-plan/hooks/plan_path.py
- * reads. With nothing set, the extension must write the plugin's own defaults, or the plugin would act differently with
- * and without this extension.
+ * writeHookSettings writes the skill search's settings into the plugin's config.json under CODEX_HOME, as it does the
+ * work plan's, under the names codex-plugin/agent-work-plan/hooks/plan_path.py reads. With nothing set, the extension
+ * must write the plugin's own defaults, or the plugin would act differently with and without this extension.
  */
 const fs = require('fs');
 const path = require('path');

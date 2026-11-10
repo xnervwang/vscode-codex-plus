@@ -3,7 +3,7 @@
 # Copyright (c) 2026, Xnerv Wang
 # All rights reserved.
 
-"""Find the installed skills that fit what the user just said.
+"""The skill search behind the work plan plugin's route-skills.py hook and its skill_search MCP tool.
 
 Codex lists every skill in each turn's context, but under a budget: with a hundred or more installed, each description
 is cut to about fifty characters, and skills the budget cannot hold are dropped from the list without the model being
@@ -13,16 +13,16 @@ front of the model. The MCP server's skill_search tool runs the same search with
 
 The search is by keywords: BM25 over words, four-letter pieces of words and pairs of CJK characters, with a skill's name
 counted four times over its description. It needs no network or credentials and is the default. With the
-skillRouteVector setting on (it is off unless the user turns it on) and Codex's model provider Amazon Bedrock,
+skillRouteVector setting on (off by default) and Codex's model provider Amazon Bedrock,
 the search is by meaning instead, through cohere.embed-v4 on the account and region Codex already uses, and any failure
 falls back to the keywords. Measured on 540 past requests that opened a skill first, the right skill was among the top
 five for 44% by keywords and 55% by meaning.
 
 The index sits in the plugin's data directory. A turn only checks the modification times of what it was built from, and
-when one has moved it starts a background process to rebuild the index and searches the old one meanwhile, so no turn
+when one has changed it starts a background process to rebuild the index and searches the old one meanwhile, so no turn
 waits for a rebuild.
 
-Only the standard library is used, and Python 3.7 is enough. This module is meant to move into Agent Plus's shared code,
+Standard library only, Python 3.7 or later. This module is meant to move into Agent Plus's shared code,
 to be used by the Claude Code plugin as well, and lives here until that move.
 """
 import array
@@ -615,7 +615,7 @@ def scan(home, cwd, given, repos=()):
 
 """The keyword index.
 
-Each token's postings carry every skill's share of the BM25 score already worked out, so a query only adds them up:
+The postings hold each skill's precomputed BM25 term weight, so a query only sums them:
 the name, the words after its description's "Use when", and the description are weighted 4, 1 and 1, and a four-letter
 piece of a word counts 0.6 of a whole word. The postings are kept as packed arrays rather than as tuples: a turn loads
 the whole index, and fifty thousand small tuples took a quarter of the time a turn is allowed for its local work.
@@ -708,7 +708,7 @@ def keyword_scores(index, text):
 Everything is read the way Codex reads it for its model provider: the provider's `aws` table in config.toml, with its
 credential_export command first, then its named profile, then the standard AWS environment variables, then the default
 profile. A profile that signs in some other way (single sign-on, an assumed role) is not handled here, and the search
-stays on keywords. The region is the table's own, else AWS_REGION, else AWS_DEFAULT_REGION, else the profile's. A
+stays on keywords. Region order: the table's `region`, AWS_REGION, AWS_DEFAULT_REGION, the profile's region. A
 request goes to AWS_ENDPOINT_URL_BEDROCK_RUNTIME or AWS_ENDPOINT_URL when either is set, as the AWS SDKs do, and through
 HTTPS_PROXY when that is set (NO_PROXY is honoured), as urllib does by default.
 
@@ -1017,8 +1017,8 @@ def model_candidates(region):
 
 """Whether the vector search is off for now.
 
-A failure that will not go away by itself (no credentials that can be read, access denied, no such model in the
-region, a vector of the wrong length, a TLS failure) is written down with what the configuration was, and the search
+A lasting failure (no credentials that can be read, access denied, no such model in the region, a vector of the wrong
+length, a TLS failure) is written down with what the configuration was, and the search
 stays off for OFF_SECONDS or until the provider, the region, the credential source or the setting changes. A timeout,
 a throttle or a server error is not written down: the next turn tries again.
 """
@@ -1381,7 +1381,7 @@ def search(index, text, count, cwd, deadline, directory, given, conf, allow_vect
 
 def render(skills, intro=True, limit=CONTEXT_BYTES):
     """The block put in front of the model: one line per skill. When it would pass `limit` bytes, the longest
-    descriptions are shortened until it fits; no skill is dropped for length."""
+    descriptions are shortened until it fits."""
     head = ("%s, found by searching every installed skill for it (the skills list you were given is shortened and "
             "leaves some out). Judge whether one really fits before reading its SKILL.md; if none does, ignore this "
             "list." % MARK) if intro else ""

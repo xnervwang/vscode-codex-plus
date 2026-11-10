@@ -113,9 +113,9 @@ DEFAULTS = {
     # against the lower one too (refresh-work-plan.py).
     "compactTokenLimit": 0,
     # Whether each turn is given the installed skills that best fit the user's message (route-skills.py), found by
-    # keywords in the local index. Separate from `enabled`, as it has nothing to do with the plan.
+    # keywords in the local index. Independent of `enabled`.
     "skillRoute": True,
-    # Whether that search is by meaning instead, through Amazon Bedrock. Off unless the user turns it on, and even then
+    # Search by meaning through Amazon Bedrock instead of by keywords. Off unless the user turns it on, and even then
     # used only when Codex's model provider is Bedrock; it sends the user's message to the same account and region Codex
     # already sends the conversation to.
     "skillRouteVector": False,

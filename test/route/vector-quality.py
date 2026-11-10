@@ -8,8 +8,8 @@
     python3 test/route/vector-quality.py <codex home>
 
 <codex home> is a Codex home whose config.toml sets the Amazon Bedrock provider with credentials (its credential_export,
-profile, or the AWS environment variables), the same way Codex is set up. The tool reads that config.toml and nothing
-else there; everything it writes goes to a temporary folder it removes. It is not part of the suite, since it needs
+profile, or the AWS environment variables), the same way Codex is set up. It reads only that config.toml and writes only
+to a temporary folder. It is not part of the suite, since it needs
 credentials and the network: it makes one request at a time, waits and retries on a throttle, and sends the catalogue's
 descriptions and the requests of corpus.py, nothing else.
 

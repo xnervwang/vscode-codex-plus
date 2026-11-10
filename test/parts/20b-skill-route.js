@@ -6,7 +6,7 @@
 /*
  * The skill search the work plan plugin runs before each turn (codex-plugin/agent-work-plan/hooks/skill_route.py and
  * route-skills.py). Its cases are in test/route/test_skill_route.py, which needs nothing but Python; each of its lines is
- * reported here as one check, so a failure there fails this suite.
+ * reported here as one check.
  */
 const cp = require('child_process');
 const path = require('path');

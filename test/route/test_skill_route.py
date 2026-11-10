@@ -15,7 +15,7 @@ through AWS_ENDPOINT_URL_BEDROCK_RUNTIME, and the credential command is a script
 access, programs started and credential files opened are watched by guard/sitecustomize.py where a case says it never
 touches them.
 
-The skills and requests are made up for these tests (corpus.py); none is taken from a real conversation.
+The skills and requests (corpus.py) are made up for these tests.
 """
 import array
 import contextlib
@@ -672,7 +672,7 @@ class D_Index(Case):
             self.assertEqual(fresh(), "a folder changed")
 
     def test_two_writes_in_one_second(self):
-        """two writes that leave the same modification time are told apart by size, or by inode when rewritten by
+        """two writes with the same modification time are detected by size, or by inode when the file is replaced by
         rename"""
         root = self.h.user_root()
         p = self.h.skill(root, "a", "widgets one")
@@ -837,8 +837,8 @@ class F_Switch(Case):
         self.assertEqual(self.h.log()[-1]["via"], "keyword")
 
     def test_default_with_bedrock_touches_nothing(self):
-        """vector search off (the default) with a Bedrock provider: no credential command, no credential file, no socket,
-        in the turn and in its rebuild"""
+        """vector search off (the default) with a Bedrock provider touches no credentials and no network, in the turn
+        and in its rebuild"""
         self.assert_untouched(prebuilt=False)
 
     def test_on_but_not_bedrock_touches_nothing(self):

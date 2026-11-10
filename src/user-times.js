@@ -113,8 +113,8 @@ function timesIn(lines, into = [], compactions = [], turns = { byId: new Map(), 
 }
 
 /*
- * The skills a developer message handed a turn, on the turn its own metadata names, or else the turn begun last. Only
- * the lines straight under the block's first line count, so another hook's text in the same message adds nothing.
+ * Records the skill names of a routing block on the turn named in the message's metadata, else on the current turn.
+ * Only the lines straight under the block's first line count, so another hook's text in the same message adds nothing.
  */
 function noteSkills(row, turns) {
   const p = row.type === 'response_item' && row.payload;
