@@ -39,8 +39,8 @@ if (found.missing.length) {
   for (const m of found.missing) console.log(`  - ${m}`);
   process.exit(0);
 }
-/* --only <name>[,<name>] runs those scenes alone: conversation, narrow, wide, rail (rail-wide and rail-narrow), approval, background,
-   compact, chime, long, sessions. */
+/* --only <name>[,<name>] runs those scenes alone: conversation, narrow, wide, rail (rail-wide and rail-narrow), agentmap (and
+   agentmap-narrow), approval, background, compact, chime, long, sessions. */
 const ONLY = arg('--only') ? arg('--only').split(',') : null;
 const want = (name) => !ONLY || ONLY.includes(name);
 const OUT = path.resolve(arg('--out') || fs.mkdtempSync(path.join(os.tmpdir(), 'codex-plus-render-')));
@@ -454,6 +454,73 @@ function selfchecked(r, where, { turns, users, rows, replies = turns }) {
         await s.b.click(handle[0], handle[1]);
         await sleep(300);
       } else check(false, `${name}: the rail's handle is in the page`);
+      results.blocked.push(...s.b.blocked);
+    } finally { await s.close(); }
+  }
+
+  /* ── the Agent map: Claude Code's pill in the row of this script's controls, and the dialog it opens ── */
+  for (const [name, width, height] of [['agentmap', 1100, 760], ['agentmap-narrow', 400, 760]].filter(([n]) => want(n) || want('agentmap'))) {
+    s = await opened(name, { width, height });
+    try {
+      const ID = (n) => `01a1f0f0-0000-7000-8000-${String(n).padStart(12, '0')}`;
+      await s.toPage({ type: 'codex-extras-agent-map', shown: true,
+        wakeups: [{ everyMinutes: 10, prompt: 'Keep going with the open rows of the plan.', nextMs: Date.now() + 7 * 60e3, expiresMs: Date.now() + 6 * 86400e3, paused: false }],
+        goal: { status: 'active', objective: 'Make the nightly export skip archived rows and report how many it skipped', tokensUsed: 182000, tokenBudget: 1000000 },
+        agents: [{ id: ID(3), name: 'scout', title: 'Find where the retry delay is set', dot: 'working', updatedMs: Date.now() - 20e3 },
+          { id: ID(4), name: 'Fix the flaky upload test', title: 'Fix the flaky upload test', dot: 'idle', updatedMs: Date.now() - 12 * 60e3 }] });
+      await sleep(700);
+      await scrollTo(s, 'bottom');
+      const pill = await s.b.evaluate(`(() => {
+        const p = document.querySelector('[data-codex-extras="agents"]');
+        if (!p) return null;
+        const b = (e) => { if (!e) return null; const r = e.getBoundingClientRect(); return { x0: r.left, x1: r.right, y0: r.top, y1: r.bottom, mid: (r.top + r.bottom) / 2 }; };
+        const meter = document.querySelector('[data-codex-extras="meter"]'), info = document.querySelector('[data-codex-extras="tools"]');
+        const st = getComputedStyle(p);
+        return { text: p.textContent, rect: b(p), meter: b(meter), tools: b(info), inBar: !!p.closest('[data-codex-extras="bar"]'),
+          radius: st.borderRadius, bg: st.backgroundColor, dot: (() => { const d = p.querySelector('[data-codex-extras-dot]'); return d ? [b(d).x1 - b(d).x0, d.getAttribute('data-codex-extras-dot')] : null; })() };
+      })()`);
+      results.scenes[name].measures.pill = pill;
+      await shot(s, `${name}-pill`, { x: 0, y: Math.max(0, height - 120), width, height: 120, scale: 2 });
+      check(!!pill && pill.text === '2 agents · 1 timer · goal' && pill.dot && pill.dot[0] === 6 && pill.dot[1] === 'working' && pill.radius === '9999px',
+        `${name}: the Agent map pill reads as Claude Code Plus labels it, with a 6 px dot for its agents, and is rounded as Claude Code's`, pill);
+      check(!!pill && !!pill.meter && Math.abs(pill.rect.mid - pill.meter.mid) <= 1 && (pill.inBar ? pill.rect.x0 >= pill.meter.x1 : pill.rect.x1 <= pill.meter.x0),
+        `${name}: it sits on the line of the context meter, ${pill && pill.inBar ? 'after it in the row below the box' : 'just left of it in Codex\'s toolbar row'}`, pill);
+      const at = await centre(s, '[data-codex-extras="agents"]');
+      if (!at) { check(false, `${name}: the Agent map pill is in the page to be clicked`); continue; }
+      const t0 = await s.b.evaluate('performance.now()');
+      await s.b.click(at[0], at[1]);
+      const opened2 = await s.b.evaluate(`(() => { const d = document.querySelector('[data-codex-extras="map-dialog"]'); void (d && d.offsetHeight); return performance.now(); })()`);
+      await sleep(300);
+      await shot(s, name);
+      const dlg = await s.b.evaluate(`(() => {
+        const o = document.querySelector('[data-codex-extras="agent-map"]'), d = document.querySelector('[data-codex-extras="map-dialog"]');
+        if (!o || !d) return null;
+        const r = d.getBoundingClientRect(), or = o.getBoundingClientRect(), st = getComputedStyle(d), h = d.querySelector('h3');
+        const rows = [...d.querySelectorAll('[data-codex-extras="map-agent"]')].map((x) => { const b = x.getBoundingClientRect(); return [Math.round(b.width), getComputedStyle(x).borderRadius]; });
+        return { cover: [or.left, or.top, or.right, or.bottom], box: [Math.round(r.left), Math.round(r.top), Math.round(r.right), Math.round(r.bottom)],
+          vw: innerWidth, vh: innerHeight, radius: st.borderRadius, bg: st.backgroundColor, overlay: getComputedStyle(o).backgroundColor,
+          title: [h.textContent, getComputedStyle(h).fontSize, getComputedStyle(h).fontWeight],
+          sections: [...d.querySelectorAll('[data-codex-extras^="map-"]')].map((x) => x.getAttribute('data-codex-extras')).filter((k) => /^map-(wakeups|goal|agents)$/.test(k)),
+          rows, dots: [...d.querySelectorAll('[data-codex-extras="map-agent"] [data-codex-extras-dot]')].map((x) => Math.round(x.getBoundingClientRect().width)),
+          focused: document.activeElement === d };
+      })()`);
+      results.scenes[name].measures.dialog = { ...dlg, openMs: +(opened2 - t0).toFixed(1) };
+      check(!!dlg && dlg.cover.join() === `0,0,${dlg.vw},${dlg.vh}` && dlg.overlay === 'rgba(0, 0, 0, 0.75)' && dlg.radius === '8px' && dlg.bg === 'rgb(24, 24, 24)'
+        && dlg.title.join() === 'Agent map,16px,600' && dlg.focused,
+      `${name}: the dialog is Claude Code's: a dimmed page, an 8 px rounded box in the sidebar's colour, the title in 16 px at weight 600, and it takes the focus`, dlg);
+      check(!!dlg && dlg.sections.join() === 'map-wakeups,map-goal,map-agents' && dlg.box[0] >= 16 && dlg.box[2] <= dlg.vw - 16 && dlg.box[1] >= 0 && dlg.box[3] <= dlg.vh
+        && dlg.rows.every(([w, rad]) => w === Math.min(300, dlg.box[2] - dlg.box[0] - 32 - 8) && rad === '4px') && dlg.dots.length === 2 && dlg.dots.every((x) => x === 8),
+      `${name}: it holds the wake-up, the goal and the sub-agents in that order, inside the page, each agent a 4 px rounded row with an 8 px dot`, dlg);
+      const press = async (sel) => { const c = await centre(s, sel); if (c) { await s.b.click(c[0], c[1]); await sleep(150); } return !!c; };
+      await s.b.evaluate('window.__posted.length = 0');
+      const pressed = [await press('[data-codex-extras-act="removeWakeup"]'), await press('[data-codex-extras-act="pauseGoal"]')];
+      const sent = await s.b.evaluate('window.__posted.filter((m) => m.kind === "agentMap").map((m) => m.action)');
+      check(pressed.every(Boolean) && sent.join() === 'removeWakeup,pauseGoal', `${name}: Remove and Pause send their requests to the host`, { pressed, sent });
+      await s.b.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+      await sleep(200);
+      const gone = await s.b.evaluate('!document.querySelector(\'[data-codex-extras="agent-map"]\')');
+      check(gone && results.scenes[name].measures.dialog.openMs < 100, `${name}: Esc closes it and takes it off the page; it was on screen within 100 ms of the click`,
+        { gone, openMs: results.scenes[name].measures.dialog.openMs });
       results.blocked.push(...s.b.blocked);
     } finally { await s.close(); }
   }

@@ -294,8 +294,14 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
    */
   const wanted = new Set();
   /* `tell` fires the change whatever the read found: a turn the app-server reported has moved the state already. */
+  /* The sub-agents of conversations open here, whose states the Agent map of each page draws (src/agent-map.js). */
+  const kidsOf = (ids) => {
+    const open = new Set(ids);
+    return (reader.threads() || []).filter((t) => t.kind === 'subagent' && open.has(t.parent)).map((t) => t.id);
+  };
   function poll({ force = false, tell = false } = {}) {
-    const extra = [...new Set([...openThreads(), ...wanted])];
+    const here = openThreads();
+    const extra = [...new Set([...here, ...kidsOf(here), ...wanted])];
     return reader.refresh({ home: files.codexHome(), extra, force }).then((moved) => {
       // An answered request is dropped: the reader keeps that state, so asking again would read the rollout afresh
       // every pass for a row that has not changed.
@@ -359,6 +365,13 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
         hasPlan: enabled() && reader.hasPlan(t.id), waiting: waitingOn(t.id), heard: heardOf(t.id) }));
       if (snap && !snap.readable) out.problem = 'Codex\'s list of conversations could not be read from ' + files.codexHome();
       return out;
+    },
+    /* Any thread's state, sub-agents included, worked out as listConversations works out a conversation's; null when
+       the thread is not in the snapshot or its rollout has not been read. */
+    threadState(id) {
+      const t = reader.thread(id), st = reader.state(id);
+      if (!t || !st) return null;
+      return conversationOf(t, { unread: new Set(), openHere: new Set(), state: st, waiting: waitingOn(id), heard: heardOf(id) });
     },
     onDidChangeConversations: changed.event,
     planNotice() { return notice; },

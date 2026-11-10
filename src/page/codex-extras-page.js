@@ -283,9 +283,12 @@
     dress('row');
     if (tools && !(tools.parentElement === s.left && tools.previousElementSibling === s.slotL)) s.left.insertBefore(tools, s.slotL.nextSibling);
     if (meterBtn && !(meterBtn.parentElement === s.right && meterBtn.nextElementSibling === s.slotR)) s.right.insertBefore(meterBtn, s.slotR);
+    var next = meterBtn || s.slotR;
+    if (agentsBtn && !(agentsBtn.parentElement === s.right && agentsBtn.nextElementSibling === next)) s.right.insertBefore(agentsBtn, next);
   }
   function rowFits(s, at) {
-    var sig = (infoBtn ? 'i' : '') + (muteBtn ? 'm' : '') + (meterBtn ? 'c' : '') + (codexMeterHidden ? 'h' : '');
+    var sig = (infoBtn ? 'i' : '') + (muteBtn ? 'm' : '') + (meterBtn ? 'c' : '') + (codexMeterHidden ? 'h' : '')
+      + (agentsBtn ? 'a' + agentsBtn.textContent.length : '');
     if (sig !== rowSig) { rowSig = sig; rowNeed = -1; }
     if (rowMode === 'row') {
       intoRow(s);
@@ -328,7 +331,7 @@
   function dropBar() {
     hideLabel();
     ctxHideNow();
-    bar = gone(bar); tools = gone(tools); meterBtn = gone(meterBtn); infoBox = gone(infoBox); ctxBox = gone(ctxBox);
+    bar = gone(bar); tools = gone(tools); meterBtn = gone(meterBtn); infoBox = gone(infoBox); ctxBox = gone(ctxBox); agentsBtn = gone(agentsBtn);
     infoBtn = muteBtn = null;
     rowMode = '';
   }
@@ -380,7 +383,13 @@
       if (mode === 'row') dressOne(meterBtn, pillCls, pillCls ? ROW_BUTTON_CSS : ROW_FALLBACK_CSS, key, pillCls ? '' : '28px');
       else dressOne(meterBtn, '', BAR_BUTTON_CSS + 'gap:3px;font:11px var(--vscode-font-family,sans-serif);', key, size + 'px');
     }
+    /* Claude Code's own pill rather than a Codex button's classes: 18 px tall in the row, as tall as the row below. */
+    if (agentsBtn) dressOne(agentsBtn, '', AGENTS_CSS + (mode === 'row' ? 'margin-right:6px;' : 'margin-left:4px;font-size:11px;'), key,
+      (mode === 'row' ? 18 : size) + 'px');
   }
+  var AGENTS_CSS = 'pointer-events:auto;flex-shrink:0;cursor:pointer;user-select:none;display:inline-flex;align-items:center;gap:4px;padding:0 8px;'
+    + 'border:0;border-radius:9999px;margin:0;font:inherit;font-size:.85em;line-height:1;white-space:nowrap;color:var(--vscode-foreground,#ccc);'
+    + 'background:color-mix(in srgb,var(--vscode-foreground,#ccc) 10%,transparent);';
   /* Everything into the row below the box. */
   function toBar(at) {
     dress('bar');
@@ -394,10 +403,14 @@
     }
     if (tools && (tools.parentElement !== bar || tools.previousElementSibling)) bar.insertBefore(tools, bar.firstChild);
     if (meterBtn && (meterBtn.parentElement !== bar || meterBtn.previousElementSibling !== tools)) bar.insertBefore(meterBtn, tools ? tools.nextSibling : bar.firstChild);
+    var prev = meterBtn || tools;
+    if (agentsBtn && (agentsBtn.parentElement !== bar || agentsBtn.previousElementSibling !== prev)) bar.insertBefore(agentsBtn, prev ? prev.nextSibling : bar.firstChild);
     if (at) { bar.style.left = at.left + 'px'; bar.style.top = at.top + 'px'; }
   }
   /* The controls asked for, made once and kept while they are wanted. */
-  function build(wantInfo, wantMute, wantMeter) {
+  function build(wantInfo, wantMute, wantMeter, wantAgents) {
+    if (wantAgents && !agentsBtn) agentsBtn = makePill();
+    if (!wantAgents && agentsBtn) agentsBtn = gone(agentsBtn);
     if (wantInfo || wantMute) {
       if (!tools) { tools = document.createElement('div'); tools.setAttribute(MARK, 'tools'); }
       if (wantInfo && !infoBtn) {
@@ -433,10 +446,13 @@
     var on = view.buttons !== false;
     var wantInfo = on && view.infoButton !== false, wantMute = on && view.chimeButton !== false;
     var wantMeter = on && view.contextMeter !== false && !!usage;
-    var root = document.body && (wantInfo || wantMute || wantMeter) ? composerRoot() : null;
+    var wantAgents = on && !!agentMap;
+    if (!wantAgents) closeMap();
+    var root = document.body && (wantInfo || wantMute || wantMeter || wantAgents) ? composerRoot() : null;
     var at = root ? rowPlace() : null;
     if (!at) { dropBar(); hideCodexMeter(false); markLowContext(); restyleIfOn(); return; }
-    build(wantInfo, wantMute, wantMeter);
+    build(wantInfo, wantMute, wantMeter, wantAgents);
+    drawPill();
     hideCodexMeter(!!meterBtn);
     var s = rowSlots(root);
     if (s && rowFits(s, at)) { rowMode = 'row'; bar = gone(bar); } else { rowMode = 'bar'; toBar(at); }
@@ -465,6 +481,244 @@
     restyleIfOn();
   }
   function restyleIfOn() { if (anythingOn() || view.buttons !== false) restyle(); }
+
+  /*
+   * The Agent map, as Claude Code draws the dialog of that name and the "N agents" pill that opens it, with Claude Code
+   * Plus's timers in it: this conversation's wake-up, its goal and its sub-agents, as the host sends them
+   * (codex-extras-agent-map, src/agent-map.js) when they change. The pill is in the row of the other controls while any
+   * of the three has something in it. The dialog is built when it opens and removed when it closes; its buttons send
+   * one word of the host's list, and Open the sub-agent's id.
+   */
+  var agentMap = null, agentsBtn = null, mapBox = null, mapKeysWired = false;
+  var Z_MAP = 28;
+  var DIM = 'var(--vscode-descriptionForeground,#9d9d9d)';
+  var EDGE = 'var(--vscode-inlineChatInput-border,var(--vscode-input-border,var(--vscode-widget-border,#7f7f7f66)))';
+  /* The session list's dots (src/page/sessions-page.css). */
+  var DOT_TONE = { working: 'var(--vscode-charts-green,#89d185)', prompt: 'var(--vscode-charts-blue,#3794ff)',
+    unread: 'var(--vscode-charts-red,#f14c4c)', failed: 'var(--vscode-charts-red,#f14c4c)', idle: DIM };
+  var GOAL_SHORT = { active: 'goal', paused: 'goal paused', blocked: 'goal blocked', usageLimited: 'goal: usage limit',
+    budgetLimited: 'goal: budget spent', complete: 'goal done' };
+  var GOAL_STATE = { active: 'in progress', paused: 'paused', blocked: 'blocked', usageLimited: 'stopped at the usage limit',
+    budgetLimited: 'budget spent', complete: 'done' };
+  var GOAL_RESUMABLE = ['paused', 'blocked', 'usageLimited', 'budgetLimited'];
+  var PILL_TITLE = { prompt: 'An agent is waiting for you · Click to open the agent map', working: 'Agents are working · Click to open the agent map',
+    failed: 'An agent failed · Click to open the agent map', idle: 'Click to open the agent map' };
+  var plural = function (n, one) { return n + ' ' + one + (n === 1 ? '' : 's'); };
+  function mk(tag, css, text) {
+    var e = document.createElement(tag);
+    if (css) e.style.cssText = css;
+    if (text !== undefined) e.textContent = text;
+    return e;
+  }
+  function dotEl(state, px) {
+    var tone = DOT_TONE[state];
+    var d = mk('span', 'display:inline-block;flex-shrink:0;border-radius:50%;width:' + px + 'px;height:' + px + 'px;'
+      + (tone ? 'background:' + tone + ';' : '') + (state === 'idle' ? 'opacity:.4;' : ''));
+    d.setAttribute(MARK + '-dot', state);
+    return d;
+  }
+  /* Claude Code's pill: its dot follows the agents, one waiting before one working before one failed. */
+  function pillDot(m) {
+    var dots = m.agents.map(function (a) { return a.dot; });
+    return dots.indexOf('prompt') >= 0 ? 'prompt' : dots.indexOf('working') >= 0 ? 'working' : dots.indexOf('failed') >= 0 ? 'failed' : 'idle';
+  }
+  /* Its label as Claude Code Plus writes it: "2 agents · 1 timer", and the timers alone when there is no agent. */
+  function pillText(m) {
+    var parts = [];
+    if (m.agents.length) parts.push(plural(m.agents.length, 'agent'));
+    if (m.wakeups.length) parts.push(plural(m.wakeups.length, 'timer'));
+    if (m.goal) parts.push(GOAL_SHORT[m.goal.status] || 'goal');
+    return parts.join(' · ');
+  }
+  function drawPill() {
+    if (!agentsBtn || !agentMap) return;
+    var state = pillDot(agentMap), text = pillText(agentMap);
+    var dot = one(agentsBtn, '[' + MARK + '-dot]'), label = one(agentsBtn, '[' + MARK + '-text]');
+    if (!dot || dot.getAttribute(MARK + '-dot') !== state) {
+      var fresh = dotEl(state, 6);
+      agentsBtn.insertBefore(fresh, dot || agentsBtn.firstChild);
+      if (dot) dot.remove();
+    }
+    if (label && label.textContent !== text) label.textContent = text;
+    agentsBtn.setAttribute('aria-label', text + ' · ' + PILL_TITLE[state]);
+    labelled(agentsBtn, PILL_TITLE[state]);
+  }
+  function makePill() {
+    var b = barButton('agents', '', openMap);
+    var label = mk('span', 'white-space:nowrap;');
+    label.setAttribute(MARK + '-text', '');
+    b.appendChild(label);
+    return b;
+  }
+
+  var mapOpen = function () { return !!(mapBox && mapBox.isConnected); };
+  function closeMap() { mapBox = gone(mapBox); }
+  var SMALL_BTN = 'cursor:pointer;font:inherit;font-size:.92em;padding:2px 8px;border-radius:4px;color:inherit;background:transparent;'
+    + 'border:1px solid ' + EDGE + ';';
+  function actButton(text, action, id) {
+    var b = mk('button', SMALL_BTN, text);
+    b.setAttribute('type', 'button');
+    b.setAttribute(MARK, 'map-act');
+    b.setAttribute(MARK + '-act', action);
+    b.addEventListener('click', function (ev) {
+      try { ev.preventDefault(); ev.stopPropagation(); } catch (e) { /* none */ }
+      if (b.disabled) return;
+      b.disabled = true;
+      b.style.opacity = '0.5';
+      post({ kind: 'agentMap', action: action, id: id || '' });
+      if (action === 'setGoal') closeMap();
+    });
+    return b;
+  }
+  var PRE = 'white-space:pre-wrap;word-break:break-word;margin:6px 0 0;padding:8px;max-height:200px;overflow-y:auto;font-size:.92em;'
+    + 'line-height:1.5;border-radius:4px;background:var(--vscode-textCodeBlock-background,rgba(255,255,255,.05));';
+  /* A collapsible row, as Claude Code Plus draws a timer: the summary on one line and the rest under it, kept open or
+     shut across a redraw by `key`. */
+  function foldRow(key, open, summary, body) {
+    var d = mk('details', 'margin:5px 0;');
+    d.setAttribute(MARK + '-key', key);
+    if (open[key]) d.setAttribute('open', '');
+    var s = mk('summary', 'cursor:pointer;list-style:revert;');
+    for (var i = 0; i < summary.length; i++) s.appendChild(summary[i]);
+    d.appendChild(s);
+    d.appendChild(body);
+    return d;
+  }
+  var dim = function (text) { return mk('span', 'color:' + DIM + ';', text); };
+  var acts = function (list) { var r = mk('div', 'display:flex;gap:6px;flex-wrap:wrap;margin:2px 0 6px;'); for (var i = 0; i < list.length; i++) r.appendChild(list[i]); return r; };
+  function section(mark, heading, kids) {
+    var s = mk('div', 'margin-bottom:16px;');
+    s.setAttribute(MARK, mark);
+    s.appendChild(mk('div', 'color:' + DIM + ';margin-bottom:4px;', heading));
+    for (var i = 0; i < kids.length; i++) s.appendChild(kids[i]);
+    return s;
+  }
+  var tokensText = function (g) {
+    var n = function (x) { return Number(x || 0).toLocaleString('en-US'); };
+    return g.tokenBudget ? n(g.tokensUsed) + ' of ' + n(g.tokenBudget) + ' tokens' : n(g.tokensUsed) + ' tokens, no budget';
+  };
+  function mapSections(m, open) {
+    var out = [];
+    if (m.wakeups.length) {
+      out.push(section('map-wakeups', plural(m.wakeups.length, 'wake-up') + ' · sent when the conversation is idle', m.wakeups.map(function (w, i) {
+        var when = w.paused ? 'paused until a turn starts' : 'next ' + kit.stamp(w.nextMs, false);
+        var row = mk('div');
+        row.appendChild(foldRow('wake' + i, open, [mk('span', '', 'every ' + w.everyMinutes + ' min'), dim(' · ' + when + ' · until ' + kit.stamp(w.expiresMs, false))],
+          mk('pre', PRE, w.prompt)));
+        row.appendChild(acts([actButton('Remove', 'removeWakeup')]));
+        return row;
+      })));
+    }
+    if (m.goal) {
+      var g = m.goal, line = g.objective.split('\n')[0];
+      var buttons = [];
+      if (g.status === 'active') buttons.push(actButton('Pause', 'pauseGoal'));
+      if (GOAL_RESUMABLE.indexOf(g.status) >= 0) buttons.push(actButton('Resume', 'resumeGoal'));
+      buttons.push(actButton('Clear', 'clearGoal'));
+      var goalRow = mk('div');
+      goalRow.appendChild(foldRow('goal', open, [mk('span', '', line.length > 120 ? line.slice(0, 119) + '…' : line),
+        dim(' · ' + (GOAL_STATE[g.status] || g.status) + ' · ' + tokensText(g))], mk('pre', PRE, g.objective)));
+      goalRow.appendChild(acts(buttons));
+      out.push(section('map-goal', 'Goal · Codex starts another turn each time the conversation is idle, until it is done', [goalRow]));
+    }
+    if (m.agents.length) {
+      var list = mk('div', 'display:flex;flex-direction:column;gap:8px;padding:0 8px 8px 0;');
+      for (var i = 0; i < m.agents.length; i++) {
+        var a = m.agents[i];
+        var b = mk('button', 'box-sizing:border-box;display:flex;flex-direction:column;justify-content:center;align-items:stretch;gap:2px;width:300px;'
+          + 'max-width:100%;margin:0;padding:6px 10px;text-align:left;font:inherit;cursor:pointer;color:var(--vscode-foreground,#ccc);'
+          + 'background-color:var(--vscode-menu-background,#252526);border:1px solid ' + EDGE + ';border-radius:4px;');
+        b.setAttribute('type', 'button');
+        b.setAttribute(MARK, 'map-agent');
+        b.setAttribute(MARK + '-id', a.id);
+        if (a.title && a.title !== a.name) b.setAttribute('title', a.title);
+        var head = mk('span', 'display:flex;align-items:center;gap:6px;min-width:0;white-space:nowrap;');
+        if (a.dot !== 'unknown') head.appendChild(dotEl(a.dot, 8)); else head.appendChild(mk('span', 'display:inline-block;flex-shrink:0;width:8px;height:8px;'));
+        head.appendChild(mk('span', 'overflow:hidden;text-overflow:ellipsis;', a.name));
+        b.appendChild(head);
+        var age = kit.age(a.updatedMs);
+        b.appendChild(mk('span', 'color:' + DIM + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-left:14px;font-size:.85em;',
+          a.updatedMs ? (age === 'now' ? 'active now' : 'active ' + age + ' ago') : ''));
+        (function (id) {
+          b.addEventListener('click', function (ev) {
+            try { ev.stopPropagation(); } catch (e) { /* none */ }
+            post({ kind: 'agentMap', action: 'openAgent', id: id });
+            closeMap();
+          });
+        }(a.id));
+        list.appendChild(b);
+      }
+      out.push(section('map-agents', plural(m.agents.length, 'agent') + ' · click an agent to open it in a tab', [list]));
+    }
+    if (!m.goal) {
+      var foot = mk('div', 'display:flex;flex-direction:column;gap:8px;margin-top:4px;');
+      var set = actButton('Set goal…', 'setGoal');
+      set.style.cssText = 'cursor:pointer;font:inherit;text-align:left;width:100%;padding:6px 8px;border:none;border-radius:4px;color:inherit;'
+        + 'background:transparent;box-shadow:inset 0 0 0 1px ' + EDGE + ';';
+      foot.appendChild(set);
+      out.push(foot);
+    }
+    return out;
+  }
+  function drawMap() {
+    if (!mapOpen() || !agentMap) return;
+    var body = one(mapBox, '[' + MARK + '="map-body"]');
+    if (!body) return;
+    var open = {}, folds = body.querySelectorAll('details[' + MARK + '-key]');
+    for (var i = 0; i < folds.length; i++) if (folds[i].hasAttribute('open')) open[folds[i].getAttribute(MARK + '-key')] = true;
+    body.replaceChildren.apply(body, mapSections(agentMap, open));
+  }
+  function openMap() {
+    if (mapOpen()) { closeMap(); return; }
+    if (!agentMap || !document.body) return;
+    hideLabel();
+    var overlay = mk('div', 'position:fixed;inset:0;z-index:' + Z_MAP + ';display:flex;align-items:center;justify-content:center;'
+      + 'overflow-y:auto;background-color:#000000bf;');
+    overlay.setAttribute(MARK, 'agent-map');
+    var dlg = mk('div', 'box-sizing:border-box;display:flex;flex-direction:column;overflow:hidden;width:fit-content;min-width:min(320px,calc(100vw - 32px));'
+      + 'max-width:min(1200px,calc(100vw - 32px));max-height:calc(100vh - 32px);margin:16px;padding:16px;border-radius:8px;outline:0;'
+      + 'user-select:text;font:13px var(--vscode-font-family,sans-serif);color:var(--vscode-foreground,#ccc);'
+      + 'background-color:var(--vscode-sideBar-background,var(--vscode-editor-background,#181818));'
+      + 'border:1px solid var(--vscode-sideBarActivityBarTop-border,var(--vscode-widget-border,#2b2b2b));');
+    dlg.setAttribute(MARK, 'map-dialog');
+    dlg.setAttribute('role', 'dialog');
+    dlg.setAttribute('aria-modal', 'true');
+    dlg.setAttribute('aria-label', 'Agent map');
+    dlg.setAttribute('tabindex', '-1');
+    var head = mk('div', 'display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px;');
+    head.appendChild(mk('h3', 'flex:1;min-width:0;margin:0;font-size:16px;font-weight:600;color:var(--vscode-foreground,#ccc);', 'Agent map'));
+    var shut = mk('button', 'display:flex;align-items:center;justify-content:center;width:22px;height:22px;padding:0;border:0;border-radius:4px;'
+      + 'background:transparent;color:inherit;cursor:pointer;');
+    shut.setAttribute('type', 'button');
+    shut.setAttribute('aria-label', 'Close');
+    shut.setAttribute(MARK, 'map-close');
+    shut.appendChild(icon([{ tag: 'path', attrs: mix(LINE, { d: 'M4 4l8 8M12 4l-8 8' }) }]));
+    shut.addEventListener('click', function (ev) { try { ev.stopPropagation(); } catch (e) { /* none */ } closeMap(); });
+    head.appendChild(shut);
+    var body = mk('div', 'overflow:auto;flex:1;min-height:0;');
+    body.setAttribute(MARK, 'map-body');
+    dlg.appendChild(head);
+    dlg.appendChild(body);
+    overlay.appendChild(dlg);
+    overlay.addEventListener('mousedown', function (ev) { if (ev.target === overlay) { try { ev.preventDefault(); } catch (e) { /* none */ } } });
+    overlay.addEventListener('click', function (ev) { try { ev.stopPropagation(); } catch (e) { /* none */ } if (ev.target === overlay) closeMap(); });
+    /* Keys stay in the dialog while it is open, so none of them reaches Codex's own shortcuts. */
+    dlg.addEventListener('keydown', function (ev) { try { ev.stopPropagation(); } catch (e) { /* none */ } });
+    /* Esc closes it wherever the focus is, a button that was just disabled having let go of it. Wired to the document
+       once, in the capture phase, so Codex's own Esc does not act on it as well. */
+    if (!mapKeysWired) {
+      mapKeysWired = true;
+      document.addEventListener('keydown', function (ev) {
+        if (!mapOpen() || !ev || ev.key !== 'Escape') return;
+        try { ev.preventDefault(); ev.stopPropagation(); } catch (e) { /* none */ }
+        closeMap();
+      }, true);
+    }
+    document.body.appendChild(overlay);
+    mapBox = overlay;
+    drawMap();
+    try { dlg.focus(); } catch (e) { /* no focus here */ }
+  }
   function toggleInfo() {
     if (infoOpen()) { closeInfo(); return; }
     infoAsk = 'info-' + Date.now() + '-' + Math.floor(Math.random() * 1e6);
@@ -1526,7 +1780,11 @@
     + '.codex-extras-row-when{opacity:.7;margin-inline-end:6px;}'
     + '.codex-extras-rule{display:flex;align-items:center;gap:6px;padding:4px 10px;opacity:.6;cursor:pointer;font-size:10px;}'
     + '.codex-extras-rule:hover{opacity:.9;}'
-    + '.codex-extras-rule-line{flex:1 1 auto;height:1px;background:var(--vscode-widget-border,rgba(255,255,255,.22));}';
+    + '.codex-extras-rule-line{flex:1 1 auto;height:1px;background:var(--vscode-widget-border,rgba(255,255,255,.22));}'
+    /* The Agent map's pill, its rows and its buttons, hovered as Claude Code's are. */
+    + '[data-codex-extras="agents"]:hover{background:color-mix(in srgb,var(--vscode-foreground,#ccc) 18%,transparent) !important;}'
+    + '[data-codex-extras="map-agent"]:hover{background-color:var(--vscode-list-hoverBackground,rgba(255,255,255,.08)) !important;}'
+    + '[data-codex-extras="map-close"]:hover,[data-codex-extras="map-act"]:hover{background:var(--vscode-toolbar-hoverBackground,rgba(255,255,255,.12)) !important;}';
 
   /* ── the list of your own messages, and stepping between them ── */
   var nav = null, railBox = null, panel = null, rowsBox = null, filter = null, chevron = null;
@@ -2131,6 +2389,11 @@
     else if (m.type === 'codex-extras-answer' && typeof m.text === 'string' && m.id) takeAnswer(m);
     else if (m.type === 'codex-extras-info') showInfo(m);
     else if (m.type === 'codex-extras-usage') { usage = usageFrom(m.usage); if (document.body) placeBar(); }
+    else if (m.type === 'codex-extras-agent-map') {
+      agentMap = m.shown === true && Array.isArray(m.wakeups) && Array.isArray(m.agents) ? m : null;
+      if (agentMap) drawMap(); else closeMap();
+      if (document.body) placeBar();
+    }
     else if (m.type === 'codex-extras-compacted') compacted(m);
     else if (m.type === 'codex-extras-sample') {
       var reply = { kind: 'sample', id: m.id };

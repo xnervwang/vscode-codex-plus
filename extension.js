@@ -37,6 +37,7 @@ const openTimes = require('./src/open-times');
 const codexConfig = require('./src/codex-config');
 const uninstallPlan = require('./src/uninstall-plan');
 const wakeup = require('./src/wakeup');
+const agentMaps = require('./src/agent-map');
 const skillsConfig = require('./src/skills-config');
 
 const CONFIG = 'codexPlus';
@@ -329,6 +330,17 @@ async function activate(context) {
     /* A goal changed, by a command here, by the model or by Codex itself: the list reads the goals database again. */
     if (m.startsWith('thread/goal/')) source._poll();
   }));
+  /* The Agent map in each Codex page (src/agent-map.js): built from the snapshot, and its buttons run the commands of
+     the same name, Remove taking the wake-up away as src/wakeup.js does. */
+  const agentMap = (thread) => agentMaps.mapOf(thread, { reader, stateOf: (id) => source.threadState(id) });
+  const agentMapAct = async (thread, action, id) => {
+    if (action === 'removeWakeup') { await wakes.remove(thread); source._poll(); return; }
+    if (action === 'openAgent') {
+      if ((reader.thread(id) || {}).parent === thread) await vscode.commands.executeCommand('codexPlus.openThreadInTab', id);
+      return;
+    }
+    await vscode.commands.executeCommand(`codexPlus.${action}`, thread);
+  };
 
   /* Delayed start-up work is cancelled with the extension, so a window that closes within the delay starts none of it. */
   const later = (fn, ms) => {
@@ -351,7 +363,7 @@ async function activate(context) {
     }, 60000);
     try {
       patching.activate(context, { vscode, log: say, codexProgram, source, context, settings, onTimeZone: reportTimeZone,
-        userTimes, sessionInfo: (id) => sessionInfoRows(id), compactLimit: compactLimitNow,
+        userTimes, sessionInfo: (id) => sessionInfoRows(id), compactLimit: compactLimitNow, agentMap, agentMapAct,
         copy: async (value, label) => { await vscode.env.clipboard.writeText(value); vscode.window.setStatusBarMessage(`Copied ${label}`, 3000); },
         toggleChime: () => cfg().update('chime', !cfg().get('chime', true), vscode.ConfigurationTarget.Global) });
     } catch (e) { say(`patching: ${e.message}`); }

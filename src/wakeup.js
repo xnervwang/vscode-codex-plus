@@ -61,6 +61,14 @@ function listed(dir, now = Date.now()) {
   return out;
 }
 
+/** The wake-ups in `dir` not expired, each with when its timer last queued it (`firedMs`) and whether it is paused. */
+function planned(dir, now = Date.now()) {
+  return listed(dir, now).filter((w) => !w.expired).map((w) => {
+    const st = readJson(path.join(dir, `${w.thread}${STATE}`)) || {};
+    return { ...w, firedMs: +st.firedAt || 0, paused: !!st.pausedAt };
+  });
+}
+
 /*
  * `dir()` is the plugin's data folder, `ask(method, params)` a request on Codex's own connection resolving to
  * { outcome, result } (src/patching.js hostRequest), `now()` the clock.
@@ -135,6 +143,16 @@ function createWakeups({ dir, ask, now = Date.now, log = () => {}, enabled = () 
     }
   }
 
+  /** Removes a conversation's wake-up: its files, and what its timer queued that Codex has not sent yet. */
+  async function remove(thread) {
+    if (!THREAD.test(String(thread || ''))) return false;
+    for (const f of [SUFFIX, STATE]) { try { fs.unlinkSync(path.join(dir(), `${thread}${f}`)); } catch (_) { /* gone */ } }
+    for (const q of (await queued(thread)) || []) {
+      if (own(q)) await ask('thread/queue/delete', { threadId: thread, queuedSubmissionId: q.id });
+    }
+    return true;
+  }
+
   /** A timer calling tick every TICK_MS, one pass at a time; dispose() stops it. */
   function start() {
     let busy = false;
@@ -147,7 +165,7 @@ function createWakeups({ dir, ask, now = Date.now, log = () => {}, enabled = () 
     return { dispose: () => clearInterval(timer) };
   }
 
-  return { tick, heard, start };
+  return { tick, heard, start, remove };
 }
 
-module.exports = { createWakeups, listed, PREFIX, ID_PREFIX, SUFFIX, STATE, TICK_MS };
+module.exports = { createWakeups, listed, planned, PREFIX, ID_PREFIX, SUFFIX, STATE, TICK_MS };

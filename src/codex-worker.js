@@ -61,15 +61,19 @@ const ops = {
     const states = {};
     for (const t of threads || []) {
       t.present = !t.rollout || !!files.existingRollout(t.rollout);
-      if (t.kind === 'user' && t.rollout && t.present && (t.updatedMs >= since || want.has(t.id))) {
+      /* A sub-agent's state only when asked for: the extension asks for those of the conversations open in a window. */
+      if (t.rollout && t.present && (want.has(t.id) || (t.kind === 'user' && t.updatedMs >= since))) {
         try { states[t.id] = files.rolloutState(t.rollout); } catch (_) { /* left out */ }
       }
     }
     let plans = [];
     try { plans = fs.readdirSync(install.planDir(dir)).filter((n) => /\.json$/.test(n) && files.THREAD_ID.test(n.slice(0, -5))).map((n) => n.slice(0, -5)); } catch (_) { plans = []; }
+    /* The wake-ups are in the plans' folder, whose time is in the stamp, so they are read only when it moved. */
+    let wakeups = [];
+    try { wakeups = require('./wakeup').planned(install.planDir(dir)); } catch (_) { wakeups = []; }
     return {
       stamp, same: false, readable: !!threads, threads: threads || [],
-      unread: [...files.unreadThreads(dir)], sections: [...files.sections(dir)], goals: [...files.goals(dir)], states, plans,
+      unread: [...files.unreadThreads(dir)], sections: [...files.sections(dir)], goals: [...files.goals(dir)], states, plans, wakeups,
     };
   },
   /* The rows of Session Information for one thread. A worker thread shares the extension host's process id, which is

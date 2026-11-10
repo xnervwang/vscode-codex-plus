@@ -262,6 +262,32 @@ function postToSidebar(msg) {
 const NO_FIGURES = { type: 'codex-extras-figures', text: '' };
 const NO_USAGE = { type: 'codex-extras-usage', usage: null };
 
+/*
+ * The Agent map of the conversation a page shows (src/agent-map.js), sent only when it differs from what that page was
+ * sent last. A page that has just loaded says so with its time zone, and is then sent it again.
+ */
+const mapSent = new WeakMap();
+let sidebarMapSent = '';
+function mapFor(thread) {
+  const none = require('./agent-map').NO_MAP;
+  if (!thread || !deps || typeof deps.agentMap !== 'function' || deps.settings().enabled === false) return none;
+  try { return deps.agentMap(thread) || none; } catch (_) { return none; }
+}
+function postMap(panel, thread) {
+  const m = mapFor(thread), json = JSON.stringify(m);
+  let webview = null;
+  try { webview = panel.webview; } catch (_) { return; }
+  if (!webview || mapSent.get(webview) === json) return;
+  mapSent.set(webview, json);
+  postTo(panel, m);
+}
+function postMapToSidebar(thread) {
+  const m = mapFor(thread), json = JSON.stringify(m);
+  if (json === sidebarMapSent) return;
+  sidebarMapSent = json;
+  postToSidebar(m);
+}
+
 /* Put `text` into the conversation's message box as a draft. Codex's composer takes a draft from the route state it is
    navigated with, and leaves a box that already has text alone, and nothing reports back which of the two happened.
    So the outcome is uncertain (the protocol's word for it): the sender keeps the answer and tells the user to look. */
@@ -785,6 +811,7 @@ async function refreshPanels() {
       postTo(panel, meterOn ? usageOf(c, limit) : NO_USAGE);
       postTo(panel, view);
       if (whens.has(thread)) postTo(panel, { type: 'codex-extras-user-times', ...whens.get(thread) });
+      postMap(panel, thread);
     }
     if (c) last.set(thread, { state: c.state, working: !!c.working });
   }
@@ -797,6 +824,7 @@ async function refreshPanels() {
     postToSidebar((figuresOn && figuresOf(c, runningCommands(side).length)) || NO_FIGURES);
     postToSidebar(meterOn ? usageOf(now.get(side), limit) : NO_USAGE);
     if (whens.has(side)) postToSidebar({ type: 'codex-extras-user-times', ...whens.get(side) });
+    postMapToSidebar(side);
   }
 }
 
@@ -890,6 +918,24 @@ function installHooks() {
     if (provider) state.provider = provider;
     state.active = true;
     if (msg && msg.kind === 'tz' && typeof msg.timeZone === 'string' && deps && deps.onTimeZone) deps.onTimeZone(msg.timeZone);
+    if (msg && msg.kind === 'tz') {
+      const rec = recordOfWebview(webview);
+      if (rec) {
+        mapSent.delete(webview);
+        if (rec.thread) postMap({ webview }, rec.thread);
+      } else {
+        sidebarMapSent = '';
+        if (sidebar) postMapToSidebar(sidebar);
+      }
+    }
+    /* A button of the Agent map, for the conversation the page shows: one word of src/agent-map.js ACTIONS, and for
+       Open the sub-agent's id. */
+    if (msg && msg.kind === 'agentMap' && require('./agent-map').ACTIONS.includes(msg.action) && deps && typeof deps.agentMapAct === 'function') {
+      const rec = recordOfWebview(webview);
+      const thread = rec ? rec.thread : sidebar;
+      if (thread) Promise.resolve().then(() => deps.agentMapAct(thread, msg.action, typeof msg.id === 'string' ? msg.id : ''))
+        .catch((e) => { if (deps.log) deps.log(`agent map ${msg.action}: ${(e && e.message) || e}`); });
+    }
     /* A sent time in a form the page's parser does not know. The page sends its shape and never its value, so this is
        the whole of what can be said about it - and it is what writing the next parser needs. */
     if (msg && msg.kind === 'stampShape' && deps && deps.log) {
@@ -1057,9 +1103,15 @@ function removePatch(vscode) {
      so a reader who does not reload at once is not left with marks nothing maintains. */
   const off = viewOf({ enabled: false, timestamps: false, conversationNavigation: false, userMessageColor: '', userMessageEdge: false,
     lowContextOutline: false, figures: false, chime: false });
-  for (const panel of registry.keys()) { postTo(panel, off); postTo(panel, NO_FIGURES); }
+  const noMap = require('./agent-map').NO_MAP;
+  for (const panel of registry.keys()) {
+    postTo(panel, off); postTo(panel, NO_FIGURES); postTo(panel, noMap);
+    try { mapSent.delete(panel.webview); } catch (_) { /* disposed */ }
+  }
   postToSidebar(off);
   postToSidebar(NO_FIGURES);
+  postToSidebar(noMap);
+  sidebarMapSent = '';
   return [...targets].reverse().map((t) => { try { return `${t.name}: ${t.restore(dir).message}`; } catch (e) { return `${t.name}: ${e.message}`; } });
 }
 

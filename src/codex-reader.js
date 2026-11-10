@@ -111,7 +111,7 @@ class CodexReader {
       this.snap = {
         home, stamp: r.stamp, readable: r.readable, threads: r.threads, byId: new Map(r.threads.map((t) => [t.id, t])),
         unread: new Map(r.unread), sections: new Map(r.sections), goals: new Map(r.goals || []), states: r.states || {},
-        plans: new Set(r.plans || []), at: Date.now(),
+        plans: new Set(r.plans || []), wakeups: new Map((r.wakeups || []).map((w) => [w.thread, w])), at: Date.now(),
       };
       this.hold(extra);
       for (const fn of [...this.listeners]) { try { fn(); } catch (_) { /* the others still hear it */ } }
@@ -145,6 +145,8 @@ class CodexReader {
   sections() { return this.snap ? this.snap.sections : new Map(); }
   /* A thread's goal ({ status, objective, tokenBudget, tokensUsed }), or null. */
   goal(id) { return (this.snap && this.snap.goals && this.snap.goals.get(id)) || null; }
+  /* A thread's wake-up ({ everyMinutes, prompt, setMs, expiresMs, firedMs, paused }, src/wakeup.js planned), or null. */
+  wakeup(id) { return (this.snap && this.snap.wakeups && this.snap.wakeups.get(id)) || null; }
   /* The snapshot's state, else one read on request while that thread's last-updated time is unchanged. */
   state(id) {
     const direct = this.snap && this.snap.states[id];

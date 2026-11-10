@@ -12,6 +12,7 @@
 - `src/workplan.js`: plan files: the states and limits they share with the plugin and Agent Plus, and the sweep of plans whose conversation is gone.
 - `src/logo-dot.js`: Codex's logo with a state dot, for the tab icons.
 - `src/sessions-view.js`, `src/tab-memory.js`, `src/session-info.js`, `src/session-groups.js`: the Codex sessions view (its model and the webview view), recently closed and dropped tabs, session information, the groups (Codex's sections) and their order; `src/account-usage.js`: Account & usage.
+- `src/agent-map.js`: each conversation's Agent map (its wake-up, goal and sub-agents) from the snapshot, which the page script draws as Claude Code's pill and dialog; `src/wakeup.js` lists the wake-ups for the worker and removes one.
 - `src/page/sessions-page.js`, `src/page/sessions-page.css`: the page the Codex sessions view draws, from the model the host sends it; `test/render/lib/sessions-scene.js` draws it in the render check.
 - `src/appserver.js`: a short-lived `codex app-server` client.
 - `src/plugin-install.js`: installing, trusting and removing the companion plugin through app-server.
