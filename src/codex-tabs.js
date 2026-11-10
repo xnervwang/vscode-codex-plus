@@ -142,13 +142,14 @@ async function openNewInTab(vscode) {
 }
 
 /*
- * Bring a thread to the front in a tab: the tab that already shows it, or a new one. Resolves to true when a tab shows
- * it afterwards.
+ * Bring a thread to the front in a tab: the tab that already shows it, or a new one in codexGroup's group. The group is
+ * always given: without one VS Code uses the active group, and when that group is locked (Claude Code locks the one its
+ * panel is in) it opens a new group beside it. Resolves to true when a tab shows it afterwards.
  */
 async function openInTab(vscode, thread, { preserveFocus = false } = {}) {
   const open = codexTabs(vscode).find((t) => t.thread === thread);
   const options = { preserveFocus, preview: false };
-  if (open) options.viewColumn = open.group.viewColumn;
+  options.viewColumn = open ? open.group.viewColumn : await codexGroup(vscode);
   await vscode.commands.executeCommand('vscode.openWith', threadUri(vscode, thread), VIEW_TYPE, options);
   return codexTabs(vscode).some((t) => t.thread === thread);
 }
