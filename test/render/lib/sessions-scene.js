@@ -213,8 +213,8 @@ async function run({ env, check, shots, out, results }) {
     await b.hover(5, 890);
     await sleep(200);
 
-    /* Rename on a group's row of a conversation that Open sessions lists too: the title is edited on the row that was
-       right-clicked. */
+    /* A conversation listed both in Open sessions and in a group: Rename from the group row's menu edits the title on
+       that row. */
     const rightClick = async (x, y) => {
       await b.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y, button: 'none' });
       await b.send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'right', clickCount: 1 });
@@ -240,8 +240,8 @@ async function run({ env, check, shots, out, results }) {
     await b.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
     await sleep(100);
 
-    /* Text Color and Add to Group: a list beside the right-clicked row, drawn as the status filter's menu is, made
-       when it opens and taken off the page when it closes. */
+    /* Text Color and Add to Group: a list beside the right-clicked row, in the same style as the status filter's
+       menu, created when it opens and removed when it closes. */
     const esc = () => b.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
     /* The status filter's menu draws its items when it first opens, and the list is compared with them. */
     const filterAt = await b.evaluate(`(() => { const r = document.querySelector('[data-tool="filter"]').getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; })()`);

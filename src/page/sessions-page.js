@@ -219,8 +219,8 @@
   /* ── the model ── */
   let model = null;
   let hl = null;
-  /* The row the last right-click menu was opened on. A conversation can be listed twice, in Open sessions and in a
-     group, and what that menu does is done on the row it was opened on. */
+  /* The row the last right-click menu was opened on. A conversation can appear twice, in Open sessions and in a group;
+     commands from that menu act on this row. */
   let ctxRow = null;
   let selection = new Set();
   let anchor = '';

@@ -294,14 +294,15 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
    */
   const wanted = new Set();
   /* `tell` fires the change whatever the read found: a turn the app-server reported has moved the state already. */
-  /* The sub-agents of conversations open here, whose states the Agent map of each page draws (src/agent-map.js). */
+  /* The sub-agents of conversations shown here, in a tab or in Codex's sidebar. Each page's Agent map draws their states
+     (src/agent-map.js). */
   const kidsOf = (ids) => {
-    const open = new Set(ids);
-    return (reader.threads() || []).filter((t) => t.kind === 'subagent' && open.has(t.parent)).map((t) => t.id);
+    const shown = new Set(ids.filter(Boolean));
+    return (reader.threads() || []).filter((t) => t.kind === 'subagent' && shown.has(t.parent)).map((t) => t.id);
   };
   function poll({ force = false, tell = false } = {}) {
     const here = openThreads();
-    const extra = [...new Set([...here, ...kidsOf(here), ...wanted])];
+    const extra = [...new Set([...here, ...kidsOf([...here, sidebarInFront()]), ...wanted])];
     return reader.refresh({ home: files.codexHome(), extra, force }).then((moved) => {
       // An answered request is dropped: the reader keeps that state, so asking again would read the rollout afresh
       // every pass for a row that has not changed.
@@ -366,8 +367,8 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
       if (snap && !snap.readable) out.problem = 'Codex\'s list of conversations could not be read from ' + files.codexHome();
       return out;
     },
-    /* Any thread's state, sub-agents included, worked out as listConversations works out a conversation's; null when
-       the thread is not in the snapshot or its rollout has not been read. */
+    /* Any thread's state, sub-agents included, computed the same way listConversations computes a conversation's;
+       null when the thread is not in the snapshot or its rollout has not been read. */
     threadState(id) {
       const t = reader.thread(id), st = reader.state(id);
       if (!t || !st) return null;

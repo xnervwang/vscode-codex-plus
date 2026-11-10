@@ -4,10 +4,10 @@
 
 'use strict';
 /*
- * The Agent map of a Codex conversation, as Claude Code's dialog of that name with Claude Code Plus's timers: the
- * conversation's wake-up, its goal and its sub-agents. This part is the host's side: the model built from the snapshot,
- * the wake-ups the worker reads with the plan files, Remove, and what a page is sent and when. The page's side is
- * test/parts/61c-agent-map-page.js and the render check's agentmap scene.
+ * The Agent map lists a Codex conversation's wake-up, goal and sub-agents in a dialog modelled on Claude Code's Agent
+ * map. This part covers the host: building the model from the snapshot, reading wake-ups along with the plan files,
+ * removing a wake-up, and deciding when to send a page the map. The page is covered by
+ * test/parts/61c-agent-map-page.js and by the agentmap scene in test/render/run.js.
  */
 const fs = require('fs');
 const path = require('path');
@@ -93,6 +93,19 @@ module.exports = async ({ eq, tmp, root }) => {
   eq([(plain.threads.find((t) => t.id === S) || {}).parent, !!plain.states[P], !!plain.states[S], !!asking.states[S]], [P, true, false, true],
     'a sub-agent\'s state is read only when asked for, which the extension does for the sub-agents of the conversations open in a window');
 
+  /* ── the poll asks for the sub-agents of what this window shows: its tabs, and the conversation in Codex's sidebar ── */
+  {
+    const { createCodexSource } = require('../../src/codex-source');
+    const asked = [];
+    const stub = { threads: () => threads, thread: (id) => threads.find((t) => t.id === id) || null, state: (id) => (id === ID(3) ? { model: 'm' } : null),
+      sections: () => new Map(), hasPlan: () => false, refresh: ({ extra }) => { asked.push(extra); return Promise.resolve(false); }, ready: async () => null };
+    const source = createCodexSource(vscode, { reader: stub, patching: { sidebarShowing: () => A, panelThreads: () => [] } });
+    await source._poll();
+    eq([(asked[0] || []).includes(ID(3)), (asked[0] || []).includes(ID(4)), !!source.threadState(ID(3)), source.threadState(ID(4))], [true, true, true, null],
+      'the sub-agents of the conversation in Codex\'s sidebar are read on the next poll, and a sub-agent has a state once its rollout is read');
+    source.dispose();
+  }
+
   /* ── what a page is sent, and what its buttons do ── */
   delete require.cache[require.resolve('../../src/patching')];
   const patching = require('../../src/patching');
@@ -119,7 +132,7 @@ module.exports = async ({ eq, tmp, root }) => {
   eq([maps().length, maps()[1].goal.status], [2, 'active'], 'a change is sent on the redraw that follows it');
   globalThis.__codexExtrasMessage(panel.webview, { type: 'codex-extras', kind: 'tz', timeZone: 'UTC' }, provider);
   eq(maps().length, 3, 'and a page that has just loaded, which says so with its time zone, is sent it again');
-  for (const action of ['pauseGoal', 'removeWakeup', 'openAgent', 'rm -rf']) {
+  for (const action of ['pauseGoal', 'removeWakeup', 'openAgent', 'deleteEverything']) {
     globalThis.__codexExtrasMessage(panel.webview, { type: 'codex-extras', kind: 'agentMap', action, id: action === 'openAgent' ? ID(3) : '' }, provider);
   }
   await new Promise((r) => setTimeout(r, 10));

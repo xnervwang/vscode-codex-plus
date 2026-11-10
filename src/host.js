@@ -110,11 +110,11 @@ const EDITS = [
     to: (m, id, result) => `sendResponse(${id},${result}){${call('__codexExtrasAppServer', `"answer",{id:${id}}`)};`,
   },
   /*
-   * Codex's button on the editor tab bar runs chatgpt.openSidebar, and VS Code runs a tab bar button's command with the
-   * editor's resource and its group as arguments. This extension is asked first about that click, and with
-   * codexPlus.tabBarButton set to tab it starts a conversation in a tab instead; any other call has no such argument
-   * and goes to Codex's own function. The flag tells this extension that the running Codex has the button, so its own
-   * button can stay hidden.
+   * Codex's button on the editor tab bar runs chatgpt.openSidebar. VS Code passes a tab bar button's command the
+   * editor's resource and its group; other callers pass neither. The wrapper offers a call with those arguments to
+   * __codexExtrasTabBar first, which opens a new conversation in a tab when codexPlus.tabBarButton is tab, and every
+   * other call goes to Codex's own function. The flag tells this extension that the running Codex has the wrapper, so it hides its own
+   * button.
    */
   {
     name: 'tab bar button',

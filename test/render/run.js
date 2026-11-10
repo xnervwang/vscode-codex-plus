@@ -172,8 +172,8 @@ function geometry(m, where, { strip = false } = {}) {
   }
   check(m.replyTimes.shown === 0, `${where}: a reply carrying our time does not show Codex's own sent time as well`, m.replyTimes);
 }
-/* The scrollbar keeps the page's right edge and the rail and its open list stand to its left, as in Claude Code Plus: the
-   room for the rail is made inside the scroller, and no message text runs under the rail. */
+/* Checks that the scrollbar stays at the right edge of the page, that the rail and its open list sit to its left, and
+   that no message text runs under the rail. */
 const RAIL_EDGES = `(() => {
   const sc = document.querySelector('[data-app-action-timeline-scroll]'), rail = document.querySelector('.codex-extras-rail');
   const panel = document.querySelector('.codex-extras-panel');

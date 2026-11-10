@@ -263,8 +263,8 @@ const NO_FIGURES = { type: 'codex-extras-figures', text: '' };
 const NO_USAGE = { type: 'codex-extras-usage', usage: null };
 
 /*
- * The Agent map of the conversation a page shows (src/agent-map.js), sent only when it differs from what that page was
- * sent last. A page that has just loaded says so with its time zone, and is then sent it again.
+ * Each page gets the Agent map of its conversation (src/agent-map.js) only when it differs from the last one sent to
+ * that page. A freshly loaded page reports its time zone first, and that message triggers a resend.
  */
 const mapSent = new WeakMap();
 let sidebarMapSent = '';
@@ -928,8 +928,8 @@ function installHooks() {
         if (sidebar) postMapToSidebar(sidebar);
       }
     }
-    /* A button of the Agent map, for the conversation the page shows: one word of src/agent-map.js ACTIONS, and for
-       Open the sub-agent's id. */
+    /* A button in the Agent map, for the conversation the page shows: the action is one of ACTIONS in
+       src/agent-map.js, and Open also carries the sub-agent's id. */
     if (msg && msg.kind === 'agentMap' && require('./agent-map').ACTIONS.includes(msg.action) && deps && typeof deps.agentMapAct === 'function') {
       const rec = recordOfWebview(webview);
       const thread = rec ? rec.thread : sidebar;

@@ -483,11 +483,11 @@
   function restyleIfOn() { if (anythingOn() || view.buttons !== false) restyle(); }
 
   /*
-   * The Agent map, as Claude Code draws the dialog of that name and the "N agents" pill that opens it, with Claude Code
-   * Plus's timers in it: this conversation's wake-up, its goal and its sub-agents, as the host sends them
-   * (codex-extras-agent-map, src/agent-map.js) when they change. The pill is in the row of the other controls while any
-   * of the three has something in it. The dialog is built when it opens and removed when it closes; its buttons send
-   * one word of the host's list, and Open the sub-agent's id.
+   * The Agent map: a copy of Claude Code's dialog of that name and of the "N agents" pill that opens it, with Claude
+   * Code Plus's timers added. It shows this conversation's wake-up, goal and sub-agents, which the host sends
+   * (codex-extras-agent-map, src/agent-map.js) whenever they change. The pill sits in the row with the other controls
+   * while any of the three is non-empty. The dialog is built when it opens and removed when it closes. Each button
+   * posts one of the host's ACTIONS; Open also posts the sub-agent's id.
    */
   var agentMap = null, agentsBtn = null, mapBox = null, mapKeysWired = false;
   var Z_MAP = 28;
@@ -572,8 +572,8 @@
   }
   var PRE = 'white-space:pre-wrap;word-break:break-word;margin:6px 0 0;padding:8px;max-height:200px;overflow-y:auto;font-size:.92em;'
     + 'line-height:1.5;border-radius:4px;background:var(--vscode-textCodeBlock-background,rgba(255,255,255,.05));';
-  /* A collapsible row, as Claude Code Plus draws a timer: the summary on one line and the rest under it, kept open or
-     shut across a redraw by `key`. */
+  /* A collapsible row, drawn the way Claude Code Plus draws a timer: a one-line summary with the details below. `key`
+     keeps a row open or closed across redraws. */
   function foldRow(key, open, summary, body) {
     var d = mk('details', 'margin:5px 0;');
     d.setAttribute(MARK + '-key', key);
@@ -704,8 +704,8 @@
     overlay.addEventListener('click', function (ev) { try { ev.stopPropagation(); } catch (e) { /* none */ } if (ev.target === overlay) closeMap(); });
     /* Keys stay in the dialog while it is open, so none of them reaches Codex's own shortcuts. */
     dlg.addEventListener('keydown', function (ev) { try { ev.stopPropagation(); } catch (e) { /* none */ } });
-    /* Esc closes it wherever the focus is, a button that was just disabled having let go of it. Wired to the document
-       once, in the capture phase, so Codex's own Esc does not act on it as well. */
+    /* Esc closes the dialog wherever the focus is, including after a disabled button has dropped it. The listener is
+       added to the document once, in the capture phase, so Codex's own Esc handling does not also run. */
     if (!mapKeysWired) {
       mapKeysWired = true;
       document.addEventListener('keydown', function (ev) {
@@ -1725,8 +1725,9 @@
         + 'outline-offset:1px;border-radius:4px;}';
     }
     if (view.timestamps) css += SEL.assistant + ':has(> [' + TIMED_ATTR + ']) ' + SEL.sent + '{display:none !important;}';
-    /* While the rail is drawn the conversation keeps clear of its column with room inside the scroller, as Claude
-       Code Plus makes it, so the scrollbar keeps the page's right edge and the rail stands just left of it. */
+    /* While the rail is drawn, the scroller's content gets right padding as wide as the rail, as in Claude Code Plus.
+       The scroller itself gets none, so its scrollbar stays at the right edge of the page and the rail sits just left
+       of it. */
     var railed = !!(view.navigation && nav && nav.isConnected), gutter = railed ? scrollbarOf(scrollerEl()) : 0;
     if (railed) css += SEL.scroller + ' > *{padding-inline-end:' + (RAIL_W + 2) + 'px !important;}';
     if ((bar && bar.isConnected) || (strip && strip.style.display !== 'none')) {

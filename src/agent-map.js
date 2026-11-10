@@ -4,11 +4,11 @@
 
 'use strict';
 /*
- * The Agent map of one Codex conversation: the dialog Claude Code opens from its "N agents" button, with the timers
- * Claude Code Plus adds to it. Here it holds the conversation's wake-up (src/wakeup.js), its goal, and the sub-agents
- * it started. It is built from the snapshot in memory (src/codex-reader.js), which reads the wake-up files with the
- * plan files, so building it reads no file. The page script draws the button and the dialog
- * (src/page/codex-extras-page.js), the button only while `shown`.
+ * Builds the Agent map for one Codex conversation: the dialog Claude Code opens from its "N agents" button, plus the
+ * timers Claude Code Plus adds to it. Here it lists the conversation's wake-up (src/wakeup.js), its goal and the
+ * sub-agents it started. Everything comes from the in-memory snapshot (src/codex-reader.js); the worker reads the
+ * wake-up files along with the plan files, so nothing here touches the disk. The page script draws the button and the
+ * dialog (src/page/codex-extras-page.js) and shows the button only while `shown` is true.
  */
 const { lookKey } = require('./sessions-view');
 
@@ -16,8 +16,8 @@ const { lookKey } = require('./sessions-view');
 const ACTIONS = ['removeWakeup', 'pauseGoal', 'resumeGoal', 'clearGoal', 'setGoal', 'openAgent'];
 
 /*
- * `reader` is the snapshot; `stateOf(id)` a thread's state as src/codex-source.js threadState works it out, null when
- * its rollout has not been read, which draws the sub-agent with no dot.
+ * `reader` is the snapshot. `stateOf(id)` returns a thread's state as computed by threadState in src/codex-source.js,
+ * or null when its rollout has not been read; such a sub-agent is drawn without a dot.
  */
 function mapOf(thread, { reader, stateOf = () => null }) {
   const w = thread ? reader.wakeup(thread) : null;

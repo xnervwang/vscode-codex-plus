@@ -246,9 +246,9 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
   }
   {
     /*
-     * Codex's own tab bar button, with the host patch's "tab bar button" edit: its command asks this extension first. VS
-     * Code runs a tab bar button with the editor's resource and { groupId } (its editor title menu forwards both); a
-     * key, the command palette or another extension calls it with neither.
+     * Codex's own tab bar button with the host patch's "tab bar button" edit, which hands the click to this extension
+     * first. VS Code's editor title menu calls the command with the editor's resource and { groupId }; keybindings, the
+     * command palette and other extensions pass neither.
      */
     const vm = require('vm');
     const host = require(path.join(root, 'src', 'host.js'));

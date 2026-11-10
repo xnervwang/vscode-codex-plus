@@ -36,8 +36,8 @@ const { folderTest } = require('./folders');
 const { PINNED_SECTION } = require('./session-groups');
 const kit = require('./page/kit.js');
 
-/* The colours a title can be given: the eight Claude Code's /color offers, as the theme colours Claude Code Plus gives
-   them, in the order its Text color menu lists them. */
+/* Title colours: the eight that Claude Code's /color command offers, mapped to the same theme colours and listed in the
+   same order as Claude Code Plus's Text color menu. */
 const COLORS = {
   red: 'charts.red', blue: 'charts.blue', green: 'charts.green', yellow: 'charts.yellow',
   purple: 'charts.purple', orange: 'charts.orange', pink: 'terminal.ansiBrightMagenta', cyan: 'terminal.ansiCyan',

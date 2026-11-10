@@ -330,8 +330,8 @@ async function activate(context) {
     /* A goal changed, by a command here, by the model or by Codex itself: the list reads the goals database again. */
     if (m.startsWith('thread/goal/')) source._poll();
   }));
-  /* The Agent map in each Codex page (src/agent-map.js): built from the snapshot, and its buttons run the commands of
-     the same name, Remove taking the wake-up away as src/wakeup.js does. */
+  /* The Agent map in each Codex page (src/agent-map.js) is built from the snapshot. Its goal buttons run the commands
+     of the same name, and Remove deletes the wake-up through src/wakeup.js. */
   const agentMap = (thread) => agentMaps.mapOf(thread, { reader, stateOf: (id) => source.threadState(id) });
   const agentMapAct = async (thread, action, id) => {
     if (action === 'removeWakeup') { await wakes.remove(thread); source._poll(); return; }
@@ -545,9 +545,9 @@ function registerCommands(context, { source, memory, sessionsModel, sessionsView
   reg('openCodex', () => (cfg().get('tabBarButton', 'tab') === 'sidebar'
     ? vscode.commands.executeCommand('codexPlus.newInSidebar') : newConversationInTab(say)));
   /*
-   * Codex's own tab bar button, once the host patch asks this extension about its click (src/host.js, "tab bar
-   * button"): set to tab, it starts a conversation in a tab as the button above does, and that button is then hidden.
-   * VS Code runs a tab bar button with the editor's resource and its group; any call without them is Codex's own.
+   * Handles clicks on Codex's own tab bar button once the host patch routes them here (src/host.js, "tab bar button").
+   * With codexPlus.tabBarButton set to tab, a click opens a new conversation in a tab, as codexPlus.openCodex does, and
+   * that button is hidden.
    */
   const fromTabBar = (args) => (Array.isArray(args) ? args : []).some((a) => !!a && typeof a === 'object'
     && ((typeof a.scheme === 'string' && typeof a.path === 'string') || typeof a.groupId === 'number'));
@@ -580,8 +580,8 @@ function registerCommands(context, { source, memory, sessionsModel, sessionsView
     vscode.window.showInformationMessage('Codex did not take the link that opens a conversation in its sidebar, so it was opened in a tab instead.');
     await tabs.openInTab(vscode, id);
   });
-  /* From the list's own menu the page offers the choice beside the right-clicked row, as Claude Code Plus's submenus
-     are; with the list not on screen it is offered at the top of the window. */
+  /* From the list's own menu, the page shows the choices next to the right-clicked row, like Claude Code Plus's
+     submenus; when the list is hidden, a quick pick at the top of the window is used instead. */
   const inList = (arg, msg) => fromList(arg) && sessionsView.visible && sessionsView.tell(msg);
   reg('setTitleColor', async (arg, selected) => {
     const ids = chosen(arg, selected);
