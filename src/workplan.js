@@ -84,6 +84,9 @@ const PLAN_FILE = /^[0-9a-f][0-9a-f-]{7,}\.json$/i;
    ten seconds (LOCK_STALE in plan_path.py), so the sweep can remove any older than LOCK_STALE_MS, a day. */
 const LOCK = /\.lock$/i;
 const LOCK_STALE_MS = 24 * 60 * 60 * 1000;
+/* A hook writes <plan>.<pid>.tmp and renames it over the plan (plan_path.py). One a day old belongs to a hook that was
+   killed in between. */
+const TEMP = /\.\d+\.tmp$/i;
 /* The same list as STATES in the plugin's plan_path.py, in the same order; test/check.js holds them together. */
 const STATES = ['discussing', 'todo', 'doing', 'waiting', 'parked', 'done', 'dropped'];
 /* Who a held-up row waits on: the same list as WAITING_ON in plan_path.py, held together by test/check.js. A value not
@@ -216,13 +219,16 @@ function sweepOrphans(opts = {}) {
   let names;
   try { names = fs.readdirSync(dir); } catch (_) { names = null; }
   /* Abandoned locks are removed regardless of the rollouts, since each one delays every writer of that plan until it
-     times out. rmdir only removes an empty directory. */
+     times out, and so are a killed hook's temporary files. rmdir only removes an empty directory. */
   for (const name of names || []) {
-    if (!LOCK.test(name)) continue;
+    const lock = LOCK.test(name), temp = !lock && TEMP.test(name);
+    if (!lock && !temp) continue;
     const file = path.join(dir, name);
     try {
       const st = fs.lstatSync(file);
-      if (st.isDirectory() && now - st.mtimeMs > LOCK_STALE_MS) fs.rmdirSync(file);
+      if (now - st.mtimeMs <= LOCK_STALE_MS) continue;
+      if (lock && st.isDirectory()) fs.rmdirSync(file);
+      else if (temp && st.isFile()) fs.unlinkSync(file);
     } catch (_) { /* released meanwhile, or not empty */ }
   }
   const live = opts.live !== undefined ? opts.live : liveSessions(opts.home);
