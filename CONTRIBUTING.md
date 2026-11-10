@@ -11,7 +11,7 @@
 - `src/host-link.js`: finding Agent Plus's `agentPlus` interface, registering, the `codexPlus.registered` key.
 - `src/workplan.js`: plan files: the states and limits they share with the plugin and Agent Plus, and the sweep of plans whose conversation is gone.
 - `src/logo-dot.js`: Codex's logo with a state dot, for the tab icons.
-- `src/sessions-view.js`, `src/tab-memory.js`, `src/session-info.js`, `src/session-groups.js`: the Codex sessions view, recently closed and dropped tabs, session information, the groups (Codex's sections) and their order.
+- `src/sessions-view.js`, `src/tab-memory.js`, `src/session-info.js`, `src/session-groups.js`: the Codex sessions view, recently closed and dropped tabs, session information, the groups (Codex's sections) and their order; `src/account-usage.js`: Account & usage.
 - `src/appserver.js`: a short-lived `codex app-server` client.
 - `src/plugin-install.js`: installing, trusting and removing the companion plugin through app-server.
 - `codex-plugin/`: the companion Codex plugin (marketplace `codex-extras`, plugin `agent-work-plan`): hooks, skill, MCP server.

@@ -808,6 +808,12 @@ function onPanelClosed(fn) {
   onClosed.add(fn);
   return { dispose: () => onClosed.delete(fn) };
 }
+/* Told of the app-server's account notifications (account/rateLimits/updated, account/updated): (method, params). */
+const onAccount = new Set();
+function onAccountNotification(fn) {
+  onAccount.add(fn);
+  return { dispose: () => onAccount.delete(fn) };
+}
 
 /* `thread` is the one the tab's URI names, null for any other panel; `route` is the route Codex opened it on. */
 function adoptPanel(panel, thread, provider, route) {
@@ -963,6 +969,10 @@ function installHooks() {
    */
   globalThis.__codexExtrasAppServer = (kind, msg) => {
     state.active = true;
+    if (kind === 'notification' && msg && typeof msg.method === 'string' && msg.method.startsWith('account/')) {
+      for (const fn of [...onAccount]) { try { fn(msg.method, msg.params); } catch (_) { /* the others still hear it */ } }
+      return;
+    }
     let moved = false, turn = '';
     if (kind === 'request') moved = !!approvals.request(msg);
     else if (kind === 'answer') moved = !!approvals.resolve(msg && msg.id);
@@ -1105,5 +1115,5 @@ function activate(context, opts) {
 module.exports = { activate, ensurePatched, statusLines, openInSidebar, canType, canDeliver, deliver, sidebarThread, panelThreads, shownIn,
   nowShowing, revealPanel, removePatch,
   figuresOf, usageOf, compactThread, hostRequest, safeColor, viewOf, selfCheckPage, selfCheckLines, installHooks, refreshPanels, approvalsOf,
-  onApprovalsChanged, offerReloadIfStale, sidebarShowing, onSidebarChanged, onPanelClosed, runningCommands, turnEndChime, turnHeard, _state: () => state, _registry: registry, _approvals: approvals,
+  onApprovalsChanged, offerReloadIfStale, sidebarShowing, onSidebarChanged, onPanelClosed, onAccountNotification, runningCommands, turnEndChime, turnHeard, _state: () => state, _registry: registry, _approvals: approvals,
   TAB_DOTS, ASK_MS, PATCH_REMOVED_KEY };

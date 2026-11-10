@@ -125,7 +125,8 @@ function placeOf(t, sections) {
 }
 
 class SessionsProvider {
-  constructor(vscode, { memory, memento, settings, stateOf, reader, wantState = () => {}, sidebarShowing = () => '', sections = null }) {
+  constructor(vscode, { memory, memento, settings, stateOf, reader, wantState = () => {}, sidebarShowing = () => '', sections = null,
+    account = () => [] }) {
     this.vscode = vscode;
     this.reader = reader;
     this.memory = memory;
@@ -140,6 +141,8 @@ class SessionsProvider {
     this.sidebarNow = '';
     /* Codex's sections in the order the list draws them (src/session-groups.js); the snapshot's order otherwise. */
     this.sectionsOf = sections || (() => reader.sections());
+    /* ACCOUNT & USAGE as rows of { label, value } (src/account-usage.js rowsOf); none, and no section, when unknown. */
+    this.accountRows = account;
     this.emitter = new vscode.EventEmitter();
     this.onDidChangeTreeData = this.emitter.event;
     this.decoEmitter = new vscode.EventEmitter();
@@ -190,7 +193,13 @@ class SessionsProvider {
    * was due anyway rather than on a timer of its own.
    */
   getChildren(element) {
-    if (!element) return drawn(this.groups).map((g) => ({ kind: 'group', group: g }));
+    if (!element) {
+      let info = [];
+      try { info = this.accountRows() || []; } catch (_) { info = []; }
+      const top = info.length ? [{ kind: 'group', group: { key: 'account', label: 'Account & usage', expanded: true, threads: [], info } }] : [];
+      return top.concat(drawn(this.groups).map((g) => ({ kind: 'group', group: g })));
+    }
+    if (element.kind === 'group' && element.group.key === 'account') return element.group.info.map((r, i) => ({ kind: 'info', row: r, at: i }));
     if (element.kind === 'group') {
       const g = element.group;
       this.ask(g.threads);
@@ -221,6 +230,19 @@ class SessionsProvider {
 
   getTreeItem(element) {
     const vscode = this.vscode;
+    if (element.kind === 'info') {
+      const item = new vscode.TreeItem(element.row.label, vscode.TreeItemCollapsibleState.None);
+      item.id = `account:${element.at}`;
+      item.description = element.row.value;
+      item.contextValue = 'codexPlusInfo';
+      return item;
+    }
+    if (element.kind === 'group' && element.group.key === 'account') {
+      const item = new vscode.TreeItem(element.group.label, vscode.TreeItemCollapsibleState.Expanded);
+      item.id = 'group:account';
+      item.contextValue = 'codexPlusGroup-account';
+      return item;
+    }
     if (element.kind === 'group') {
       const g = element.group;
       const item = new vscode.TreeItem(g.label, g.expanded ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed);

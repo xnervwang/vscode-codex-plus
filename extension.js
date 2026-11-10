@@ -27,6 +27,7 @@ const hostLink = require('./src/host-link');
 const { TabMemory } = require('./src/tab-memory');
 const { SessionsProvider, createFollower, COLORS, looksLikeId } = require('./src/sessions-view');
 const { createGroups, createPlacer } = require('./src/session-groups');
+const accountUsage = require('./src/account-usage');
 const patching = require('./src/patching');
 const supported = require('./src/supported');
 const pythonRuntime = require('./src/python-runtime');
@@ -200,9 +201,13 @@ async function activate(context) {
   context.subscriptions.push(memory, patching.onPanelClosed((thread, opened) => memory.panelClosed(thread, opened)));
   let lastConversations = new Map();
   const groups = createGroups({ ask: askAppServer, sections: () => reader.sections(), memento: context.globalState });
-  const sessionsProvider = new SessionsProvider(vscode, { memory, memento: context.globalState, settings, reader,
+  let sessionsProvider = null;
+  const account = accountUsage.createAccountUsage({ ask: askAppServer, onChange: () => { if (sessionsProvider) sessionsProvider.refresh(); } });
+  context.subscriptions.push(patching.onAccountNotification((method, params) => account.heard(method, params)));
+  sessionsProvider = new SessionsProvider(vscode, { memory, memento: context.globalState, settings, reader,
     stateOf: (id) => lastConversations.get(id), wantState: (ids) => source.wantState(ids),
-    sidebarShowing: () => patching.sidebarShowing(), sections: () => new Map(groups.list()) });
+    sidebarShowing: () => patching.sidebarShowing(), sections: () => new Map(groups.list()),
+    account: () => accountUsage.rowsOf(account.view(), context.globalState.get('codexPlus.clientTimeZone') || '') });
   const sessionsView = vscode.window.createTreeView('codexPlus.sessions', { treeDataProvider: sessionsProvider, canSelectMany: true });
   context.subscriptions.push(sessionsView);
   context.subscriptions.push(vscode.window.registerFileDecorationProvider(sessionsProvider));
@@ -229,6 +234,10 @@ async function activate(context) {
     }).catch(() => { /* left where Codex put it */ });
   };
   const relist = () => { sessionsProvider.refresh(); follow(); probeGroups(); place(); };
+  /* ACCOUNT & USAGE is asked for when the list comes into view (src/account-usage.js). */
+  const showAccount = () => { if (sessionsView.visible) account.load().catch(() => { /* the section stays as it was */ }); };
+  if (typeof sessionsView.onDidChangeVisibility === 'function') context.subscriptions.push(sessionsView.onDidChangeVisibility(showAccount));
+  showAccount();
   const redrawSessions = async () => {
     try { lastConversations = new Map((await source.listConversations()).map((c) => [c.sessionId, c])); } catch (_) { /* the last one stays */ }
     relist();
