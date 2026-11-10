@@ -1707,11 +1707,11 @@
     if (sheet) { try { sheet.remove(); } catch (e) { /* gone */ } }
     sheet = null; sheetText = '';
   }
-  /* One stylesheet of this script's own for everything it shows. */
+  /* One stylesheet of this script's own for everything it shows. A stamp is in Claude Code Plus's look: the editor's
+     monospace font at 0.8em, in the colour of the message it is on at 60%. */
   function restyle() {
-    var css = '.codex-extras-stamp{font:11px var(--vscode-font-family,sans-serif);'
-      + 'color:var(--vscode-descriptionForeground,#8b949e);opacity:.85;line-height:1.4;'
-      + 'user-select:none;pointer-events:none;}'
+    var css = '.codex-extras-stamp{font-family:var(--vscode-editor-font-family,monospace);font-size:.8em;font-weight:normal;'
+      + 'font-style:normal;opacity:.6;line-height:1.4;user-select:none;pointer-events:none;}'
       + '.codex-extras-stamp-user{text-align:end;}'
       + '.codex-extras-stamp[' + FIG_ATTR + ']::after{content:attr(' + FIG_ATTR + ');}';
     if (view.userColor && SAFE_COLOR.test(view.userColor)) {

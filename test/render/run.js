@@ -280,6 +280,24 @@ async function meterHover(s, where, file) {
   await sleep(500);
   return box;
 }
+/*
+ * What is drawn the way Claude Code Plus draws it, measured in the drawn page. A probe element resolves a CSS value the
+ * way the page would.
+ */
+const PARITY = `(() => {
+  const st = (e) => getComputedStyle(e);
+  const probe = (prop, value) => { const p = document.createElement('span'); p.style[prop] = value; document.body.appendChild(p); const v = st(p)[prop]; p.remove(); return v; };
+  const stamp = (side) => { const e = document.querySelector('.codex-extras-stamp-' + side); if (!e) return null; const a = st(e), b = st(e.parentElement);
+    return { family: a.fontFamily, size: +(parseFloat(a.fontSize) / parseFloat(b.fontSize)).toFixed(3), opacity: a.opacity, sameColour: a.color === b.color }; };
+  return { stamps: { user: stamp('user'), assistant: stamp('assistant') }, mono: probe('fontFamily', 'var(--vscode-editor-font-family, monospace)') };
+})()`;
+async function parity(s, where) {
+  const m = await s.b.evaluate(PARITY);
+  results.scenes[where].measures.parity = m;
+  const sides = [m.stamps.user, m.stamps.assistant];
+  check(sides.every((x) => x && x.family === m.mono && x.size === 0.8 && x.opacity === '0.6' && x.sameColour),
+    `${where}: a stamp is in the editor's monospace font at 0.8 of its message's size, in the text's own colour at 60%`, m.stamps);
+}
 /* A hover label of this script's, measured while it shows: Claude Code Plus's box, in the page's font at 0.9 of its size. */
 const LABEL_LOOK = `(() => { const b = document.querySelector('[data-codex-extras="label"]'); if (!b) return null; const a = getComputedStyle(b), d = getComputedStyle(document.body);
   return { padding: a.padding, radius: a.borderTopLeftRadius, bg: a.backgroundColor, border: a.borderTopColor, colour: a.color,
@@ -349,6 +367,7 @@ function selfchecked(r, where, { turns, users, rows, replies = turns }) {
     check(await unmoved(s, 'conversation'), 'conversation: at 1100 px the two buttons and the meter fit in Codex\'s toolbar row');
     await meterHover(s, 'conversation', 'meter-hover');
     await inputUnchanged(s, 'conversation');
+    await parity(s, 'conversation');
     await s.b.evaluate(`(() => { const a = [...document.querySelectorAll('[data-local-conversation-user-anchor]')].pop(); const b = a && a.querySelector('button'); if (b) b.focus(); })()`);
     await shot(s, 'user-message-focused', { x: 600, y: 380, width: 500, height: 140 });
     await s.b.evaluate('document.activeElement && document.activeElement.blur()');

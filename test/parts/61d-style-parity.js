@@ -53,6 +53,12 @@ module.exports = async ({ eq, root }) => {
   'a hover label is Claude Code Plus\'s: the menu background, the input border, 8 px corners and padding, the foreground, 0.9em in the page\'s own font');
   mute.dispatch('mouseleave', {});
 
+  /* ── the time stamps: monospace, 0.8em, the text's own colour at 60% ── */
+  const stamp = ruleOf(css(), '.codex-extras-stamp');
+  eq([stamp.includes('font-family:var(--vscode-editor-font-family,monospace)'), stamp.includes('font-size:.8em'), stamp.includes('opacity:.6'),
+    /(^|;)color:/.test(stamp), /font:/.test(stamp)], [true, true, true, false, false],
+  'a stamp is in the editor\'s monospace font at 0.8em, in the colour of the text around it at 60%, as Claude Code Plus\'s');
+
   /* ── the Agent map's dots ── */
   eq(/DOT_TONE = \{ working: '#22c55e', prompt: '#3b82f6',\s*unread: '#ef4444', failed: 'var\(--vscode-errorForeground,#f85149\)'/.test(source), true,
     'a sub-agent\'s dot has the session list\'s colours');
