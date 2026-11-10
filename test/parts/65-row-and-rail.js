@@ -88,15 +88,20 @@ module.exports = async ({ eq, root }) => {
   {
     const dom = createDom();
     conversation(dom);
+    const scroller = dom.document.root.querySelector('[data-app-action-timeline-scroll]');
+    Object.assign(scroller, { offsetWidth: 400, clientWidth: 390 });
     const p = pageUnder(root, dom);
     p.view();
     const css = sheetText(dom);
-    eq(css.includes('[data-app-action-timeline-scroll]{border-inline-end:28px solid transparent !important;}'), true,
-      'while the rail is drawn the conversation keeps clear of its column, with a transparent border that leaves Codex\'s padding alone');
+    eq([css.includes('[data-app-action-timeline-scroll] > *{padding-inline-end:28px !important;}'), css.includes('border-inline-end')], [true, false],
+      'while the rail is drawn the conversation keeps clear of its column with room inside the scroller, as Claude Code Plus makes it, '
+      + 'so the scrollbar keeps the page\'s right edge');
+    eq([/\.codex-extras-rail\{right:10px;\}/.test(css), /\.codex-extras-panel\{right:38px;/.test(css)], [true, true],
+      'and the rail and its list stand left of the scrollbar, whose width is measured rather than assumed');
     eq(/\.codex-extras-rail-btn:hover\{background-image:linear-gradient\(/.test(css) && !/\.codex-extras-rail-btn:hover\{background:/.test(css), true,
       'and a hovered rail button is tinted over its own colour, so it stays opaque');
     p.view({ navigation: false });
-    eq(sheetText(dom).includes('border-inline-end'), false, 'with the list turned off the conversation has its column back');
+    eq(sheetText(dom).includes('padding-inline-end:28px'), false, 'with the list turned off the conversation has its column back');
   }
 
   /* ── one time per reply ── */

@@ -1438,6 +1438,14 @@
   /* A CSS colour the user typed, or '' for anything else: nothing but a colour may reach the stylesheet. */
   var SAFE_COLOR = /^(?:#[0-9a-fA-F]{3,8}|[a-zA-Z]{3,30}|(?:rgb|rgba|hsl|hsla)\([0-9.,%\s/deg]+\))$/;
 
+  /* How wide the scroller's scrollbar is, read off the page: 0 where scrollbars are drawn over the content. */
+  function scrollbarOf(sc) {
+    if (!sc) return 0;
+    var cs = styleOf(sc) || {};
+    return Math.max(0, Math.round((sc.offsetWidth || 0) - (sc.clientWidth || 0)
+      - (parseFloat(cs.borderLeftWidth) || 0) - (parseFloat(cs.borderRightWidth) || 0)));
+  }
+
   var sheet = null, sheetText = '';
   function dropSheet() {
     if (sheet) { try { sheet.remove(); } catch (e) { /* gone */ } }
@@ -1463,14 +1471,19 @@
         + 'outline-offset:1px;border-radius:4px;}';
     }
     if (view.timestamps) css += SEL.assistant + ':has(> [' + TIMED_ATTR + ']) ' + SEL.sent + '{display:none !important;}';
-    /* The rail stands in the conversation's right edge, so while it is drawn the conversation keeps clear of its
-       column: a transparent border, which leaves Codex's own padding as it is. */
-    if (view.navigation && nav && nav.isConnected) css += SEL.scroller + '{border-inline-end:' + (RAIL_W + 2) + 'px solid transparent !important;}';
+    /* While the rail is drawn the conversation keeps clear of its column with room inside the scroller, as Claude
+       Code Plus makes it, so the scrollbar keeps the page's right edge and the rail stands just left of it. */
+    var railed = !!(view.navigation && nav && nav.isConnected), gutter = railed ? scrollbarOf(scrollerEl()) : 0;
+    if (railed) css += SEL.scroller + ' > *{padding-inline-end:' + (RAIL_W + 2) + 'px !important;}';
     if ((bar && bar.isConnected) || (strip && strip.style.display !== 'none')) {
       css += '[data-codex-composer-root]{margin-bottom:' + ROW_ROOM + 'px !important;}';
     }
     if (codexMeterHidden) css += '.' + HIDE_CLASS + '{display:none !important;}';
     css += NAV_CSS;
+    if (gutter) {
+      css += '.codex-extras-rail{right:' + gutter + 'px;}.codex-extras-panel{right:' + (RAIL_W + 2 + gutter) + 'px;'
+        + 'width:min(' + PANEL_W + 'px,calc(100vw - ' + (RAIL_W + 14 + gutter) + 'px));}';
+    }
     if (!sheet || !sheet.isConnected) {
       sheet = document.createElement('style');
       sheet.setAttribute(MARK, 'style');

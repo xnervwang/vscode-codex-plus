@@ -39,7 +39,8 @@ if (found.missing.length) {
   for (const m of found.missing) console.log(`  - ${m}`);
   process.exit(0);
 }
-/* --only <name>[,<name>] runs those scenes alone: conversation, narrow, wide, approval, background, compact, chime, long, sessions. */
+/* --only <name>[,<name>] runs those scenes alone: conversation, narrow, wide, rail (rail-wide and rail-narrow), approval, background,
+   compact, chime, long, sessions. */
 const ONLY = arg('--only') ? arg('--only').split(',') : null;
 const want = (name) => !ONLY || ONLY.includes(name);
 const OUT = path.resolve(arg('--out') || fs.mkdtempSync(path.join(os.tmpdir(), 'codex-plus-render-')));
@@ -170,6 +171,31 @@ function geometry(m, where, { strip = false } = {}) {
     }
   }
   check(m.replyTimes.shown === 0, `${where}: a reply carrying our time does not show Codex's own sent time as well`, m.replyTimes);
+}
+/* The scrollbar keeps the page's right edge and the rail and its open list stand to its left, as in Claude Code Plus: the
+   room for the rail is made inside the scroller, and no message text runs under the rail. */
+const RAIL_EDGES = `(() => {
+  const sc = document.querySelector('[data-app-action-timeline-scroll]'), rail = document.querySelector('.codex-extras-rail');
+  const panel = document.querySelector('.codex-extras-panel');
+  if (!sc || !rail) return null;
+  const cs = getComputedStyle(sc), r = sc.getBoundingClientRect(), rr = rail.getBoundingClientRect();
+  const bl = parseFloat(cs.borderLeftWidth) || 0, br = parseFloat(cs.borderRightWidth) || 0;
+  const bar = sc.offsetWidth - sc.clientWidth - bl - br, barRight = r.right - br;
+  const text = [...sc.querySelectorAll('p, li, pre, h1, h2, h3, h4, table, blockquote, [data-user-message-bubble]')]
+    .map((x) => x.getBoundingClientRect()).filter((b) => b.width > 0 && b.height > 0);
+  const open = panel && getComputedStyle(panel).display !== 'none' ? panel.getBoundingClientRect() : null;
+  return { vw: innerWidth, bar, border: br, barRight: Math.round(barRight), barLeft: Math.round(barRight - bar),
+    rail: [Math.round(rr.left), Math.round(rr.right)], list: open ? [Math.round(open.left), Math.round(open.right)] : null,
+    text: text.length, under: text.filter((b) => b.right > rr.left + 0.5).map((b) => Math.round(b.right - rr.left)) };
+})()`;
+async function railEdges(s, where, { list = false } = {}) {
+  const e = await s.b.evaluate(RAIL_EDGES);
+  results.scenes[where.split(',')[0]].measures[`railEdges ${list ? 'list open' : 'rail'}`] = e;
+  if (!e) { check(false, `${where}: the rail and the scroller are in the page`); return; }
+  check(e.bar > 0 && e.border === 0 && e.barRight === e.vw, `${where}: the scrollbar is at the page's right edge, with no border of ours beside it`, e);
+  check(e.rail[1] <= e.barLeft && (!list || (e.list && e.list[1] <= e.barLeft)),
+    `${where}: the rail${list ? ' and its open list stand' : ' stands'} left of the scrollbar, covering none of it`, e);
+  if (!list) check(e.text > 0 && e.under.length === 0, `${where}: no message text runs under the rail`, e);
 }
 /* Codex's toolbar buttons with this script's three controls on and then off: none of them moves or changes size. With the
    controls in the row below the box, the box is raised to make room for that row, so only left edges and sizes are compared. */
@@ -407,6 +433,27 @@ function selfchecked(r, where, { turns, users, rows, replies = turns }) {
       const handle = await centre(s, '.codex-extras-rail-handle');
       if (handle) { await s.b.click(handle[0], handle[1]); await sleep(500); await shot(s, `${name}-list-open`); await s.b.click(handle[0], handle[1]); await sleep(300); }
       if (name === 'narrow') { await scrollTo(s, 'bottom'); await floating(s, name); }
+      results.blocked.push(...s.b.blocked);
+    } finally { await s.close(); }
+  }
+
+  /* ── the rail beside a scrollbar that is drawn, which the scenes above hide, at a wide window and at the sidebar's width ── */
+  for (const [name, width, height] of [['rail-wide', 1600, 900], ['rail-narrow', 400, 760]].filter(([n]) => want(n) || want('rail'))) {
+    s = await opened(name, { width, height, scrollbars: true });
+    try {
+      await scrollTo(s, 'bottom');
+      await shot(s, name);
+      await shot(s, `${name}-edge`, { x: width - 140, y: 0, width: 140, height, scale: 2 });
+      await railEdges(s, name);
+      const handle = await centre(s, '.codex-extras-rail-handle');
+      if (handle) {
+        await s.b.click(handle[0], handle[1]);
+        await sleep(500);
+        await shot(s, `${name}-list-open`);
+        await railEdges(s, `${name}, list open`, { list: true });
+        await s.b.click(handle[0], handle[1]);
+        await sleep(300);
+      } else check(false, `${name}: the rail's handle is in the page`);
       results.blocked.push(...s.b.blocked);
     } finally { await s.close(); }
   }

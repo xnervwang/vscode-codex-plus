@@ -81,8 +81,8 @@ process.on('exit', () => { for (const c of children) { try { c.kill('SIGKILL'); 
 function started(proc) { children.add(proc); proc.on('exit', () => children.delete(proc)); return proc; }
 
 /* A headless shell with its DevTools port on loopback, and a CDP session on its one page. */
-async function launch({ chrome, width = 1100, height = 760, userDataDir }) {
-  const args = ['--no-sandbox', '--disable-gpu', '--hide-scrollbars', '--remote-debugging-address=127.0.0.1',
+async function launch({ chrome, width = 1100, height = 760, userDataDir, scrollbars = false }) {
+  const args = ['--no-sandbox', '--disable-gpu', ...(scrollbars ? [] : ['--hide-scrollbars']), '--remote-debugging-address=127.0.0.1',
     '--remote-debugging-port=0', `--window-size=${width},${height}`, '--no-first-run', '--no-default-browser-check',
     '--force-color-profile=srgb', '--font-render-hinting=none',
     '--proxy-server=http://127.0.0.1:9', '--proxy-bypass-list=127.0.0.1', '--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1',

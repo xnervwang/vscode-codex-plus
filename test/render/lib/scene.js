@@ -26,9 +26,10 @@ const SIGNED_IN = {
 
 /*
  * `env` is { chrome, codex: { dir, version, binary }, capnweb, work }; `opts` is { name, width, height, turns, days,
- * settings }. `onAppServer(kind, msg)` is told of every notification and request the app-server sends the page.
+ * settings, scrollbars }; `scrollbars` draws the page's scrollbars, which every other scene hides. `onAppServer(kind,
+ * msg)` is told of every notification and request the app-server sends the page.
  */
-async function open(env, { name, width = 1100, height = 760, turns, days, settings = {}, onAppServer = () => {} }) {
+async function open(env, { name, width = 1100, height = 760, turns, days, settings = {}, scrollbars = false, onAppServer = () => {} }) {
   const dir = path.join(env.work, name);
   fs.mkdirSync(dir, { recursive: true });
   const data = fakeHome.write(dir, { turns, days });
@@ -44,7 +45,7 @@ async function open(env, { name, width = 1100, height = 760, turns, days, settin
     '/codex-webview/codex-extras-page.js': () => ({ type: 'text/javascript; charset=utf-8', body: page.pageScript() }),
   });
   const userDataDir = path.join(dir, 'chrome-profile');
-  const b = await launch({ chrome: env.chrome, width, height, userDataDir });
+  const b = await launch({ chrome: env.chrome, width, height, userDataDir, scrollbars });
   const toPage = (msg) => b.send('Runtime.evaluate', { expression: `window.__fromHost(${JSON.stringify(msg)})` }).catch(() => {});
   as.handlers.notification = (m) => { onAppServer('notification', m); toPage({ type: 'mcp-notification', hostId: 'local', method: m.method, params: m.params }); };
   as.handlers.request = (m) => { onAppServer('request', m); toPage({ type: 'mcp-request', hostId: 'local', request: { id: m.id, method: m.method, params: m.params } }); };
