@@ -63,7 +63,7 @@ module.exports = async ({ eq, root }) => {
   rows[0].dispatch('mouseleave', {});
   eq(q('[data-codex-extras="nav-tip"]').length, 0, 'and it is taken out of the page when the pointer leaves the row');
   eq([/width:min\(280px/.test((q('[data-codex-extras="style"]')[0] || dom.document.head.children.find((k) => k.getAttribute('data-codex-extras') === 'style')).textContent),
-    rows[0].children[rows[0].children.length - 1].textContent], [true, LONG.slice(0, 44)], 'the list is 280 wide, and a row shows 44 characters');
+    rows[0].textContent.split('  ').pop()], [true, LONG.slice(0, 44)], 'the list is 280 wide, and a row shows 44 characters');
 
   /* ── the landing is held while Codex's turns still move ── */
   dom.runTimers();

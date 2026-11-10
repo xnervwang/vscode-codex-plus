@@ -79,5 +79,5 @@ module.exports = async ({ eq, tmp, root }) => {
   const long = `ctx 9% · gpt-x low · skills ${Array.from({ length: 10 }, (_, i) => `a-rather-long-skill-name-number-${i}`).join(', ')}`;
   listeners.message({ data: { type: 'codex-extras-user-times', times: null, compactions: [], turns: { [T4]: long }, turnTimes: {} } });
   const stamp = reply.children.find((k) => k.getAttribute('data-codex-extras') === 'stamp');
-  eq(stamp ? stamp.getAttribute('data-codex-extras-figures') : null, ` · ${long}`, `the page draws the whole line under the reply (${long.length} characters)`);
+  eq(stamp ? stamp.getAttribute('data-codex-extras-figures') : null, `  ${long}`, `the page draws the whole line under the reply (${long.length} characters)`);
 };

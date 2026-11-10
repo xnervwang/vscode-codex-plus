@@ -1082,14 +1082,13 @@
       strip = document.createElement('div');
       strip.setAttribute(MARK, 'figures');
       strip.style.cssText = 'position:fixed;z-index:' + Z_BELOW_CODEX + ';pointer-events:none;white-space:nowrap;'
-        + 'font:11px var(--vscode-font-family,sans-serif);color:var(--vscode-descriptionForeground,#888);padding:0 4px;';
+        + 'font:11px var(--vscode-font-family,sans-serif);color:var(--vscode-descriptionForeground,#888);padding:0 4px;opacity:.8;';
       document.body.appendChild(strip);
     }
     placeStrip();
     var text = figures.text;
     if (tool && figures.toolSince) {
-      var s = Math.max(0, Math.round((Date.now() - figures.toolSince) / 1000));
-      text = tool + ' running for ' + (s >= 60 ? Math.floor(s / 60) + 'm' + (s % 60) + 's' : s + 's')
+      text = tool + ' running for ' + dur(Math.max(0, Date.now() - figures.toolSince))
         + ' (since ' + clockOf({ ms: figures.toolSince, secs: true }) + ')' + (text ? ' · ' + text : '');
     }
     strip.textContent = text;
@@ -1574,7 +1573,9 @@
     if (el.textContent !== text) el.textContent = text;
     var timed = side === 'assistant' && !!text;
     if (timed !== (el.getAttribute(TIMED_ATTR) !== null)) { if (timed) el.setAttribute(TIMED_ATTR, ''); else el.removeAttribute(TIMED_ATTR); }
-    var fig = (took ? (text ? ' ' : '') + took : '') + (figures ? (text || took ? ' \u00b7 ' : '') + figures : '');
+    /* As Claude Code Plus writes a reply's line: two spaces after the time, then the duration and the figures. */
+    var bits = [took, figures].filter(Boolean);
+    var fig = bits.length ? (text ? '  ' : '') + bits.join(' \u00b7 ') : '';
     if (fig) { if (el.getAttribute(FIG_ATTR) !== fig) el.setAttribute(FIG_ATTR, fig); }
     else if (el.getAttribute(FIG_ATTR) !== null) el.removeAttribute(FIG_ATTR);
   }
@@ -1783,7 +1784,6 @@
     + '.codex-extras-row{padding:4px 10px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'
     + 'color:var(--vscode-foreground,#ccc);}'
     + '.codex-extras-row:hover{background:var(--vscode-list-hoverBackground,rgba(255,255,255,.08));}'
-    + '.codex-extras-row-when{opacity:.7;margin-inline-end:6px;}'
     + '.codex-extras-rule{display:flex;align-items:center;gap:6px;padding:4px 10px;opacity:.6;cursor:pointer;font-size:10px;}'
     + '.codex-extras-rule:hover{opacity:.9;}'
     + '.codex-extras-rule-line{flex:1 1 auto;height:1px;background:var(--vscode-widget-border,rgba(255,255,255,.22));}'
@@ -2112,15 +2112,8 @@
         var row = document.createElement('div');
         row.setAttribute('class', 'codex-extras-row');
         row.setAttribute(MARK, 'nav-row');
-        if (when) {
-          var at = document.createElement('span');
-          at.setAttribute('class', 'codex-extras-row-when');
-          at.textContent = when;
-          row.appendChild(at);
-        }
-        var body = document.createElement('span');
-        body.textContent = text.slice(0, ROW_CHARS);
-        row.appendChild(body);
+        /* The time and the words in one text, two spaces apart, as Claude Code Plus writes a row. */
+        row.textContent = (when ? when + '  ' : '') + text.slice(0, ROW_CHARS);
         row.addEventListener('mouseenter', function () { showTip(row, (when ? when + '\n' : '') + text.slice(0, TIP_CHARS)); });
         row.addEventListener('mouseleave', hideTip);
         row.addEventListener('click', function (ev) {

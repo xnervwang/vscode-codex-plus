@@ -330,8 +330,8 @@ function selfchecked(r, where, { turns, users, rows, replies = turns }) {
         replies: [...document.querySelectorAll('.codex-extras-stamp-assistant')].map((x) => [x.textContent, x.getAttribute('data-codex-extras-figures') || '']) })`);
       results.scenes.conversation.replyLines = said;
       const lined = said.replies.filter(([, f]) => f);
-      check(said.worked === 0 && lined.length === 4 && lined.every(([t, f]) => /\d\d:\d\d:\d\d$/.test(t) && /^ \d+s · ctx \d+%/.test(f)),
-        'conversation: each reply carries its seconds, and its turn\'s duration where Codex draws no "Worked for"', said);
+      check(said.worked === 0 && lined.length === 4 && lined.every(([t, f]) => /\d\d:\d\d:\d\d$/.test(t) && /^ {2}\d+s · ctx \d+%/.test(f)),
+        'conversation: each reply carries its seconds, and after two spaces, as Claude Code Plus writes it, its turn\'s duration where Codex draws no "Worked for"', said);
     }
     /* The page script's layout sample of the drawn page, beside the one taken in a user's window (test/fixtures):
        which data-* names the two do not share, for a new Codex build to be read against. Said, not asserted. */
@@ -405,6 +405,10 @@ function selfchecked(r, where, { turns, users, rows, replies = turns }) {
         await shot(s, 'list-row-hover');
         check(!!tip && /^\d\d:\d\d/.test(tip.text) && tip.right <= tip.panelLeft && tip.panelWidth === 280,
           'conversation: resting on a row of the 280-wide list shows its time and words in a box to the left of the list', tip);
+        const lines = await s.b.evaluate(`[...document.querySelectorAll('.codex-extras-row')].map((x) => ({ text: x.textContent, parts: x.children.length }))`);
+        results.scenes.conversation.listRows = lines;
+        check(lines.length === 4 && lines.every((x) => /^\d\d:\d\d:\d\d {2}\S/.test(x.text) && x.parts === 0),
+          'conversation: each row of the list is its time, two spaces and its words in one text, as Claude Code Plus writes it', lines);
       }
       await s.b.click(handle[0], handle[1]);
       await s.b.hover(10, 10);
@@ -741,7 +745,7 @@ function selfchecked(r, where, { turns, users, rows, replies = turns }) {
     await shot(s, 'long-list-open');
     const list = await s.b.evaluate(`(() => { const p = document.querySelector('.codex-extras-panel'); const f = document.querySelector('[data-codex-composer-root]');
       if (!p) return null; const a = p.getBoundingClientRect(), b = f ? f.getBoundingClientRect() : null;
-      const rows = [...p.querySelectorAll('.codex-extras-row')].map((x) => (x.querySelector('.codex-extras-row-when') || {}).textContent || '');
+      const rows = [...p.querySelectorAll('.codex-extras-row')].map((x) => (/^(\\d\\d\\/\\d\\d )?\\d\\d:\\d\\d(:\\d\\d)?(?= {2})/.exec(x.textContent) || [''])[0]);
       return { rows: rows.length, whens: rows, panel: [a.left, a.top, a.right, a.bottom].map(Math.round),
         overComposer: b ? Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top)) * Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left)) : 0 }; })()`);
     results.scenes.long.list = list;

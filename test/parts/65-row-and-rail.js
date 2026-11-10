@@ -77,8 +77,8 @@ module.exports = async ({ eq, root }) => {
     eq(q('[data-codex-extras="bar-button"]').map((b) => { const s = b.querySelectorAll('svg')[0]; return [s.getAttribute('width'), s.getAttribute('height'), b.style.height]; }),
       [['16', '16', '16px'], ['16', '16', '16px']],
       'the two glyphs are drawn icons at the size of Codex\'s own toolbar icons, as tall as the line');
-    eq([/background/.test(strip.style.cssText), /opacity/.test(strip.style.cssText)], [false, false],
-      'the strip has no background or opacity of its own, so nothing of it shows but its words');
+    eq([/background/.test(strip.style.cssText), /opacity:\.8;/.test(strip.style.cssText)], [false, true],
+      'the strip has no background of its own, so nothing of it shows but its words, at 80% as Claude Code Plus\'s tool clock');
     const css = sheetText(dom);
     eq(css.includes('[data-codex-composer-root]{margin-bottom:4px !important;}'), true,
       'and the box is given the 4 px more at its foot that a line of that height and its gap need');

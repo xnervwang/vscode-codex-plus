@@ -67,6 +67,14 @@ module.exports = async ({ eq, root }) => {
   p.view({ chime: false });
   eq(p.q('[data-codex-extras="bar-button"]')[1].style.opacity, '0.4', 'and while chimes are off the note is at 40%, as Claude Code Plus\'s is');
 
+  /* ── the strip's tool clock: the reply's duration format, at 80% ── */
+  p.send({ type: 'codex-extras-figures', text: '', tool: 'exec_command', toolSince: Date.now() - 120000 });
+  const strip = p.q('[data-codex-extras="figures"]')[0];
+  const two = strip.textContent;
+  p.send({ type: 'codex-extras-figures', text: '', tool: 'exec_command', toolSince: Date.now() - 3903000 });
+  eq([/^exec_command running for 2m \(since /.test(two), /^exec_command running for 1h5m \(since /.test(strip.textContent), /opacity:\.8;/.test(strip.style.cssText)],
+    [true, true, true], 'a tool clock writes 2m and 1h5m as a reply\'s duration is written, at 80% as Claude Code Plus\'s is');
+
   /* ── the Agent map's dots ── */
   eq(/DOT_TONE = \{ working: '#22c55e', prompt: '#3b82f6',\s*unread: '#ef4444', failed: 'var\(--vscode-errorForeground,#f85149\)'/.test(source), true,
     'a sub-agent\'s dot has the session list\'s colours');

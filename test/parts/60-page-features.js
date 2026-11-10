@@ -208,8 +208,8 @@ module.exports = async ({ ok, bad, eq, note, tmp, root }) => {
   /* The list of the user's own messages. */
   let rows = dom.document.root.querySelectorAll('[data-codex-extras="nav-row"]');
   eq(rows.length, 3, 'the list has one row per message of the user\'s');
-  eq(rows.map((r) => r.textContent), ['22:35rebase onto the release branch before Friday', '22:39:02and the tests?', '22:44:30ship it'],
-    'each row is that message\'s time and its opening words, in the order the conversation has them');
+  eq(rows.map((r) => r.textContent), ['22:35  rebase onto the release branch before Friday', '22:39:02  and the tests?', '22:44:30  ship it'],
+    'each row is that message\'s time, two spaces and its opening words, in the order the conversation has them');
   rows[0].dispatch('mouseenter', {});
   eq((dom.document.root.querySelectorAll('[data-codex-extras="nav-tip"]')[0] || {}).textContent.includes('rebase onto the release branch'), true,
     'and the whole opening sentence is in the box hovering over the row shows, since a row is one line wide');
@@ -218,7 +218,7 @@ module.exports = async ({ ok, bad, eq, note, tmp, root }) => {
      reading one walks its whole subtree and the answer no longer changes. */
   three.bubble.querySelector('span').textContent = 'ship it today';
   page.view();
-  eq(dom.document.root.querySelectorAll('[data-codex-extras="nav-row"]')[2].textContent, '22:44:30ship it today',
+  eq(dom.document.root.querySelectorAll('[data-codex-extras="nav-row"]')[2].textContent, '22:44:30  ship it today',
     'the newest message\'s row follows its words while it is still arriving');
   rows = dom.document.root.querySelectorAll('[data-codex-extras="nav-row"]');
   rows[2].dispatch('click', { stopPropagation() {} });
@@ -441,7 +441,7 @@ module.exports = async ({ ok, bad, eq, note, tmp, root }) => {
       [[`${lastYear.getFullYear()}/${md(lastYear)} 22:15`, `${lastYear.getFullYear()}/${md(lastYear)} 22:16`],
         [`${md(thisYear)} 09:02`, `${md(thisYear)} 09:03`], ['07:00', '07:01']],
       'a time of an earlier day this year starts with its month and day, one of another year with the year too, and today\'s is the clock alone');
-    eq(d2.document.root.querySelectorAll('[data-codex-extras="nav-row"]').map((r) => r.textContent.split('from')[0]),
+    eq(d2.document.root.querySelectorAll('[data-codex-extras="nav-row"]').map((r) => r.textContent.split('  ')[0]),
       [`${lastYear.getFullYear()}/${md(lastYear)} 22:15`, `${md(thisYear)} 09:02`, '07:00'], 'and the list of messages shows each with the same date');
   }
 };

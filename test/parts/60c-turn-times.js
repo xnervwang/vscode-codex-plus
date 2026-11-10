@@ -97,10 +97,10 @@ module.exports = async ({ eq, tmp, root }) => {
   eq([said(u1), said(r1), said(u2), said(u2b), said(r2), said(u3)],
     [`${pre} 22:35:01`, `${pre} 22:35:09`, `${pre} 22:36:00`, `${pre} 22:36:03`, `${pre} 22:36:05`, `${pre} 22:40:00`],
     'by turn id, every message and reply gets its own day and its seconds, though the conversation\'s counts do not line up (the host sent three times for four messages)');
-  eq([line(r1), line(r2)], [null, ' 5s · ctx 12% · gpt-x low'],
+  eq([line(r1), line(r2)], [null, '  5s · ctx 12% · gpt-x low'],
     'a turn\'s duration goes after its reply\'s time where Codex shows no "Worked for" of its own, and nowhere it does');
   view({ replyDuration: false });
-  eq(line(r2), ' · ctx 12% · gpt-x low', 'codexPlus.replyDuration off leaves it off');
+  eq(line(r2), '  ctx 12% · gpt-x low', 'codexPlus.replyDuration off leaves it off');
   view();
 
   /* A turn whose count of messages differs from the rollout's is left to what the page itself shows. */
