@@ -562,7 +562,7 @@ function registerCommands(context, { source, memory, sessionsModel, sessionsView
   };
   reg('renameThread', async (arg) => {
     if (restricted()) return;
-    const id = chosen(arg)[0];
+    const id = threadArg(arg) || inFront();
     if (!id) return;
     /* In the list the title is edited where it is, as in Claude Code's list. */
     if (fromList(arg) && sessionsView.tell({ type: 'startRename', id })) return;

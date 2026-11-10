@@ -85,6 +85,11 @@ module.exports = async ({ eq, tmp, root }) => {
     await page.fromPage({ kind: 'newInSidebar' });
     eq(ran, [['codexPlus.openThreadInTab', made[0].id], ['codexPlus.openThreadInSidebar', made[1].id], ['codexPlus.newInTab'], ['codexPlus.newInSidebar']],
       'a click on a row opens it, in a tab or in the sidebar as the row says, and the two buttons start a conversation');
+    await page.fromPage({ kind: 'select', ids: [made[0].id, made[1].id] });
+    page.posted.length = 0;
+    await control.state.handlers['codexPlus.renameThread']({ webview: 'codexPlus.sessions', webviewSection: 'thread', threadId: made[1].id });
+    eq(page.posted.filter((x) => x.type === 'startRename'), [{ type: 'startRename', id: made[1].id }],
+      'Rename from a row\'s right-click menu edits that row\'s title, even with other rows selected too');
   } finally {
     for (const d of subs) { try { d.dispose(); } catch (_) { /* gone */ } }
     ext.deactivate();
