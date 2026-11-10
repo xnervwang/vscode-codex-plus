@@ -267,7 +267,7 @@ async function run({ env, check, shots, out, results }) {
     await rightClick(twice[0], twice[1]);
     await sleep(100);
     await sleep(100);
-    const renameItem = await b.evaluate(`(() => { const i = [...document.querySelectorAll('.cp-ctx-item')].find((x) => x.childNodes[0] && x.childNodes[0].textContent === 'Codex Plus: Rename...');
+    const renameItem = await b.evaluate(`(() => { const i = [...document.querySelectorAll('.cp-ctx-item')].find((x) => x.childNodes[0] && x.childNodes[0].textContent === 'Codex Plus: Rename');
       if (!i) return null; const r = i.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; })()`);
     if (renameItem) await b.click(renameItem[0], renameItem[1]);
     await sleep(100);
@@ -350,7 +350,7 @@ async function run({ env, check, shots, out, results }) {
     check(row.main && near(row.main.box.l, ccMainLeft(Math.round(at[0]), row.main.box.w, row.vw)) && near(row.main.box.t, Math.round(at[1])),
       'sessions: it opens where Claude Code would put it for a click there', { main: row.main && row.main.box, at });
     check(row.main && row.main.labels.join('|') === 'Codex Plus: Resume in Tab|Codex Plus: Resume in Sidebar|Codex Plus: Add to Group|Codex Plus: Remove from Group|'
-      + 'Codex Plus: Mark as Unread|Codex Plus: Rename...|Codex Plus: Text Color|Codex Plus: Set Goal...' && row.main.seps === 'itemitem-itemitem-item-item-item-item'
+      + 'Codex Plus: Mark as Unread|Codex Plus: Rename|Codex Plus: Text Color|Codex Plus: Set Goal...' && row.main.seps === 'itemitem-itemitem-item-item-item-item'
       && row.main.sep && row.main.sep.h === 1 && row.main.sep.margin === '2px 2px' && row.main.sep.bg === CC.border.slice(10)
       && row.main.chevron && row.main.chevron.text === '›' && row.main.chevron.float === 'right' && row.main.chevron.opacity === '0.7' && row.main.chevron.marginLeft === '12px'
       && row.focused === 'Codex Plus: Resume in Tab',

@@ -55,10 +55,10 @@ module.exports = async ({ ok, bad, eq, tmp }) => {
       [null, true, true, false], 'only recent threads have their rollout read; rollouts are marked present');
     eq(await inWorker.refresh({ home }), false, 'a second snapshot with nothing moved says so and keeps the first');
     const rows = await inWorker.request('info', { home, id: idle.id });
-    eq(rows.find((r) => r.label === 'Thread id').value, idle.id, 'Session Information is read in the worker too');
+    eq(rows.find((r) => r.label === 'Thread').value, idle.id, 'Session Information is read in the worker too');
     /* The one usage figure Codex records: tokens. Its rate-limit records carry no plan, quota or credit on this
        machine, so there is no share-of-allowance or money figure to show (see the report). */
-    eq(rows.find((r) => r.label === 'Tokens used by this conversation').value, '2020 (2000 in, 20 out, 7 cached, 9 reasoning)',
+    eq(rows.find((r) => r.label === 'Tokens').value, '2020 (2000 in, 20 out, 7 cached, 9 reasoning)',
       'and it says what the conversation has spent, read from the token_count record already parsed for the context figure');
 
     /*

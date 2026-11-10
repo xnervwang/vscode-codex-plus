@@ -43,7 +43,7 @@ module.exports = async ({ eq, root }) => {
   const clickAway = () => { page.bubble('mousedown', { button: 0 }); page.bubble('click'); };
   const gone = () => $$('.cp-ctx').length === 0;
   const timers = dom.waiting();
-  const COLOR = 'Codex Plus: Text Color', GROUP = 'Codex Plus: Add to Group', RENAME = 'Codex Plus: Rename...';
+  const COLOR = 'Codex Plus: Text Color', GROUP = 'Codex Plus: Add to Group', RENAME = 'Codex Plus: Rename';
 
   /* ── a right-click on a row ── */
   posted.length = 0;

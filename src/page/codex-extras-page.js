@@ -425,7 +425,7 @@
       if (!tools) { tools = document.createElement('div'); tools.setAttribute(MARK, 'tools'); }
       if (wantInfo && !infoBtn) {
         infoBtn = barButton('bar-button', 'About this conversation: its thread id, the process of Codex\'s server, the folder it '
-          + 'started in, its rollout and size, the context in use and the tokens it used. Click a value to copy it.', toggleInfo);
+          + 'started in, its rollout and its size on disk, the model, the context in use and the tokens it used', toggleInfo);
         infoBtn.appendChild(infoIcon());
         tools.insertBefore(infoBtn, tools.firstChild);
       }
@@ -483,7 +483,8 @@
       if (muteBtn.getAttribute(MARK + '-muted') !== (muted ? 'true' : 'false')) muteBtn.setAttribute(MARK + '-muted', muted ? 'true' : 'false');
       var dim = muted ? '0.4' : rowMode === 'row' ? '' : '0.75';
       if (muteBtn.style.opacity !== dim) muteBtn.style.opacity = dim;
-      labelled(muteBtn, muted ? 'Chimes are off: click to turn them on (codexPlus.chime)' : 'Chimes are on: click to turn them off (codexPlus.chime)');
+      labelled(muteBtn, muted ? 'Chimes are muted - click to hear a chime when a turn finishes'
+        : 'A chime when a turn finishes, and when Codex is waiting for you - click to mute');
     }
     if (infoBtn && rowMode !== 'row' && infoBtn.style.opacity !== '0.75') infoBtn.style.opacity = '0.75';
     drawMeter();
@@ -739,7 +740,7 @@
     if (!infoBox || !infoBox.isConnected) {
       infoBox = document.createElement('div');
       infoBox.setAttribute(MARK, 'info');
-      infoBox.style.cssText = 'position:fixed;z-index:' + Z_BELOW_CODEX_BOX + ';display:none;width:420px;max-width:calc(100vw - 32px);'
+      infoBox.style.cssText = 'position:fixed;z-index:' + Z_BELOW_CODEX_BOX + ';display:none;width:400px;max-width:calc(100vw - 32px);'
         + 'padding:8px 10px;border-radius:5px;' + pageFont(11) + 'line-height:1.5;'
         + 'background:var(--vscode-editorHoverWidget-background,rgba(30,30,30,.99));'
         + 'color:var(--vscode-editorHoverWidget-foreground,#ddd);'
@@ -750,10 +751,10 @@
     m.rows.slice(0, 20).forEach(function (row, i) {
       if (!row || typeof row.label !== 'string') return;
       var line = document.createElement('div');
-      line.style.cssText = 'display:flex;gap:10px;padding:2px 0;';
+      line.style.cssText = 'display:flex;align-items:baseline;gap:10px;padding:2px 0;';
       var k = document.createElement('span');
       k.textContent = row.label;
-      k.style.cssText = 'flex:0 0 110px;opacity:.6;';
+      k.style.cssText = 'flex:0 0 72px;opacity:.6;';
       var v = document.createElement('span');
       v.textContent = String(row.value == null ? '' : row.value);
       v.style.cssText = 'flex:1 1 auto;min-width:0;word-break:break-all;cursor:pointer;'
@@ -764,13 +765,14 @@
         post({ kind: 'infoCopy', id: m.id, index: i });
         var was = v.textContent;
         v.textContent = 'copied';
-        setTimeout(function () { if (v.isConnected) v.textContent = was; }, 900);
+        v.style.opacity = '0.6';
+        setTimeout(function () { if (v.isConnected) { v.textContent = was; v.style.opacity = ''; } }, 900);
       });
       line.appendChild(k); line.appendChild(v);
       infoBox.appendChild(line);
     });
     var r = rectOf(infoBtn), vh = +globalThis.innerHeight || 0, vw = +globalThis.innerWidth || 0;
-    infoBox.style.left = Math.round(r ? Math.max(8, vw ? Math.min(r.left || 0, vw - 436) : r.left || 0) : 8) + 'px';
+    infoBox.style.left = Math.round(r ? Math.max(8, vw ? Math.min(r.left || 0, vw - 416) : r.left || 0) : 8) + 'px';
     infoBox.style.bottom = Math.round(vh && r ? Math.max(4, vh - (r.top || 0) + 4) : 28) + 'px';
     infoBox.style.display = 'block';
   }

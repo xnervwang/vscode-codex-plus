@@ -109,7 +109,7 @@ module.exports = async ({ eq, root }) => {
     eq(p.q('[data-codex-extras="bar-button"]').map((b) => /About this conversation/.test(b.getAttribute('aria-label'))), [true],
       'codexPlus.chimeButton off leaves the information button alone');
     p.view({ infoButton: false });
-    eq(p.q('[data-codex-extras="bar-button"]').map((b) => /Chimes are/.test(b.getAttribute('aria-label'))), [true],
+    eq(p.q('[data-codex-extras="bar-button"]').map((b) => /chime/i.test(b.getAttribute('aria-label'))), [true],
       'codexPlus.infoButton off leaves the chime button alone');
     p.view({ infoButton: false, chimeButton: false, contextMeter: false });
     eq(p.q('[data-codex-extras="tools"]').length + p.q('[data-codex-extras="bar-button"]').length, 0, 'both off, neither is drawn');

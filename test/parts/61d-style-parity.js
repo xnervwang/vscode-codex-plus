@@ -67,6 +67,26 @@ module.exports = async ({ eq, root }) => {
   p.view({ chime: false });
   eq(p.q('[data-codex-extras="bar-button"]')[1].style.opacity, '0.4', 'and while chimes are off the note is at 40%, as Claude Code Plus\'s is');
 
+  /* ── button labels, as Claude Code Plus words them ── */
+  eq([p.q('[data-codex-extras="bar-button"]')[1].getAttribute('aria-label'), (p.view(), p.q('[data-codex-extras="bar-button"]')[1].getAttribute('aria-label'))],
+    ['Chimes are muted - click to hear a chime when a turn finishes', 'A chime when a turn finishes, and when Codex is waiting for you - click to mute'],
+    'the chime button says what Claude Code Plus\'s says, with Codex for Claude');
+  const infoLabel = info.getAttribute('aria-label');
+  eq([/^About this conversation: /.test(infoLabel), /\.$/.test(infoLabel), /Click a value/.test(infoLabel)], [true, false, false],
+    'the information button\'s label is one clause with no full stop, as Claude Code Plus\'s');
+
+  /* ── the session information box ── */
+  info.dispatch('click', { stopPropagation() {} });
+  const ask = p.posted.filter((m) => m.kind === 'infoAsk').pop();
+  p.send({ type: 'codex-extras-info', id: ask.id, rows: [{ label: 'Thread', value: 'abc' }, { label: 'Process', value: '42' }] });
+  const box = p.q('[data-codex-extras="info"]')[0];
+  const line = box.childNodes[0];
+  eq([/width:400px;/.test(box.style.cssText), /align-items:baseline;/.test(line.style.cssText), /flex:0 0 72px;/.test(line.childNodes[0].style.cssText)],
+    [true, true, true], 'the box is 400 px wide, its names in a 72 px column on the values\' baseline, as Claude Code Plus\'s');
+  const value = line.childNodes[1];
+  value.dispatch('click', { stopPropagation() {} });
+  eq([value.textContent, value.style.opacity], ['copied', '0.6'], 'a value clicked says "copied" at 60% for a moment');
+
   /* ── the strip's tool clock: the reply's duration format, at 80% ── */
   p.send({ type: 'codex-extras-figures', text: '', tool: 'exec_command', toolSince: Date.now() - 120000 });
   const strip = p.q('[data-codex-extras="figures"]')[0];
@@ -79,6 +99,17 @@ module.exports = async ({ eq, root }) => {
   eq((source.match(/font:\s*(?:\d{3}\s+)?\d+px\s+var\(--vscode-font-family/g) || []).length, 0,
     'nothing this script draws names a font family of its own; each box takes Codex\'s page font and sets only its size');
 
+  /* ── the commands Claude Code Plus also has ── */
+  const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
+  const title = (c) => (pkg.contributes.commands.find((x) => x.command === c) || {}).title;
+  eq([title('codexPlus.renameThread'), title('codexPlus.moveThreadToSection'), title('codexPlus.markThreadUnread'), title('codexPlus.stopLoadingWorkPlanPlugin')],
+    ['Codex Plus: Rename', 'Codex Plus: Add to Group', 'Codex Plus: Mark as Unread', 'Codex Plus: Stop Loading the Work Plan Plugin'],
+    'the tab\'s menu items carry no "...", as Claude Code\'s do not, and Stop Loading is named as Claude Code Plus names it');
+
+  /* ── the session information's names ── */
+  const info2 = require('../../src/session-info');
+  eq(info2.rows('019a6a10-0000-7000-8000-00000000ffff', { pid: '4242' }).map((r) => r.label), ['Thread', 'Process'],
+    'the box names its rows in a word or two, as Claude Code Plus\'s Session and Process');
   /* ── the Agent map's dots ── */
   eq(/DOT_TONE = \{ working: '#22c55e', prompt: '#3b82f6',\s*unread: '#ef4444', failed: 'var\(--vscode-errorForeground,#f85149\)'/.test(source), true,
     'a sub-agent\'s dot has the session list\'s colours');

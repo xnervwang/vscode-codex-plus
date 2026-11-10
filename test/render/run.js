@@ -289,10 +289,14 @@ const PARITY = `(() => {
   const probe = (prop, value) => { const p = document.createElement('span'); p.style[prop] = value; document.body.appendChild(p); const v = st(p)[prop]; p.remove(); return v; };
   const stamp = (side) => { const e = document.querySelector('.codex-extras-stamp-' + side); if (!e) return null; const a = st(e), b = st(e.parentElement);
     return { family: a.fontFamily, size: +(parseFloat(a.fontSize) / parseFloat(b.fontSize)).toFixed(3), opacity: a.opacity, sameColour: a.color === b.color }; };
+  const info = document.querySelector('[data-codex-extras="info"]');
+  const line = info && info.firstElementChild;
   const body = st(document.body).fontFamily;
   const boxes = ['.codex-extras-panel', '[data-codex-extras="info"]', '[data-codex-extras="context"]', '[data-codex-extras="figures"]', '[data-codex-extras="bar"]']
     .map((sel) => [sel, document.querySelector(sel)]).filter(([, e]) => e).map(([sel, e]) => [sel, st(e).fontFamily === body]);
-  return { stamps: { user: stamp('user'), assistant: stamp('assistant') }, mono: probe('fontFamily', 'var(--vscode-editor-font-family, monospace)'), boxes };
+  return { info: info && info.style.display === 'block' ? { w: Math.round(info.getBoundingClientRect().width), name: Math.round(line.firstElementChild.getBoundingClientRect().width),
+      align: st(line).alignItems } : null,
+    stamps: { user: stamp('user'), assistant: stamp('assistant') }, mono: probe('fontFamily', 'var(--vscode-editor-font-family, monospace)'), boxes };
 })()`;
 async function parity(s, where) {
   /* inputUnchanged clicked the information button; the answer is what this extension's host would send. */
@@ -303,6 +307,9 @@ async function parity(s, where) {
   }
   const m = await s.b.evaluate(PARITY);
   results.scenes[where].measures.parity = m;
+  if (m.info) await shot(s, `${where}-info-box`, { x: 0, y: 360, width: innerW(s), height: 400 });
+  check(!!m.info && m.info.w === Math.min(400, innerW(s) - 32) && m.info.name === 72 && m.info.align === 'baseline',
+    `${where}: the information box is 400 px wide with its names in a 72 px column on the values' baseline, as Claude Code Plus's`, m.info);
   const sides = [m.stamps.user, m.stamps.assistant];
   check(sides.every((x) => x && x.family === m.mono && x.size === 0.8 && x.opacity === '0.6' && x.sameColour),
     `${where}: a stamp is in the editor's monospace font at 0.8 of its message's size, in the text's own colour at 60%`, m.stamps);

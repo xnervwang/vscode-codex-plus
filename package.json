@@ -81,7 +81,7 @@
       },
       {
         "command": "codexPlus.stopLoadingWorkPlanPlugin",
-        "title": "Codex Plus: Stop Loading the Work Plan Plugin (keeps it installed)"
+        "title": "Codex Plus: Stop Loading the Work Plan Plugin"
       },
       {
         "command": "codexPlus.newInTab",
@@ -124,12 +124,12 @@
       },
       {
         "command": "codexPlus.renameThread",
-        "title": "Codex Plus: Rename...",
+        "title": "Codex Plus: Rename",
         "icon": "$(edit)"
       },
       {
         "command": "codexPlus.moveThreadToSection",
-        "title": "Codex Plus: Add to Group..."
+        "title": "Codex Plus: Add to Group"
       },
       {
         "command": "codexPlus.removeFromGroup",

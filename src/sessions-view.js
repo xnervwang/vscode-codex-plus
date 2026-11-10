@@ -55,7 +55,7 @@ const COLOR_LIST = COLOR_NAMES.map((name) => ({ name, color: COLORS[name] }));
  *
  * A separator goes wherever the part of `group` before the @ changes. `when` is a VS Code when clause: the page
  * evaluates it against the context of the row or header and the model's noGroups. The titles are the commands' own,
- * except that the two items that open a submenu drop the trailing "...".
+ * except that an item that opens a submenu drops a trailing "...".
  */
 const COMMAND_TITLES = new Map(require('../package.json').contributes.commands.map((c) => [c.command, c.title]));
 const LIST_MENU = [

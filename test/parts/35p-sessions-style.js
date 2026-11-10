@@ -111,6 +111,9 @@ module.exports = async ({ eq, root }) => {
   eq([/\bcp-solid\b/.test(cls('[data-tool="filter"] svg')), /\bcp-solid\b/.test(cls('[data-tool="active"] svg')),
     has('svg.cp-icon.cp-solid', 'fill: currentColor'), has('svg.cp-icon.cp-solid', 'stroke: none')], [true, true, true, true],
   'the funnel and the bolt are solid shapes, as Claude Code\'s are');
+  const titles = [...p.$$('.cp-new'), p.$('[data-tool="active"]')].map((b) => b.title);
+  eq(titles, ['Start a conversation in a new editor tab', 'Start a conversation in the sidebar', 'Show sessions that need input, are working, or are unread'],
+    'New in tab, New in sidebar and Active say what Claude Code Plus\'s and Claude Code\'s say');
   eq([p.$('.cp-row [data-act="rename"]').title, has('.cp-act svg.cp-icon', 'width: 20px'), has('.cp-act svg.cp-icon', 'height: 20px')],
     ['Rename session', true, true], 'the rename button on a row is Claude Code\'s: a 20 px icon, "Rename session"');
 

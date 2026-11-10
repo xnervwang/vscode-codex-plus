@@ -202,8 +202,8 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
     if (c) ok(`${name} is declared, as "${c.title}"`);
     else bad(`${name} is not declared`);
   }
-  eq(/keeps it installed/.test((pkg.contributes.commands.find((x) => x.command === 'codexPlus.stopLoadingWorkPlanPlugin') || {}).title || ''),
-    true, 'and the one that stops it says in its title that the plugin stays where it is');
+  eq((pkg.contributes.commands.find((x) => x.command === 'codexPlus.stopLoadingWorkPlanPlugin') || {}).title, 'Codex Plus: Stop Loading the Work Plan Plugin',
+    'and the one that stops it is named as Claude Code Plus names its own');
 
   /* Show Status tells the two states apart, which is the whole reason for reading config.toml. */
   const skipped = await windowWith(root, tmp, { enabled: false });

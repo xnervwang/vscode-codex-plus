@@ -85,15 +85,15 @@
   const manager = section('manager', 'Session manager');
   manager.count.remove();
   const newRow = el('div', 'cp-new-row');
-  const newTab = button('cp-new', 'New Codex conversation in a tab', icon('plus'), el('span', '', 'New in tab'));
+  const newTab = button('cp-new', 'Start a conversation in a new editor tab', icon('plus'), el('span', '', 'New in tab'));
   newTab.dataset.send = 'newInTab';
-  const newSide = button('cp-new', 'New Codex conversation in the sidebar', icon('plus'), el('span', '', 'New in sidebar'));
+  const newSide = button('cp-new', 'Start a conversation in the sidebar', icon('plus'), el('span', '', 'New in sidebar'));
   newSide.dataset.send = 'newInSidebar';
   newRow.append(newTab, newSide);
   const filterRow = el('div', 'cp-filter-row');
   const filterBtn = button('cp-tool', 'Filter by status', icon('funnel'), icon('caret', 'cp-icon'));
   filterBtn.dataset.tool = 'filter';
-  const activeBtn = button('cp-tool', 'Show only conversations that need input, are working, or are unread', icon('bolt'), el('span', '', 'Active · 0'));
+  const activeBtn = button('cp-tool', 'Show sessions that need input, are working, or are unread', icon('bolt'), el('span', '', 'Active · 0'));
   activeBtn.dataset.tool = 'active';
   const tail = el('span', 'cp-tail');
   const searchBtn = button('cp-tool cp-icon-only', 'Search sessions', icon('search'));

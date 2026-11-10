@@ -45,11 +45,11 @@ module.exports = async ({ eq, tmp, root }) => {
       'each button is a drawn icon in one colour like Codex\'s own, the note not struck through while chimes are on, and neither has a native title');
     p.view({ chime: false });
     const muted = p.q('[data-codex-extras="bar-button"]')[1];
-    eq([slash(muted).getAttribute('visibility'), muted.getAttribute('data-codex-extras-muted'), /turn them on/.test(muted.getAttribute('aria-label'))], ['visible', 'true', true],
+    eq([slash(muted).getAttribute('visibility'), muted.getAttribute('data-codex-extras-muted'), /click to hear a chime/.test(muted.getAttribute('aria-label'))], ['visible', 'true', true],
       'and the same note struck through, saying how to turn them on, while they are off');
     muted.dispatch('mouseenter', {});
     const label = p.q('[data-codex-extras="label"]');
-    eq([label.length, label[0] && /turn them on/.test(label[0].textContent)], [1, true], 'hovering it draws a label of this script\'s own');
+    eq([label.length, label[0] && /click to hear a chime/.test(label[0].textContent)], [1, true], 'hovering it draws a label of this script\'s own');
     muted.dispatch('mouseleave', {});
     eq(p.q('[data-codex-extras="label"]').length, 0, 'which goes when the pointer leaves');
     eq([/z-index:25;/.test(bar.style.cssText)], [true], 'the row sits above Codex\'s content and below the lowest layer of its overlays, z-30');

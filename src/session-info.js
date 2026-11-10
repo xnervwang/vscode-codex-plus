@@ -42,7 +42,7 @@ function size(bytes) {
   return `${(bytes / (1 << 20)).toFixed(1)} MB`;
 }
 
-/** [{ label, value }] for thread `id`. */
+/** [{ label, value }] for thread `id`, each named in a word or two as Claude Code Plus names its rows. */
 function rows(id, { pid = appServerPid() } = {}) {
   const t = (files.listThreads() || []).find((x) => x.id === id) || { id, title: '', cwd: '', rollout: '' };
   const rollout = t.rollout || files.rolloutOf(id);
@@ -50,22 +50,22 @@ function rows(id, { pid = appServerPid() } = {}) {
   try { bytes = fs.statSync(files.existingRollout(rollout) || rollout).size; } catch (_) { bytes = -1; }
   const st = rollout ? files.rolloutState(rollout) : null;
   const out = [
-    { label: 'Thread id', value: id },
+    { label: 'Thread', value: id },
     { label: 'Title', value: t.title },
-    { label: 'codex app-server pid (this window)', value: pid },
-    { label: 'Starting directory', value: t.cwd },
+    { label: 'Process', value: pid },
+    { label: 'Folder', value: t.cwd },
     { label: 'Rollout', value: files.existingRollout(rollout) || rollout || '' },
-    { label: 'Rollout size', value: bytes >= 0 ? size(bytes) : '' },
+    { label: 'On disk', value: bytes >= 0 ? size(bytes) : '' },
   ];
-  if (st && st.model) out.push({ label: 'Model and effort', value: [st.model, st.effort].filter(Boolean).join(' ') });
+  if (st && st.model) out.push({ label: 'Model', value: [st.model, st.effort].filter(Boolean).join(' ') });
   if (st && st.context && st.context.window) {
-    out.push({ label: 'Context in use', value: `${st.context.used} of ${st.context.window} (${Math.round(100 * st.context.used / st.context.window)}%)` });
+    out.push({ label: 'Context', value: `${st.context.used} of ${st.context.window} (${Math.round(100 * st.context.used / st.context.window)}%)` });
   }
   /* What this conversation has spent. Codex records no price and its rate-limit records carry no plan or quota here,
      so there is no figure for a share of an allowance or for money - only tokens. */
   if (st && st.tokens && st.tokens.total) {
     const k = st.tokens;
-    out.push({ label: 'Tokens used by this conversation', value: `${k.total} (${k.input} in, ${k.output} out`
+    out.push({ label: 'Tokens', value: `${k.total} (${k.input} in, ${k.output} out`
       + `${k.cached ? `, ${k.cached} cached` : ''}${k.reasoning ? `, ${k.reasoning} reasoning` : ''})` });
   }
   return out.filter((r) => r.value);

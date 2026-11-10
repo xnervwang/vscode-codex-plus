@@ -950,7 +950,7 @@ function installHooks() {
     if (msg && msg.kind === 'infoAsk' && deps && typeof deps.sessionInfo === 'function') {
       const rec = recordOfWebview(webview);
       const thread = rec ? rec.thread : sidebar;
-      Promise.resolve(thread ? deps.sessionInfo(thread) : [{ label: 'Thread id', value: 'no conversation started in this page yet' }])
+      Promise.resolve(thread ? deps.sessionInfo(thread) : [{ label: 'Thread', value: 'no conversation started in this page yet' }])
         .then((rows) => {
           const list = (Array.isArray(rows) ? rows : []).map((r) => ({ label: String(r.label || ''), value: String(r.value == null ? '' : r.value) }));
           infoShown.set(webview, { id: msg.id, rows: list });

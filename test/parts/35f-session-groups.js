@@ -174,7 +174,7 @@ module.exports = async ({ eq, tmp, root }) => {
   const cmd = (id) => pkg.contributes.commands.find((c) => c.command === `codexPlus.${id}`);
   eq(['newGroup', 'renameGroup', 'deleteGroup', 'moveThreadToSection', 'removeFromGroup'].map((id) => (cmd(id) || {}).title),
     ['Codex Plus: New Group...', 'Codex Plus: Rename Group...', 'Codex Plus: Delete Group',
-      'Codex Plus: Add to Group...', 'Codex Plus: Remove from Group'], 'each group command is named as Claude Code names it, after "Codex Plus: "');
+      'Codex Plus: Add to Group', 'Codex Plus: Remove from Group'], 'each group command is named as Claude Code names it, after "Codex Plus: "');
   const menus = [...Object.values(pkg.contributes.menus).flat(), ...(require('../../src/sessions-view').LIST_MENU || [])].filter((m) => ['codexPlus.newGroup',
     'codexPlus.renameGroup', 'codexPlus.deleteGroup', 'codexPlus.moveThreadToSection'].includes(m.command) && m.when !== 'false');
   eq(menus.filter((m) => !/!codexPlus\.noGroups/.test(m.when) && !/webviewId == 'chatgpt\.conversationEditor'/.test(m.when)).map((m) => m.command), [],

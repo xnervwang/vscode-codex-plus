@@ -173,7 +173,7 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
       const rows = ((posted.find((m) => m.type === 'codex-extras-info') || {}).rows || []).map((p) => `${p.label}=${p.value}`);
       return { id, rows, said: control.state.said.map((x) => x.message) };
     } });
-    eq([w.probed.rows.includes(`Thread id=${w.probed.id}`), w.probed.said.some((m) => /Bring a Codex conversation tab/.test(m))], [true, false],
+    eq([w.probed.rows.includes(`Thread=${w.probed.id}`), w.probed.said.some((m) => /Bring a Codex conversation tab/.test(m))], [true, false],
       'Session Information on a tab opened with Codex\'s New button shows the conversation that tab went on to start');
   }
 
