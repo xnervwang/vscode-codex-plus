@@ -558,6 +558,9 @@ function settle(now) {
  * watcher of its own. It runs on a conversation change and when a panel appears, and reads nothing that drawing the
  * figures did not already read.
  */
+/* The chime for a turn that has just ended: the question one when it ended on an asynchronous question. */
+function turnEndChime(c) { return c && c.asking ? 'question' : 'done'; }
+
 /* What a page's report of a chime says, by the state of its audio context. */
 const CHIME_STATES = {
   running: 'the audio context is running',
@@ -635,7 +638,7 @@ async function refreshPanels() {
       if (title) { try { if (panel.title !== title) panel.title = title; } catch (_) { /* disposed */ } }
       /* Against the rollout's own answer, not against `state`: a turn that stopped on an approval has not finished, and
          `state` reads `prompt` for it, which would otherwise ring the finished-turn chime. */
-      if (deps.settings().chime && was && was.working && c && !c.working) postTo(panel, { type: 'codex-extras-chime', kind: 'done' });
+      if (deps.settings().chime && was && was.working && c && !c.working) postTo(panel, { type: 'codex-extras-chime', kind: turnEndChime(c) });
       postTo(panel, (figuresOn && figuresOf(c, runningCommands(thread).length)) || NO_FIGURES);
       postTo(panel, view);
       if (whens.has(thread)) postTo(panel, { type: 'codex-extras-user-times', ...whens.get(thread) });
@@ -919,5 +922,5 @@ function activate(context, opts) {
 module.exports = { activate, ensurePatched, statusLines, openInSidebar, canType, canDeliver, deliver, sidebarThread, panelThreads, shownIn,
   nowShowing, revealPanel, removePatch,
   figuresOf, safeColor, viewOf, selfCheckPage, selfCheckLines, installHooks, refreshPanels, approvalsOf,
-  onApprovalsChanged, offerReloadIfStale, sidebarShowing, onSidebarChanged, runningCommands, _state: () => state, _registry: registry, _approvals: approvals,
+  onApprovalsChanged, offerReloadIfStale, sidebarShowing, onSidebarChanged, runningCommands, turnEndChime, _state: () => state, _registry: registry, _approvals: approvals,
   TAB_DOTS, ASK_MS, PATCH_REMOVED_KEY };

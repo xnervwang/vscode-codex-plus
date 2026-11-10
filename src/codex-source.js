@@ -61,9 +61,12 @@ function conversationOf(thread, { unread, openHere, now = Date.now(), state = nu
   const working = !!(st && st.working && now - last < STALE_WORKING_MS);
   const decide = (waiting && waiting.decide) || 0;
   const soon = (waiting && waiting.soon) || 0;
+  /* A question asked with request_user_input_async waits for the user once its turn has ended (src/codex-files.js). */
+  const asking = !working && !!(st && st.askedMs);
   let word = 'idle';
   if (decide || soon) word = 'prompt';
   else if (working) word = 'working';
+  else if (asking) word = 'prompt';
   else if (unread.has(thread.id)) word = 'unread';
   return {
     sessionId: thread.id,
@@ -79,6 +82,7 @@ function conversationOf(thread, { unread, openHere, now = Date.now(), state = nu
     working,
     decide,
     soon,
+    asking,
     model: (st && st.model) || thread.model,
     effort: (st && st.effort) || thread.effort,
     context: st && st.context,

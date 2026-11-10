@@ -290,7 +290,12 @@ function sessionMeta(file) {
  *   model, effort  from the newest turn_context
  *   lastTool       { name, startedMs, endedMs } of the newest tool call, for the working line
  *   error          the newest task_complete's error, if it failed
+ *   askedMs        when the latest turn asked the user something with request_user_input_async, 0 if it did not: that
+ *                  question has no app-server request, and its answer is the next user message, which opens a turn
  */
+/* Codex's question that does not wait: the tool returns at once and the card stays on the page. */
+const ASYNC_QUESTION = 'request_user_input_async';
+
 function rolloutState(file, lines = null) {
   if (!lines) {
     const size = fileSize(file);
@@ -300,7 +305,7 @@ function rolloutState(file, lines = null) {
     }
   }
   const st = { working: false, turnId: '', startedMs: 0, endedMs: 0, durationMs: 0, context: null, tokens: null, model: '', effort: '',
-    lastTool: null, error: '', lastActivityMs: 0, aborted: false };
+    lastTool: null, error: '', lastActivityMs: 0, aborted: false, askedMs: 0 };
   let sawEnd = false;
   for (const line of lines) {
     let row;
@@ -335,7 +340,11 @@ function rolloutState(file, lines = null) {
         if (!sawEnd) { st.working = true; st.turnId = String(p.turn_id || ''); }
         if (st.model) break;
       }
-    } else if (row.type === 'response_item' && !st.lastTool) {
+    }
+    if (row.type === 'response_item' && p.type === 'function_call' && p.name === ASYNC_QUESTION && !st.startedMs && !st.askedMs) {
+      st.askedMs = at;
+    }
+    if (row.type === 'response_item' && !st.lastTool) {
       if (p.type === 'function_call' || p.type === 'custom_tool_call' || p.type === 'web_search_call') {
         st.lastTool = { name: String(p.name || p.type), startedMs: at, endedMs: 0, callId: String(p.call_id || '') };
       }
