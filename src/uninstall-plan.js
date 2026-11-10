@@ -12,7 +12,8 @@
  * the patch out, so it is put back here.
  *
  * A copy its editor has marked for deletion in that folder's .obsolete file, which is what an uninstall and an update
- * do to the folder they replace, does not count as one that is left.
+ * do to the folder they replace, does not count as one that is left, and neither does a folder left over from a deletion
+ * that failed.
  */
 const fs = require('fs');
 const os = require('os');
@@ -39,6 +40,9 @@ function obsolete(extensionsDir) {
 /* A copy's folder is <id>-<version>, with the platform after the version for a platform build; the digit after the
    dash keeps an extension whose name merely starts with this one's from being taken for a copy of it. */
 const folderOf = (id) => new RegExp(`^${id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}-\\d`, 'i');
+/* The editor renames a folder it is deleting to <folder>.<random>.vsctmp first, and one it failed to delete stays until
+   its next start under that name, which still starts like a copy. */
+const isCopy = (name, own) => own.some((re) => re.test(name)) && !/\.vsctmp$/i.test(name);
 
 /** The copies of extension `id` (or of any of a list of ids) in one extensions folder that its editor has not marked
     for deletion. */
@@ -47,7 +51,7 @@ function liveCopies(extensionsDir, id = [ID, ...FORMER_IDS]) {
   const marked = obsolete(extensionsDir);
   let names;
   try { names = fs.readdirSync(extensionsDir); } catch (_) { return []; }
-  return names.filter((n) => own.some((re) => re.test(n)) && marked[n] !== true).map((n) => path.join(extensionsDir, n));
+  return names.filter((n) => isCopy(n, own) && marked[n] !== true).map((n) => path.join(extensionsDir, n));
 }
 
 /** The extensions folders whose Codex the uninstall hook of the copy in `extensionsDir` puts back. */
