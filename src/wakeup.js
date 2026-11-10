@@ -11,7 +11,7 @@
  * folder: the interval, the prompt, when it was set and when it expires, seven days later. Each window runs one timer
  * here. When a wake-up is due for a conversation this window's app-server has loaded (thread/loaded/list), the timer
  * puts the prompt in that conversation's queue (thread/queue/add), and Codex sends it as soon as the conversation is
- * idle, after any turn already running. A wake-up still waiting in the queue is not queued a second time.
+ * idle, after any turn already running.
  *
  * Requests go through hostRequest (src/patching.js) to this window's app-server. Conversations not loaded in any window
  * are not woken: a queued message would sit there and be sent whenever the conversation is next opened.

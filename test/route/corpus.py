@@ -2,11 +2,11 @@
 # Copyright (c) 2026, Xnerv Wang
 # All rights reserved.
 
-"""A made-up skill catalogue and requests against it, for measuring how well the skill search finds the right skill.
+"""Test data for the skill search: a made-up skill catalogue and requests against it.
 
 The skills imitate the shape of real ones: a
-hyphenated name, sometimes a plugin prefix, a description that says what the skill is for and ends with "Use when ..."
-and the phrases people type, some of them in Chinese. Several skills share words on purpose, so that a search has to
+hyphenated name, sometimes a plugin prefix, a description ending in a "Use when ..." clause with
+the phrases people type, some of them in Chinese. Several skills share words on purpose, so that a search has to
 weigh the name and the trigger phrases against the rest of the description.
 """
 

@@ -10,8 +10,8 @@
 
 test/parts/20b-skill-route.js runs it as part of the suite. Each case builds its own Codex home, home folder and plugin
 data directory under a temporary folder, with every AWS and proxy variable taken out of the environment, so nothing
-here reads the machine's own configuration or credentials. Bedrock is a local HTTP server that the code is pointed at
-through AWS_ENDPOINT_URL_BEDROCK_RUNTIME, and the credential command is a script that prints made-up keys. Network
+here reads the machine's own configuration or credentials. A local HTTP server stands in for Bedrock, reached through
+AWS_ENDPOINT_URL_BEDROCK_RUNTIME, and the credential command is a script that prints made-up keys. Network
 access, programs started and credential files opened are watched by guard/sitecustomize.py where a case says it never
 touches them.
 
