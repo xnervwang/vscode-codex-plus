@@ -1,5 +1,17 @@
 # Codex Plus
 
+## What it looks like
+
+A Codex conversation, with Agent Plus's work plan for it on the left:
+
+![A Codex conversation beside its work plan in Agent Plus](images/codex-plus-work-plan.png)
+
+The Codex sessions list in the Codex Plus sidebar:
+
+![The Codex sessions list](images/codex-plus-sessions.png)
+
+## Features
+
 | Feature | Where | Needs |
 | --- | --- | --- |
 | Codex conversations in the work plan, Conversations and Answer views | Agent Plus's views | Agent Plus (installed with this extension) |

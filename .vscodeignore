@@ -5,3 +5,7 @@ CONTRIBUTING.md
 *.vsix
 .github/**
 .gitignore
+
+# The README's screenshots. Packaging rewrites every relative image link to an absolute one on GitHub, so the copies
+# inside the package are never the ones displayed. The icon stays: the store reads that one from here.
+images/codex-plus-*.png
