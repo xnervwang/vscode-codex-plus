@@ -45,6 +45,8 @@
   var SCRIPT_VERSION = '1.0.1';
 
   var audio = null;
+  /* Set by the Chimes button until the setting it asked for comes back. */
+  var chimeAsked = false;
   /* The three sounds of Claude Code Extras, note for note and at its volume, so someone using both hears the same thing
      for the same event: rising for a finished turn, three equal notes for a permission, falling for a question. Each
      step is [frequency in Hz, start in s, length in s]. */
@@ -54,22 +56,60 @@
     question: [[1174, 0, 0.09], [880, 0.10, 0.16]],
   };
   var CHIME_GAIN = 0.05;
+  /* A context made before anyone has clicked or typed in the page starts suspended under the browser's autoplay rule
+     and plays nothing. Each chime resumes it first, and so does the first click or key in the page. A refused resume()
+     never settles, so the chime is dropped after RESUME_WAIT_MS rather than sounding at some later click. */
+  var RESUME_WAIT_MS = 300;
+  function audioCtx() {
+    var Ctor = globalThis.AudioContext || globalThis.webkitAudioContext;
+    if (!Ctor) return null;
+    if (!audio || audio.state === 'closed') { try { audio = new Ctor(); } catch (e) { audio = null; } }
+    return audio;
+  }
+  function unlockAudio() {
+    var ac = audioCtx();
+    if (ac && ac.state === 'suspended' && typeof ac.resume === 'function') { try { ac.resume(); } catch (e) { /* refused */ } }
+  }
+  try {
+    document.addEventListener('pointerdown', unlockAudio, true);
+    document.addEventListener('keydown', unlockAudio, true);
+  } catch (e) { /* no document events */ }
+  /* The host writes a line for the page's first chime and for each one that was not heard. */
+  var toldChime = false;
+  function tellChime(kind, state) {
+    if (toldChime && state === 'running') return;
+    toldChime = true;
+    post({ kind: 'chime', sound: String(kind), state: String(state) });
+  }
   function chime(kind) {
-    try {
-      audio = audio || new (globalThis.AudioContext || globalThis.webkitAudioContext)();
-      var steps = TONES[kind] || TONES.done, t0 = audio.currentTime;
-      steps.forEach(function (step) {
-        var at = t0 + step[1], dur = step[2];
-        var o = audio.createOscillator(), g = audio.createGain();
-        o.type = 'sine';
-        o.frequency.setValueAtTime(step[0], at);
-        g.gain.setValueAtTime(0.0001, at);
-        g.gain.exponentialRampToValueAtTime(CHIME_GAIN, at + 0.012);
-        g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
-        o.connect(g); g.connect(audio.destination);
-        o.start(at); o.stop(at + dur + 0.02);
-      });
-    } catch (e) { /* no audio here */ }
+    var ac = audioCtx();
+    if (!ac) { tellChime(kind, 'unavailable'); return; }
+    var play = function () {
+      try {
+        var steps = TONES[kind] || TONES.done, t0 = ac.currentTime;
+        steps.forEach(function (step) {
+          var at = t0 + step[1], dur = step[2];
+          var o = ac.createOscillator(), g = ac.createGain();
+          o.type = 'sine';
+          o.frequency.setValueAtTime(step[0], at);
+          g.gain.setValueAtTime(0.0001, at);
+          g.gain.exponentialRampToValueAtTime(CHIME_GAIN, at + 0.012);
+          g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+          o.connect(g); g.connect(ac.destination);
+          o.start(at); o.stop(at + dur + 0.02);
+        });
+      } catch (e) { /* no audio here */ }
+      tellChime(kind, ac.state);
+    };
+    if (ac.state !== 'suspended' || typeof ac.resume !== 'function') { play(); return; }
+    var settled = false;
+    var go = function () {
+      if (settled) return;
+      settled = true;
+      if (ac.state === 'running') play(); else tellChime(kind, ac.state);
+    };
+    try { Promise.resolve(ac.resume()).then(go, go); } catch (e) { go(); }
+    setTimeout(go, RESUME_WAIT_MS);
   }
 
   /*
@@ -271,7 +311,7 @@
       infoBtn = barButton('About this conversation: its thread id, the process of Codex\'s server, the folder it '
         + 'started in, its rollout and size, the context in use and the tokens it used. Click a value to copy it.', toggleInfo);
       infoBtn.appendChild(infoIcon());
-      muteBtn = barButton('Chimes', function () { post({ kind: 'toggleChime' }); });
+      muteBtn = barButton('Chimes', function () { chimeAsked = true; post({ kind: 'toggleChime' }); });
       muteBtn.appendChild(noteIcon());
       bar.appendChild(infoBtn);
       bar.appendChild(muteBtn);
@@ -1626,10 +1666,13 @@
       if (m.tool) timer = setInterval(draw, 1000);
       if (document.body) draw(); else document.addEventListener('DOMContentLoaded', draw);
     } else if (m.type === 'codex-extras-view') {
+      var wasOn = view.chime !== false;
       view = { timestamps: m.timestamps !== false, navigation: m.navigation !== false,
         userColor: typeof m.userColor === 'string' ? m.userColor : '', userEdge: m.userEdge !== false,
         lowContext: m.lowContext !== false, replyFigures: m.replyFigures !== false, buttons: m.buttons !== false,
         chime: m.chime !== false };
+      /* Turned on from this page's own button: one chime, so the user hears at once whether sound comes out. */
+      if (chimeAsked) { chimeAsked = false; if (!wasOn && view.chime) chime('done'); }
       ready();
       placeBar();
     } else if (m.type === 'codex-extras-user-times') {

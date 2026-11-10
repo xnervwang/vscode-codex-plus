@@ -558,6 +558,15 @@ function settle(now) {
  * watcher of its own. It runs on a conversation change and when a panel appears, and reads nothing that drawing the
  * figures did not already read.
  */
+/* What a page's report of a chime says, by the state of its audio context. */
+const CHIME_STATES = {
+  running: 'the audio context is running',
+  suspended: 'the audio context is suspended, so nothing was heard',
+  interrupted: 'the audio context was interrupted, so nothing was heard',
+  closed: 'the audio context is closed, so nothing was heard',
+  unavailable: 'this page has no audio, so nothing was heard',
+};
+
 async function refreshPanels() {
   if (!deps || !state.active) return;
   const { vscode, source, context } = deps;
@@ -732,6 +741,12 @@ function installHooks() {
       if (row) deps.copy(row.value, row.label);
     }
     if (msg && msg.kind === 'toggleChime' && deps && typeof deps.toggleChime === 'function') deps.toggleChime();
+    /* A page's first chime, and each one that could not be heard. Only words of this table reach the log. */
+    if (msg && msg.kind === 'chime' && deps && deps.log) {
+      const sound = ['done', 'approval', 'question'].includes(msg.sound) ? msg.sound : 'other';
+      const said = CHIME_STATES[msg.state] || 'the audio context is in a state this extension does not know, so nothing may have been heard';
+      deps.log(`chime ${sound}: ${said}`);
+    }
     /* A page that has turns and recognised none of the messages in them, or no message box. Only numbers and flags
        come with it. */
     if (msg && msg.kind === 'anchorsMissing') {
