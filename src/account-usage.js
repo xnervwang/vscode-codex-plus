@@ -4,16 +4,16 @@
 
 'use strict';
 /*
- * ACCOUNT & USAGE at the top of the session list, as Claude Code's list has it: how Codex is signed in, and, only when
- * Codex has the figures, the share of each rate-limit window used and the tokens spent. No amount of money is shown.
+ * ACCOUNT & USAGE at the top of the session list, as in Claude Code's list: the sign-in, plus each rate-limit window's
+ * share used and the tokens spent when Codex reports them. Prices and credit balances are left out.
  *
- * Each time the list comes into view it asks this window's app-server, on Codex's own connection, for account/read,
- * account/rateLimits/read and account/usage/read, at most once every RELOAD_MS; between those it only merges the
- * account/rateLimits/updated and account/updated notifications Codex's app-server sends anyway. Nothing is asked
- * without that connection: a short-lived app-server would have to sign in and reach the network to answer.
+ * load() runs when the list comes into view and sends account/read, account/rateLimits/read and account/usage/read on
+ * Codex's own connection, at most once per RELOAD_MS. In between, heard() merges the account/rateLimits/updated and
+ * account/updated notifications. Without that connection it sends nothing, because a short-lived app-server would have
+ * to sign in and go to the network.
  *
- * Codex answers account/rateLimits/read for an Amazon Bedrock account with an error, as its own /status shows
- * "Rate limit: Unavailable", so for such an account the section has the Account line alone.
+ * For an Amazon Bedrock account Codex answers account/rateLimits/read with an error (its /status prints "Rate limit:
+ * Unavailable"), so the section shows the Account line only.
  */
 const RELOAD_MS = 60e3;
 
@@ -43,9 +43,8 @@ function mergeLimits(into, over) {
 const hasWindow = (w) => !!(w && typeof w.usedPercent === 'number' && Number.isFinite(w.usedPercent));
 
 /*
- * What the section draws, or null when there is nothing to say: { account: [{ label, value }], windows: [{ name, usedPercent, resetsAt }],
- * tokens: [{ label, value }] }. resetsAt is in seconds since the epoch, for the page to write in the reader's zone,
- * which is the zone its browser runs in.
+ * The section's contents, or null with no known account: { account: [{ label, value }], windows: [{ name, usedPercent,
+ * resetsAt }], tokens: [{ label, value }] }. resetsAt is in seconds since the epoch; the page formats it.
  */
 function viewOf({ account, limits, usage }, today = new Date().toISOString().slice(0, 10)) {
   if (!account || !ACCOUNT_KINDS[account.type]) return null;
@@ -72,7 +71,7 @@ function viewOf({ account, limits, usage }, today = new Date().toISOString().sli
 
 /*
  * `ask(method, params, { fallback: false })` sends on Codex's connection and resolves to { outcome, result };
- * `onChange()` is called when what the section draws may have changed.
+ * `onChange()` is called when viewOf's result changes.
  */
 function createAccountUsage({ ask, onChange = () => {}, now = Date.now }) {
   const st = { account: null, limits: null, usage: null };

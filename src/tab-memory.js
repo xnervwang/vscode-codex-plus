@@ -17,11 +17,11 @@
  * A tab closed while the window could not reach the extension host is not recorded as closed, and comes back at the next
  * start; closing it again once connected is the remedy.
  *
- * A tab's URI names the conversation it was opened on, and nothing for a tab opened with a New button; a page that
- * starts another conversation leaves the URI as it was. What the tab showed when it closed comes from the patch, which
- * reports the conversation of each panel it disposes (panelClosed). VS Code reports the closed tab and disposes its panel
- * in either order, so each side keeps what the other may still need. A panel disposed with no Codex tab closed within
- * CLOSE_PAIR_MS, as when the window shuts down, is not a tab the user closed.
+ * A tab's URI names the conversation it was opened on, or none for a tab opened with a New button, and it does not
+ * change when the page starts another conversation. So the conversation a closed tab showed comes from the patch, which
+ * reports each panel it disposes (panelClosed). The tab-closed event and the panel disposal can arrive in either order;
+ * whichever comes first is held for the other. A disposal with no Codex tab closed within CLOSE_PAIR_MS, as on window
+ * shutdown, is ignored.
  */
 const tabs = require('./codex-tabs');
 
@@ -146,8 +146,8 @@ class TabMemory {
   }
 
   /*
-   * The patch disposed a panel that showed `thread`, opened on `opened`. Recorded at once when a Codex tab closed just
-   * before; otherwise kept for the tab event that should follow.
+   * The patch disposed a panel that showed `thread` and was opened on `opened`. Recorded now if a Codex tab closed just
+   * before, otherwise held until the tab event arrives.
    */
   panelClosed(thread, opened) {
     if (!thread) return;

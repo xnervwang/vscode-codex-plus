@@ -4,11 +4,10 @@
 
 'use strict';
 /*
- * The session list's page, src/page/sessions-page.js itself, run on the stand-in DOM of test/fake-dom.js and sent
- * models as the extension host sends them. What a drawn page shows - sizes, colours, where the time sits - is the render
- * check's (test/render/run.js, scene sessions); this holds what the page does: which sections it draws, that a model it
- * already has changes nothing, that one changed row is one row rewritten, filtering and searching, the keys, the hover,
- * dragging onto a group, editing a title, and what it tells the host.
+ * src/page/sessions-page.js run on the stand-in DOM of test/fake-dom.js, fed models the way the host posts them. Sizes,
+ * colours and layout are checked by the render check's sessions scene (test/render/run.js). This part checks behaviour:
+ * the sections drawn, no DOM writes for a repeated model, one row rewritten for one changed row, filters and search,
+ * keys, the hover box, dropping rows on a group, inline rename, and the messages sent to the host.
  */
 const fs = require('fs');
 const path = require('path');

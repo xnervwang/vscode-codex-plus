@@ -2,9 +2,9 @@
    Copyright (c) 2026, Xnerv Wang
    All rights reserved. */
 
-/* The Codex session list (src/page/sessions-page.js). Sizes follow Claude Code's own list: 28 px rows with 6 px corners
-   and 8 px between their parts, 8 px dots, 26 px headers, section labels in capitals at 0.85em, group names at 0.9em.
-   Every colour is a theme variable. */
+/* Styles for the Codex session list (src/page/sessions-page.js). Sizes match Claude Code's list: 28 px rows with 6 px
+   corners and an 8 px gap, 8 px dots, 26 px headers, 0.85em capitals for section labels, 0.9em for group names. Colours
+   come from VS Code theme variables. */
 html, body { margin: 0; padding: 0; height: 100%; }
 body { background: var(--vscode-sideBar-background); color: var(--vscode-foreground); overflow: hidden; }
 .cp-root {

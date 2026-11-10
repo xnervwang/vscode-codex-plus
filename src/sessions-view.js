@@ -4,27 +4,26 @@
 
 'use strict';
 /*
- * The Codex session list: every conversation of this workspace, laid out as Claude Code's own list with Claude Code
- * Plus lays out its own.
+ * The Codex session list: every conversation of this workspace, in the layout of Claude Code's list with the sections
+ * Claude Code Plus adds.
  *
- *   ACCOUNT & USAGE       how Codex is signed in, and its usage when Codex has the figures (src/account-usage.js)
+ *   ACCOUNT & USAGE       the sign-in, and usage when Codex reports it (src/account-usage.js)
  *   RECENTLY CLOSED       tabs closed in this workspace, newest first (collapsed)
- *   OPEN SESSIONS         the Codex tabs of this window and the conversation Codex's sidebar shows, the one last in front first
+ *   OPEN SESSIONS         this window's Codex tabs and the conversation in Codex's sidebar, most recently in front first
  *   SESSION MANAGER       New in tab and New in sidebar, the filter row, then the groups (Codex's sections,
  *                         src/session-groups.js) and Ungrouped
  *
- * A group the user made is drawn even while empty, so it can be found and filled; the others are left out while empty,
- * Codex's built-in Pinned section among them. An archived conversation is not listed: VS Code's Codex has no page that
- * shows one, so the list offers no way to archive either.
+ * Groups the user made are drawn even when empty, so a new one can take conversations dropped on it; the other groups,
+ * Codex's built-in Pinned section included, are hidden while empty. Archived conversations are not listed: VS Code's
+ * Codex has no page that lists them, so the list does not archive either.
  *
  * Like Claude Code's list, it holds this workspace's conversations only, and every conversation in a window with no
  * folder open. The workspace filter compares real paths (src/folders.js): the same directory reached through a symbolic
  * link used to match nothing, and the whole view came up empty with no reason shown.
  *
- * The list is a webview view drawn by src/page/sessions-page.js. Grouping, the dots and the time text are worked out
- * here, from the snapshot already in memory, into a model of plain values (SessionsModel.model); filtering and searching
- * are done by the page on that model. Nothing here reads a file. The model is posted only when it changed and the view
- * is visible, and the page redraws only the rows that changed. The view keeps no page while hidden.
+ * The list is a webview view drawn by src/page/sessions-page.js. SessionsModel turns the in-memory snapshot into plain
+ * values (groups, dots, time text) without reading files; the page filters and searches that model. SessionsView posts
+ * the model only when it changed and the view is visible.
  *
  * Conversations whose rollout was not read carry no status dot until their group is expanded, which is the only moment
  * their rollout is asked for; the answer comes back on the next scheduled poll (SessionsModel.expanded).
@@ -203,8 +202,8 @@ class SessionsModel {
     try { front = this.frontOf() || ''; } catch (_) { front = ''; }
     const row = (t, where) => {
       const here = open.has(t.id) || t.id === this.sidebarNow;
-      /* A conversation whose rollout the user has not read gets no status dot rather than a wrong one: not read is
-         not the same as idle, and reading every old rollout to colour a dot is what the window must not pay for. */
+      /* No dot for a conversation whose rollout has not been read: unread state is unknown, not idle, and reading
+         every old rollout just to colour dots costs too much. */
       const conv = this.stateOf(t.id);
       const dot = this.reader.state(t.id) ? lookKey(conv, here) : 'unknown';
       return { id: t.id, title: t.title || '(untitled)', time: dateSpan(t.createdMs, t.updatedMs, now), dot,
@@ -238,8 +237,8 @@ class SessionsModel {
 }
 
 /*
- * The webview view itself. It keeps no page while hidden (no retainContextWhenHidden): a page that comes back asks for
- * the model and is sent the one in memory. `receive(msg)` is given each message the page sends.
+ * The webview view. Without retainContextWhenHidden VS Code drops the page while the view is hidden; a page that comes
+ * back sends `ready` and is posted the model in memory. `receive(msg)` gets every message the page sends.
  */
 const PAGE_FILES = ['sessions-page.js', 'sessions-page.css'];
 class SessionsView {

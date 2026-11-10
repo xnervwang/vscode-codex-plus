@@ -60,8 +60,8 @@
     'quickInput-foreground': '#cccccc', 'chat-requestBackground': 'rgba(31,31,31,0.62)',
   };
   var root = document.documentElement;
-  /* Set one by one through the style object, which a content policy without 'unsafe-inline' still allows, as the
-     session list's page has; a style attribute it would refuse. */
+  /* setProperty rather than a style attribute: the session list's page has a content policy without 'unsafe-inline',
+     which blocks the attribute but not the style object. */
   Object.keys(THEME).forEach(function (k) { root.style.setProperty('--vscode-' + k, THEME[k]); });
   root.style.colorScheme = 'dark';
   /* VS Code adds these to <body> once it exists; the layout sample shows the two Codex's tab had. */

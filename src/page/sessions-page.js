@@ -3,17 +3,17 @@
 // All rights reserved.
 
 /*
- * The page of the Codex session list (src/sessions-view.js SessionsView). The extension host sends the list as a model
- * of plain values ({ type: 'model' }) only when it changed; the page draws it in Claude Code's layout, with Claude Code
- * Plus's OPEN SESSIONS and RECENTLY CLOSED above the session manager.
+ * Page script for the Codex session list webview (src/sessions-view.js SessionsView). The host posts { type: 'model' }
+ * whenever the list changes. The page lays it out like Claude Code's list, with Claude Code Plus's OPEN SESSIONS and
+ * RECENTLY CLOSED above the session manager.
  *
- * Drawing is incremental: every row, group and section is kept by its key and only what differs is written, so a model
- * that changed one row moves one row. Filtering and searching run over the model the page already holds and touch only
- * the rows whose visibility changes. Nothing here reads a file or asks the host for anything but the actions the user
- * takes; the only timer is the hover box's delay.
+ * Elements are kept per key (row id, group key) and reused, and a field is written only when its value differs, so a
+ * model in which one row changed touches that row alone. Filters and search run over the model already in the page and
+ * toggle only rows whose visibility changes. Messages to the host carry user actions only. The hover delay is the
+ * page's only timer.
  *
- * What the user sets - which sections and groups are collapsed, the status filter, Active and the search text - is
- * kept with the webview's own state, so it survives the page being dropped while the view is hidden.
+ * Collapsed sections and groups, the status filter, Active and the search text are saved with setState, so they survive
+ * VS Code dropping the page while the view is hidden.
  */
 (function () {
   'use strict';

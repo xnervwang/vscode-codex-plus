@@ -4,11 +4,11 @@
 
 'use strict';
 /*
- * What the session list draws, held to Claude Code's list with Claude Code Plus: no Pinned group (Codex keeps no pin
- * the list could show, and nothing ages out of it to pin against), no Background group, no Archived sessions (Codex
- * neither archives nor cleans up by itself, and VS Code's Codex has no page where an archived conversation could be
- * found again, so archiving is not offered either), a hover of two lines, an Open sessions that is left out while empty
- * and a group made by the user that is drawn even when empty.
+ * Which groups the session list draws, compared with Claude Code's list and Claude Code Plus. There is no Pinned group:
+ * Codex keeps no pin flag the list could show and deletes nothing old that a pin would protect. There is no Background
+ * group. There is no Archived sessions: Codex never archives or deletes on its own, and VS Code's Codex has no page that
+ * lists archived conversations, so the list cannot archive either. Rows carry the two hover lines, Open sessions is
+ * hidden while empty, and a group the user made is drawn even when empty.
  */
 const fs = require('fs');
 const path = require('path');

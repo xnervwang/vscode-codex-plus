@@ -13,9 +13,9 @@
  * of script goes wrong: the timers so a debounce can be stepped through, the observer so the records it is handed can
  * be chosen, including the records the script's own writes generate).
  *
- * It also carries what the session list's page (src/page/sessions-page.js) uses on top of that: classList.toggle,
- * dataset, append and replaceChildren, contentEditable, getElementById, and bubble(), which hands an event to an element
- * and then to each of its ancestors, as a click reaches a listener on the page's root.
+ * For the session list's page (src/page/sessions-page.js) it also has classList.toggle, dataset, append,
+ * replaceChildren, contentEditable, getElementById, and bubble(), which calls an element's listeners and then its
+ * ancestors', the way a click reaches a listener on the page's root.
  *
  * The selector engine takes a comma-separated list of selectors, each a chain of `tag`, `*`, `.class`,
  * `[attr]`/`[attr="value"]` and `:not(...)` pieces joined by spaces for descendant, which is every selector that

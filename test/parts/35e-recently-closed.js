@@ -4,10 +4,10 @@
 
 'use strict';
 /*
- * Recently closed records the conversation a closed Codex tab was showing. The tab's URI names it only for a tab opened
- * on that conversation; a tab opened with a New button keeps /extension/panel/new, and a tab whose page started another
- * conversation keeps naming the old one. The patch knows what each panel shows, so its panel's disposal is what names
- * the conversation, whichever of the two events VS Code delivers first.
+ * Recently closed records the conversation a closed Codex tab was showing. The tab's URI is right only for a tab opened
+ * on that conversation: a tab opened with a New button keeps /extension/panel/new, and one whose page started another
+ * conversation still names the first. The patch reports what each disposed panel showed, and that is recorded whichever
+ * of the two events VS Code sends first.
  */
 const fake = require('../fake-vscode');
 

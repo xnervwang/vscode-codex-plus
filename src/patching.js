@@ -800,8 +800,9 @@ async function refreshPanels() {
 }
 
 /*
- * Told when a handed-over panel goes away, with the conversation it showed and the one its tab's URI named ('' for
- * either that is not known): the only record of what a New tab held, since its URI names nothing.
+ * Listeners called when a handed-over panel is disposed, with the conversation it showed and the one its tab's URI
+ * named ('' when not known). A tab opened with a New button names nothing in its URI, so this is the only way to learn
+ * what it held.
  */
 const onClosed = new Set();
 function onPanelClosed(fn) {

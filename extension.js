@@ -224,8 +224,8 @@ async function activate(context) {
     stateOf: (id) => lastConversations.get(id), wantState: (ids) => source.wantState(ids),
     sidebarShowing: () => patching.sidebarShowing(), sections: () => new Map(groups.list()),
     account: () => account.view(), front: frontNow, noGroups: () => groups.supported() === false });
-  /* Whether this Codex can make groups is asked on Codex's own connection once the list is on screen, and never by
-     starting an app-server for it; until it is known the group commands are offered. */
+  /* Once the list is visible, check for the section methods over Codex's own connection, never through a short-lived
+     app-server. Until the answer is in, the group commands stay offered. */
   let sessionsView = null;
   const probeGroups = () => {
     if (groups.supported() !== null || !sessionsView || !sessionsView.visible) return;
@@ -572,8 +572,8 @@ function registerCommands(context, { source, memory, sessionsModel, sessionsView
     await changeThread('rename it', 'thread/name/set', { threadId: id, name: name.trim() });
   });
   /*
-   * The groups. A command run before this Codex is known to have them asks first; one without them is told so, and the
-   * commands are then no longer offered.
+   * Group commands. If it is not yet known whether this Codex has sections, groupsHere() checks first. When it has
+   * none, the user is told, and setting codexPlus.noGroups hides the commands.
    */
   const groupsHere = async () => {
     const yes = await groups.probe({ fallback: true });
@@ -639,8 +639,8 @@ function registerCommands(context, { source, memory, sessionsModel, sessionsView
   });
   reg('markThreadUnread', (arg, selected) => { for (const id of chosen(arg, selected)) source.markUnread(id); });
   /*
-   * What the session list's page sends: a click on a row, its two new-conversation buttons and New group, a title or a
-   * group's name edited where it is drawn, and rows dropped on a group. Each is done as the matching command does it.
+   * Messages from the session list's page: a row clicked, New in tab, New in sidebar, New group, an inline rename of a
+   * title or a group, and rows dropped on a group. Each one does what the matching command does.
    */
   sessionsView.receive = async (msg) => {
     const id = typeof msg.id === 'string' ? msg.id : '';

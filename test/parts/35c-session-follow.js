@@ -4,10 +4,10 @@
 
 'use strict';
 /*
- * The Codex session list as a webview view: what the extension host sends its page and when. The page is sent the model
- * when it asks (a page that comes back after the view was hidden asks again), and afterwards only when the model
- * changed and the view is visible. Like Claude Code's list, the model names the conversation in front, which the page
- * draws as the current one. The page's clicks and drops arrive as messages and are done as the matching command does.
+ * The Codex session list as a webview view: what the host posts to the page, and when. The page gets the model when it
+ * sends `ready` (again after VS Code dropped it while hidden), then only when the model changed and the view is
+ * visible. As in Claude Code's list, the model names the conversation in front for the page to highlight. Clicks and
+ * drops come in as messages and run the matching commands.
  */
 const path = require('path');
 const fake = require('../fake-vscode');

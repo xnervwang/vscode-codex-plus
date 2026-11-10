@@ -4,13 +4,12 @@
 
 'use strict';
 /*
- * The render check's `sessions` scene: the session list's own page (src/page/sessions-page.js, under the content
- * policy src/sessions-view.js gives it) drawn in a headless Chromium at a sidebar's width, with the Dark Modern theme's
- * variables and a stand-in for VS Code's webview API (harness/vscode-stub.js). It is sent made-up models as the
- * extension host sends them, and asserts what only a drawn page shows: Claude Code's sizes, the time at the right edge,
- * the rename button in the time's place on hover, the two new-conversation buttons side by side, and how long drawing
- * and searching take with 200 and 1000 rows. It also reads the renderer's memory, with the list on screen and for a
- * blank page. No Codex is needed.
+ * The render check's `sessions` scene. It loads src/page/sessions-page.js, with the content policy src/sessions-view.js
+ * sets, in a headless Chromium at sidebar width, using the Dark Modern theme variables and the webview API stand-in in
+ * harness/vscode-stub.js. It posts made-up models and checks layout that only a real browser computes: Claude Code's
+ * sizes, the time flush right, the rename button replacing the time on hover, the two new-conversation buttons side by
+ * side, and draw and search times at 200 and 1000 rows. It also reads the renderer's memory with the list shown and with
+ * a blank page. It needs no Codex.
  */
 const fs = require('fs');
 const path = require('path');

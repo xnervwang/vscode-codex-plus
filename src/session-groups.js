@@ -4,16 +4,16 @@
 
 'use strict';
 /*
- * The groups of the Codex session list are Codex's own sections, made, renamed and removed through its app-server's
- * threadSection methods, and a conversation joins or leaves one with thread/section/move. Codex keeps no order for its
- * sections, so the order is kept here, in globalState: a group made here goes last, as in Claude Code's list, and one
- * made elsewhere comes after the ones whose place is known.
+ * Session list groups are Codex sections: threadSection/create, /update and /delete manage them, and
+ * thread/section/move puts a conversation in one or takes it out. Codex stores no section order, so ORDER_KEY in
+ * globalState does. create() appends to it, which puts a new group last as Claude Code's list does; sections made in
+ * another client are not in it and follow the stored ones.
  *
- * Codex's built-in Pinned section is where its desktop app puts a pinned conversation. It is not a group the user made,
- * so it is never offered as a place to move to, and it is drawn only while it holds something.
+ * Codex's desktop app pins a conversation by moving it into the built-in Pinned section. choices() leaves that section
+ * out, and the list draws it only when it is not empty.
  *
- * Whether this Codex has the methods at all is asked once, with threadSection/list; an app-server that answers
- * `unknown variant` has none of them, and the commands are then not offered.
+ * probe() sends threadSection/list once. An app-server that answers `unknown variant` lacks all of these methods, and
+ * the group commands are hidden.
  */
 const PINNED_SECTION = '01984de2-8f74-7c91-a3b2-5c5e937cf318';
 const ORDER_KEY = 'codexPlus.groupOrder';
@@ -99,11 +99,11 @@ function createGroups({ ask, sections, memento }) {
 }
 
 /*
- * Start New Session in This Group: Codex has no way to start a conversation in a section, so the conversation is moved
- * there once it exists. That is when its first message has been sent and it reaches the snapshot. The candidate is the
- * oldest conversation in no group made since the command ran, one shown in a panel of this window first; it is looked
- * for on each redraw of the list, and the wait ends after PLACE_MS. `threads()` is the snapshot, `shown()` the
- * conversations this window's panels show, `move(ids, sectionId)` as createGroups's.
+ * Start New Session in This Group. Codex cannot start a conversation inside a section, so the new conversation is moved
+ * there after its first message, when it first shows up in the snapshot. check() runs on each redraw of the list and
+ * takes the oldest ungrouped conversation created since start(), preferring one that a panel in this window shows; it
+ * stops looking after PLACE_MS. `threads()` returns the snapshot, `shown()` the conversations this window's panels show,
+ * and `move(ids, sectionId)` is createGroups().move.
  */
 const PLACE_MS = 30 * 60e3;
 function createPlacer({ threads, shown, move, now = Date.now }) {

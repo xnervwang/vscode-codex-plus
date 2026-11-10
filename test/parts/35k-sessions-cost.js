@@ -4,9 +4,9 @@
 
 'use strict';
 /*
- * What the session list costs, held to limits far above what it measures, so that a change that makes it slow by
- * scanning more than it should fails here (CONTRIBUTING.md, Cost budget). The page's own drawing and searching are
- * timed in a real browser by the render check (test/render/lib/sessions-scene.js).
+ * Time limits on the session list's host-side work, set far above the measured times, so a change that starts scanning
+ * too much fails here (CONTRIBUTING.md, Cost budget). Drawing and searching in the page are timed in a real browser by
+ * the render check (test/render/lib/sessions-scene.js).
  */
 const path = require('path');
 const fake = require('../fake-vscode');
