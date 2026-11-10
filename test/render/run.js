@@ -332,6 +332,26 @@ function selfchecked(r, where, { turns, users, rows, replies = turns }) {
       results.scenes.conversation.handleHover = hover;
       const opaque = /rgb\(/.test(hover.color) || (/rgba\([^)]*,\s*1\)/.test(hover.color));
       check(opaque, 'the rail handle is opaque while hovered', hover);
+      /* The handle explains itself in a box of this script's own, and a row of the list shows its time and opening
+         characters in a box beside the list, as Claude Code Plus draws them. */
+      await s.b.hover(10, 10);
+      await s.b.hover(handle[0], handle[1]);
+      await sleep(200);
+      const label = await s.b.evaluate(`(() => { const b = document.querySelector('[data-codex-extras="label"]'); return b ? b.textContent : null; })()`);
+      await shot(s, 'rail-handle-hover');
+      check(/Your messages in this conversation/.test(label || ''), 'conversation: resting on the rail\'s handle shows its explanation in a box of this script\'s own', label);
+      const row = await centre(s, '[data-codex-extras="nav-row"]');
+      if (row) {
+        await s.b.hover(row[0], row[1]);
+        await sleep(300);
+        const tip = await s.b.evaluate(`(() => { const t = document.querySelector('[data-codex-extras="nav-tip"]'); const p = document.querySelector('.codex-extras-panel');
+          if (!t || !p) return null; const a = t.getBoundingClientRect(), b = p.getBoundingClientRect();
+          return { text: t.textContent.slice(0, 60), right: Math.round(a.right), panelLeft: Math.round(b.left), panelWidth: Math.round(b.width), top: Math.round(a.top) }; })()`);
+        results.scenes.conversation.rowTip = tip;
+        await shot(s, 'list-row-hover');
+        check(!!tip && /^\d\d:\d\d/.test(tip.text) && tip.right <= tip.panelLeft && tip.panelWidth === 280,
+          'conversation: resting on a row of the 280-wide list shows its time and words in a box to the left of the list', tip);
+      }
       await s.b.click(handle[0], handle[1]);
       await s.b.hover(10, 10);
     }

@@ -210,8 +210,10 @@ module.exports = async ({ ok, bad, eq, note, tmp, root }) => {
   eq(rows.length, 3, 'the list has one row per message of the user\'s');
   eq(rows.map((r) => r.textContent), ['22:35rebase onto the release branch before Friday', '22:39:02and the tests?', '22:44:30ship it'],
     'each row is that message\'s time and its opening words, in the order the conversation has them');
-  eq(rows[0].getAttribute('title').includes('rebase onto the release branch'), true,
-    'and the whole opening sentence is on the row for hovering, since a row is one line wide');
+  rows[0].dispatch('mouseenter', {});
+  eq((dom.document.root.querySelectorAll('[data-codex-extras="nav-tip"]')[0] || {}).textContent.includes('rebase onto the release branch'), true,
+    'and the whole opening sentence is in the box hovering over the row shows, since a row is one line wide');
+  rows[0].dispatch('mouseleave', {});
   /* The newest message is re-read on every pass, since it can still be arriving; the ones before it are not, because
      reading one walks its whole subtree and the answer no longer changes. */
   three.bubble.querySelector('span').textContent = 'ship it today';

@@ -1130,7 +1130,8 @@
    */
   var TIMED_ATTR = MARK + '-timed';
   var DEBOUNCE_MS = 200, STEP_HOLD_MS = 600;
-  var RAIL_W = 26, PANEL_W = 300;
+  /* As wide as Claude Code Plus makes its list, with as many characters of each message a row. */
+  var RAIL_W = 26, PANEL_W = 280, ROW_CHARS = 44;
   /* Under Codex's overlays, as the row below the message box is (Z_BELOW_CODEX); the list one above the rail. */
   var Z_PANEL = 26, Z_RAIL = 25;
 
@@ -1621,16 +1622,87 @@
     try { panel.scrollTop = panel.scrollHeight; } catch (e) { /* no box */ }
     mirror();
   };
-  var closeList = function () { if (panel) panel.style.display = 'none'; mirror(); };
+  var closeList = function () { if (panel) panel.style.display = 'none'; hideTip(); mirror(); };
+
+  /*
+   * The box beside the list for the row under the pointer, as Claude Code Plus draws it: the row's time and its first
+   * TIP_CHARS characters, at once rather than after the delay of a native title. Made on hover and taken out on leave or
+   * click. It goes to the left of the list, level with the row; in a page too narrow for that, as Codex's sidebar can be,
+   * over the list just below the row.
+   */
+  var TIP_CHARS = 220, TIP_W = 360, TIP_ROOM = 160, tipBox = null;
+  function hideTip() { tipBox = gone(tipBox); }
+  function showTip(row, text) {
+    hideTip();
+    if (!document.body || !text) return;
+    var box = document.createElement('div');
+    box.setAttribute(MARK, 'nav-tip');
+    box.style.cssText = 'position:fixed;z-index:' + Z_BELOW_CODEX_BOX + ';pointer-events:none;max-width:' + TIP_W + 'px;max-height:40vh;'
+      + 'overflow:hidden;padding:6px 9px;border-radius:4px;box-sizing:border-box;font:11px var(--vscode-font-family,sans-serif);line-height:1.45;'
+      + 'white-space:pre-wrap;word-break:break-word;background:var(--vscode-editorHoverWidget-background,rgba(30,30,30,.98));'
+      + 'color:var(--vscode-editorHoverWidget-foreground,#ddd);border:1px solid var(--vscode-editorHoverWidget-border,rgba(255,255,255,.18));'
+      + 'box-shadow:0 2px 8px rgba(0,0,0,.4);';
+    box.textContent = text;
+    document.body.appendChild(box);
+    var r = rectOf(row), p = rectOf(panel), vw = +globalThis.innerWidth || 0, vh = +globalThis.innerHeight || 0;
+    var h = (rectOf(box) || {}).height || 60, room = p ? (p.left || 0) - 16 : 0;
+    if (r && p && room >= TIP_ROOM) {
+      box.style.maxWidth = Math.min(TIP_W, room) + 'px';
+      box.style.right = Math.round(vw - (p.left || 0) + 8) + 'px';
+      box.style.top = Math.round(Math.min(Math.max(8, (r.top || 0) - 6), Math.max(8, vh - h - 8))) + 'px';
+    } else if (r) {
+      box.style.left = Math.round((p ? p.left : r.left) || 0) + 'px';
+      box.style.width = Math.round((p ? p.width : r.width) || 0) + 'px';
+      box.style.top = Math.round(bottomOf(r) + 2) + 'px';
+    }
+    tipBox = box;
+  }
 
   /*
    * scrollIntoView rather than an arithmetic scrollTop: the container is Codex's own and carries its own scroll padding
    * for its sticky header, which scrollIntoView honours and a computed position does not.
    */
-  function landOn(node) {
-    if (!node) return;
+  function scrollToNode(node) {
     try { node.scrollIntoView({ block: 'start', behavior: 'auto' }); return; } catch (e) { /* older signature */ }
     try { node.scrollIntoView(true); } catch (e) { /* gone */ }
+  }
+  /*
+   * A jump to a message, held there for about a second as Claude Code Plus holds its own: Codex's turn list mounts and
+   * measures turns while the view moves, which can push the message away from where the jump put it. Every SETTLE_MS
+   * the message's place in the scroller is compared with where the jump left it, and it is put back while it is more
+   * than LAND_TOL away, until it has stayed there twice or SETTLE_TRIES have passed. A wheel, a touch or a key is the
+   * user scrolling, and ends the hold at once; the key's listener is added on the next tick, since a jump made by the
+   * , or . key starts while that key's own event is still on its way up.
+   */
+  var SETTLE_MS = 80, SETTLE_TRIES = 14, LAND_TOL = 6, holdStop = null;
+  function topIn(node) {
+    var a = rectOf(node), b = rectOf(scrollerEl());
+    return a ? (a.top || 0) - (b ? b.top || 0 : 0) : 0;
+  }
+  function landOn(node) {
+    if (!node) return;
+    if (holdStop) holdStop();
+    scrollToNode(node);
+    var want = topIn(node), tries = 0, still = 0, timer = 0, arm = 0, sc = scrollerEl();
+    var stop = function () {
+      if (timer) clearTimeout(timer);
+      if (arm) clearTimeout(arm);
+      timer = arm = 0;
+      if (holdStop === stop) holdStop = null;
+      if (sc) { try { sc.removeEventListener('wheel', stop); sc.removeEventListener('touchstart', stop); } catch (e) { /* gone */ } }
+      try { document.removeEventListener('keydown', stop, true); } catch (e) { /* gone */ }
+    };
+    var tick = function () {
+      timer = 0;
+      if (holdStop !== stop) return;
+      if (node.isConnected === false || ++tries > SETTLE_TRIES) { stop(); return; }
+      if (Math.abs(topIn(node) - want) <= LAND_TOL) { if (++still >= 2) { stop(); return; } } else { still = 0; scrollToNode(node); }
+      timer = setTimeout(tick, SETTLE_MS);
+    };
+    holdStop = stop;
+    if (sc) { try { sc.addEventListener('wheel', stop, { passive: true }); sc.addEventListener('touchstart', stop, { passive: true }); } catch (e) { /* none */ } }
+    arm = setTimeout(function () { arm = 0; if (holdStop === stop) { try { document.addEventListener('keydown', stop, true); } catch (e) { /* none */ } } }, 0);
+    timer = setTimeout(tick, SETTLE_MS);
   }
 
   /* Which message the view is on now: the one whose top is nearest the top of the container. */
@@ -1669,8 +1741,8 @@
   function railButton(label, cls, onClick) {
     var b = document.createElement('div');
     b.setAttribute('class', 'codex-extras-rail-btn' + (cls ? ' ' + cls : ''));
-    b.setAttribute('title', label);
     b.setAttribute(MARK, 'nav-button');
+    labelled(b, label);
     b.addEventListener('click', function (ev) { try { ev.stopPropagation(); } catch (e) { /* none */ } onClick(); });
     return b;
   }
@@ -1732,6 +1804,7 @@
   }
 
   function dropNav() {
+    hideTip();
     if (nav) { try { nav.remove(); } catch (e) { /* gone */ } }
     nav = railBox = panel = rowsBox = filter = chevron = null;
     rows = []; navNodes = []; sigNodes = []; sigTexts = []; sigRules = '';
@@ -1834,6 +1907,7 @@
     sigNodes = nodes.slice();
     sigTexts = marks;
     sigRules = ruleSig;
+    hideTip();
     rowsBox.textContent = '';
     rows = [];
     var placeRules = function (upto) {
@@ -1845,7 +1919,6 @@
         var row = document.createElement('div');
         row.setAttribute('class', 'codex-extras-row');
         row.setAttribute(MARK, 'nav-row');
-        row.setAttribute('title', (when ? when + '\n' : '') + text.slice(0, 220));
         if (when) {
           var at = document.createElement('span');
           at.setAttribute('class', 'codex-extras-row-when');
@@ -1853,10 +1926,13 @@
           row.appendChild(at);
         }
         var body = document.createElement('span');
-        body.textContent = text.slice(0, 48);
+        body.textContent = text.slice(0, ROW_CHARS);
         row.appendChild(body);
+        row.addEventListener('mouseenter', function () { showTip(row, (when ? when + '\n' : '') + text.slice(0, TIP_CHARS)); });
+        row.addEventListener('mouseleave', hideTip);
         row.addEventListener('click', function (ev) {
           try { ev.stopPropagation(); } catch (e) { /* none */ }
+          hideTip();
           stepIdx = -1; stepAt = 0;
           landOn(node);
         });
