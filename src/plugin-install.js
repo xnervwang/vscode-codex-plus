@@ -414,6 +414,17 @@ function leftAfterRemoval(home) {
   return left;
 }
 
+/* Beside the copied plans, since nothing else in the Codex home says what the folder is. */
+const savedNote = (home) => `These are the work plans of the agent-work-plan plugin for Codex: one file per conversation,
+named by its thread id, holding what that conversation still had to do.
+
+Codex Plus copied them here when it removed the plugin from Codex, since removing a plugin may remove its data
+directory too. Nothing reads this folder; keep it or delete it.
+
+To use them again, install Codex Plus, which installs the plugin again, and copy these files back into
+${planDir(home)}
+`;
+
 /* Copies the plans out of `home` before an uninstall. '' when there are none; throws when they could not all be copied. */
 function savePlans(home, stamp = new Date().toISOString().replace(/[:.]/g, '-')) {
   const dir = planDir(home);
@@ -428,6 +439,7 @@ function savePlans(home, stamp = new Date().toISOString().replace(/[:.]/g, '-'))
   try {
     fs.mkdirSync(kept, { recursive: true });
     for (const n of plans) fs.copyFileSync(path.join(dir, n), path.join(kept, n));
+    fs.writeFileSync(path.join(kept, 'WHAT-THIS-IS.txt'), savedNote(home), 'utf8');
   } catch (e) {
     throw new Error(`The plans in ${dir} could not all be copied to ${kept} (${(e && e.code) || e}), so the plugin was not removed `
       + 'and they are where they were.');

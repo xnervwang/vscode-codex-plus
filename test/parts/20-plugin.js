@@ -39,7 +39,7 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
   fs.writeFileSync(path.join(install.planDir(withPlans), '01a1b8e8-f7e2-7251-95a9-a95b65992849.json'), '{}');
   fs.writeFileSync(path.join(install.planDir(withPlans), 'config.json'), '{}');
   const saved = install.savePlans(withPlans, 'T');
-  eq([path.basename(saved), fs.readdirSync(saved)], ['agent-work-plan-plans-T', ['01a1b8e8-f7e2-7251-95a9-a95b65992849.json']], 'the plans are copied, without the settings');
+  eq([path.basename(saved), fs.readdirSync(saved).filter((n) => n.endsWith('.json'))], ['agent-work-plan-plans-T', ['01a1b8e8-f7e2-7251-95a9-a95b65992849.json']], 'the plans are copied, without the settings');
   fs.writeFileSync(path.join(withPlans, 'agent-work-plan-plans-U'), 'a file where the copy would go');
   let threw = '';
   try { install.savePlans(withPlans, 'U'); } catch (e) { threw = e.message; }

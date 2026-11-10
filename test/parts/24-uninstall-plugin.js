@@ -147,8 +147,8 @@ module.exports = async ({ eq, note, tmp, root }) => {
   eq(last.requests(), ['plugin/uninstall', 'marketplace/remove', 'config/batchWrite'],
     'with no copy of this extension left in any editor, the uninstall script removes the plugin, its marketplace and the trust given to its hooks');
   const saved = last.kept();
-  eq([saved.length, saved.length ? fs.readdirSync(path.join(last.codex, saved[0])) : []], [1, [`${PLAN}.json`]],
-    'having copied the plans out first');
+  eq([saved.length, saved.length ? fs.readdirSync(path.join(last.codex, saved[0])).sort() : []], [1, [`${PLAN}.json`, 'WHAT-THIS-IS.txt'].sort()],
+    'having copied the plans out first, with a note saying what they are');
   last.run();
   eq([last.requests().length, last.kept().length], [3, 1],
     'run a second time, as it is when deactivate started it and VS Code then runs it again, it finds the plugin gone and does nothing');
