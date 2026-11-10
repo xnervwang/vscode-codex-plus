@@ -154,7 +154,8 @@
     r._row = row;
     r._place = place;
     const sig = `${row.id}\u0001${row.title}\u0001${row.time}\u0001${row.dot}\u0001${row.color}\u0001${row.grouped}\u0001${row.unread}`
-      + `\u0001${row.goal || ''}\u0001${row.goalText || ''}\u0001${row.child ? 1 : 0}\u0001${row.parentTitle || ''}\u0001${row.nickname || ''}`;
+      + `\u0001${row.goal || ''}\u0001${row.goalText || ''}\u0001${row.child ? 1 : 0}\u0001${row.parentTitle || ''}\u0001${row.nickname || ''}`
+      + `\u0001${row.here ? 1 : 0}`;
     if (sig === r._sig) return;
     r._sig = sig;
     r.dataset.id = row.id;
@@ -167,7 +168,7 @@
     r._p.goal.classList.toggle('cp-hidden', !row.goal);
     r._p.goal.classList.toggle('cp-goal-active', row.goal === 'active');
     context(r, { webviewSection: 'thread', threadId: row.id, codexPlusGrouped: !!row.grouped, codexPlusUnread: !!row.unread,
-      codexPlusGoal: row.goal || '', codexPlusGoalResumable: RESUMABLE.includes(row.goal) });
+      codexPlusGoal: row.goal || '', codexPlusGoalResumable: RESUMABLE.includes(row.goal), codexPlusOpenHere: !!row.here });
   }
   /* The title, with the part the search matched marked, written only when that changed. */
   function markTitle(r) {

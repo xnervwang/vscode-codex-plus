@@ -43,10 +43,10 @@ module.exports = async ({ eq, root }) => {
   const model = {
     account: { account: [{ label: 'Signed in with', value: 'Amazon Bedrock' }], windows: [], tokens: [] },
     closed: [row(9, { title: 'Closed earlier' })],
-    open: [row(1, { open: true, dot: 'working' })],
+    open: [row(1, { open: true, here: true, dot: 'working' })],
     groups: [{ key: 'section:a', label: 'Alpha', made: true, rows: [row(2, { grouped: true, group: 'Alpha', dot: 'prompt' })] },
       { key: 'section:e', label: 'Empty one', made: true, rows: [] },
-      { key: 'ungrouped', label: 'Ungrouped', made: false, rows: [row(1, { open: true, dot: 'working' }), row(3, { unread: true, branch: 'fix/retry' }), row(4)] }],
+      { key: 'ungrouped', label: 'Ungrouped', made: false, rows: [row(1, { open: true, here: true, dot: 'working' }), row(3, { unread: true, branch: 'fix/retry' }), row(4)] }],
     front: ID(1), noGroups: false,
   };
   toPage({ type: 'model', model });
@@ -68,7 +68,10 @@ module.exports = async ({ eq, root }) => {
     !!r3.querySelector('.cp-actions [data-act="rename"]')], ['cp-dot d-idle', 'Conversation 3', '3d · 11/03', true],
   'a row is its dot, its title, its time and, in the time\'s place on hover, the rename button');
   eq(JSON.parse(r3.getAttribute('data-vscode-context')), { preventDefaultContextMenuItems: true, webviewSection: 'thread', threadId: ID(3),
-    codexPlusGrouped: false, codexPlusUnread: true, codexPlusGoal: '', codexPlusGoalResumable: false }, 'its right-click menu is VS Code\'s, chosen by what the row says of itself');
+    codexPlusGrouped: false, codexPlusUnread: true, codexPlusGoal: '', codexPlusGoalResumable: false, codexPlusOpenHere: false },
+  'its right-click menu is VS Code\'s, chosen by what the row says of itself');
+  eq($$(`.cp-row[data-id="${ID(1)}"]`).map((r) => JSON.parse(r.getAttribute('data-vscode-context')).codexPlusOpenHere), [true, true],
+    'a conversation open in this window says so on every row of it, which is what leaves Resume in Tab and Resume in Sidebar out');
   eq(JSON.parse($('.cp-group[data-key="section:a"] .cp-group-head').getAttribute('data-vscode-context')).codexPlusMade, true,
     'and a header says whether the user made the group');
   eq($$('.cp-row.cp-current').map((r) => r.dataset.id), [ID(1), ID(1)], 'the conversation in front is drawn as the current one wherever it is listed');

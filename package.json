@@ -268,12 +268,12 @@
       "webview/context": [
         {
           "command": "codexPlus.openThreadInTab",
-          "when": "webviewId == 'codexPlus.sessions' && webviewSection == 'thread'",
+          "when": "webviewId == 'codexPlus.sessions' && webviewSection == 'thread' && !codexPlusOpenHere",
           "group": "1_open@1"
         },
         {
           "command": "codexPlus.openThreadInSidebar",
-          "when": "webviewId == 'codexPlus.sessions' && webviewSection == 'thread'",
+          "when": "webviewId == 'codexPlus.sessions' && webviewSection == 'thread' && !codexPlusOpenHere",
           "group": "1_open@2"
         },
         {

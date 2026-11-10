@@ -221,7 +221,9 @@ class SessionsModel {
       const conv = this.stateOf(t.id);
       const dot = this.reader.state(t.id) ? lookKey(conv, here) : 'unknown';
       const goal = typeof this.reader.goal === 'function' ? this.reader.goal(t.id) : null;
-      return { id: t.id, title: t.title || '(untitled)', time: dateSpan(t.createdMs, t.updatedMs, now), dot,
+      /* `here` leaves Resume in Tab and Resume in Sidebar out of the row's menu, as Claude Code Plus offers them only for
+         a conversation that is not open; a sub-agent drawn under its parent in Open sessions counts as open too. */
+      return { id: t.id, title: t.title || '(untitled)', time: dateSpan(t.createdMs, t.updatedMs, now), dot, here: here || where === 'open',
         color: COLORS[colors[t.id]] || '', open: open.has(t.id), sidebar: where === 'open' && t.id === this.sidebarNow && !open.has(t.id),
         unread: !!(conv && conv.state === 'unread'), grouped: !!(t.section && this.sections.has(t.section)),
         group: placeOf(t, this.sections), branch: t.branch || '', goal: (goal && goal.status) || '', goalText: goalText(goal),

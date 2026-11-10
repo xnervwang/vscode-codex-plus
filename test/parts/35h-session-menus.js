@@ -62,6 +62,22 @@ module.exports = async ({ eq, root }) => {
   eq(offered({ ...rowCtx(readRow), codexPlusGrouped: true }).includes('removeFromGroup'), true, 'and a row in a group offers Remove from Group');
   eq(offered({ ...rowCtx(readRow), 'codexPlus.noGroups': true }).filter((c) => /Group|Section/.test(c)), [], 'with no groups in this Codex, none of the group items');
 
+  /* ── Resume in Tab and Resume in Sidebar, only for a conversation this window does not show, as in Claude Code Plus ── */
+  const all = [...threads, { id: ID(3), title: 'c', kind: 'user', cwd: '/w', section: '', createdMs: 1, updatedMs: 4 },
+    { id: ID(4), title: 'd', kind: 'subagent', parent: ID(1), cwd: '/w', section: '', createdMs: 2, updatedMs: 5 }];
+  const shownHere = new SessionsModel(vscode, { memory: { openThreads: () => [ID(1)], recentlyClosed: () => [], frontAt: () => 0 }, memento: fake.memento(),
+    reader: { threads: () => all, sections: () => new Map(), state: () => ({}), thread: () => null }, sidebarShowing: () => ID(2),
+    stateOf: () => ({ state: 'idle' }), settings: () => ({ recentClosedSessions: 10, hideBackgroundSessions: false }) });
+  const hm = shownHere.model();
+  const hereOf = (list) => list.map((r) => `${r.id.slice(-1)}${r.here ? '+' : '-'}`).sort();
+  eq([hereOf(hm.open), hereOf(hm.groups.flatMap((g) => g.rows))], [['1+', '2+', '4+'], ['1+', '2+', '3-', '4-']],
+    'a row says whether its conversation is open in this window, in a tab or in Codex\'s sidebar; every row of Open sessions does');
+  const resumes = (r) => offered({ ...rowCtx(r), codexPlusOpenHere: !!r.here }).filter((c) => /^openThreadIn/.test(c));
+  const inGroups = new Map(hm.groups.flatMap((g) => g.rows).map((r) => [r.id, r]));
+  eq([resumes(inGroups.get(ID(1))), resumes(inGroups.get(ID(2))), resumes(hm.open.find((r) => r.id === ID(4))), resumes(inGroups.get(ID(3)))],
+    [[], [], [], ['openThreadInTab', 'openThreadInSidebar']],
+    'so Resume in Tab and Resume in Sidebar are offered for a conversation that is not open here, and for no row of Open sessions');
+
   /* ── a group header's menu ── */
   eq(offered({ webviewSection: 'group', groupKey: 'section:a', codexPlusMade: true }),
     ['newThreadInGroup', 'newGroup', 'renameGroup', 'deleteGroup'], 'a group header offers Claude Code\'s four, in its order');
