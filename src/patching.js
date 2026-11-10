@@ -36,8 +36,9 @@
  *                         self-check of what the page script found and drew
  *   app-server traffic    which conversations are stopped waiting for the user, and how many of those owe an answer
  *                         (src/approvals.js): the tab dot, the state the Conversations view shows and a chime, none of
- *                         which need a tab to be open on the conversation; and which have a turn running, which is when
- *                         the context meter's click does not compact
+ *                         which need a tab to be open on the conversation; and when a turn starts and ends, which the
+ *                         dot, the chime and the Conversations state follow at once rather than on the next read of
+ *                         the rollout, and during which the context meter's click does not compact
  *   the app-server        a compaction asked for from the context meter in the page, sent on Codex's own connection
  *   connection            to its app-server under a provider name of this extension's own, so the answer comes back
  *                         here and Codex's pages never see it (compactThread)
@@ -509,26 +510,42 @@ function usageOf(c, limit = 0) {
 }
 
 /*
- * Conversations of this window with a turn running, as the app-server says it: turn/started and turn/completed, by when
- * the turn started. A window reloaded while one runs has not seen its start, so the rollout's own answer is asked as
- * well (turnRunning). A start whose end was never heard - the app-server restarted under it - stops counting after
- * TURN_HEARD_MS unless the rollout still says a turn is running, so the meter's click is not refused for good.
+ * Conversations of this window with a turn running, as the app-server says it: turn/started and turn/completed, with
+ * when each was heard. A compaction asked for from the meter is put in as running before its turn starts (`heard`
+ * false), so a second click is refused, and it does not show as working until the app-server says so. A window
+ * reloaded while a turn runs has not seen its start, so the rollout's own answer is asked as well (turnRunning). A start
+ * whose end was never heard - the app-server restarted under it - stops counting after TURN_HEARD_MS.
  */
 const TURNS_KEPT = 200;
 const TURN_HEARD_MS = 10 * 60 * 1000;
 const turnsRunning = new Map();
+const turnsEnded = new Map();
+const keepNewest = (map) => { while (map.size > TURNS_KEPT) map.delete(map.keys().next().value); };
+/* The conversation a turn notification is about, or '' for any other message. */
 function noteTurn(msg) {
   const method = msg && msg.method, thread = String(((msg && msg.params) || {}).threadId || '');
-  if (!thread || (method !== 'turn/started' && method !== 'turn/completed')) return false;
-  if (method === 'turn/completed') return turnsRunning.delete(thread);
-  turnsRunning.set(thread, Date.now());
-  while (turnsRunning.size > TURNS_KEPT) turnsRunning.delete(turnsRunning.keys().next().value);
-  return true;
+  if (!thread || (method !== 'turn/started' && method !== 'turn/completed')) return '';
+  if (method === 'turn/completed') {
+    turnsRunning.delete(thread);
+    turnsEnded.delete(thread);
+    turnsEnded.set(thread, Date.now());
+    keepNewest(turnsEnded);
+  } else {
+    turnsRunning.set(thread, { at: Date.now(), heard: true });
+    keepNewest(turnsRunning);
+  }
+  return thread;
+}
+/** What this window's app-server last said of a conversation's turns, for the source to set against its rollout. */
+function turnHeard(thread) {
+  const r = turnsRunning.get(thread);
+  const started = r && r.heard ? r.at : 0;
+  return { running: !!started && Date.now() - started < TURN_HEARD_MS, startedMs: started, endedMs: turnsEnded.get(thread) || 0 };
 }
 async function turnRunning(thread) {
   if (approvals.of(thread).decide > 0) return true;
   const heard = turnsRunning.get(thread);
-  if (heard && Date.now() - heard < TURN_HEARD_MS) return true;
+  if (heard && Date.now() - heard.at < TURN_HEARD_MS) return true;
   if (!deps || !deps.source || typeof deps.source.listConversations !== 'function') return false;
   let list = [];
   try { list = await deps.source.listConversations(); } catch (_) { return false; }
@@ -864,7 +881,7 @@ function installHooks() {
       else {
         turnRunning(thread).then((busy) => {
           if (busy) return reply({ outcome: 'busy' });
-          turnsRunning.set(thread, Date.now());
+          turnsRunning.set(thread, { at: Date.now(), heard: false });
           return compactThread(thread).then((r) => {
             if (r.outcome !== 'started' && r.outcome !== 'sent') turnsRunning.delete(thread);
             reply(r);
@@ -915,12 +932,13 @@ function installHooks() {
    */
   globalThis.__codexExtrasAppServer = (kind, msg) => {
     state.active = true;
-    let moved = false;
+    let moved = false, turn = '';
     if (kind === 'request') moved = !!approvals.request(msg);
     else if (kind === 'answer') moved = !!approvals.resolve(msg && msg.id);
     else if (kind === 'notification' && msg && msg.method === 'serverRequest/resolved') {
       moved = !!approvals.resolve(msg.params && msg.params.requestId);
-    } else if (kind === 'notification' && noteTurn(msg)) {
+    } else if (kind === 'notification' && (turn = noteTurn(msg))) {
+      if (deps && deps.source && typeof deps.source._heard === 'function') deps.source._heard(turn);
       return;
     } else if (kind === 'notification' && noteCommand(msg)) {
       refreshPanels().catch(() => { /* the next poll draws it */ });
@@ -1043,6 +1061,7 @@ function activate(context, opts) {
     onApprovals.clear();
     commands.clear();
     turnsRunning.clear();
+    turnsEnded.clear();
     if (compactLink && compactLink.sub && typeof compactLink.sub.dispose === 'function') { try { compactLink.sub.dispose(); } catch (_) { /* gone */ } }
     compactLink = null;
   } });
@@ -1055,5 +1074,5 @@ function activate(context, opts) {
 module.exports = { activate, ensurePatched, statusLines, openInSidebar, canType, canDeliver, deliver, sidebarThread, panelThreads, shownIn,
   nowShowing, revealPanel, removePatch,
   figuresOf, usageOf, compactThread, safeColor, viewOf, selfCheckPage, selfCheckLines, installHooks, refreshPanels, approvalsOf,
-  onApprovalsChanged, offerReloadIfStale, sidebarShowing, onSidebarChanged, runningCommands, turnEndChime, _state: () => state, _registry: registry, _approvals: approvals,
+  onApprovalsChanged, offerReloadIfStale, sidebarShowing, onSidebarChanged, runningCommands, turnEndChime, turnHeard, _state: () => state, _registry: registry, _approvals: approvals,
   TAB_DOTS, ASK_MS, PATCH_REMOVED_KEY };

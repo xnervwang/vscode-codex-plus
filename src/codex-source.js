@@ -15,7 +15,8 @@
  *   reveal                         bring one to the front: only a tab already in this window
  *   canDeliver, deliverAnswer      typing an answer into one, through the patch to Codex (src/patching.js)
  *
- * `working` comes from files: its rollout has a task_started with no task_complete after it. `unread` is a turn that
+ * `working` comes from files: its rollout has a task_started with no task_complete after it, corrected by the turn
+ * starts and ends this window's app-server reported since the last read, which arrive at once (turnOf). `unread` is a turn that
  * ended after the user last had the conversation in front of them in a focused window (src/seen.js; Codex's own read
  * receipts stay unread for good inside VS Code). `idle` is the rest. `prompt` comes from the patch instead
  * (src/approvals.js), because Codex writes no approval request to a file, and only for the conversations of this
@@ -48,6 +49,21 @@ function logoOf(vscode, exists = require('fs').existsSync) {
 }
 
 /*
+ * Whether a turn runs, and when the last one ended (0 while one runs): the rollout's answer, set against what this
+ * window's app-server said since (`heard`, src/patching.js turnHeard). Its notifications come as a turn starts and ends,
+ * while the rollout is read every POLL_MS. A start it reported means running. An end it reported finishes the turn the
+ * rollout shows, unless the rollout shows one that started after that end.
+ */
+function turnOf(st, heard, now, last) {
+  if (heard && heard.running) return { working: true, endedMs: 0 };
+  const heardEnd = (heard && heard.endedMs) || 0;
+  const overtaken = !!(st && st.working && heardEnd && !(st.startedMs > heardEnd));
+  const working = !!(st && st.working && !overtaken && now - last < STALE_WORKING_MS);
+  if (st && st.working && !overtaken) return { working, endedMs: 0 };
+  return { working, endedMs: Math.max((st && !st.working && st.endedMs) || 0, heardEnd) };
+}
+
+/*
  * What Codex's files say about one thread, in the protocol's terms. `state` is the rollout state the reader has for it,
  * or null for a thread not touched lately; `now` and `openHere` are passed in so the same answer can be computed in a
  * test. `waiting` is what the patch knows about requests stopped on the user, which no file records.
@@ -55,10 +71,10 @@ function logoOf(vscode, exists = require('fs').existsSync) {
  * `prompt` wins over `working`: as far as its rollout goes a turn stopped on an approval is still running, but it is
  * the user who has to act.
  */
-function conversationOf(thread, { unread, openHere, now = Date.now(), state = null, hasPlan = false, waiting = null }) {
+function conversationOf(thread, { unread, openHere, now = Date.now(), state = null, hasPlan = false, waiting = null, heard = null }) {
   const st = state;
-  const last = Math.max(thread.updatedMs || 0, (st && st.lastActivityMs) || 0);
-  const working = !!(st && st.working && now - last < STALE_WORKING_MS);
+  const last = Math.max(thread.updatedMs || 0, (st && st.lastActivityMs) || 0, (heard && Math.max(heard.startedMs || 0, heard.endedMs || 0)) || 0);
+  const { working } = turnOf(st, heard, now, last);
   const decide = (waiting && waiting.decide) || 0;
   const soon = (waiting && waiting.soon) || 0;
   /* A question asked with request_user_input_async waits for the user once its turn has ended (src/codex-files.js). */
@@ -211,7 +227,12 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
     }
     return out;
   }
-  const endedOf = (id) => { const st = reader.state(id); return st && !st.working ? st.endedMs : 0; };
+  /* What this window's app-server said of a conversation's turns, or null without the patch. */
+  const heardOf = (id) => {
+    if (!patching || typeof patching.turnHeard !== 'function') return null;
+    try { return patching.turnHeard(id); } catch (_) { return null; }
+  };
+  const endedOf = (id) => turnOf(reader.state(id), heardOf(id), Date.now(), 0).endedMs;
   /* Marks what is in front as seen now; true when that took away an unread state, so the views redraw at once. */
   function markFront() {
     let cleared = false;
@@ -254,13 +275,15 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
    * the set so the state is cached rather than read again every pass.
    */
   const wanted = new Set();
-  function poll({ force = false } = {}) {
+  /* `tell` fires the change whatever the read found: a turn the app-server reported has moved the state already. */
+  function poll({ force = false, tell = false } = {}) {
     const extra = [...new Set([...openThreads(), ...wanted])];
     return reader.refresh({ home: files.codexHome(), extra, force }).then((moved) => {
       // An answered request is dropped: the reader keeps that state, so asking again would read the rollout afresh
       // every pass for a row that has not changed.
       for (const id of [...wanted]) if (reader.state(id)) wanted.delete(id);
-      if (markFront() || moved) changed.fire();
+      const cleared = markFront();
+      if (tell || cleared || moved) changed.fire();
     }).catch((e) => log(`codex source: ${(e && e.message) || e}`));
   }
   /*
@@ -315,7 +338,7 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
       const unread = new Set(threads.filter((t) => seen.unread(t.id, endedOf(t.id))).map((t) => t.id));
       const openHere = new Set(openThreads());
       const out = threads.map((t) => conversationOf(t, { unread, openHere, state: reader.state(t.id),
-        hasPlan: enabled() && reader.hasPlan(t.id), waiting: waitingOn(t.id) }));
+        hasPlan: enabled() && reader.hasPlan(t.id), waiting: waitingOn(t.id), heard: heardOf(t.id) }));
       if (snap && !snap.readable) out.problem = 'Codex\'s list of conversations could not be read from ' + files.codexHome();
       return out;
     },
@@ -369,6 +392,11 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
       frontTab = activeTab();
       focused.fire({ sessionId });
       if (markFront()) changed.fire();
+    },
+    /* For the patch: the app-server said a turn of `sessionId` started or ended. One ordinary pass reads what else
+       moved, which reads no rollout when no file has changed since the last pass, and the views redraw either way. */
+    _heard(sessionId) {
+      if (sessionId) poll({ tell: true });
     },
     _poll: poll,
     wantState,
