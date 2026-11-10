@@ -51,7 +51,7 @@ function create() {
   const extChanged = new EventEmitter();
   const groups = [{ viewColumn: 1, tabs: [], activeTab: null, isActive: true }];
   const state = { commands: [], context: {}, extensions: new Map(), clipboard: '', views: [], status: [], log: [], registered: [],
-    said: [], answers: [], handlers: {}, external: [], externalAnswer: true, picks: [], quickPicks: [] };
+    said: [], answers: [], handlers: {}, external: [], externalAnswer: true, picks: [], quickPicks: [], treeViews: {} };
   /* A notification is answered with the button the test set for text it contains (control.answer), else dismissed. */
   const answer = async (message, ...rest) => {
     const buttons = rest.filter((b) => typeof b === 'string');
@@ -72,7 +72,14 @@ function create() {
         onDidChangeTabs: tabsChanged.event,
         onDidChangeTabGroups: groupsChanged.event,
       },
-      createTreeView: (id, opts) => { state.views.push(id); return { id, opts, badge: undefined, description: '', dispose() {} }; },
+      createTreeView: (id, opts) => {
+        state.views.push(id);
+        const shown = new EventEmitter();
+        const view = { id, opts, badge: undefined, description: '', visible: true, reveals: [], onDidChangeVisibility: shown.event, fireVisibility: (v) => { view.visible = v; shown.fire({ visible: v }); },
+          reveal: (el, o) => { view.reveals.push({ el, o }); return Promise.resolve(); }, dispose() {} };
+        state.treeViews[id] = view;
+        return view;
+      },
       registerTreeDataProvider: (id) => { state.views.push(id); return { dispose() {} }; },
       registerWebviewViewProvider: (id) => { state.views.push(id); return { dispose() {} }; },
       registerFileDecorationProvider: () => ({ dispose() {} }),

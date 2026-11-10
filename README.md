@@ -16,7 +16,8 @@
 | New in tab / New in sidebar; Resume in tab / Resume in sidebar | Codex sessions view | — (the sidebar ones open Codex's own link, `vscode://openai.chatgpt/local/<id>` in this editor's scheme) |
 | Thread ID and group on hover; find by title or four hex characters of the ID | Codex sessions view | — |
 | How long since it was last used and the first and last day it was, as `11d · 09/05→09/16`, how long written `now`, `5m`, `3h`, `2d`, `1mo` or `1y` and a date of another year with its year, as Claude Code's list writes them; title colours; conversations started by `codex exec` left out | Codex sessions view | `codexPlus.hideBackgroundSessions` |
-| Delete an archived conversation | Codex sessions view, right-click | — |
+| Delete archived conversations, one or several selected together | Codex sessions view, right-click | — |
+| The row of the conversation in front is selected and scrolled to, as Claude Code's list follows it, while the list is visible; the focus stays where it was | Codex sessions view | — |
 | Codex button on the tab bar, and New in tab: a new Codex conversation in a tab, in a group already holding only Codex tabs, else one holding any, else the first group (the main editor area); it never opens a new split. Codex's own button beside it opens its sidebar | Editor title bar; Codex sessions view | — |
 | Tabs VS Code did not restore after a reconnect are opened again | Editor tabs | — |
 | Session information: thread ID, the process id of Codex's server for this window, folder, the conversation log Codex writes (its rollout) and its size, how much of the context window is in use, tokens the conversation used, the account | Command; right-click in Codex sessions; the information button in the message box's toolbar, where clicking a value copies it | — (the button needs the patch; `codexPlus.infoButton`) |

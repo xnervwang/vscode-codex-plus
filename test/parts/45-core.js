@@ -23,6 +23,13 @@ module.exports = async ({ eq, note, tmp, root }) => {
   const fake = require(path.join(core, 'test', 'fake-vscode.js'));
   const { vscode, control } = fake.create();
   vscode.window.registerTreeDataProvider = (id, provider) => { control.state.views[id] = { id, provider }; return { dispose() {} }; };
+  /* The session list follows the conversation in front through its tree view's reveal. */
+  const plainTree = vscode.window.createTreeView;
+  vscode.window.createTreeView = (id, opts) => {
+    const view = plainTree(id, opts);
+    if (typeof view.reveal !== 'function') view.reveal = async () => {};
+    return view;
+  };
   vscode.window.registerFileDecorationProvider = () => ({ dispose() {} });
   vscode.FileDecoration = class { constructor(badge, tooltip, color) { Object.assign(this, { badge, tooltip, color }); } };
   vscode.MarkdownString.prototype.appendCodeblock = function (s) { this.value += '\n```\n' + s + '\n```\n'; return this; };

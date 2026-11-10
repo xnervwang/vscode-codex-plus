@@ -25,7 +25,7 @@ const { createSeen } = require('./src/seen');
 const { CodexReader } = require('./src/codex-reader');
 const hostLink = require('./src/host-link');
 const { TabMemory } = require('./src/tab-memory');
-const { SessionsProvider, COLORS, looksLikeId } = require('./src/sessions-view');
+const { SessionsProvider, createFollower, COLORS, looksLikeId } = require('./src/sessions-view');
 const patching = require('./src/patching');
 const supported = require('./src/supported');
 const pythonRuntime = require('./src/python-runtime');
@@ -163,14 +163,23 @@ async function activate(context) {
   const sessionsProvider = new SessionsProvider(vscode, { memory, memento: context.globalState, settings, reader,
     stateOf: (id) => lastConversations.get(id), wantState: (ids) => source.wantState(ids),
     sidebarShowing: () => patching.sidebarShowing() });
-  context.subscriptions.push(vscode.window.registerTreeDataProvider('codexPlus.sessions', sessionsProvider));
+  const sessionsView = vscode.window.createTreeView('codexPlus.sessions', { treeDataProvider: sessionsProvider, canSelectMany: true });
+  context.subscriptions.push(sessionsView);
   context.subscriptions.push(vscode.window.registerFileDecorationProvider(sessionsProvider));
+  /* The conversation in front: the active tab's when it is Codex's, else the one Codex's sidebar shows. */
+  const follow = createFollower(sessionsView, sessionsProvider, () => {
+    const tab = (vscode.window.tabGroups.activeTabGroup || {}).activeTab;
+    const id = tab ? source.sessionForTab(tab) : null;
+    return typeof id === 'string' ? id : patching.sidebarShowing();
+  });
+  const relist = () => { sessionsProvider.refresh(); follow(); };
   const redrawSessions = async () => {
     try { lastConversations = new Map((await source.listConversations()).map((c) => [c.sessionId, c])); } catch (_) { /* the last one stays */ }
-    sessionsProvider.refresh();
+    relist();
   };
-  context.subscriptions.push(source.onDidChangeConversations(redrawSessions), memory.onDidChange(() => sessionsProvider.refresh()),
-    patching.onSidebarChanged(() => sessionsProvider.refresh()));
+  context.subscriptions.push(source.onDidChangeConversations(redrawSessions), memory.onDidChange(relist), patching.onSidebarChanged(relist),
+    source.onDidFocus(() => follow()));
+  if (typeof vscode.window.tabGroups.onDidChangeTabs === 'function') context.subscriptions.push(vscode.window.tabGroups.onDidChangeTabs(() => follow()));
 
   /* ── Agent Plus draws the rest ── */
   const link = await hostLink.link(vscode, source, { log: say, memento: context.globalState });
@@ -461,24 +470,37 @@ function registerCommands(context, { source, memory, sessionsProvider, say, link
     qp.onDidAccept(async () => { const it = qp.selectedItems[0]; qp.hide(); if (it) await tabs.openInTab(vscode, it.id); });
     qp.show();
   });
-  reg('deleteArchivedThread', async (arg) => {
+  /* The rows a command from the list applies to: every row selected when the one right-clicked is among them, else that
+     one alone, as a file explorer does it. */
+  const chosen = (arg, selected) => {
+    const ids = Array.isArray(selected) && selected.length && selected.some((s) => threadArg(s) === threadArg(arg))
+      ? selected.map(threadArg) : [threadArg(arg)];
+    return [...new Set(ids.filter(Boolean))];
+  };
+  reg('deleteArchivedThread', async (arg, selected) => {
     if (restricted()) return;
-    const id = threadArg(arg);
-    const t = reader.thread(id);
-    if (!t || !t.archived) return;
-    if (tabs.codexTabs(vscode).some((x) => x.thread === id)) { vscode.window.showWarningMessage('Close its tab first.'); return; }
+    const doomed = chosen(arg, selected).map((id) => reader.thread(id)).filter((t) => t && t.archived);
+    if (!doomed.length) return;
+    if (doomed.some((t) => tabs.codexTabs(vscode).some((x) => x.thread === t.id))) { vscode.window.showWarningMessage('Close its tab first.'); return; }
     const go = 'Delete';
-    const pick = await vscode.window.showWarningMessage(`Delete "${t.title || id}" permanently?`, { modal: true,
-      detail: 'Codex deletes the conversation and its rollout. Its work plan is deleted too. This cannot be undone.' }, go);
+    const one = doomed.length === 1;
+    const pick = await vscode.window.showWarningMessage(one ? `Delete "${doomed[0].title || doomed[0].id}" permanently?`
+      : `Delete ${doomed.length} archived conversations permanently?`, { modal: true,
+      detail: `Codex deletes ${one ? 'the conversation and its rollout. Its work plan is' : 'the conversations and their rollouts. Their work plans are'} `
+        + `deleted too. This cannot be undone.${one ? '' : `\n\n${doomed.map((t) => t.title || t.id).join('\n')}`}` }, go);
     if (pick !== go) return;
     const binary = codexProgram();
     try {
-      await require('./src/appserver').withAppServer(binary, files.codexHome(), (s) => s.request('thread/delete', { threadId: id }));
-      for (const ext of ['.json', '.turn', '.nudged', '.settled', '.offered', '.watermark', '.tz']) {
-        try { fs.unlinkSync(path.join(install.planDir(files.codexHome()), id + ext)); } catch (_) { /* none */ }
+      await require('./src/appserver').withAppServer(binary, files.codexHome(), async (s) => {
+        for (const t of doomed) await s.request('thread/delete', { threadId: t.id });
+      });
+      for (const t of doomed) {
+        for (const ext of ['.json', '.turn', '.nudged', '.settled', '.offered', '.watermark', '.tz']) {
+          try { fs.unlinkSync(path.join(install.planDir(files.codexHome()), t.id + ext)); } catch (_) { /* none */ }
+        }
       }
       source._poll();
-    } catch (e) { vscode.window.showErrorMessage(`Codex could not delete it: ${e.message}`); }
+    } catch (e) { vscode.window.showErrorMessage(`Codex could not delete ${one ? 'it' : 'them'}: ${e.message}`); }
   });
   reg('sessionInfo', async (arg) => {
     /* A tab Codex opened with its New button names no conversation in its URI; the source knows it through the patch. */

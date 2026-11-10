@@ -201,6 +201,20 @@ class SessionsProvider {
     return [];
   }
 
+  /* A row's group, which is what VS Code walks up through to reveal the row. */
+  getParent(element) {
+    if (!element || element.kind !== 'thread') return undefined;
+    const g = this.groups.find((x) => x.key === element.group);
+    return g ? { kind: 'group', group: g } : undefined;
+  }
+
+  /** The row a conversation open in this window has in Open sessions, or null. */
+  rowOf(id) {
+    const open = this.groups.find((g) => g.key === 'open');
+    const t = open && open.threads.find((x) => x.id === id);
+    return t ? { kind: 'thread', thread: t, group: 'open' } : null;
+  }
+
   /** Ask for the state of those of `threads` the user has not read. */
   ask(threads) {
     const want = threads.filter((t) => t && t.id && !this.reader.state(t.id)).map((t) => t.id);
@@ -251,7 +265,29 @@ class SessionsProvider {
   }
 }
 
+/*
+ * The list following the conversation in front, as Claude Code's does: that conversation's row in Open sessions is
+ * selected and scrolled to, and the focus is left where it is. Only while the list is visible, since revealing a row of
+ * a hidden view opens the view. Returns the function to call whenever the front may have moved; `frontOf` names the
+ * conversation in front, or ''.
+ */
+function createFollower(view, provider, frontOf) {
+  let followed = '';
+  const follow = () => {
+    let front = '';
+    try { front = frontOf() || ''; } catch (_) { front = ''; }
+    if (!front) { followed = ''; return; }
+    if (front === followed || !view.visible) return;
+    const row = provider.rowOf(front);
+    if (!row) return;
+    followed = front;
+    Promise.resolve(view.reveal(row, { select: true, focus: false })).catch(() => { followed = ''; });
+  };
+  if (typeof view.onDidChangeVisibility === 'function') view.onDidChangeVisibility(() => { followed = ''; follow(); });
+  return follow;
+}
+
 /* Whether a search string is meant as part of a thread id: four or more characters of hex and hyphens. */
 const looksLikeId = (q) => /^[0-9a-f-]{4,}$/i.test(String(q || '').trim());
 
-module.exports = { SessionsProvider, group, dateSpan, placeOf, looksLikeId, lookOf, COLORS, COLOR_KEY, SCHEME, STATE_LOOK };
+module.exports = { SessionsProvider, createFollower, group, dateSpan, placeOf, looksLikeId, lookOf, COLORS, COLOR_KEY, SCHEME, STATE_LOOK };
