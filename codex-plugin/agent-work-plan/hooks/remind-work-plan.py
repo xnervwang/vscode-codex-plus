@@ -2,6 +2,7 @@
 # BSD 3-Clause License
 # Copyright (c) 2026, Xnerv Wang
 # All rights reserved.
+# Source: vscode-agent-plus shared/plugin/hooks/remind-work-plan.py; sync-shared.js copies it, so edit it there.
 
 """Say so, once, when a turn starts working and no row of the work plan is `doing`.
 
@@ -10,8 +11,9 @@ its closing summary leaves the tree beside the conversation showing nothing bein
 runs - the one time the state is any use. So this speaks at the moment the work starts rather than at either end of the
 turn.
 
-Codex has no event after a batch of tool calls, so this runs after every one (PostToolUse) and keeps its count in the
-turn mark the injection hook left (see plan_path.py). It speaks only when all of these hold:
+Claude Code runs this after each batch of tool calls (PostToolBatch). Codex has no such event, so there it runs after
+every call (PostToolUse). Either way it keeps its count in the turn mark the injection hook left (see plan_path.py), and
+it speaks only when all of these hold:
   - this is the main thread, not a sub-agent;
   - the turn has made at least remindMinCalls calls or changed at least nudgeMinChanges things, not counting the
     plan's own;
@@ -29,19 +31,12 @@ sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from changes import changes
-from plan_path import MCP_SERVER, MCP_TOOLS, any_in, plan_file, read_payload, read_turn, settings, write_turn
+from plan_path import (REMIND_EVENT, TURN_FIELD, any_in, event_calls, keeps_plan, plan_file, read_payload, read_turn,
+                       remind_how, settings, write_turn)
 
 
 def count(value):
     return value if isinstance(value, int) and not isinstance(value, bool) else 0
-
-
-def keeps_plan(payload, name):
-    """A call that names the plan, or goes to the plan's own tools, is the plan being kept, not the work it describes."""
-    tool = str(payload.get("tool_name") or "")
-    if MCP_SERVER in tool:
-        return True
-    return name in json.dumps(payload.get("tool_input"), ensure_ascii=False, default=str)
 
 
 def main():
@@ -51,10 +46,16 @@ def main():
         return 0
     if not isinstance(payload, dict) or payload.get("agent_id"):
         return 0
-    path = plan_file(payload)
-    if not path or keeps_plan(payload, os.path.basename(path)):
+    calls = event_calls(payload)
+    path = plan_file(payload) if calls else None
+    if not path:
         return 0
-    prompt = payload.get("turn_id")
+    name = os.path.basename(path)
+    # A call that goes to the plan is the plan being kept, not the work it describes.
+    work = [(tool, given) for tool, given in calls if not keeps_plan(tool, given, name)]
+    if not work:
+        return 0
+    prompt = payload.get(TURN_FIELD)
     if not isinstance(prompt, str) or not prompt:
         return 0
     turn = read_turn(path)
@@ -63,8 +64,8 @@ def main():
     limits = settings()
     if not limits["enabled"]:
         return 0
-    turn["calls"] = count(turn.get("calls")) + 1
-    turn["changes"] = count(turn.get("changes")) + int(changes(payload.get("tool_name"), payload.get("tool_input")))
+    turn["calls"] = count(turn.get("calls")) + len(work)
+    turn["changes"] = count(turn.get("changes")) + sum(1 for tool, given in work if changes(tool, given))
     if turn["calls"] < limits["remindMinCalls"] and turn["changes"] < limits["nudgeMinChanges"]:
         write_turn(path, turn)
         return 0
@@ -85,13 +86,11 @@ def main():
     if not write_turn(path, turn):
         return 0
     print(json.dumps({"hookSpecificOutput": {
-        "hookEventName": "PostToolUse",
+        "hookEventName": payload.get("hook_event_name", REMIND_EVENT),
         "additionalContext": (
             "This turn has started working, and no row of the work plan is `doing`. Mark the one you are working on "
-            "before going on with %s (plan=%s): set_row with state doing, or add_row with state doing if this is new "
-            "work the user asked for or something they asked you to look into. The tree beside this conversation "
-            "shows `doing` while the work runs, which is the only time it is any use. This is said once per turn."
-            % (MCP_TOOLS, path)),
+            "before going on %sThe tree beside this conversation shows `doing` while the work runs, which is the only "
+            "time it is any use. This is said once per turn." % remind_how(path)),
     }}))
     return 0
 

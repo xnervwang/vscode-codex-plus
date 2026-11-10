@@ -2,6 +2,7 @@
 # BSD 3-Clause License
 # Copyright (c) 2026, Xnerv Wang
 # All rights reserved.
+# Source: vscode-agent-plus shared/plugin/hooks/resume-work-plan.py; sync-shared.js copies it, so edit it there.
 
 """Right after a compaction, point the conversation at its work plan and say the context is now at its smallest.
 
@@ -35,7 +36,7 @@ sys.dont_write_bytecode = True
 # The script's folder on the import path: see inject-work-plan.py.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from plan_path import latest_reply_matches, open_tail, plan_file, read_payload, settings
+from plan_path import READ_HINT, fixture_reply, fixture_tool_call, latest_reply_matches, open_tail, plan_file, read_payload, settings
 
 
 def message(plan):
@@ -43,7 +44,7 @@ def message(plan):
         "The context was just compacted, so it is now at its smallest, not near a limit. Anything the summary above "
         "reports as pending because a compaction was approaching has been overtaken by it: the compaction is done.",
         "This conversation's work plan, a row per task: %s" % plan,
-        "Read it with a tool (cat is enough) before doing anything else. The summary above retells the stretch in document order; the "
+        READ_HINT + " before doing anything else. The summary above retells the stretch in document order; the "
         "plan says what is still open, and the `detail` of a row that is `doing` was written for this moment - the next "
         "concrete step and what not to do, which a retelling flattens. The summary also turned every tool call into "
         "prose, and that first call is what puts this conversation back into using tools.",
@@ -91,11 +92,9 @@ def selftest():
     def write_transcript(*texts, tool_after=False):
         with open(transcript, "w", encoding="utf-8") as fh:
             for t in texts:
-                fh.write(json.dumps({"timestamp": "2026-01-01T00:00:00Z", "type": "response_item", "payload": {
-                    "type": "message", "role": "assistant", "content": [{"type": "output_text", "text": t}]}}) + "\n")
+                fh.write(fixture_reply(t) + "\n")
             if tool_after:
-                fh.write(json.dumps({"timestamp": "2026-01-01T00:00:01Z", "type": "response_item", "payload": {
-                    "type": "function_call", "name": "exec_command", "arguments": "{}"}}) + "\n")
+                fh.write(fixture_tool_call() + "\n")
 
     def run(payload):
         r = subprocess.run(me, input=json.dumps(payload), stdout=subprocess.PIPE, universal_newlines=True)

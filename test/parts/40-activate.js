@@ -65,8 +65,9 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
   eq(hosted.state.status.filter((s) => s.shown).length, 0, 'and nothing of its own is in the status bar while no conversation is waiting on anybody');
   eq(declared.filter((c) => !hosted.state.registered.includes(c)), [], 'every command in the manifest is registered');
   eq(hosted.wroteSettings, true, 'in a trusted window the hooks\' settings are written');
-  const planPath = fs.readFileSync(path.join(root, 'codex-plugin', 'agent-work-plan', 'hooks', 'plan_path.py'), 'utf8');
-  const known = [...(/^DEFAULTS = \{([\s\S]*?)^\}/m.exec(planPath) || ['', ''])[1].matchAll(/^ {4}"(\w+)":/gm)].map((m) => m[1])
+  const planPath = ['plan_path.py', 'plan_common.py', 'plan_agent.py']
+    .map((f) => fs.readFileSync(path.join(root, 'codex-plugin', 'agent-work-plan', 'hooks', f), 'utf8')).join('\n');
+  const known = [...planPath.matchAll(/^(?:EXTRA_)?DEFAULTS = \{([\s\S]*?)^\}/gm)].flatMap((d) => [...d[1].matchAll(/^ {4}"(\w+)":/gm)].map((m) => m[1]))
     .concat([...planPath.matchAll(/\bgiven\.get\("(\w+)"\)/g)].map((m) => m[1]));
   eq(Object.keys(hosted.hookSettings || {}).filter((k) => !known.includes(k)), [], 'every key written for the hooks is one plan_path.py knows');
   eq(hosted.hookSettings.compactTokenLimit, 0, 'with no compaction limit in config.toml the hooks are handed none');

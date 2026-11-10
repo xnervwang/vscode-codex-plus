@@ -1,6 +1,7 @@
 # BSD 3-Clause License
 # Copyright (c) 2026, Xnerv Wang
 # All rights reserved.
+# Source: vscode-agent-plus shared/plugin/hooks/changes.py; sync-shared.js copies it, so edit it there.
 
 """Whether a tool call changed something, as against looking at something.
 
@@ -12,12 +13,10 @@ import json
 import re
 import sys
 
-# Tools that change something by definition. Everything not named here - reading, searching, fetching, measuring - is a
-# turn looking at the world rather than altering it, and owes the plan nothing.
-# apply_patch is Codex's file editor; its matcher aliases are Write and Edit, which a hook may also be handed.
-CHANGING_TOOLS = ("apply_patch", "Write", "Edit")
-# How a shell call is named in a rollout, as against the name Codex gives it in a hook's input (Bash).
-SHELL_TOOLS = ("Bash", "exec_command", "shell", "local_shell")
+# Tools that change something by definition, and the names a shell call goes by, as the agent names them (plan_agent).
+# Everything else - reading, searching, fetching, measuring - is a turn looking at the world rather than altering it,
+# and owes the plan nothing.
+from plan_agent import CHANGING_TOOLS, SHELL_TOOLS
 # A shell command that changes something. Bash cannot be judged by its name, so it is judged by what it runs, and the
 # uncertain cases are resolved towards silence: a command this misses makes a reminder miss a turn, while a command it
 # wrongly catches puts the reminder back on the turns it was just taken off.
@@ -133,10 +132,11 @@ WRITES = (
 def selftest():
     wrong = [c for c in READS if changes("Bash", {"command": c})]
     missed = [c for c in WRITES if not changes("Bash", {"command": c})]
-    wrong += [c for c in READS[:3] if changes("exec_command", json.dumps({"cmd": c}))]
-    missed += [c for c in WRITES[:3] if not changes("exec_command", json.dumps({"cmd": c}))]
-    if not changes("apply_patch", "*** Begin Patch"):
-        missed.append("apply_patch")
+    # A shell call recorded under another name has its arguments as a JSON string with `cmd`.
+    for shell in SHELL_TOOLS[1:]:
+        wrong += [c for c in READS[:3] if changes(shell, json.dumps({"cmd": c}))]
+        missed += [c for c in WRITES[:3] if not changes(shell, json.dumps({"cmd": c}))]
+    missed += [tool for tool in CHANGING_TOOLS if not changes(tool, "*** Begin Patch")]
     for c in wrong:
         print("FAIL read-only, counted as a change: %r" % c)
     for c in missed:

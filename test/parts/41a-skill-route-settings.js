@@ -21,7 +21,8 @@ const KEYS = {
 module.exports = async ({ eq, tmp, root }) => {
   const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
   const props = Object.assign({}, ...[].concat(pkg.contributes.configuration).map((c) => c.properties || {}));
-  const planPath = fs.readFileSync(path.join(root, 'codex-plugin', 'agent-work-plan', 'hooks', 'plan_path.py'), 'utf8');
+  const planPath = ['plan_path.py', 'plan_common.py', 'plan_agent.py']
+    .map((f) => fs.readFileSync(path.join(root, 'codex-plugin', 'agent-work-plan', 'hooks', f), 'utf8')).join('\n');
   const pyDefault = (key) => {
     const m = new RegExp(`^\\s*"${key}": (.*),$`, 'm').exec(planPath);
     return m ? JSON.parse(m[1].replace(/\bTrue\b/g, 'true').replace(/\bFalse\b/g, 'false')) : undefined;

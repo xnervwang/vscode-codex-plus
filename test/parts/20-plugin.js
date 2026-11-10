@@ -58,7 +58,8 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
   eq([install.sameHooks([shown[1], shown[0]], shown), install.sameHooks([{ key: 'a', currentHash: '9' }, shown[1]], shown),
     install.sameHooks(shown.slice(1), shown), install.sameHooks(shown, undefined)], [true, false, false, false],
   'a hook whose hash changed, or a hook less or more, is not the list that was shown');
-  const planPath = fs.readFileSync(path.join(hooksDir, 'plan_path.py'), 'utf8');
+  /* plan_path.py is plan_common.py and plan_agent.py together (Agent Plus's shared code). */
+  const planPath = ['plan_path.py', 'plan_common.py', 'plan_agent.py'].map((f) => fs.readFileSync(path.join(hooksDir, f), 'utf8')).join('\n');
   if (planPath.includes(`PLUGIN_DIR_NAME = "${install.DATA_DIR}"`)) ok('the hooks fall back to the same data directory');
   else bad('plan_path.py names a different data directory');
 

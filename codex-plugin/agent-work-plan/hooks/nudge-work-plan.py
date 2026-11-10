@@ -2,6 +2,7 @@
 # BSD 3-Clause License
 # Copyright (c) 2026, Xnerv Wang
 # All rights reserved.
+# Source: vscode-agent-plus shared/plugin/hooks/nudge-work-plan.py; sync-shared.js copies it, so edit it there.
 
 """Say something when a turn did real work and left the work plan untouched.
 
@@ -60,8 +61,10 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from changes import changes
 from changes import shell_command  # noqa: F401  (kept beside changes so both read a call the same way)
-from plan_path import (MCP_TOOLS, NUDGED_SUFFIX, OFFERED_SUFFIX, SETTLED_SUFFIX, children, epoch, listed,
-                       open_tail, plan_file, read_payload, settings, side_file, turn_began, write_quietly)
+from plan_path import (AFTER_OFFER, MAYBE_CALL, MAYBE_USER, NOTE_WORD, NUDGED_SUFFIX, OFFERED_SUFFIX, QUESTION_WORD,
+                       SETTLED_SUFFIX, STOP_REENTERS, WAITING_ON_WORD, ask_how, children, epoch, listed, offer_how,
+                       open_tail, plan_file, read_payload, settings, settle_how, side_file, spoke, stop_output,
+                       tool_calls, turn_began, write_quietly)
 
 # Every threshold this uses is in plan_path.DEFAULTS, where the editor's settings can override it.
 
@@ -69,37 +72,8 @@ from plan_path import (MCP_TOOLS, NUDGED_SUFFIX, OFFERED_SUFFIX, SETTLED_SUFFIX,
 TURN_TAIL = 2 * 1024 * 1024
 
 
-def tool_call(row):
-    """(name, input) of a tool call recorded on a rollout row, or None when the row is not one."""
-    payload = row.get("payload") if row.get("type") == "response_item" else None
-    if not isinstance(payload, dict):
-        return None
-    if payload.get("type") == "function_call":
-        return str(payload.get("name") or ""), payload.get("arguments")
-    if payload.get("type") == "custom_tool_call":
-        return str(payload.get("name") or ""), payload.get("input")
-    return None
-
-
-def spoke(row):
-    """True for a row that is the user speaking.
-
-    Codex records each message the user sent as an item_completed event whose item is a UserMessage. The older
-    user_message event is written only for a thread in its legacy history mode: none of 49 rollouts written by Codex
-    0.159 and 0.164 held one, against 120 UserMessage items. The response_item rows with role "user" are no use here,
-    since Codex also sends its own context to the model that way.
-    """
-    payload = row.get("payload")
-    if row.get("type") != "event_msg" or not isinstance(payload, dict):
-        return False
-    if payload.get("type") == "item_completed":
-        item = payload.get("item")
-        return isinstance(item, dict) and item.get("type") == "UserMessage"
-    return payload.get("type") == "user_message"
-
-
 def spellings(path):
-    """Spellings of `path` in a raw rollout line. JSON doubles a Windows path's backslashes, and a model may write the
+    """Spellings of `path` in a raw transcript line. JSON doubles a Windows path's backslashes, and a model may write the
     path with forward slashes."""
     return {s for s in (path, json.dumps(path, ensure_ascii=False)[1:-1], path.replace("\\", "/")) if s}
 
@@ -116,13 +90,16 @@ def turn_shape(tail, plan="", began=None):
     in the text this plugin injects at the start of every turn, so a search across whole rows would always find it. A
     call to the plan's tools carries the plan's path, which they require; Codex records such a call by the tool's own
     name (set_row) with the server in a field of its own, so the name says nothing about the server.
+
+    Only lines holding one of plan_agent's MAYBE_CALL or MAYBE_USER strings are parsed. A line with several calls on it
+    counts as one tool call, and each of its calls is judged for a change.
     """
     started, tools, changes_made, turns, reached = began, 0, 0, 0, False
     names = spellings(plan) if plan else set()
     in_turn = True
     for line in tail.lines(TURN_TAIL):
-        maybe_call = '"function_call"' in line or '"custom_tool_call"' in line
-        if not maybe_call and '"UserMessage"' not in line and '"user_message"' not in line:
+        maybe_call = any(m in line for m in MAYBE_CALL)
+        if not maybe_call and not any(m in line for m in MAYBE_USER):
             continue
         try:
             row = json.loads(line)
@@ -139,19 +116,18 @@ def turn_shape(tail, plan="", began=None):
             if in_turn:
                 in_turn, started = False, epoch(row.get("timestamp"))
             continue
-        call = tool_call(row) if in_turn and maybe_call else None
-        if call:
+        calls = tool_calls(row) if in_turn and maybe_call else []
+        if calls:
             tools += 1
-            changes_made += int(changes(call[0], call[1]))
+            changes_made += sum(1 for name, given in calls if changes(name, given))
             if any(n in line for n in names):
                 reached = True
     return started, tools, changes_made, turns, reached
 
 
 def speak(payload, text):
-    """Codex's Stop hook cannot add context for later; it can only keep the turn going with a reason, which the model
-    reads at once. Every caller has already made sure the same thing is said at most once."""
-    print(json.dumps({"decision": "block", "reason": text}))
+    """Every caller has already made sure the same thing is said at most once (plan_agent.stop_output says how)."""
+    print(json.dumps(stop_output(payload, text)))
     return 0
 
 
@@ -176,9 +152,8 @@ def offer_once(payload, path, tools, turns, limits):
     return speak(payload, (
         "This conversation is keeping no work plan. You have spoken %d times and this turn used %d tools, which is "
         "long enough for the thread it started on to be out of sight. If the work has more than one strand to come "
-        "back to, start one now with %s, plan=%s - the skill agent-work-plan:maintain says what a row holds and what the "
-        "states mean. Otherwise finish as you were. This is said once per conversation and will not be raised again."
-        % (turns, tools, MCP_TOOLS, path)))
+        "back to, %s - the skill agent-work-plan:maintain says what a row holds and what the states mean.%s This is "
+        "said once per conversation and will not be raised again." % (turns, tools, offer_how(path), AFTER_OFFER)))
 
 
 def said_already(path, touched):
@@ -247,9 +222,10 @@ def settle(payload, path):
         return None
     shown = "; ".join("%s. %s" % (num, title[:60]) for num, title, _ in rows[:6]) + ("; ..." if len(rows) > 6 else "")
     return ("This turn is ending with %d row%s still `doing`: %s. `doing` is shown as work in progress, so move each one "
-            "on now: `done` if finished; `waiting` with waiting_on (and question for the user) if it waits on someone; "
-            "or keep it `doing` and say in note what is still running for it. Use %s (plan=%s). You will not be asked "
-            "about these rows again." % (len(rows), "" if len(rows) == 1 else "s", shown, MCP_TOOLS, path))
+            "on now: `done` if finished; `waiting` with %s (and %s for the user) if it waits on someone; or keep it "
+            "`doing` and say in %s what is still running for it. %s You will not be asked about these rows again."
+            % (len(rows), "" if len(rows) == 1 else "s", shown, WAITING_ON_WORD, QUESTION_WORD, NOTE_WORD,
+               settle_how(path)))
 
 
 # A reply asks the user something when its last paragraph, without code and quoted lines, has a line ending in a
@@ -295,10 +271,10 @@ def asked_since(nodes, began):
 def unrecorded_question(payload, path, tail):
     """Speaks when the last reply asks the user something and the plan has no record of it.
 
-    The Conversations tab lists only the questions written on rows. Measured over one day, conversations that had been
+    The Conversations view lists only the questions written on rows. Measured over one day, conversations that had been
     told to put their questions there still left about four in ten in the reply only.
 
-    The reply comes from the Stop event's `last_assistant_message`. A question counts as recorded when a row tool
+    The reply comes from the Stop event's `last_assistant_message`. A question counts as recorded when a row command or tool
     stamped its `asked` during the turn; one written straight into the file has no `asked`, so it draws the reminder
     once. It stays quiet on a Stop that follows one that kept the turn going (stop_hook_active), or it would ask again
     after its own reminder.
@@ -321,9 +297,8 @@ def unrecorded_question(payload, path, tail):
     if asked_since(plan.get("nodes") if isinstance(plan, dict) else None, began):
         return None
     return ("Your last reply may be asking the user something, but no row got a question this turn. Put each thing "
-            "you need from the user on a row of its own: set_row with waiting_on user and question, or add_row for a "
-            "new row (%s, plan=%s). Offers to carry on do not count. If it is already on a row, or needs no answer, "
-            "stop here without writing more." % (MCP_TOOLS, path))
+            "you need from the user on a row of its own: %s Offers to carry on do not count. If it is already on a row, "
+            "or needs no answer, stop here without writing more." % ask_how(path))
 
 
 def main():
@@ -331,9 +306,9 @@ def main():
         payload = read_payload()
     except Exception:
         return 0
-    # Speaking keeps the turn going, and the Stop that follows carries stop_hook_active; saying anything then would be
+    # Where speaking keeps the turn going, the Stop that follows carries stop_hook_active; saying anything then would be
     # this hook talking to its own reminder.
-    if not isinstance(payload, dict) or payload.get("stop_hook_active"):
+    if not isinstance(payload, dict) or (STOP_REENTERS and payload.get("stop_hook_active")):
         return 0
     path = plan_file(payload)
     if not path:

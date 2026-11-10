@@ -31,6 +31,7 @@ const accountUsage = require('./src/account-usage');
 const patching = require('./src/patching');
 const supported = require('./src/supported');
 const pythonRuntime = require('./src/python-runtime');
+const pythonOffer = require('./src/python-offer');
 const { folderTest } = require('./src/folders');
 const openTimes = require('./src/open-times');
 const codexConfig = require('./src/codex-config');
@@ -768,9 +769,10 @@ function findPython(context) {
   return pythonRuntime.findPython(undefined, pythonRuntime.pythons(context.globalStorageUri.fsPath));
 }
 
-/* Eleven megabytes from python.org, and only ever from a command or a button the user pressed. */
-async function downloadPython(context, say) {
-  const storage = context.globalStorageUri.fsPath;
+/* Eleven megabytes from python.org, and only ever from a command or a button the user pressed. It goes into the folder
+   Agent Plus and its extensions share, so with Claude Code Plus installed too it is fetched once; a window runs one
+   download at a time. */
+const downloadPython = pythonOffer.single(async (context, say) => {
   if (!pythonRuntime.build()) {
     vscode.window.showInformationMessage('Codex Plus: python.org publishes an embeddable Python for Windows only. '
       + 'On this machine, install Python 3 and run "Codex Plus: Install the Work Plan Plugin into Codex".');
@@ -778,11 +780,11 @@ async function downloadPython(context, say) {
   }
   const r = await vscode.window.withProgress(
     { location: vscode.ProgressLocation.Notification, title: `Downloading Python ${pythonRuntime.VERSION} from python.org` },
-    () => pythonRuntime.download(storage));
+    () => pythonRuntime.download(undefined, { userAgent: 'codex-plus' }));
   say(`python download: ${r.said}`);
   if (!r.ok) { vscode.window.showErrorMessage(`Codex Plus: downloading Python failed. ${r.said}`); return null; }
   return r;
-}
+});
 
 /*
  * The row above the work plan (Agent Plus's planNotice), modelled on Claude Code Plus's: the plugin could not be
@@ -799,28 +801,22 @@ const notInstalled = (step, said) => ({ title: 'The plugin that writes work plan
   detail: `${step} failed. ${said || 'It gave no reason.'} Until this succeeds nothing writes a work plan, so the plan stays empty.`,
   command: 'codexPlus.installWorkPlanPlugin', arguments: [] });
 function noPython(context) {
-  const canDownload = !!pythonRuntime.build();
-  const tried = pythonRuntime.pythons(context.globalStorageUri.fsPath).map((l) => l.join(' ')).join(', ');
-  return { title: 'Work plans need Python 3', description: canDownload ? 'click to download it' : 'click to try again',
-    detail: `Finding Python 3 failed. No Python 3.7 or later was found (tried ${tried}). `
-      + (canDownload ? 'Click to download it, or install Python and reload the window. ' : 'Install it from python.org, then click this to install the plugin again. ')
-      + 'Until then the plugin is in Codex without its hooks, MCP server and skill, so nothing writes a work plan.',
-    command: canDownload ? 'codexPlus.downloadPython' : 'codexPlus.installWorkPlanPlugin', arguments: [] };
+  return pythonOffer.notice(pythonRuntime.pythons(context.globalStorageUri.fsPath), { download: 'codexPlus.downloadPython',
+    install: 'codexPlus.installWorkPlanPlugin',
+    without: 'Until then the plugin is in Codex without its hooks, MCP server and skill, so nothing writes a work plan.' });
 }
 const NOT_TRUSTED = { title: 'Codex does not run the work plan hooks yet', description: 'click to trust them',
   detail: 'Codex runs a plugin\'s hooks only after you trust them, and the work plan plugin\'s are not trusted. Until they are, the open '
     + 'rows of a plan are not put in front of the model each turn and nothing reminds it at the end of one.',
   command: 'codexPlus.trustWorkPlanHooks', arguments: [] };
 
-/* With no Python the row says so. Where python.org has a build for this machine, the download is also offered once per
-   version, as Claude Code Plus does; after "Not now" the row is the only way to get it. */
-const PYTHON_OFFER_KEY = 'codexPlus.pythonOffer';
+/* With no Python the row says so. Where python.org has a build for this machine, the download is also offered, once per
+   version on the machine (src/python-offer.js); after "Not now" the row is the only way to get it. */
 function notePython(context, say, python) {
   problem('python', python ? null : noPython(context));
-  if (python || !pythonRuntime.build() || context.globalState.get(PYTHON_OFFER_KEY, '') === pythonRuntime.VERSION) return;
-  context.globalState.update(PYTHON_OFFER_KEY, pythonRuntime.VERSION);
-  Promise.resolve(vscode.window.showInformationMessage('Work plans need Python 3. Download it from python.org (11 MB)?', 'Download', 'Not now'))
-    .then(async (pick) => { if (pick === 'Download' && await downloadPython(context, say)) await installPlugin(context, say, { interactive: false }); })
+  if (python) return;
+  pythonOffer.offer({ ask: (...a) => vscode.window.showInformationMessage(...a), get: () => downloadPython(context, say) })
+    .then(async (got) => { if (got) await installPlugin(context, say, { interactive: false }); })
     .catch((e) => say(`offering Python: ${e.message}`));
 }
 

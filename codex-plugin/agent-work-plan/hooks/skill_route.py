@@ -2,6 +2,7 @@
 # BSD 3-Clause License
 # Copyright (c) 2026, Xnerv Wang
 # All rights reserved.
+# Source: vscode-agent-plus shared/plugin/hooks/skill_route.py; sync-shared.js copies it, so edit it there.
 
 """The skill search behind the work plan plugin's route-skills.py hook and its skill_search MCP tool.
 
@@ -22,8 +23,8 @@ The index sits in the plugin's data directory. A turn only checks the modificati
 when one has changed it starts a background process to rebuild the index and searches the old one meanwhile, so no turn
 waits for a rebuild.
 
-Standard library only, Python 3.7 or later. This module is meant to move into Agent Plus's shared code,
-to be used by the Claude Code plugin as well, and lives here until that move.
+Standard library only, Python 3.7 or later. It is kept in Agent Plus's shared code so that the Claude
+Code plugin can use it as well.
 """
 import array
 import configparser

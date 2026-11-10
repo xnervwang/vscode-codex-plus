@@ -46,6 +46,8 @@ const tmp = (name = 'd') => { const d = path.join(scratch, `${++n}-${name}`); fs
 /* The extension reads its Codex home from CODEX_HOME alone. A part sets it to a home of its own before activating, and
    this one stands in otherwise, so nothing the suite starts can reach the user's own ~/.codex. */
 process.env.CODEX_HOME = tmp('default-codex-home');
+/* The folder Agent Plus and its extensions share (src/files.js sharedHome) likewise. */
+process.env.AGENT_WORK_PLAN_HOME = tmp('default-shared-home');
 
 const only = process.argv[2] || '';
 (async () => {

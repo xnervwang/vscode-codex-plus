@@ -1,6 +1,7 @@
 // BSD 3-Clause License
 // Copyright (c) 2026, Xnerv Wang
 // All rights reserved.
+// Source: vscode-agent-plus shared/host/python-runtime.js; sync-shared.js copies it, so edit it there.
 
 'use strict';
 /*
@@ -10,7 +11,8 @@
  * machine: macOS and Linux have it, the python.org installer for Windows provides `python` and the `py` launcher but no
  * `python3`, and a clean Windows has no Python at all. So the names are tried in turn (findPython), and for a machine
  * with none, python.org's embeddable build is offered - a zip of a complete interpreter that needs no installer and no
- * administrator, unpacked into this extension's own storage.
+ * administrator, unpacked into the folder Agent Plus and its extensions share (src/files.js sharedHome), so that with
+ * both extensions installed it is fetched once.
  *
  * The plugin is already written for this: plan_path.py reads the launcher command out of hooks/launcher.json, and
  * falls back to python3 when that file is absent. Writing that file is plugin-install.fitHooks' job; this module only
@@ -19,15 +21,15 @@
  * Nothing is fetched unless the user asks for it. download() is reached from a command, never from activation, since
  * it is eleven megabytes over the public internet on a machine whose network this extension knows nothing about.
  *
- * The version and the three digests below are copied from claude-code-extras, which pins the same build for the same
- * reason. A download whose digest does not match is thrown away whole rather than unpacked, since this interpreter
- * goes on to run with the user's own privileges.
+ * A download whose digest does not match is thrown away whole rather than unpacked, since this interpreter goes on to
+ * run with the user's own privileges.
  */
 const cp = require('child_process');
 const crypto = require('crypto');
 const fs = require('fs');
 const https = require('https');
 const path = require('path');
+const { sharedHome } = require('./files');
 
 const VERSION = '3.12.7';
 /* By process.arch: python.org's build name, zip SHA-256, zip size. */
@@ -78,28 +80,30 @@ function build(platform = process.platform, arch = process.arch) {
     url: `https://www.python.org/ftp/python/${VERSION}/python-${VERSION}-embed-${b[0]}.zip` };
 }
 
-/* Under the extension's own storage, named by version and processor, so an upgrade lands beside the old one. */
-const home = (storage, b = build()) => path.join(storage, 'python', `${VERSION}-${b ? b.name : 'none'}`);
-const executable = (storage, b = build()) => path.join(home(storage, b), 'python.exe');
+/* Under `base`, named by version and processor, so an upgrade lands beside the old one. `base` is the shared folder;
+   an extension that fetched one before kept it under its own storage, in the same layout. */
+const home = (base = sharedHome(), b = build()) => path.join(base, 'python', `${VERSION}-${b ? b.name : 'none'}`);
+const executable = (base = sharedHome(), b = build()) => path.join(home(base, b), 'python.exe');
 
 /**
- * The names to try for this machine, with a Python downloaded here added last.
+ * Interpreters to try: the names on PATH first, then a downloaded python.exe in the shared folder, then one an earlier
+ * version of the extension downloaded into `storage`.
  *
- * It goes last so that an installed Python wins over one this extension fetched.
+ * They go last so that an installed Python wins over a fetched one.
  */
 function pythons(storage) {
   const b = build();
-  if (!b || !storage) return PYTHONS;
-  const exe = executable(storage, b);
-  return fs.existsSync(exe) ? PYTHONS.concat([[exe.replace(/\\/g, '/')]]) : PYTHONS;
+  if (!b) return PYTHONS;
+  const got = [sharedHome(), storage].filter(Boolean).map((base) => executable(base, b)).filter((exe) => fs.existsSync(exe));
+  return PYTHONS.concat(got.map((exe) => [exe.replace(/\\/g, '/')]));
 }
 
-function fetchTo(url, file, hops = 5) {
+function fetchTo(url, file, hops = 5, agent = 'agent-plus') {
   return new Promise((resolve, reject) => {
-    const req = https.get(url, { headers: { 'User-Agent': 'codex-extras' } }, (res) => {
+    const req = https.get(url, { headers: { 'User-Agent': agent } }, (res) => {
       if ([301, 302, 303, 307, 308].includes(res.statusCode) && res.headers.location && hops > 0) {
         res.resume();
-        resolve(fetchTo(new URL(res.headers.location, url).toString(), file, hops - 1));
+        resolve(fetchTo(new URL(res.headers.location, url).toString(), file, hops - 1, agent));
         return;
       }
       if (res.statusCode !== 200) { res.resume(); reject(new Error(`${url} answered ${res.statusCode}`)); return; }
@@ -132,10 +136,10 @@ function unzip(zip, dir, run = cp.execFile) {
  * step leaves nothing that findPython could pick up and try to run. The temporary names carry the process id because
  * every window of the editor runs this code.
  */
-async function download(storage, { fetch = fetchTo, extract = unzip } = {}) {
+async function download(base = sharedHome(), { fetch = fetchTo, extract = unzip, userAgent = 'agent-plus' } = {}) {
   const b = build();
   if (!b) return { ok: false, said: 'There is no embeddable Python for this machine.' };
-  const target = home(storage, b);
+  const target = home(base, b);
   const part = `${target}.${process.pid}.part`;
   const zip = `${target}.${process.pid}.zip`;
   const clean = () => {
@@ -144,7 +148,7 @@ async function download(storage, { fetch = fetchTo, extract = unzip } = {}) {
   };
   try {
     fs.mkdirSync(part, { recursive: true });
-    const sha = await fetch(b.url, zip);
+    const sha = await fetch(b.url, zip, 5, userAgent);
     if (sha !== b.sha256) { clean(); return { ok: false, said: `${b.url} did not match its recorded SHA-256, so it was not used.` }; }
     if (!(await extract(zip, part))) { clean(); return { ok: false, said: `Unpacking ${path.basename(b.url)} failed.` }; }
     if (!fs.existsSync(path.join(part, 'python.exe'))) { clean(); return { ok: false, said: 'The download had no python.exe in it.' }; }
