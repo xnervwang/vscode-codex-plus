@@ -484,6 +484,23 @@
           "minimum": 0,
           "markdownDescription": "The token budget `Codex Plus: Set Goal...` starts from. Codex keeps starting turns toward a goal while the conversation is idle, and stops once the goal has used this many tokens. 0 starts from no budget."
         },
+        "codexPlus.skillsListBudget": {
+          "scope": "application",
+          "type": "integer",
+          "default": 0,
+          "minimum": 0,
+          "maximum": 10000,
+          "markdownDescription": "Tokens Codex may spend on its list of skills each turn: `skills.max_context_tokens` in Codex's `config.toml`, written there when this is not 0. 0 leaves Codex's own default, 2% of the model's context window, which with a hundred or more skills installed cuts each description to about 50 characters; 10,000, the most Codex takes, gives each about 195. Setting 0 again takes out only the value written from here."
+        },
+        "codexPlus.disabledSkills": {
+          "scope": "application",
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "markdownDescription": "Skills Codex is to leave out of its list, and not run even when named with `$name`: each one is written into Codex's `config.toml` as a `[[skills.config]]` entry with `enabled = false`. Name a plugin's skill with its plugin in front, as `Plugin-name:skill-name`; the skill's own name alone does not match it. Taking a name off this list removes only the entry written from here."
+        },
         "codexPlus.workPlanOfferMinTurns": {
           "scope": "application",
           "type": "number",

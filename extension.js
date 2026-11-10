@@ -36,6 +36,7 @@ const openTimes = require('./src/open-times');
 const codexConfig = require('./src/codex-config');
 const uninstallPlan = require('./src/uninstall-plan');
 const wakeup = require('./src/wakeup');
+const skillsConfig = require('./src/skills-config');
 
 const CONFIG = 'codexPlus';
 /* This copy's id and folder, kept for deactivate, which runs after the editor's API is gone. */
@@ -148,6 +149,20 @@ async function askAppServer(method, params, { fallback = true } = {}) {
     const result = await require('./src/appserver').withAppServer(binary, files.codexHome(), (server) => server.request(method, params));
     return { outcome: 'done', result };
   } catch (e) { return { outcome: 'failed', reason: e.message }; }
+}
+
+/*
+ * codexPlus.skillsListBudget and codexPlus.disabledSkills, written into Codex's config.toml (src/skills-config.js). One
+ * write at a time, so two quick changes of a setting cannot write the same entry twice.
+ */
+let skillsWriting = Promise.resolve();
+function applySkillSettings(context, say) {
+  if (!trusted() || standsDown()) return skillsWriting;
+  const c = cfg();
+  skillsWriting = skillsWriting.then(() => skillsConfig.applySkillSettings({ ask: askAppServer, memento: context.globalState,
+    maxTokens: c.get('skillsListBudget', 0), disabled: c.get('disabledSkills', []), log: say }))
+    .catch((e) => say(`writing the skills settings into Codex's config: ${e.message}`));
+  return skillsWriting;
 }
 
 /* What the plugin's hooks read: the few settings that change their behaviour, and the user's time zone. */
@@ -276,6 +291,7 @@ async function activate(context) {
 
   context.subscriptions.push(vscode.workspace.onDidChangeConfiguration((e) => {
     if (e.affectsConfiguration(CONFIG)) { writeHookSettings(context); sessionsModel.refresh(); }
+    if (e.affectsConfiguration(`${CONFIG}.skillsListBudget`) || e.affectsConfiguration(`${CONFIG}.disabledSkills`)) applySkillSettings(context, say);
     /* The time stamps, the message list and the colours live in Codex's page, and this is how a change to one of them
        gets there: the same redraw the figures use, rather than a watcher of its own. The master switch is in the list
        because it decides all three, and a page has to be told when it goes either way. */
@@ -324,6 +340,7 @@ async function activate(context) {
     if (wrote || !trusted()) return;
     wrote = true;
     writeHookSettings(context);
+    applySkillSettings(context, say);
     later(() => ensurePlugin(context, say), 3000);
     later(() => {
       reader.request('sweep', { home: files.codexHome() }).then((r) => {

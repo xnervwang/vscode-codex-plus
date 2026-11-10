@@ -124,6 +124,8 @@ Codex asks its client for an approval as a request, and records it in no file of
 | `skill_search` | A read-only tool of the work plan's MCP server: the same search with words the model chooses, so it can rephrase, try synonyms, or turn a request made in another language into English keywords |
 | What is logged | `skill-route/route.log` in the plugin's data folder: which skills each turn was given, by which search, and how long that took; which `SKILL.md` files the turn then read. Never the words of a message. Kept under 256 KB, with one older file |
 | After this extension updates the plugin | The hook is new, so Codex asks once more to trust the plugin's hooks |
+| Codex's own list of skills | `codexPlus.skillsListBudget` is written into Codex's `config.toml` as `skills.max_context_tokens` when it is not 0: Codex's own default is 2% of the model's context window, about 50 characters a description with a hundred or more skills; 10,000, the most Codex takes, gives about 195. Each turn then costs that many more tokens of context. 0, the default, leaves Codex's setting alone |
+| Skills you never want | `codexPlus.disabledSkills` names skills to turn off, each written as a `[[skills.config]]` entry with `enabled = false`: Codex leaves it out of its list and does not run it when named with `$name`, and the skill search leaves it out too. A plugin's skill is named with its plugin, as `Plugin-name:skill-name`. Taking a name off the list removes only the entry written from here, and a value you wrote into `config.toml` yourself is never changed |
 
 ## Not here
 
