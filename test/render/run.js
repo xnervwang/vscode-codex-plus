@@ -356,6 +356,28 @@ function selfchecked(r, where, { turns, users, rows, replies = turns }) {
       await s.b.hover(10, 10);
     }
     await floating(s, 'conversation');
+    /* The yellow "!" of a page the script cannot read: none on this page, whose messages are all recognised; then, with
+       the attributes it finds messages by renamed as a Codex release would rename them, one after three passes and five
+       seconds, at the top right of the conversation and over none of Codex's buttons. */
+    {
+      const warnAt = () => s.b.evaluate(`(() => { const w = document.querySelector('[data-codex-extras="warn"]'); if (!w) return null;
+        const a = w.getBoundingClientRect(); const over = [...document.querySelectorAll('button')].filter((b) => !b.closest('[data-codex-extras]')).filter((b) => {
+          const r = b.getBoundingClientRect(); return r.width > 0 && r.left < a.right && a.left < r.right && r.top < a.bottom && a.top < r.bottom; }).length;
+        const sc = document.querySelector('[data-app-action-timeline-scroll]'); return { x: [a.left, a.right].map(Math.round), y: [a.top, a.bottom].map(Math.round),
+        scrollerTop: sc ? Math.round(sc.getBoundingClientRect().top) : null, vw: innerWidth, over }; })()`);
+      check(await warnAt() === null, 'conversation: a page whose messages are recognised shows no "!"');
+      await s.b.evaluate(`(() => { for (const a of ['data-local-conversation-user-anchor', 'data-response-annotation-target', 'data-user-message-bubble'])
+        for (const e of [...document.querySelectorAll('[' + a + ']')]) { e.setAttribute(a + '-renamed', e.getAttribute(a)); e.removeAttribute(a); } })()`);
+      for (let i = 0; i < 3; i++) { await s.toPage(VIEW); await sleep(200); }
+      await sleep(5200);
+      await s.toPage(VIEW);
+      await sleep(400);
+      const w = await warnAt();
+      results.scenes.conversation.warn = w;
+      await shot(s, 'unrecognised-warn');
+      check(!!w && w.x[1] === w.vw - 4 && w.x[1] - w.x[0] === 16 && w.y[0] >= w.scrollerTop && w.over === 0,
+        'conversation: with its messages no longer recognised, the page shows a 16 px "!" at the top right of the conversation, over none of Codex\'s buttons', w);
+    }
     results.blocked.push(...s.b.blocked);
   } finally { await s.close(); }
 

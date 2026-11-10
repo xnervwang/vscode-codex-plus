@@ -344,6 +344,11 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
   movedPage.view();
   eq(told().length, 1, 'once the miss has held for five seconds the host is told');
   eq([told()[0].turns > 0, told()[0].scroller], [true, true], 'with how many turns were on the page, and that the scroller itself was found');
+  /* And the page says it too, as Claude Code Plus does: a yellow "!" at the top right that explains itself on hover. */
+  const warnOf = (dom) => dom.document.root.querySelectorAll('[data-codex-extras="warn"]')[0] || null;
+  const warn = warnOf(moved);
+  eq([!!warn, warn && warn.textContent, /width:16px/.test((warn && warn.style.cssText) || ''), /Show Status/.test((warn && warn.getAttribute('aria-label')) || '')],
+    [true, '!', true, true], 'the page shows a 16 px "!" that says what went wrong and where to read more');
   clockMs += 60000;
   movedPage.view(); movedPage.view();
   eq(told().length, 1, 'and only once while it stays that way');
@@ -351,9 +356,12 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
     'every string in that message is one of the script\'s own constants');
   eq(searchable.filter((p) => JSON.stringify(told()).includes(p.text)).map((p) => p.text), [],
     'and none of the page\'s planted text is in it');
+  movedPage.view({ timestamps: false, navigation: false, userEdge: false, lowContext: false, replyFigures: false, buttons: false });
+  eq(!!warnOf(moved), false, 'with every addition turned off the "!" goes as well');
   for (let i = 0; i < 4; i++) page.view();
   eq(page.posted.filter((m) => m.kind === 'anchorsMissing').length, 0,
     'the real sample, whose messages are all recognised, never says it');
+  eq(page.posted.length && dom.document.root.querySelectorAll('[data-codex-extras="warn"]').length, 0, 'and never shows the "!"');
 
   /*
    * ── the line under each reply, placed by turn id ──

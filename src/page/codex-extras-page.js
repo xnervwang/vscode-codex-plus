@@ -2008,13 +2008,41 @@
   function noteMisses(list) {
     var turns = list ? lastTurns : all(document, SEL.turn).length;
     var composer = !!composerRoot();
-    if (!turns || (list && list.length && composer)) { missRun = 0; missSince = 0; missTold = false; return; }
+    if (!turns || (list && list.length && composer)) { missRun = 0; missSince = 0; missTold = false; showWarn(false); return; }
     if (!missRun) missSince = Date.now();
     missRun++;
-    if (missTold || missRun < MISS_PASSES || Date.now() - missSince < MISS_MS) return;
+    if (missTold) { showWarn(true); return; }
+    if (missRun < MISS_PASSES || Date.now() - missSince < MISS_MS) return;
     missTold = true;
+    showWarn(true);
     post({ kind: 'anchorsMissing', version: SCRIPT_VERSION, turns: turns, scroller: !!list,
       messages: list ? list.length : 0, composer: composer });
+  }
+
+  /*
+   * The same miss said on the page, as Claude Code Plus says it: a 16 px yellow "!" at the top right that explains
+   * itself on hover. It sits just inside the top of the element the conversation scrolls in, below Codex's own header
+   * and its buttons, and goes as soon as the messages are recognised again or every addition is turned off.
+   */
+  var warn = null;
+  var WARN_SAID = 'Codex Plus: this Codex build no longer matches what the page script looks for, so the times, the list of '
+    + 'your messages and their marks are not drawn. The patch itself is in place; Codex\'s page changed. '
+    + '"Codex Plus: Show Status" says which part was not found.';
+  function showWarn(on) {
+    if (!on || !document.body || (!anythingOn() && view.buttons === false)) { warn = gone(warn); return; }
+    if (!warn || !warn.isConnected) {
+      warn = document.createElement('div');
+      warn.setAttribute(MARK, 'warn');
+      warn.textContent = '!';
+      warn.style.cssText = 'position:fixed;right:4px;z-index:' + Z_BELOW_CODEX + ';width:16px;height:16px;border-radius:50%;'
+        + 'display:flex;align-items:center;justify-content:center;font:700 11px var(--vscode-font-family,sans-serif);cursor:help;'
+        + 'background:var(--vscode-editorWarning-foreground,#cca700);color:var(--vscode-editor-background,#1e1e1e);';
+      labelled(warn, WARN_SAID);
+      document.body.appendChild(warn);
+    }
+    var sc = rectOf(scrollerEl());
+    var top = Math.round(sc && sc.height > 0 ? (sc.top || 0) + 4 : 36) + 'px';
+    if (warn.style.top !== top) warn.style.top = top;
   }
 
   var refreshing = false;
@@ -2204,6 +2232,7 @@
         contextMeter: m.contextMeter !== false };
       /* Turned on from this page's own button: one chime, so the user hears at once whether sound comes out. */
       if (chimeAsked) { chimeAsked = false; if (!wasOn && view.chime) chime('done'); }
+      if (!anythingOn() && view.buttons === false) showWarn(false);
       ready();
       placeBar();
     } else if (m.type === 'codex-extras-user-times') {
