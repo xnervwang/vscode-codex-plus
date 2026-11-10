@@ -17,6 +17,7 @@ The Codex sessions list in the Codex Plus sidebar:
 | Codex conversations in the work plan, Conversations and Answer views | Agent Plus's views | Agent Plus (installed with this extension) |
 | Work plan per conversation: rows with states, numbered, kept across turns and compactions | Agent Plus's Work plan view; Codex's context every turn | Work plan plugin, its hooks trusted |
 | Plan changes through MCP tools `set_row` / `add_row`, no sandbox approval | Codex | Work plan plugin |
+| Wake-ups: the model sets one with the MCP tool `set_wakeup` and removes it with `clear_wakeup`; when it is due, its prompt is queued for the conversation and Codex sends it once the conversation is idle. See Wake-ups | Codex conversations open in this window | Work plan plugin; patch; `codexPlus.wakeUps` |
 | The installed skills that best fit your message, put in front of Codex before each turn with their full descriptions; their names after that turn's figures under its reply. See Skill search | Codex's context; Codex conversation | Work plan plugin, its hooks trusted; `codexPlus.skillRouting` |
 | End-of-turn reminders: rows left `doing`, questions not on a row, plan not reconciled | Codex | Work plan plugin |
 | Reminder to bring `doing` rows up to date before an automatic compaction, at 70% and 85% of where Codex compacts (90% of the model's window, or `model_auto_compact_token_limit` in `config.toml` when that is lower); pointer to the plan after one | Codex | Work plan plugin |
@@ -94,6 +95,17 @@ Codex asks its client for an approval as a request, and records it in no file of
 | Why not `/compact` itself | Codex offers `/compact` only on an empty message box. The meter never touches the box, so a draft stays |
 | When it does not compact | While a turn runs or an approval waits, as Codex refuses its own `/compact` then: "Compact is disabled while a chat is in progress" |
 | Where Codex compacts | 90% of the model's full window, or `model_auto_compact_token_limit` in `config.toml` when that is lower |
+
+## Wake-ups
+
+| | |
+| --- | --- |
+| What it is for | What Claude Code's periodic alarm does: a conversation woken every few minutes, so that work left to do carries on after a turn ends without you sending a message |
+| How one is set | The model calls `set_wakeup` with the prompt to send and the interval in minutes, 5 unless it gives one: when you ask for one, or before a long stretch of work. One per conversation; setting it again replaces it. It calls `clear_wakeup` once the work is done, or once everything left waits on you |
+| When it sends | Every interval, to a conversation this window's Codex has open, over Codex's own connection: the prompt goes into the conversation's queue (`thread/queue/add`), and Codex sends it when the conversation is idle, after a turn still running. A wake-up still waiting in the queue is not queued again. Each one starts with a line saying it comes from the timer and not from you |
+| When it does not | A conversation no window has open; one you stopped, until a turn starts in it again, and its queued wake-up is taken back out of the queue; before the patch has handed Codex's connection over; with `codexPlus.wakeUps` off. Two windows with the conversation open queue it once |
+| How long | Seven days from when it was set; then it is removed. `Codex Plus: Show Status` lists the ones set |
+| Where it is kept | `<thread id>.wakeup` in the plugin's data folder, with `<thread id>.woke` beside it for when it last went out and whether it is paused. Both go with their conversation |
 
 ## Skill search
 

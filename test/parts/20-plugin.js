@@ -126,7 +126,8 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
     encoding: 'utf8', env: { ...process.env, PYTHONDONTWRITEBYTECODE: '1', CODEX_HOME: mcpHome } });
   const replies = r.stdout.trim().split('\n').filter(Boolean).map((l) => JSON.parse(l));
   eq(replies.map((x) => x.id), [1, 2, 3, 4, 5, 6], 'the MCP server answers every request and no notification');
-  eq(replies[1].result.tools.map((t) => t.name), ['set_row', 'add_row', 'skill_search'], 'it offers set_row, add_row and skill_search');
+  eq(replies[1].result.tools.map((t) => t.name), ['set_row', 'add_row', 'skill_search', 'set_wakeup', 'clear_wakeup'],
+    'it offers set_row, add_row, skill_search, set_wakeup and clear_wakeup');
   eq(replies[2].result.isError, false, 'add_row creates the plan');
   eq(JSON.parse(fs.readFileSync(plan, 'utf8')).nodes[0].state, 'doing', 'with the row in it');
   eq(replies[3].result.isError, true, 'a move to waiting without waiting_on is refused, as by the row command');

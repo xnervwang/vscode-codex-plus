@@ -435,6 +435,12 @@
           "default": [],
           "markdownDescription": "Plugins installed for Claude Code but not for Codex whose skills are searched too: their names, or `*` for all of them."
         },
+        "codexPlus.wakeUps": {
+          "scope": "application",
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Send the wake-ups the model sets with the work plan's `set_wakeup` tool to the Codex conversations open in this window: when one is due, its prompt is put in that conversation's queue, and Codex sends it once the conversation is idle. A conversation you stopped is not woken until a turn starts in it again. A wake-up expires after seven days; `Codex Plus: Show Status` lists them. Needs the patch."
+        },
         "codexPlus.workPlanOfferMinTurns": {
           "scope": "application",
           "type": "number",

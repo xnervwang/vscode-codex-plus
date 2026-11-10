@@ -392,6 +392,8 @@ SETTLED_SUFFIX = ".settled"      # which `doing` rows the end of a turn last ask
 OFFERED_SUFFIX = ".offered"      # that a conversation with no plan was offered one (nudge-work-plan.py)
 WATERMARK_SUFFIX = ".watermark"  # which context marks have asked (refresh-work-plan.py)
 TOLD_SUFFIX = ".tz"              # what the user's time zone was last told as (tell-time-zone.py)
+WAKEUP_SUFFIX = ".wakeup"        # the conversation's wake-up (plan-mcp.py set_wakeup; the extension's src/wakeup.js)
+WOKE_SUFFIX = ".woke"            # when the extension last queued that wake-up, and whether it is paused
 LOCK_SUFFIX = ".lock"            # appended to the plan's own name, not put in place of .json (see plan_lock)
 
 

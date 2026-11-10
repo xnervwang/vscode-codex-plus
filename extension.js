@@ -35,6 +35,7 @@ const { folderTest } = require('./src/folders');
 const openTimes = require('./src/open-times');
 const codexConfig = require('./src/codex-config');
 const uninstallPlan = require('./src/uninstall-plan');
+const wakeup = require('./src/wakeup');
 
 const CONFIG = 'codexPlus';
 /* This copy's id and folder, kept for deactivate, which runs after the editor's API is gone. */
@@ -301,6 +302,13 @@ async function activate(context) {
   const opens = openTimes.createOpenTimes(openTimes.whereLogs(context.logUri && context.logUri.fsPath));
   registerCommands(context, { source, memory, sessionsModel, sessionsView, say, link, opens, groups, placer });
 
+  /* Wake-ups the model set with the work plan's set_wakeup, queued for this window's conversations when due
+     (src/wakeup.js). Only over Codex's own connection: hostRequest answers 'unavailable' until the patch hands it over,
+     and a short-lived app-server would queue for a conversation nobody has open. */
+  const wakes = wakeup.createWakeups({ dir: () => install.planDir(files.codexHome()), ask: (m, p) => patching.hostRequest(m, p),
+    log: say, enabled: () => cfg().get('wakeUps', true) && trusted() && !standsDown() });
+  context.subscriptions.push(wakes.start(), patching.onAppServerNotification((m, p) => { wakes.heard(m, p).catch(() => { /* asked again next time */ }); }));
+
   /* Delayed start-up work is cancelled with the extension, so a window that closes within the delay starts none of it. */
   const later = (fn, ms) => {
     const t = setTimeout(fn, ms);
@@ -401,6 +409,12 @@ function registerCommands(context, { source, memory, sessionsModel, sessionsView
         : `none found, tried ${tried.map((l) => l.join(' ')).join(', ')}`
           + (pythonRuntime.build() ? '; "Codex Plus: Download Python for the Work Plan Hooks" fetches one' : '')}`,
       `Plans: ${install.planDir(home)}`,
+      `Wake-ups: ${(() => {
+        const set = wakeup.listed(install.planDir(home)).filter((w) => !w.expired);
+        if (!set.length) return 'none set';
+        return `${set.length} set${cfg().get('wakeUps', true) ? '' : ', NOT SENT (codexPlus.wakeUps is off)'}: `
+          + set.map((w) => `${w.thread} every ${w.everyMinutes} min until ${new Date(w.expiresMs).toISOString().slice(0, 16).replace('T', ' ')} UTC`).join('; ');
+      })()}`,
       `codex program: ${codexProgram() || '(not found)'}`,
       `Agent Plus: ${link.registered ? 'the Codex source is registered' : `not registered (${link.code}: ${link.reason})`}`,
       `Workspace trusted: ${trusted() ? 'yes' : 'no (Restricted Mode: nothing is written)'}`,

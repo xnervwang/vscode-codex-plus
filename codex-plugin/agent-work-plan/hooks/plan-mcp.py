@@ -17,17 +17,22 @@ for, named by a thread id: the tools write only there.
 
 A third tool, skill_search, only reads: it searches every installed skill with the words the model gives it
 (skill_route.py), which reaches the skills Codex's own list shortens or leaves out.
+
+set_wakeup and clear_wakeup keep a conversation's wake-up, <thread id>.wakeup in the same data directory: the Codex Plus
+extension reads it in every window and, when it is due, queues the prompt for that conversation (src/wakeup.js there).
 """
 import importlib.util
 import json
 import os
 import sys
+import time
 import types
 
 sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from plan_path import PLAN_NAME, PLUGIN_DIR_NAME, STATES, WAITING_ON, codex_home  # noqa: E402
+from plan_path import (PLAN_NAME, PLUGIN_DIR_NAME, SESSION_NAME, STATES, WAITING_ON, WAKEUP_SUFFIX, codex_home,  # noqa: E402
+                       write_atomic)
 import skill_route  # noqa: E402
 
 
@@ -41,6 +46,11 @@ def load_row_command():
 
 ROW = load_row_command()
 PROTOCOL = "2025-06-18"
+WAKEUP_DAYS = 7
+MAX_EVERY_MINUTES = 24 * 60
+MAX_PROMPT_CHARS = 4000
+THREAD = {"type": "string", "description": "This conversation's thread id: the value of $CODEX_THREAD_ID in a shell "
+          "command, and the name of the plan file without .json."}
 
 PLAN = {"type": "string", "description": "The plan file's absolute path, as the work plan block gives it at the start "
         "of the turn. Before the conversation has a plan, it is "
@@ -89,6 +99,29 @@ TOOLS = [
          "cwd": {"type": "string", "description": "The working directory, so that the repository's own skills are "
                  "searched too."},
      }}},
+    {"name": "set_wakeup", "description": "Set a recurring wake-up for this conversation: every every_minutes minutes "
+     "(5 when left out), the prompt is sent to it as a new message as soon as it is idle, so work it still has to do "
+     "carries on after a turn ends instead of waiting for the user. It works while the conversation is open in a VS Code "
+     "window with the Codex Plus extension, and expires after 7 days. Set one when the user asks for a periodic nudge "
+     "or alarm, or before a long stretch of work that must not stall between turns. Write the prompt for the turn it "
+     "starts: what it covers (the task the user named, or every open row of the work plan), to check work already "
+     "running before starting new work, and to answer with one line when there is nothing to do. Each message it sends "
+     "starts with a line saying it comes from the timer and not from the user. Setting it again replaces it. Remove it "
+     "with clear_wakeup in the turn the work it covers is done, or once everything left waits on the user; do not leave "
+     "it to run out. When you set it, tell the user the interval, that it expires after 7 days, what it covers and when "
+     "you will remove it.",
+     "annotations": dict(ANNOTATIONS, title="Set this conversation's wake-up", idempotentHint=True),
+     "inputSchema": {"type": "object", "required": ["thread", "prompt"], "additionalProperties": False, "properties": {
+         "thread": THREAD,
+         "prompt": {"type": "string", "description": "The message each wake-up sends."},
+         "every_minutes": {"type": "integer", "minimum": 1, "maximum": MAX_EVERY_MINUTES,
+                           "description": "Minutes between wake-ups; 5 when left out."},
+     }}},
+    {"name": "clear_wakeup", "description": "Remove this conversation's wake-up, in the turn the work it covered is done "
+     "or once everything left waits on the user.",
+     "annotations": dict(ANNOTATIONS, title="Remove this conversation's wake-up", idempotentHint=True),
+     "inputSchema": {"type": "object", "required": ["thread"], "additionalProperties": False,
+                     "properties": {"thread": THREAD}}},
 ]
 
 
@@ -132,11 +165,50 @@ def search(args):
     return skill_route.search_text(PLAN_DIR, query, min(count, skill_route.SEARCH_COUNT_MAX), cwd)
 
 
+def wakeup_file(args):
+    thread = args.get("thread") or os.environ.get("CODEX_THREAD_ID") or ""
+    if not isinstance(thread, str) or not SESSION_NAME.match(thread):
+        raise Refused("thread is this conversation's thread id ($CODEX_THREAD_ID), not %r." % (thread,))
+    return os.path.join(PLAN_DIR, thread + WAKEUP_SUFFIX), thread
+
+
+def set_wakeup(args):
+    path, thread = wakeup_file(args)
+    prompt = args.get("prompt")
+    if not isinstance(prompt, str) or not prompt.strip():
+        raise Refused("prompt is the message each wake-up sends, and it is empty.")
+    if len(prompt) > MAX_PROMPT_CHARS:
+        raise Refused("prompt is %d characters; keep it to %d." % (len(prompt), MAX_PROMPT_CHARS))
+    every = args.get("every_minutes", 5)
+    if isinstance(every, bool) or not isinstance(every, int) or not 1 <= every <= MAX_EVERY_MINUTES:
+        raise Refused("every_minutes is a whole number from 1 to %d, not %r." % (MAX_EVERY_MINUTES, every))
+    now = time.time()
+    os.makedirs(PLAN_DIR, exist_ok=True)
+    write_atomic(path, json.dumps({"thread": thread, "everyMinutes": every, "prompt": prompt.strip(), "setAt": now,
+                                   "expiresAt": now + WAKEUP_DAYS * 86400}))
+    until = time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime(now + WAKEUP_DAYS * 86400))
+    return ("Wake-up set: every %d minute%s, while this conversation is open in a VS Code window with Codex Plus, until "
+            "%s. Remove it with clear_wakeup once the work it covers is done." % (every, "" if every == 1 else "s", until))
+
+
+def clear_wakeup(args):
+    path, _ = wakeup_file(args)
+    try:
+        os.remove(path)
+    except FileNotFoundError:
+        return "There was no wake-up set for this conversation."
+    return "Wake-up removed."
+
+
 def call(name, args):
     if not isinstance(args, dict):
         raise Refused("The arguments are not an object.")
     if name == "skill_search":
         return search(args)
+    if name == "set_wakeup":
+        return set_wakeup(args)
+    if name == "clear_wakeup":
+        return clear_wakeup(args)
     ns = types.SimpleNamespace(plan=plan_path(args.get("plan")), note=args.get("note"),
                                waiting_on=args.get("waiting_on"), question=args.get("question"))
     if name == "set_row":
