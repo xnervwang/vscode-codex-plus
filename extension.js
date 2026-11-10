@@ -74,6 +74,7 @@ function settings() {
     patchCodex: on && !removed ? 'on' : 'off',
     chime: on && c.get('chime', true),
     figures: on && c.get('turnFigures', true),
+    replyDuration: on && c.get('replyDuration', true),
     timestamps: on && c.get('timestamps', true),
     conversationNavigation: on && c.get('conversationNavigation', true),
     userMessageColor: on ? c.get('userMessageColor', '') : '',
@@ -187,7 +188,8 @@ async function activate(context) {
     if (e.affectsConfiguration(`${CONFIG}.enabled`) || e.affectsConfiguration(`${CONFIG}.timestamps`)
       || e.affectsConfiguration(`${CONFIG}.conversationNavigation`)
       || e.affectsConfiguration(`${CONFIG}.userMessageColor`) || e.affectsConfiguration(`${CONFIG}.userMessageEdge`)
-      || e.affectsConfiguration(`${CONFIG}.lowContextOutline`) || e.affectsConfiguration(`${CONFIG}.chime`)) {
+      || e.affectsConfiguration(`${CONFIG}.lowContextOutline`) || e.affectsConfiguration(`${CONFIG}.chime`)
+      || e.affectsConfiguration(`${CONFIG}.replyDuration`)) {
       const typed = String(cfg().get('userMessageColor', '') || '').trim();
       if (typed && !patching.safeColor(typed)) {
         vscode.window.showWarningMessage(`Codex Plus: "${typed}" is not a CSS colour (use for example #90EE90, `

@@ -485,7 +485,7 @@ function safeColor(value) {
 function viewOf(s = {}) {
   return { type: 'codex-extras-view', timestamps: s.timestamps !== false, navigation: s.conversationNavigation !== false,
     userColor: safeColor(s.userMessageColor), userEdge: s.userMessageEdge !== false, lowContext: s.lowContextOutline !== false,
-    replyFigures: s.figures !== false, buttons: s.enabled !== false, chime: s.chime !== false, infoButton: s.infoButton !== false,
+    replyFigures: s.figures !== false, replyDuration: s.replyDuration !== false, buttons: s.enabled !== false, chime: s.chime !== false, infoButton: s.infoButton !== false,
     chimeButton: s.chimeButton !== false, contextMeter: s.contextMeter !== false };
 }
 
@@ -746,7 +746,7 @@ async function refreshPanels() {
       try {
         const r = await deps.userTimes(thread);
         if (r) whens.set(thread, { times: Array.isArray(r.times) ? r.times : null, compactions: Array.isArray(r.compactions) ? r.compactions : [],
-          turns: r.turns && typeof r.turns === 'object' ? r.turns : {} });
+          turns: r.turns && typeof r.turns === 'object' ? r.turns : {}, turnTimes: r.turnTimes && typeof r.turnTimes === 'object' ? r.turnTimes : {} });
       } catch (_) { /* the page falls back to what Codex itself rendered */ }
     }
   }

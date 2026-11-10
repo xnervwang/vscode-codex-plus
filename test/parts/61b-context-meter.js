@@ -177,7 +177,7 @@ module.exports = async ({ eq, note, tmp, root }) => {
     [300000, 'config', 'default'], 'model_auto_compact_token_limit moves the line when it is lower');
   eq([patching.usageOf(null).usage, patching.usageOf({ context: null }).usage], [null, null], 'and a conversation with no token count yet has none');
   eq(patching.viewOf({ enabled: true, infoButton: false, chimeButton: true, contextMeter: false }),
-    { type: 'codex-extras-view', timestamps: true, navigation: true, userColor: '', userEdge: true, lowContext: true, replyFigures: true,
+    { type: 'codex-extras-view', timestamps: true, navigation: true, userColor: '', userEdge: true, lowContext: true, replyFigures: true, replyDuration: true,
       buttons: true, chime: true, infoButton: false, chimeButton: true, contextMeter: false },
     'the three settings reach the page with the rest');
   const conv = require('../../src/codex-source').conversationOf({ id: THREAD, title: 't', updatedMs: Date.now() },

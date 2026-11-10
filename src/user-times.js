@@ -18,8 +18,10 @@
  * before each compaction, which places it in the page's list of those messages under the same condition.
  *
  * It also notes, per turn, the model and effort the turn ran with and how much of the context window its last model call
- * used, for the line under each reply. A token_count carries no turn id, so it belongs to the turn whose task_started or
- * turn_context came last before it. The page places these by the turn id Codex puts on each turn, not by position.
+ * used, for the line under each reply; when each message the user typed in the turn was sent and each reply written; and
+ * how long the turn took once it ended. A token_count or a message carries no turn id, so it belongs to the turn whose
+ * task_started or turn_context came last before it. The page places all of these by the turn id Codex puts on each turn,
+ * not by position, which is what lets a stamp carry seconds where the conversation's counts do not line up.
  *
  * A rollout is append-only, so a conversation is read once and then only its new bytes: the cache keeps the size the
  * file had, the offset of the first incomplete line and the times found so far. A file that shrank, or one whose first
@@ -38,6 +40,8 @@ const KEEP = 16;
 /* Turns remembered per conversation, and how many of the newest are sent to a page. */
 const TURNS_KEPT = 400;
 const TURNS_SENT = 200;
+/* Messages of each side kept per turn. A turn rarely holds more than one of the user's and a few replies. */
+const PER_TURN = 8;
 
 /*
  * A user-role message Codex wrote itself rather than one the user typed: its whole text is one XML-ish block, as in
@@ -75,8 +79,10 @@ function timesIn(lines, into = [], compactions = [], turns = { byId: new Map(), 
   for (const line of lines) {
     /* Nearly every line of a rollout is a tool call; this spares those a JSON parse. */
     const compacted = line.includes('"compacted"');
-    const turnish = line.includes('"token_count"') || line.includes('"turn_context"') || line.includes('"task_started"');
-    if (!compacted && !turnish && !line.includes('"user"')) continue;
+    const turnish = line.includes('"token_count"') || line.includes('"turn_context"') || line.includes('"task_started"')
+      || line.includes('"task_complete"') || line.includes('"turn_aborted"');
+    const reply = line.includes('"assistant"');
+    if (!compacted && !turnish && !reply && !line.includes('"user"')) continue;
     let row;
     try { row = JSON.parse(line); } catch (_) { continue; }
     if (turnish && row) noteTurn(row, turns);
@@ -86,17 +92,33 @@ function timesIn(lines, into = [], compactions = [], turns = { byId: new Map(), 
       continue;
     }
     const p = row && row.payload;
-    if (!row || row.type !== 'response_item' || !p || p.type !== 'message' || p.role !== 'user') continue;
-    if (INJECTED.test(textOf(p))) continue;
+    if (!row || row.type !== 'response_item' || !p || p.type !== 'message' || (p.role !== 'user' && p.role !== 'assistant')) continue;
     const at = Date.parse(row.timestamp);
+    if (p.role === 'assistant') { noteMessage(turns, 'replies', at); continue; }
+    if (INJECTED.test(textOf(p))) continue;
+    noteMessage(turns, 'users', at);
     if (Number.isFinite(at)) into.push(at); else broken = true;
   }
   return { times: into, compactions, turns, broken };
 }
 
-/** The model, effort and context of the turn a row belongs to. */
+/* A message's time, on the turn begun last before it. */
+function noteMessage(turns, side, at) {
+  const e = turns.current && Number.isFinite(at) ? turns.byId.get(turns.current) : null;
+  if (!e) return;
+  if (!e[side]) e[side] = [];
+  if (e[side].length < PER_TURN) e[side].push(at);
+}
+
+/** The model, effort and context of the turn a row belongs to, and how long it took once it ended. */
 function noteTurn(row, turns) {
   const p = row.payload && typeof row.payload === 'object' ? row.payload : {};
+  if (row.type === 'event_msg' && (p.type === 'task_complete' || p.type === 'turn_aborted') && p.turn_id) {
+    const e = turns.byId.get(String(p.turn_id));
+    const took = +p.duration_ms;
+    if (e && Number.isFinite(took) && took > 0) e.tookMs = took;
+    return;
+  }
   const start = (row.type === 'turn_context' || (row.type === 'event_msg' && p.type === 'task_started')) && p.turn_id;
   if (start) {
     turns.current = String(p.turn_id);
@@ -121,6 +143,18 @@ function turnFigure(e) {
   const model = [String(e.model || '').replace(/^openai\./, ''), e.effort].filter(Boolean).join(' ');
   if (model) parts.push(model);
   return parts.join(' · ');
+}
+
+/** The newest turns' times, as { turnId: { u, r, d } }: the user's messages, the replies, and the duration once ended. */
+function turnTimes(turns) {
+  const out = {};
+  for (const id of [...turns.byId.keys()].slice(-TURNS_SENT)) {
+    const e = turns.byId.get(id);
+    if (!e.users && !e.replies) continue;
+    out[id] = { u: e.users || [], r: e.replies || [] };
+    if (e.tookMs) out[id].d = e.tookMs;
+  }
+  return out;
 }
 
 /** The newest turns' figures, as { turnId: text }. */
@@ -159,8 +193,8 @@ function rolloutMarks(rollout) {
   let size;
   try { size = fs.statSync(file).size; } catch (_) { return null; }
   let have = cache.get(file);
-  const out = (e) => (e.broken ? { times: null, compactions: [], turns: turnFigures(e.turns) }
-    : { times: e.times, compactions: e.compactions, turns: turnFigures(e.turns) });
+  const out = (e) => (e.broken ? { times: null, compactions: [], turns: turnFigures(e.turns), turnTimes: turnTimes(e.turns) }
+    : { times: e.times, compactions: e.compactions, turns: turnFigures(e.turns), turnTimes: turnTimes(e.turns) });
   if (have && have.size === size) return out(have);
   /* A file smaller than it was is not the same file appended to. */
   if (!have || size < have.size) have = { size: 0, offset: 0, times: [], compactions: [], turns: { byId: new Map(), current: '' }, broken: false };
@@ -185,4 +219,4 @@ function userTimes(rollout) {
 
 function forget() { cache.clear(); }
 
-module.exports = { MAX_BYTES, MAX_TIMES, TURNS_SENT, INJECTED, textOf, wholeLines, timesIn, turnFigures, userTimes, rolloutMarks, forget };
+module.exports = { MAX_BYTES, MAX_TIMES, TURNS_SENT, INJECTED, textOf, wholeLines, timesIn, turnFigures, turnTimes, userTimes, rolloutMarks, forget };

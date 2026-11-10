@@ -80,8 +80,8 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
     workPlan: true, hideBackgroundSessions: true });
   const gated = off.ext._settings();
   eq([gated.enabled, gated.timestamps, gated.conversationNavigation, gated.userMessageColor, gated.userMessageEdge,
-    gated.chime, gated.figures],
-  [false, false, false, '', false, false, false],
+    gated.chime, gated.figures, gated.replyDuration],
+  [false, false, false, '', false, false, false, false],
     'with it off, every part that asks for one of the additions is told it is off');
   eq(gated.patchCodex, 'off',
     'and the patch is neither applied nor kept up to date, which is not the same as being taken out of Codex');
@@ -99,8 +99,8 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
     timestamps: true, conversationNavigation: true, userMessageColor: '#90EE90', userMessageEdge: true });
   const open = lit0.ext._settings();
   eq([open.timestamps, open.conversationNavigation, open.userMessageColor, open.userMessageEdge, open.chime,
-    open.figures, open.patchCodex],
-  [true, true, '#90EE90', true, true, true, 'on'],
+    open.figures, open.replyDuration, open.patchCodex],
+  [true, true, '#90EE90', true, true, true, true, 'on'],
     'and with it on each of them reads as that setting says, the switch adding nothing of its own');
   lit0.stop();
 

@@ -348,7 +348,7 @@ module.exports = async ({ ok, bad, eq, note, tmp, root }) => {
   fs.appendFileSync(roll, compacted('2026-11-08T22:46:00.000Z') + '\n' + line('2026-11-08T22:47:00.000Z', 'user', 'after it') + '\n');
   eq(times.rolloutMarks(roll), { times: [Date.parse('2026-11-08T22:35:10.000Z'), Date.parse('2026-11-08T22:39:02.000Z'),
     Date.parse('2026-11-08T22:44:30.000Z'), Date.parse('2026-11-08T22:47:00.000Z')],
-  compactions: [{ after: 3, at: Date.parse('2026-11-08T22:46:00.000Z') }], turns: {} },
+  compactions: [{ after: 3, at: Date.parse('2026-11-08T22:46:00.000Z') }], turns: {}, turnTimes: {} },
   'a compaction is noted after the messages before it, and the user message its summary carries is not counted as one of theirs');
   eq(times.userTimes(roll).length, 4, 'and the times alone are what they were');
 
@@ -391,10 +391,10 @@ module.exports = async ({ ok, bad, eq, note, tmp, root }) => {
     patching.safeColor('red;background:url(x)'), patching.safeColor('')],
   ['#90EE90', 'lightgreen', 'rgb(144,238,144)', '', ''], 'only a plain CSS colour is passed on to the page');
   eq(patching.viewOf({ timestamps: false, conversationNavigation: true, userMessageColor: ' #abc ', userMessageEdge: false }),
-    { type: 'codex-extras-view', timestamps: false, navigation: true, userColor: '#abc', userEdge: false, lowContext: true, replyFigures: true,
+    { type: 'codex-extras-view', timestamps: false, navigation: true, userColor: '#abc', userEdge: false, lowContext: true, replyFigures: true, replyDuration: true,
       buttons: true, chime: true, infoButton: true, chimeButton: true, contextMeter: true },
     'the settings reach the page as one message, with the colour trimmed');
-  eq(patching.viewOf({}), { type: 'codex-extras-view', timestamps: true, navigation: true, userColor: '', userEdge: true, lowContext: true, replyFigures: true,
+  eq(patching.viewOf({}), { type: 'codex-extras-view', timestamps: true, navigation: true, userColor: '', userEdge: true, lowContext: true, replyFigures: true, replyDuration: true,
     buttons: true, chime: true, infoButton: true, chimeButton: true, contextMeter: true },
     'and a setting nobody has touched reads as on, the same way the page itself defaults');
 

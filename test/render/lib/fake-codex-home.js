@@ -107,8 +107,9 @@ function rollout(turns, sent) {
 }
 
 /*
- * Write the home under `dir` and return what the page script's host would send for it: the user's message times and
- * each turn's line of figures, keyed by turn id.
+ * Write the home under `dir` and return what the page script's host would send for it: the user's message times, and
+ * each turn's line of figures and its times, keyed by turn id. The times are read from the rollout just written by the
+ * host's own reader (src/user-times.js), so the page is checked against what that reader makes of a real rollout.
  */
 function write(dir, { turns = FOUR, days = [[0, turns.length]], now = Date.now() } = {}) {
   const sent = schedule(days, now);
@@ -119,14 +120,16 @@ function write(dir, { turns = FOUR, days = [[0, turns.length]], now = Date.now()
   fs.mkdirSync(day, { recursive: true });
   fs.writeFileSync(path.join(home, 'config.toml'), `model = "${MODEL}"\nmodel_reasoning_effort = "high"\n[analytics]\nenabled = false\n`);
   const stamp = iso(sent[0] - 1000).slice(0, 19).replace(/:/g, '-');
-  fs.writeFileSync(path.join(day, `rollout-${stamp}-${THREAD}.jsonl`), rollout(turns, sent).map((r) => JSON.stringify(r)).join('\n') + '\n');
+  const file = path.join(day, `rollout-${stamp}-${THREAD}.jsonl`);
+  fs.writeFileSync(file, rollout(turns, sent).map((r) => JSON.stringify(r)).join('\n') + '\n');
   const fakeHome = path.join(dir, 'home');
   fs.mkdirSync(fakeHome, { recursive: true });
   const figures = {};
   turns.forEach((_, i) => {
     figures[turnId(i)] = `ctx ${Math.round(100 * Math.min(WINDOW - 8000, 52000 + i * 9000) / WINDOW)}% · ${MODEL} ${i % 2 ? 'medium' : 'high'}`;
   });
-  return { codexHome: home, home: fakeHome, times: sent, figures };
+  const marks = require('../../../src/user-times').rolloutMarks(file);
+  return { codexHome: home, home: fakeHome, times: sent, figures, turnTimes: (marks && marks.turnTimes) || {} };
 }
 
 module.exports = { write, manyTurns, FOUR, THREAD, CWD, MODEL, turnId };

@@ -65,7 +65,7 @@ async function opened(name, opts = {}) {
   console.log(`\n── ${name}`);
   const s = await scene.open(ENV, { name, ...opts });
   await s.toPage(VIEW);
-  await s.toPage({ type: 'codex-extras-user-times', times: s.data.times, compactions: [], turns: s.data.figures });
+  await s.toPage({ type: 'codex-extras-user-times', times: s.data.times, compactions: [], turns: s.data.figures, turnTimes: s.data.turnTimes });
   await s.toPage(patching.figuresOf({ state: 'idle' }, 0));
   await s.toPage(USAGE);
   await sleep(1200);
@@ -273,6 +273,16 @@ function selfchecked(r, where, { turns, users, rows, replies = turns }) {
     const r = await selfcheck(s);
     results.scenes.conversation.selfcheck = r;
     selfchecked(r, 'conversation', { turns: 4, users: 4, rows: 4 });
+    /* Each turn's times from its rollout, by turn id: seconds on every reply, and, since these turns did nothing before
+       their reply and Codex draws no "Worked for" for them, the turn's duration after the reply's time. */
+    {
+      const said = await s.b.evaluate(`({ worked: [...document.querySelectorAll('[data-turn-key] button[aria-expanded]')].filter((b) => !b.closest('[data-local-conversation-final-assistant],[data-local-conversation-user-anchor],[data-content-search-unit-key],[data-codex-extras]')).length,
+        replies: [...document.querySelectorAll('.codex-extras-stamp-assistant')].map((x) => [x.textContent, x.getAttribute('data-codex-extras-figures') || '']) })`);
+      results.scenes.conversation.replyLines = said;
+      const lined = said.replies.filter(([, f]) => f);
+      check(said.worked === 0 && lined.length === 4 && lined.every(([t, f]) => /\d\d:\d\d:\d\d$/.test(t) && /^ \d+s · ctx \d+%/.test(f)),
+        'conversation: each reply carries its seconds, and its turn\'s duration where Codex draws no "Worked for"', said);
+    }
     /* The page script's layout sample of the drawn page, beside the one taken in a user's window (test/fixtures):
        which data-* names the two do not share, for a new Codex build to be read against. Said, not asserted. */
     await s.toPage({ type: 'codex-extras-sample', id: 'layout' });

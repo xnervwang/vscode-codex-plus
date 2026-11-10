@@ -1099,10 +1099,13 @@
   /* What the host last said to show. The defaults are the settings' own defaults, so a page the host has not spoken to
      yet shows what those settings say rather than nothing at all. */
   var view = { timestamps: true, navigation: true, userColor: '', userEdge: true, lowContext: true, replyFigures: true,
-    buttons: true, chime: true, infoButton: true, chimeButton: true, contextMeter: true };
+    replyDuration: true, buttons: true, chime: true, infoButton: true, chimeButton: true, contextMeter: true };
   /* Each turn's model, effort and context as the host read them from the rollout, by turn id: { turnId: text }. They
      are placed by the turn id Codex puts on each turn (data-content-search-turn-key), never by position. */
   var hostTurns = {};
+  /* Each turn's times as the host read them from the rollout, by the same turn id: { u: when each message of the
+     user's in it was sent, r: when each reply was written, d: how long it took, once it has ended }. */
+  var hostTurnTimes = {};
   var FIG_ATTR = 'data-codex-extras-figures';
   /* One time per user message of this conversation, in the order the rollout has them, as the host read them there.
      Used only when there are exactly as many as the page shows - see stampAll. */
@@ -1357,13 +1360,13 @@
       var keyed = one(turn, SEL.turnBody);
       var key = keyed ? String(keyed.getAttribute(ATTR.turnBody) || '') : '';
       var users = usersIn(turn);
-      for (var u = 0; u < users.length; u++) out.push({ kind: 'user', node: users[u], day: day, turn: key });
+      for (var u = 0; u < users.length; u++) out.push({ kind: 'user', node: users[u], day: day, turn: key, turnEl: turn });
       var sides = all(turn, SEL.assistantSide), firstReply = true;
       for (var s = 0; s < sides.length; s++) {
         var blocks = all(sides[s], SEL.assistant);
         for (var b = 0; b < blocks.length; b++) {
           var kind = roleOf(blocks[b]) === 'user' ? 'user' : 'assistant';
-          out.push({ kind: kind, node: blocks[b], day: day, turn: key, first: kind === 'assistant' && firstReply });
+          out.push({ kind: kind, node: blocks[b], day: day, turn: key, turnEl: turn, first: kind === 'assistant' && firstReply });
           if (kind === 'assistant') firstReply = false;
         }
       }
@@ -1376,12 +1379,12 @@
    * turn's line from the host, shown after the time by the stylesheet from an attribute, so the line's own text stays
    * the time alone.
    */
-  function stampOn(host, side, text, figures) {
+  function stampOn(host, side, text, figures, took) {
     var el = null, kids = host.children || [];
     for (var i = 0; i < kids.length; i++) {
       if (kids[i].getAttribute && kids[i].getAttribute(MARK) === 'stamp') { el = kids[i]; break; }
     }
-    if (!text && !figures) {
+    if (!text && !figures && !took) {
       if (el) { try { host.removeChild(el); } catch (e) { /* already gone */ } }
       return;
     }
@@ -1396,15 +1399,51 @@
     if (el.textContent !== text) el.textContent = text;
     var timed = side === 'assistant' && !!text;
     if (timed !== (el.getAttribute(TIMED_ATTR) !== null)) { if (timed) el.setAttribute(TIMED_ATTR, ''); else el.removeAttribute(TIMED_ATTR); }
-    var fig = figures ? (text ? ' \u00b7 ' : '') + figures : '';
+    var fig = (took ? (text ? ' ' : '') + took : '') + (figures ? (text || took ? ' \u00b7 ' : '') + figures : '');
     if (fig) { if (el.getAttribute(FIG_ATTR) !== fig) el.setAttribute(FIG_ATTR, fig); }
     else if (el.getAttribute(FIG_ATTR) !== null) el.removeAttribute(FIG_ATTR);
   }
 
+  /*
+   * Whether a time from the rollout is the one Codex shows on a message: the same minute, or, where the page shows no
+   * day for the message (the turns of that day are not drawn), the same clock minute on whatever day the rollout says.
+   */
+  function agrees(when, ms, dayKnown) {
+    if (dayKnown) return sameMinute(when.ms, ms);
+    var a = new Date(when.ms), b = new Date(ms);
+    return a.getHours() === b.getHours() && a.getMinutes() === b.getMinutes();
+  }
+  /* A turn's duration as Claude Code Plus writes it: 9s, 4m12s, 1h5m. */
+  function dur(ms) {
+    var s = Math.round(ms / 1000);
+    if (s < 60) return s + 's';
+    var mi = Math.floor(s / 60), rs = s % 60;
+    if (mi < 60) return mi + 'm' + (rs ? rs + 's' : '');
+    return Math.floor(mi / 60) + 'h' + (mi % 60) + 'm';
+  }
+  /*
+   * Whether Codex shows its own "Worked for" in a turn. It is drawn only in a turn that did something before its last
+   * reply, as a button that expands that activity, inside the turn and outside its messages, and it carries no attribute
+   * of its own. So any expanding button there is taken for it: the activity it would expand has no other place to be.
+   */
+  var WORKED_SEL = 'button[aria-expanded]';
+  function codexShowsWorked(turn) {
+    var found = turn ? all(turn, WORKED_SEL) : [];
+    var mine = SEL.user + ',' + SEL.assistantSide + ',' + SEL.unit + ',[' + MARK + ']';
+    for (var i = 0; i < found.length; i++) if (!(found[i].closest && found[i].closest(mine))) return true;
+    return false;
+  }
+  var own = function (o, k) { return Object.prototype.hasOwnProperty.call(o, k); };
+
   /* The time on every message, and the words for the list. Returns the user messages in document order. */
   function stampAll(list) {
-    var users = [];
-    for (var i = 0; i < list.length; i++) if (list[i].kind === 'user') { list[i].at = users.length; users.push(list[i]); }
+    var users = [], inTurn = {};
+    for (var i = 0; i < list.length; i++) {
+      if (list[i].kind !== 'user') continue;
+      list[i].at = users.length;
+      users.push(list[i]);
+      list[i].nth = inTurn[list[i].turn] = (inTurn[list[i].turn] || 0) + 1;
+    }
     /*
      * The host's times line up with the page only when it read exactly as many user messages from the rollout as the
      * page shows. A rollout can hold messages inherited from a conversation this one was forked from, and a page can
@@ -1416,10 +1455,23 @@
       turnsKeyed: 0, turnsMatched: 0, figuresDrawn: 0 };
     for (var j = 0; j < list.length; j++) {
       var e = list[j], text = '', took = '';
+      var tt = e.turn && own(hostTurnTimes, e.turn) ? hostTurnTimes[e.turn] : null;
       if (view.timestamps) {
         var when = e.kind === 'assistant' ? assistantWhen(e.node, e.day) : userWhenInPage(e.node, e.day);
         if (e.kind === 'user') took = when ? 'clock' : '';
-        if (e.kind === 'user' && lined) {
+        /*
+         * The turn's own times first, matched within the turn: by position among its messages of the user's when it
+         * holds as many as the page shows there, and for a reply by being the one time of the turn's replies in the
+         * minute Codex shows on it. Each is still checked against the clock Codex rendered, where there is one.
+         */
+        if (e.kind === 'user' && tt && tt.u.length === inTurn[e.turn]) {
+          var mine = { ms: tt.u[e.nth - 1], secs: true };
+          if (!when || agrees(when, mine.ms, e.day !== null)) { when = mine; took = 'rollout'; }
+        } else if (e.kind === 'assistant' && tt && when && !when.secs) {
+          var hit = null, hits = 0;
+          for (var q = 0; q < tt.r.length; q++) if (agrees(when, tt.r[q], e.day !== null)) { hit = tt.r[q]; hits++; }
+          if (hits === 1) when = { ms: hit, secs: true };
+        } else if (e.kind === 'user' && lined) {
           /*
            * The rollout's time carries seconds and the clock Codex rendered does not, so the rollout's is preferred,
            * but only where the two agree to the minute. That agreement is per-message evidence that the two lists line
@@ -1437,14 +1489,15 @@
         else if (took === 'rollout') lastPass.fromRollout++;
         else lastPass.fromClock++;
       }
-      var figures = '';
+      var figures = '', length = '';
       if (e.first && e.turn) {
         lastPass.turnsKeyed++;
-        var known = Object.prototype.hasOwnProperty.call(hostTurns, e.turn) ? hostTurns[e.turn] : '';
+        var known = own(hostTurns, e.turn) ? hostTurns[e.turn] : '';
         if (known) lastPass.turnsMatched++;
         if (known && view.replyFigures !== false) { figures = known; lastPass.figuresDrawn++; }
+        if (view.replyDuration !== false && tt && tt.d > 0 && !codexShowsWorked(e.turnEl)) length = dur(tt.d);
       }
-      stampOn(e.node, e.kind, text, figures);
+      stampOn(e.node, e.kind, text, figures, length);
     }
     return users;
   }
@@ -2070,7 +2123,7 @@
       var wasOn = view.chime !== false;
       view = { timestamps: m.timestamps !== false, navigation: m.navigation !== false,
         userColor: typeof m.userColor === 'string' ? m.userColor : '', userEdge: m.userEdge !== false,
-        lowContext: m.lowContext !== false, replyFigures: m.replyFigures !== false, buttons: m.buttons !== false,
+        lowContext: m.lowContext !== false, replyFigures: m.replyFigures !== false, replyDuration: m.replyDuration !== false, buttons: m.buttons !== false,
         chime: m.chime !== false, infoButton: m.infoButton !== false, chimeButton: m.chimeButton !== false,
         contextMeter: m.contextMeter !== false };
       /* Turned on from this page's own button: one chime, so the user hears at once whether sound comes out. */
@@ -2085,6 +2138,15 @@
       if (m.turns && typeof m.turns === 'object') {
         Object.keys(m.turns).forEach(function (k) {
           if (typeof m.turns[k] === 'string' && m.turns[k].length <= 120) hostTurns[k] = m.turns[k];
+        });
+      }
+      hostTurnTimes = {};
+      if (m.turnTimes && typeof m.turnTimes === 'object') {
+        var times = function (a) { return Array.isArray(a) ? a.filter(function (n) { return typeof n === 'number' && isFinite(n); }).slice(0, 8) : []; };
+        Object.keys(m.turnTimes).forEach(function (k) {
+          var v = m.turnTimes[k];
+          if (!v || typeof v !== 'object') return;
+          hostTurnTimes[k] = { u: times(v.u), r: times(v.r), d: typeof v.d === 'number' && isFinite(v.d) && v.d > 0 ? v.d : 0 };
         });
       }
       hostCompactions = Array.isArray(m.compactions)

@@ -87,7 +87,7 @@ const ops = {
   userTimes({ home: h, id }) {
     const rollout = files.rolloutOf(id, at(h));
     const r = rollout ? require('./user-times').rolloutMarks(rollout) : null;
-    return { times: r ? r.times : null, compactions: r ? r.compactions : [], turns: r ? r.turns : {} };
+    return { times: r ? r.times : null, compactions: r ? r.compactions : [], turns: r ? r.turns : {}, turnTimes: r ? r.turnTimes : {} };
   },
   /* Plans of conversations that are gone (src/workplan.js). */
   sweep({ home: h }) {

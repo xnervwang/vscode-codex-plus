@@ -316,7 +316,12 @@
         "codexPlus.turnFigures": {
           "type": "boolean",
           "default": true,
-          "markdownDescription": "With the patch: beside the time on each reply, that turn's context use, model and effort; and, at the right end of the row below the message box, the commands still running and the tool call running now, which is left to Codex while its own row for that call is in view. A turn's duration is left to Codex's own \"Worked for\"."
+          "markdownDescription": "With the patch: beside the time on each reply, that turn's context use, model and effort; and, at the right end of the row below the message box, the commands still running and the tool call running now, which is left to Codex while its own row for that call is in view. A turn's duration is `codexPlus.replyDuration`."
+        },
+        "codexPlus.replyDuration": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "With the patch: how long a turn took, after the time on its reply (for example `9s`), in a turn where Codex shows no \"Worked for\" of its own. Codex draws that only for a turn that did something before its reply, so a plain question and answer otherwise shows no duration anywhere."
         },
         "codexPlus.timestamps": {
           "type": "boolean",
