@@ -4,12 +4,14 @@
 
 /* Styles for the Codex session list (src/page/sessions-page.js). Sizes match Claude Code's list: 28 px rows with 6 px
    corners and an 8 px gap, 8 px dots, 26 px headers, 0.85em capitals for section labels, 0.9em for group names. Colours
-   come from VS Code theme variables; the status dots use Claude Code Plus's fixed colours. */
+   come from VS Code theme variables; the status dots use Claude Code Plus's fixed colours. The font is the chat font,
+   as in Claude Code's page, which the page sets from the host's model. */
 html, body { margin: 0; padding: 0; height: 100%; }
 body { background: var(--vscode-sideBar-background); color: var(--vscode-foreground); overflow: hidden; }
 .cp-root {
   display: flex; flex-direction: column; height: 100%; overflow-x: hidden; overflow-y: auto; box-sizing: border-box;
-  font-family: var(--vscode-font-family); font-size: var(--vscode-font-size, 13px); outline: none; user-select: none;
+  font-family: var(--vscode-chat-font-family, var(--vscode-font-family)); font-size: var(--vscode-chat-font-size, var(--vscode-font-size, 13px));
+  outline: none; user-select: none;
 }
 .cp-root:focus-visible { outline: none; }
 .cp-hidden { display: none !important; }
@@ -17,7 +19,7 @@ svg.cp-icon { width: 16px; height: 16px; flex-shrink: 0; fill: none; stroke: cur
 svg.cp-icon.cp-solid { fill: currentColor; stroke: none; }
 
 /* Sections: ACCOUNT & USAGE, RECENTLY CLOSED, OPEN SESSIONS, SESSION MANAGER. */
-.cp-section { border-top: 1px solid var(--vscode-sideBarSectionHeader-border, var(--vscode-panel-border, transparent)); }
+.cp-section { border-top: 1px solid var(--vscode-sideBarActivityBarTop-border, var(--vscode-sideBarSectionHeader-border, var(--vscode-panel-border, transparent))); }
 .cp-section:first-child { border-top: none; }
 .cp-section-head {
   display: flex; align-items: center; gap: 6px; height: 26px; padding: 0 8px; box-sizing: border-box; cursor: pointer;
@@ -38,12 +40,14 @@ svg.cp-icon.cp-solid { fill: currentColor; stroke: none; }
 .cp-open > .cp-section-body { display: block; margin-bottom: 10px; }
 .cp-list { display: flex; flex-direction: column; gap: 2px; padding: 0 6px 4px; }
 
-/* ACCOUNT & USAGE */
-.cp-account { padding: 10px 12px; flex-direction: column; gap: 8px; }
+/* ACCOUNT & USAGE: ACCOUNT and its rows as Claude Code draws them, 8 px from the heading to the first row and 4 px
+   between rows of 4 px padding; the usage bars 12 px apart, as Claude Code's are. */
+.cp-account { padding: 10px 12px; flex-direction: column; gap: 4px; }
 /* Flex only while open: a display on .cp-account alone would override .cp-section-body's none. */
 .cp-open > .cp-section-body.cp-account { display: flex; }
-.cp-kv { display: flex; flex-wrap: wrap; column-gap: 12px; justify-content: space-between; }
-.cp-kv > span:first-child { white-space: nowrap; flex-shrink: 0; color: var(--vscode-descriptionForeground); }
+.cp-kv { display: flex; flex-wrap: wrap; column-gap: 12px; justify-content: space-between; padding: 4px 0; }
+.cp-kv > span:first-child { white-space: nowrap; flex-shrink: 0; color: var(--vscode-foreground); opacity: .7; }
+.cp-kv + .cp-usage, .cp-usage + .cp-usage, .cp-usage + .cp-kv { margin-top: 8px; }
 .cp-kv > span:last-child { overflow-wrap: anywhere; min-width: 0; text-align: right; }
 .cp-usage { display: flex; flex-direction: column; gap: 4px; }
 .cp-usage-head { display: flex; justify-content: space-between; align-items: center; }
@@ -51,13 +55,13 @@ svg.cp-icon.cp-solid { fill: currentColor; stroke: none; }
 .cp-track { height: 6px; border-radius: 3px; overflow: hidden; background: var(--vscode-input-border, var(--vscode-widget-border, rgba(127, 127, 127, .4))); }
 .cp-fill { height: 100%; border-radius: 3px; background: var(--vscode-progressBar-background); }
 .cp-fill.cp-high { background: var(--vscode-charts-orange); }
-.cp-reset { opacity: .5; font-size: calc(var(--vscode-font-size, 13px) - 2px); }
+.cp-reset { opacity: .5; font-size: calc(var(--vscode-chat-font-size, 13px) - 2px); }
 
 /* SESSION MANAGER: the two new-conversation buttons, then the filter row. */
-.cp-new-row { display: flex; border-bottom: 1px solid var(--vscode-sideBarSectionHeader-border, var(--vscode-panel-border, transparent)); }
+.cp-new-row { display: flex; border-bottom: 1px solid var(--vscode-sideBarActivityBarTop-border, var(--vscode-sideBarSectionHeader-border, var(--vscode-panel-border, transparent))); }
 .cp-new {
   display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; padding: 10px 12px; border: none; background: none; cursor: pointer;
-  color: var(--vscode-foreground); font-family: inherit; font-size: var(--vscode-font-size, 13px); font-weight: 500; white-space: nowrap;
+  color: var(--vscode-foreground); font-family: inherit; font-size: inherit; font-weight: 500; white-space: nowrap;
 }
 .cp-new:hover, .cp-new:focus-visible { background: var(--vscode-list-hoverBackground); outline: none; }
 .cp-new > span { overflow: hidden; text-overflow: ellipsis; }
@@ -73,7 +77,8 @@ svg.cp-icon.cp-solid { fill: currentColor; stroke: none; }
 .cp-tool.cp-icon-only { padding: 4px; }
 .cp-tail { display: inline-flex; align-items: center; flex-shrink: 0; }
 .cp-account-label {
-  color: var(--vscode-foreground); text-transform: uppercase; letter-spacing: .5px; font-size: .85em; font-weight: 600; margin-bottom: -2px;
+  color: var(--vscode-foreground); opacity: .7; text-transform: uppercase; letter-spacing: .5px; font-size: calc(var(--vscode-chat-font-size, 13px) - 1px);
+  font-weight: 600; margin-bottom: 4px;
 }
 /* The search box is Claude Code's: no border, 4 px corners and margin, 8 px padding with room for the magnifier, and
    for the clear button once there is text. */
@@ -149,6 +154,7 @@ svg.cp-icon.cp-solid { fill: currentColor; stroke: none; }
   color: var(--vscode-descriptionForeground);
 }
 .cp-act:hover { background: var(--vscode-toolbar-hoverBackground); color: var(--vscode-foreground); }
+.cp-act svg.cp-icon { width: 20px; height: 20px; }
 .cp-mark { background: color-mix(in srgb, #d97757 20%, transparent); color: inherit; border-radius: 2px; }
 
 /* Empty states */

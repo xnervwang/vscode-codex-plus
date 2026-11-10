@@ -127,6 +127,15 @@ function goalText(g) {
   return `Goal (${GOAL_WORD[g.status] || g.status}, ${used}): ${g.objective.slice(0, 300)}`;
 }
 
+/* The chat font as Claude Code's host reads it for its own page: chat.fontFamily, with its own system font stack for
+   "default", and chat.fontSize, 13 when unset. `get` reads a key of the chat section. */
+const CHAT_FAMILY = "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif";
+function chatFont(get) {
+  const family = String(get('fontFamily') || 'default').slice(0, 300);
+  const size = Number(get('fontSize'));
+  return { family: family === 'default' ? CHAT_FAMILY : family, size: size > 0 ? size : 13 };
+}
+
 /** Group a list of threads for the list. Pure, so the test can hold it to the order above. */
 function group(threads, { open = [], closed = [], sections = new Map(), hideBackground = true, cwdFilter = null, frontAt = () => 0,
   sidebar = '' }) {
@@ -275,6 +284,8 @@ class SessionsModel {
     let account = null;
     try { account = this.accountOf() || null; } catch (_) { account = null; }
     const manager = drawn(this.groups.filter((g) => g.key !== 'closed' && g.key !== 'open'));
+    let chat = null;
+    try { chat = this.vscode.workspace.getConfiguration('chat'); } catch (_) { chat = null; }
     return {
       account,
       closed: rowsOf(keep('closed')),
@@ -284,6 +295,7 @@ class SessionsModel {
       noGroups: !!this.noGroups(),
       menu: LIST_MENU,
       colors: COLOR_LIST,
+      font: chatFont((k) => (chat ? chat.get(k) : undefined)),
     };
   }
 
@@ -384,4 +396,4 @@ function pageHtml({ js, css, csp, nonce: n }) {
 const looksLikeId = (q) => /^[0-9a-f-]{4,}$/i.test(String(q || '').trim());
 
 module.exports = { SessionsModel, SessionsView, pageHtml, group, drawn, dateSpan, placeOf, looksLikeId, lookOf, lookKey, goalText,
-  COLORS, COLOR_NAMES, COLOR_KEY, STATE_LOOK, GOAL_WORD, PAGE_FILES, LIST_MENU };
+  chatFont, COLORS, COLOR_NAMES, COLOR_KEY, STATE_LOOK, GOAL_WORD, PAGE_FILES, LIST_MENU };

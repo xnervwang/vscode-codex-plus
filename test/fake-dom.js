@@ -121,6 +121,12 @@ class El {
     this.childNodes = [];
     this.parentNode = null;
     this.style = {};
+    /* CSSOM's custom properties, kept as plain keys so getComputedStyle below reports them too. */
+    Object.defineProperties(this.style, {
+      setProperty: { value(k, v) { this[k] = String(v); } },
+      getPropertyValue: { value(k) { return this[k] === undefined ? '' : this[k]; } },
+      removeProperty: { value(k) { delete this[k]; } },
+    });
     this.listeners = {};
     this.rect = { top: 0, left: 0, width: 0, height: 0 };
     this.scrollTop = 0;

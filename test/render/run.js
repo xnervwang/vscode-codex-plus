@@ -289,14 +289,24 @@ const PARITY = `(() => {
   const probe = (prop, value) => { const p = document.createElement('span'); p.style[prop] = value; document.body.appendChild(p); const v = st(p)[prop]; p.remove(); return v; };
   const stamp = (side) => { const e = document.querySelector('.codex-extras-stamp-' + side); if (!e) return null; const a = st(e), b = st(e.parentElement);
     return { family: a.fontFamily, size: +(parseFloat(a.fontSize) / parseFloat(b.fontSize)).toFixed(3), opacity: a.opacity, sameColour: a.color === b.color }; };
-  return { stamps: { user: stamp('user'), assistant: stamp('assistant') }, mono: probe('fontFamily', 'var(--vscode-editor-font-family, monospace)') };
+  const body = st(document.body).fontFamily;
+  const boxes = ['.codex-extras-panel', '[data-codex-extras="info"]', '[data-codex-extras="context"]', '[data-codex-extras="figures"]', '[data-codex-extras="bar"]']
+    .map((sel) => [sel, document.querySelector(sel)]).filter(([, e]) => e).map(([sel, e]) => [sel, st(e).fontFamily === body]);
+  return { stamps: { user: stamp('user'), assistant: stamp('assistant') }, mono: probe('fontFamily', 'var(--vscode-editor-font-family, monospace)'), boxes };
 })()`;
 async function parity(s, where) {
+  /* inputUnchanged clicked the information button; the answer is what this extension's host would send. */
+  const asked = await s.b.evaluate('((window.__posted || []).filter((m) => m.kind === "infoAsk").pop() || {}).id || ""');
+  if (asked) {
+    await s.toPage({ type: 'codex-extras-info', id: asked, rows: [{ label: 'Thread', value: '01a1f0f0-0000-7000-8000-000000000001' }, { label: 'Process', value: '4242' }] });
+    await sleep(200);
+  }
   const m = await s.b.evaluate(PARITY);
   results.scenes[where].measures.parity = m;
   const sides = [m.stamps.user, m.stamps.assistant];
   check(sides.every((x) => x && x.family === m.mono && x.size === 0.8 && x.opacity === '0.6' && x.sameColour),
     `${where}: a stamp is in the editor's monospace font at 0.8 of its message's size, in the text's own colour at 60%`, m.stamps);
+  check(m.boxes.length >= 2 && m.boxes.every(([, same]) => same), `${where}: every box of this script's is in the page's own font`, m.boxes);
 }
 /* A hover label of this script's, measured while it shows: Claude Code Plus's box, in the page's font at 0.9 of its size. */
 const LABEL_LOOK = `(() => { const b = document.querySelector('[data-codex-extras="label"]'); if (!b) return null; const a = getComputedStyle(b), d = getComputedStyle(document.body);

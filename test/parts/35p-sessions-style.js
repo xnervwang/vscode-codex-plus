@@ -55,6 +55,8 @@ module.exports = async ({ eq, root }) => {
     const dot = (n) => model.groups.flatMap((g) => g.rows).find((r) => r.id === ID(n)).dot;
     eq([dot(1), dot(2), dot(3), dot(4), dot(5)], ['idle', 'none', 'workingElsewhere', 'unread', 'unknown'],
       'an idle conversation open in this window keeps its grey dot; one that is not open has none, while running, unread and not-yet-read rows keep theirs');
+    eq(model.font, { family: "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif", size: 13 },
+      'the model carries the chat font as Claude Code reads it: chat.fontFamily, or its own system stack for "default", and chat.fontSize, 13 by default');
   }
 
   /* ── the page ── */
@@ -67,6 +69,14 @@ module.exports = async ({ eq, root }) => {
     front: '', noGroups: false, menu: [], colors: [], font: { family: 'Fira Sans, sans-serif', size: 15 },
   };
   p.toPage({ type: 'model', model });
+
+  /* The chat font, written on the list's root as the two variables Claude Code's page has. */
+  const rootEl = p.$('.cp-root') || p.page;
+  eq([rootEl.style.getPropertyValue('--vscode-chat-font-family'), rootEl.style.getPropertyValue('--vscode-chat-font-size')], ['Fira Sans, sans-serif', '15px'],
+    'the page puts the chat font the host sent into --vscode-chat-font-family and --vscode-chat-font-size');
+  eq([has('.cp-root', 'font-family: var(--vscode-chat-font-family, var(--vscode-font-family))'),
+    has('.cp-root', 'font-size: var(--vscode-chat-font-size, var(--vscode-font-size, 13px))')], [true, true],
+  'and the list is drawn in it, falling back to the interface font');
 
   /* The search box: above the filter buttons, the magnifier hidden while it is open, Claude Code's placeholder. */
   const filterRow = p.$('.cp-filter-row');
@@ -101,6 +111,19 @@ module.exports = async ({ eq, root }) => {
   eq([/\bcp-solid\b/.test(cls('[data-tool="filter"] svg')), /\bcp-solid\b/.test(cls('[data-tool="active"] svg')),
     has('svg.cp-icon.cp-solid', 'fill: currentColor'), has('svg.cp-icon.cp-solid', 'stroke: none')], [true, true, true, true],
   'the funnel and the bolt are solid shapes, as Claude Code\'s are');
+  eq([p.$('.cp-row [data-act="rename"]').title, has('.cp-act svg.cp-icon', 'width: 20px'), has('.cp-act svg.cp-icon', 'height: 20px')],
+    ['Rename session', true, true], 'the rename button on a row is Claude Code\'s: a 20 px icon, "Rename session"');
+
+  /* ACCOUNT and its rows. */
+  eq([has('.cp-account-label', 'opacity: .7'), has('.cp-account-label', 'font-size: calc(var(--vscode-chat-font-size, 13px) - 1px)'),
+    has('.cp-kv', 'padding: 4px 0'), has('.cp-account', 'gap: 4px'), has('.cp-kv > span:first-child', 'opacity: .7'),
+    has('.cp-kv > span:first-child', 'color: var(--vscode-foreground)')], [true, true, true, true, true, true],
+  'ACCOUNT is the foreground at 70% and one pixel under the chat font, and each row 4 px above and below, 4 px apart, its name at 70%');
+
+  /* Lines, chevrons, outlines, the high usage bar. */
+  eq([/var\(--vscode-sideBarActivityBarTop-border, var\(--vscode-sideBarSectionHeader-border/.test(rule('.cp-section')),
+    /var\(--vscode-sideBarActivityBarTop-border, var\(--vscode-sideBarSectionHeader-border/.test(rule('.cp-new-row'))], [true, true],
+  'the section lines try Claude Code\'s sideBarActivityBarTop.border first');
 
   /* The hover box: Claude Code Plus's look, over the row. */
   eq([has('.cp-hover', 'padding: 8px'), has('.cp-hover', 'border-radius: 8px'), has('.cp-hover', 'font-size: .9em'),

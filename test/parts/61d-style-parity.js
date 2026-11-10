@@ -75,6 +75,10 @@ module.exports = async ({ eq, root }) => {
   eq([/^exec_command running for 2m \(since /.test(two), /^exec_command running for 1h5m \(since /.test(strip.textContent), /opacity:\.8;/.test(strip.style.cssText)],
     [true, true, true], 'a tool clock writes 2m and 1h5m as a reply\'s duration is written, at 80% as Claude Code Plus\'s is');
 
+  /* ── fonts: the page's own family, only the size set ── */
+  eq((source.match(/font:\s*(?:\d{3}\s+)?\d+px\s+var\(--vscode-font-family/g) || []).length, 0,
+    'nothing this script draws names a font family of its own; each box takes Codex\'s page font and sets only its size');
+
   /* ── the Agent map's dots ── */
   eq(/DOT_TONE = \{ working: '#22c55e', prompt: '#3b82f6',\s*unread: '#ef4444', failed: 'var\(--vscode-errorForeground,#f85149\)'/.test(source), true,
     'a sub-agent\'s dot has the session list\'s colours');

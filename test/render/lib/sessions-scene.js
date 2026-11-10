@@ -14,7 +14,7 @@
 const fs = require('fs');
 const path = require('path');
 const { serve, launch, sleep } = require('./cdp');
-const { pageHtml, COLORS, COLOR_NAMES, LIST_MENU } = require('../../../src/sessions-view');
+const { pageHtml, COLORS, COLOR_NAMES, LIST_MENU, chatFont } = require('../../../src/sessions-view');
 
 const ROOT = path.join(__dirname, '..', '..', '..');
 const HARNESS = path.join(__dirname, '..', 'harness');
@@ -41,7 +41,8 @@ function fakeModel(n, { stamp = '' } = {}) {
   });
   return { account: { account: [{ label: 'Signed in with', value: 'Amazon Bedrock' }], windows: [], tokens: [] },
     closed: [row(n + 1, { title: 'Closed this morning' }), row(n + 2, { title: 'Closed yesterday' })],
-    open: rows.slice(0, 2), groups, front: ID(0), noGroups: false, menu: LIST_MENU, colors: COLOR_NAMES.map((name) => ({ name, color: COLORS[name] })) };
+    open: rows.slice(0, 2), groups, front: ID(0), noGroups: false, menu: LIST_MENU, colors: COLOR_NAMES.map((name) => ({ name, color: COLORS[name] })),
+    font: chatFont(() => undefined) };
 }
 
 /* Proportional set size of a process, in MB, from /proc; 0 where that cannot be read. */
@@ -155,11 +156,16 @@ async function run({ env, check, shots, out, results }) {
     const look = await b.evaluate(`(() => {
       const st = (e) => getComputedStyle(e);
       const rows = [...document.querySelectorAll('.cp-row')].filter((x) => x.offsetParent);
+      const label = document.querySelector('.cp-account-label'), kv = document.querySelector('.cp-kv'), name = kv && kv.firstElementChild;
       const icon = (sel) => { const s = document.querySelector(sel); return s ? [st(s).fill, st(s).stroke] : null; };
+      const act = (rows[0] || document).querySelector('.cp-act svg');
       const dot = (x) => { const d = x.querySelector('.cp-dot'); const c = st(d); return [d.className.replace('cp-dot d-', ''), c.display === 'none' ? '' : c.backgroundColor, c.borderTopColor]; };
       return {
         dots: rows.map(dot),
         icons: { funnel: icon('[data-tool="filter"] svg'), bolt: icon('[data-tool="active"] svg') },
+        font: [st(document.querySelector('.cp-root')).fontFamily, st(document.querySelector('.cp-root')).fontSize],
+        account: label && { opacity: st(label).opacity, colour: st(label).color, size: st(label).fontSize, pad: st(kv).paddingTop, nameOpacity: st(name).opacity, nameColour: st(name).color },
+        rename: act ? [act.getBoundingClientRect().width, act.getBoundingClientRect().height, act.closest('.cp-act').getAttribute('aria-label')] : null,
         noDot: rows.filter((x) => st(x.querySelector('.cp-dot')).display === 'none').map((x) => Math.round(x.querySelector('.cp-title').getBoundingClientRect().left - x.getBoundingClientRect().left)),
       };
     })()`);
@@ -171,6 +177,11 @@ async function run({ env, check, shots, out, results }) {
     check(look.dots.some(([s]) => s === 'none') && look.noDot.length > 0 && look.noDot.every((x) => x === 8),
       'sessions: an idle row not open here has no dot, and its title starts at the row\'s 8 px padding, as in Claude Code\'s list', look.noDot);
     check(['funnel', 'bolt'].every((k) => look.icons[k] && look.icons[k][0] !== 'none' && look.icons[k][1] === 'none'), 'sessions: the funnel and the bolt are solid shapes', look.icons);
+    check(/BlinkMacSystemFont/.test(look.font[0]) && look.font[1] === '13px', 'sessions: the list is in the chat font the host sent, Claude Code\'s own default here', look.font);
+    check(!!look.account && look.account.opacity === '0.7' && look.account.colour === 'rgb(204, 204, 204)' && look.account.size === '12px' && look.account.pad === '4px'
+      && look.account.nameOpacity === '0.7' && look.account.nameColour === 'rgb(204, 204, 204)',
+    'sessions: ACCOUNT is the foreground at 70% and 12 px, and each row has 4 px above it with its name at 70%, as in Claude Code', look.account);
+    check(!!look.rename && look.rename[0] === 20 && look.rename[1] === 20 && look.rename[2] === 'Rename session', 'sessions: a row\'s rename button has a 20 px icon and says "Rename session"', look.rename);
 
     /* An expanded section leaves 10 px under its last row before the next section; a collapsed one leaves none. */
     const gapBelowOpen = () => b.evaluate(`(() => {

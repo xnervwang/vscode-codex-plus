@@ -132,7 +132,7 @@
     const meta = el('span', 'cp-meta');
     const time = el('span', 'cp-time');
     const acts = el('span', 'cp-actions');
-    const rename = button('cp-act', 'Rename', icon('pencil'));
+    const rename = button('cp-act', 'Rename session', icon('pencil'));
     rename.dataset.act = 'rename';
     acts.appendChild(rename);
     meta.append(time, acts);
@@ -228,8 +228,18 @@
   let lastExpanded = '';
   const closedRows = new Map(), openRows = new Map();
 
+  /* The chat font the host sent, under the names Claude Code's page gives it; the stylesheet falls back to the
+     interface font without them. */
+  function useFont(f) {
+    if (!f) return;
+    const set = (k, v) => { if (root.style.getPropertyValue(k) !== v) root.style.setProperty(k, v); };
+    set('--vscode-chat-font-family', String(f.family));
+    set('--vscode-chat-font-size', `${Number(f.size) || 13}px`);
+  }
+
   function apply(next) {
     model = next || { account: null, closed: [], open: [], groups: [], front: '', noGroups: false };
+    useFont(model.font);
     drawAccount(model.account);
     reconcile(closedList, closedRows, model.closed || [], 'closed');
     reconcile(openList, openRows, model.open || [], 'open');

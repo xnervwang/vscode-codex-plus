@@ -135,6 +135,11 @@
    * it from its own copy, so no text leaves the page. The meter draws the usage the host sends (codex-extras-usage),
    * and a click on it asks the host to compact the conversation, sending nothing but an id.
    */
+  /* The font of a box of this script's: the size it needs, in the family of Codex's page around it, as Claude Code
+     Plus's boxes take Claude Code's. The shorthand would also name a family, so its other parts are written out. */
+  function pageFont(px, weight) {
+    return 'font-style:normal;font-weight:' + (weight || 'normal') + ';font-size:' + px + 'px;line-height:normal;font-family:inherit;';
+  }
   var bar = null, tools = null, infoBtn = null, muteBtn = null, meterBtn = null, infoBox = null, infoAsk = '', barWired = false;
   var usage = null;
   /*
@@ -362,7 +367,7 @@
   var ROW_BUTTON_CSS = 'pointer-events:auto;flex-shrink:0;';
   var ROW_FALLBACK_CSS = 'pointer-events:auto;flex-shrink:0;cursor:pointer;min-width:28px;padding:0 6px;border:0;margin:0;'
     + 'border-radius:9999px;background:none;color:var(--vscode-descriptionForeground,#9d9d9d);display:flex;align-items:center;'
-    + 'justify-content:center;gap:4px;font:12px var(--vscode-font-family,sans-serif);';
+    + 'justify-content:center;gap:4px;' + pageFont(12);
   function dressOne(el, cls, css, key, height) {
     if (!el || el.getAttribute(MARK + '-dress') === key) return;
     el.setAttribute(MARK + '-dress', key);
@@ -386,7 +391,7 @@
       : 'display:flex;gap:2px;pointer-events:none;', key);
     if (meterBtn) {
       if (mode === 'row') dressOne(meterBtn, pillCls, pillCls ? ROW_BUTTON_CSS : ROW_FALLBACK_CSS, key, pillCls ? '' : '28px');
-      else dressOne(meterBtn, '', BAR_BUTTON_CSS + 'gap:3px;font:11px var(--vscode-font-family,sans-serif);', key, size + 'px');
+      else dressOne(meterBtn, '', BAR_BUTTON_CSS + 'gap:3px;' + pageFont(11), key, size + 'px');
     }
     /* Claude Code's own pill rather than a Codex button's classes: 18 px tall in the row, as tall as the row below. */
     if (agentsBtn) dressOne(agentsBtn, '', AGENTS_CSS + (mode === 'row' ? 'margin-right:6px;' : 'margin-left:4px;font-size:11px;'), key,
@@ -403,7 +408,7 @@
       bar = document.createElement('div');
       bar.setAttribute(MARK, 'bar');
       bar.style.cssText = 'position:fixed;z-index:' + Z_BELOW_CODEX + ';pointer-events:none;display:flex;align-items:center;gap:2px;'
-        + 'font:11px var(--vscode-font-family,sans-serif);color:var(--vscode-descriptionForeground,#888);';
+        + pageFont(11) + 'color:var(--vscode-descriptionForeground,#888);';
       document.body.appendChild(bar);
     }
     if (tools && (tools.parentElement !== bar || tools.previousElementSibling)) bar.insertBefore(tools, bar.firstChild);
@@ -682,7 +687,7 @@
     overlay.setAttribute(MARK, 'agent-map');
     var dlg = mk('div', 'box-sizing:border-box;display:flex;flex-direction:column;overflow:hidden;width:fit-content;min-width:min(320px,calc(100vw - 32px));'
       + 'max-width:min(1200px,calc(100vw - 32px));max-height:calc(100vh - 32px);margin:16px;padding:16px;border-radius:8px;outline:0;'
-      + 'user-select:text;font:13px var(--vscode-font-family,sans-serif);color:var(--vscode-foreground,#ccc);'
+      + 'user-select:text;' + pageFont(13) + 'color:var(--vscode-foreground,#ccc);'
       + 'background-color:var(--vscode-sideBar-background,var(--vscode-editor-background,#181818));'
       + 'border:1px solid var(--vscode-sideBarActivityBarTop-border,var(--vscode-widget-border,#2b2b2b));');
     dlg.setAttribute(MARK, 'map-dialog');
@@ -735,7 +740,7 @@
       infoBox = document.createElement('div');
       infoBox.setAttribute(MARK, 'info');
       infoBox.style.cssText = 'position:fixed;z-index:' + Z_BELOW_CODEX_BOX + ';display:none;width:420px;max-width:calc(100vw - 32px);'
-        + 'padding:8px 10px;border-radius:5px;font:11px var(--vscode-font-family,sans-serif);line-height:1.5;'
+        + 'padding:8px 10px;border-radius:5px;' + pageFont(11) + 'line-height:1.5;'
         + 'background:var(--vscode-editorHoverWidget-background,rgba(30,30,30,.99));'
         + 'color:var(--vscode-editorHoverWidget-foreground,#ddd);'
         + 'border:1px solid var(--vscode-editorHoverWidget-border,rgba(255,255,255,.18));box-shadow:0 4px 14px rgba(0,0,0,.5);';
@@ -898,7 +903,7 @@
       ctxBox = document.createElement('div');
       ctxBox.setAttribute(MARK, 'context');
       ctxBox.style.cssText = 'position:fixed;z-index:' + Z_BELOW_CODEX_BOX + ';display:none;width:300px;max-width:calc(100vw - 16px);'
-        + 'box-sizing:border-box;padding:8px 10px;border-radius:5px;font:11px var(--vscode-font-family,sans-serif);line-height:1.5;'
+        + 'box-sizing:border-box;padding:8px 10px;border-radius:5px;' + pageFont(11) + 'line-height:1.5;'
         + 'background:var(--vscode-editorHoverWidget-background,rgba(30,30,30,.99));color:var(--vscode-editorHoverWidget-foreground,#ddd);'
         + 'border:1px solid var(--vscode-editorHoverWidget-border,rgba(255,255,255,.18));box-shadow:0 4px 14px rgba(0,0,0,.5);';
       ctxBox.addEventListener('mouseenter', function () { ctxOverBox = true; if (ctxShutAt) { clearTimeout(ctxShutAt); ctxShutAt = 0; } });
@@ -1082,7 +1087,7 @@
       strip = document.createElement('div');
       strip.setAttribute(MARK, 'figures');
       strip.style.cssText = 'position:fixed;z-index:' + Z_BELOW_CODEX + ';pointer-events:none;white-space:nowrap;'
-        + 'font:11px var(--vscode-font-family,sans-serif);color:var(--vscode-descriptionForeground,#888);padding:0 4px;opacity:.8;';
+        + pageFont(11) + 'color:var(--vscode-descriptionForeground,#888);padding:0 4px;opacity:.8;';
       document.body.appendChild(strip);
     }
     placeStrip();
@@ -1773,7 +1778,7 @@
     + '.codex-extras-panel{position:fixed;right:' + (RAIL_W + 2) + 'px;top:8px;'
     + 'width:min(' + PANEL_W + 'px,calc(100vw - ' + (RAIL_W + 14) + 'px));'
     + 'max-height:calc(100vh - 16px);overflow-y:auto;z-index:' + Z_PANEL + ';display:none;'
-    + 'padding:5px 0;border-radius:5px;box-sizing:border-box;font:11px var(--vscode-font-family,sans-serif);'
+    + 'padding:5px 0;border-radius:5px;box-sizing:border-box;' + pageFont(11)
     + 'line-height:1.45;background:var(--vscode-editorWidget-background,rgba(35,35,35,.98));'
     + 'border:1px solid var(--vscode-widget-border,rgba(255,255,255,.14));box-shadow:0 4px 14px rgba(0,0,0,.45);}'
     + '.codex-extras-panel-head{position:sticky;top:0;z-index:1;padding:3px 8px 6px 8px;'
@@ -1829,7 +1834,7 @@
     var box = document.createElement('div');
     box.setAttribute(MARK, 'nav-tip');
     box.style.cssText = 'position:fixed;z-index:' + Z_BELOW_CODEX_BOX + ';pointer-events:none;max-width:' + TIP_W + 'px;max-height:40vh;'
-      + 'overflow:hidden;padding:6px 9px;border-radius:4px;box-sizing:border-box;font:11px var(--vscode-font-family,sans-serif);line-height:1.45;'
+      + 'overflow:hidden;padding:6px 9px;border-radius:4px;box-sizing:border-box;' + pageFont(11) + 'line-height:1.45;'
       + 'white-space:pre-wrap;word-break:break-word;background:var(--vscode-editorHoverWidget-background,rgba(30,30,30,.98));'
       + 'color:var(--vscode-editorHoverWidget-foreground,#ddd);border:1px solid var(--vscode-editorHoverWidget-border,rgba(255,255,255,.18));'
       + 'box-shadow:0 2px 8px rgba(0,0,0,.4);';
@@ -2221,7 +2226,7 @@
       warn.setAttribute(MARK, 'warn');
       warn.textContent = '!';
       warn.style.cssText = 'position:fixed;right:4px;z-index:' + Z_BELOW_CODEX + ';width:16px;height:16px;border-radius:50%;'
-        + 'display:flex;align-items:center;justify-content:center;font:700 11px var(--vscode-font-family,sans-serif);cursor:help;'
+        + 'display:flex;align-items:center;justify-content:center;' + pageFont(11, 700) + 'cursor:help;'
         + 'background:var(--vscode-editorWarning-foreground,#cca700);color:var(--vscode-editor-background,#1e1e1e);';
       labelled(warn, WARN_SAID);
       document.body.appendChild(warn);
