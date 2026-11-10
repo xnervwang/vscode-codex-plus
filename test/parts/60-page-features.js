@@ -165,12 +165,15 @@ module.exports = async ({ ok, bad, eq, note, tmp, root }) => {
   /* ── the page ── */
   const dom = createDom();
   const page = pageUnder(root, dom);
-  const DAY = '2026-11-08';
+  /* Today, so that the stamps read as the clock alone: a time of another day carries its date (checked further down). */
+  const NOW = new Date();
+  const at = (h, m, s) => new Date(NOW.getFullYear(), NOW.getMonth(), NOW.getDate(), h, m, s);
+  const DAY = `${NOW.getFullYear()}-${String(NOW.getMonth() + 1).padStart(2, '0')}-${String(NOW.getDate()).padStart(2, '0')}`;
   const made = conversation(dom, [
     { key: 't1', day: DAY, top: 100, ask: SECRETS['a message of the user\'s'], askedAt: '10:35 PM',
-      reply: SECRETS['a reply'], sent: '2026-11-08T22:36:04Z', sentShown: '10:36 PM' },
+      reply: SECRETS['a reply'], sent: at(22, 36, 4).toISOString(), sentShown: '10:36 PM' },
     /* No time of Codex's own on the user's message, and the reply's carried as a count of seconds. */
-    { key: 't2', top: 400, ask: 'and the tests?', reply: 'All 273 pass.', sent: '1762641600', sentShown: '' },
+    { key: 't2', top: 400, ask: 'and the tests?', reply: 'All 273 pass.', sent: String(Math.floor(at(22, 40, 0).getTime() / 1000)), sentShown: '' },
     /* A sent time in a form the parser does not know. */
     { key: 't3', top: 700, ask: 'ship it', reply: 'Done.', sent: 'the day before yesterday', sentShown: '' },
   ]);
@@ -191,7 +194,7 @@ module.exports = async ({ ok, bad, eq, note, tmp, root }) => {
     'the host is told the shape of that time once: its length, the class of its first character, whether it is all digits');
 
   /* The host's times from the rollout, which is the second source for the user's own messages. */
-  const t = (h, m, s) => new Date(2026, 10, 8, h, m, s).getTime();
+  const t = (h, m, s) => at(h, m, s).getTime();
   page.times([t(22, 35, 10), t(22, 39, 2)]);
   eq([stampText(one.user), stampText(two.user)], ['22:35', null],
     'times from the rollout for fewer messages than the page shows are left unused, Codex\'s own still read');
@@ -417,4 +420,26 @@ module.exports = async ({ ok, bad, eq, note, tmp, root }) => {
   const off = posted.filter((m) => m.type === 'codex-extras-view').pop();
   eq([off.timestamps, off.navigation, off.userEdge, off.userColor, Array.isArray(lines)], [false, false, false, '', true],
     'and taking the patch away tells the pages still running to clear everything off Codex\'s tree first');
+
+  /* ── a time of another day carries its date, written as Claude Code Plus writes it ── */
+  {
+    const d2 = createDom();
+    const p2 = pageUnder(root, d2);
+    const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const md = (d) => `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`;
+    const thisYear = new Date(NOW.getFullYear(), 0, NOW.getMonth() === 0 && NOW.getDate() === 1 ? 2 : 1);
+    const lastYear = new Date(NOW.getFullYear() - 1, 2, 4);
+    const built = conversation(d2, [
+      { key: 'd1', day: ymd(lastYear), top: 100, ask: 'from last year', askedAt: '10:15 PM', reply: 'r1', sent: 'true', sentShown: '10:16 PM' },
+      { key: 'd2', day: ymd(thisYear), top: 400, ask: 'from this year', askedAt: '9:02 AM', reply: 'r2', sent: 'true', sentShown: '9:03 AM' },
+      { key: 'd3', day: DAY, top: 700, ask: 'from today', askedAt: '7:00 AM', reply: 'r3', sent: 'true', sentShown: '7:01 AM' },
+    ]).built;
+    p2.view();
+    eq(built.map((b) => [stampText(b.user), stampText(b.reply)]),
+      [[`${lastYear.getFullYear()}/${md(lastYear)} 22:15`, `${lastYear.getFullYear()}/${md(lastYear)} 22:16`],
+        [`${md(thisYear)} 09:02`, `${md(thisYear)} 09:03`], ['07:00', '07:01']],
+      'a time of an earlier day this year starts with its month and day, one of another year with the year too, and today\'s is the clock alone');
+    eq(d2.document.root.querySelectorAll('[data-codex-extras="nav-row"]').map((r) => r.textContent.split('from')[0]),
+      [`${lastYear.getFullYear()}/${md(lastYear)} 22:15`, `${md(thisYear)} 09:02`, '07:00'], 'and the list of messages shows each with the same date');
+  }
 };

@@ -147,7 +147,11 @@ module.exports = async ({ eq, root }) => {
     p.view();
     const stamp = (host) => { const s = host.children.find((k) => k.getAttribute('data-codex-extras') === 'stamp'); return s ? s.textContent : null; };
     if (withDay) {
-      eq([stamp(user), stamp(reply)], ['09:02', '09:04'],
+      /* The divider's day is not today, so both stamps start with it (the form is checked in 60-page-features). */
+      const day = new Date('2026-11-08T17:02:11.000Z'), now = new Date();
+      const md = `${String(day.getMonth() + 1).padStart(2, '0')}/${String(day.getDate()).padStart(2, '0')}`;
+      const pre = day.toDateString() === now.toDateString() ? '' : `${day.getFullYear() === now.getFullYear() ? md : `${day.getFullYear()}/${md}`} `;
+      eq([stamp(user), stamp(reply)], [`${pre}09:02`, `${pre}09:04`],
         'under a day the page states, a time written after its day\'s name is read as that day\'s clock, on both sides');
     } else {
       eq([stamp(user), stamp(reply)], [null, null], 'with no day on the page the same time is left off rather than put on today');

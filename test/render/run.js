@@ -528,13 +528,16 @@ function selfchecked(r, where, { turns, users, rows, replies = turns }) {
     if (handle) { await s.b.click(handle[0], handle[1]); await sleep(300); }
     for (let i = 0; i < 12; i++) await scrollTo(s, 'top');
     const early = await s.b.evaluate(`(() => ({ divider: [...document.querySelectorAll('[data-app-action-timeline-scroll] time[datetime]')].map((x) => x.textContent.trim()),
+      day: [...document.querySelectorAll('[data-app-action-timeline-scroll] time[datetime]')].map((x) => { const d = new Date(x.getAttribute('datetime'));
+        return String(d.getMonth() + 1).padStart(2, '0') + '/' + String(d.getDate()).padStart(2, '0'); })[0] || '',
       users: [...document.querySelectorAll('.codex-extras-stamp-user')].map((x) => x.textContent),
       replies: [...document.querySelectorAll('.codex-extras-stamp-assistant')].map((x) => x.textContent) }))()`);
     results.scenes.long.top = early;
     await shot(s, 'long-top');
     console.log(`  note  long, top: Codex's day divider reads ${JSON.stringify(early.divider)}; stamps there ${JSON.stringify(early.users.slice(0, 2))}...`);
-    check(early.users.length > 0 && early.users.every(Boolean) && early.replies.length > 0 && early.replies.every((x) => /^\d\d:\d\d/.test(x)),
-      'long, top: yesterday\'s messages and replies carry a time too, read from Codex\'s "<day> <clock>" with the day of its divider', early);
+    const ofDay = (x) => !!early.day && new RegExp(`^${early.day} \\d\\d:\\d\\d`).test(x);
+    check(early.users.length > 0 && early.users.every(ofDay) && early.replies.length > 0 && early.replies.every(ofDay),
+      'long, top: yesterday\'s messages and replies carry a time too, read from Codex\'s "<day> <clock>" and written after the date of its divider', early);
     geometry(await measured(s, 'long', 'top'), 'long, top');
     results.blocked.push(...s.b.blocked);
   } finally { await s.close(); }

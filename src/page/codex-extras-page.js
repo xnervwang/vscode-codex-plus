@@ -1204,11 +1204,15 @@
   var sameMinute = function (a, b) { return Math.floor(a / 60000) === Math.floor(b / 60000); };
   var p2 = function (n) { return (n < 10 ? '0' : '') + n; };
   /* HH:MM:SS, in the user's own zone. HH:MM when the source carried no seconds: a zero there would be a time nobody
-     wrote, and the stamp is read as a fact about the message. */
+     wrote, and the stamp is read as a fact about the message. A day other than today goes before it as MM/DD, with the
+     year as well for another year, which is how Claude Code Plus and the session list write a date. */
   function clockOf(when) {
     if (!when) return '';
-    var d = new Date(when.ms);
-    return p2(d.getHours()) + ':' + p2(d.getMinutes()) + (when.secs ? ':' + p2(d.getSeconds()) : '');
+    var d = new Date(when.ms), now = new Date();
+    var t = p2(d.getHours()) + ':' + p2(d.getMinutes()) + (when.secs ? ':' + p2(d.getSeconds()) : '');
+    if (d.toDateString() === now.toDateString()) return t;
+    var md = p2(d.getMonth() + 1) + '/' + p2(d.getDate());
+    return (d.getFullYear() === now.getFullYear() ? md : d.getFullYear() + '/' + md) + ' ' + t;
   }
 
   /* A sent time in none of those forms. Told once per form, and as a form rather than a value. */
