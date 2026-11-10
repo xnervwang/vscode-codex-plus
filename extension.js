@@ -480,7 +480,7 @@ function registerCommands(context, { source, memory, sessionsProvider, say, link
     const folders = (vscode.workspace.workspaceFolders || []).map((f) => f.uri.fsPath);
     const inWorkspace = folders.length ? folderTest(folders, new Map()) : null;
     const threads = (reader.threads() || []).filter((t) => (t.kind === 'user' || !settings().hideBackgroundSessions)
-      && (!inWorkspace || inWorkspace(t.cwd)));
+      && !t.archived && (!inWorkspace || inWorkspace(t.cwd)));
     const qp = vscode.window.createQuickPick();
     qp.placeholder = 'Search titles, or four or more characters of a thread id';
     qp.matchOnDescription = true;
@@ -525,14 +525,6 @@ function registerCommands(context, { source, memory, sessionsProvider, say, link
     const name = await vscode.window.showInputBox({ prompt: 'A new title for this Codex conversation', value: was, valueSelection: [0, was.length] });
     if (name === undefined || !name.trim() || name.trim() === was) return;
     await changeThread('rename it', 'thread/name/set', { threadId: id, name: name.trim() });
-  });
-  reg('archiveThread', async (arg, selected) => {
-    if (restricted()) return;
-    for (const id of chosen(arg, selected)) if (!(reader.thread(id) || {}).archived && !await changeThread('archive it', 'thread/archive', { threadId: id })) return;
-  });
-  reg('unarchiveThread', async (arg, selected) => {
-    if (restricted()) return;
-    for (const id of chosen(arg, selected)) if ((reader.thread(id) || {}).archived && !await changeThread('unarchive it', 'thread/unarchive', { threadId: id })) return;
   });
   /*
    * The groups. A command run before this Codex is known to have them asks first; one without them is told so, and the
@@ -591,31 +583,6 @@ function registerCommands(context, { source, memory, sessionsProvider, say, link
     done('take it out of its group', await groups.move(ids, null));
   });
   reg('markThreadUnread', (arg, selected) => { for (const id of chosen(arg, selected)) source.markUnread(id); });
-  reg('deleteArchivedThread', async (arg, selected) => {
-    if (restricted()) return;
-    const doomed = chosen(arg, selected).map((id) => reader.thread(id)).filter((t) => t && t.archived);
-    if (!doomed.length) return;
-    if (doomed.some((t) => tabs.codexTabs(vscode).some((x) => x.thread === t.id))) { vscode.window.showWarningMessage('Close its tab first.'); return; }
-    const go = 'Delete';
-    const one = doomed.length === 1;
-    const pick = await vscode.window.showWarningMessage(one ? `Delete "${doomed[0].title || doomed[0].id}" permanently?`
-      : `Delete ${doomed.length} archived conversations permanently?`, { modal: true,
-      detail: `Codex deletes ${one ? 'the conversation and its rollout. Its work plan is' : 'the conversations and their rollouts. Their work plans are'} `
-        + `deleted too. This cannot be undone.${one ? '' : `\n\n${doomed.map((t) => t.title || t.id).join('\n')}`}` }, go);
-    if (pick !== go) return;
-    const binary = codexProgram();
-    try {
-      await require('./src/appserver').withAppServer(binary, files.codexHome(), async (s) => {
-        for (const t of doomed) await s.request('thread/delete', { threadId: t.id });
-      });
-      for (const t of doomed) {
-        for (const ext of ['.json', '.turn', '.nudged', '.settled', '.offered', '.watermark', '.tz']) {
-          try { fs.unlinkSync(path.join(install.planDir(files.codexHome()), t.id + ext)); } catch (_) { /* none */ }
-        }
-      }
-      source._poll();
-    } catch (e) { vscode.window.showErrorMessage(`Codex could not delete ${one ? 'it' : 'them'}: ${e.message}`); }
-  });
 
 }
 

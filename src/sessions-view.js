@@ -8,12 +8,13 @@
  *
  *   Recently closed       tabs closed in this workspace, newest first (collapsed)
  *   Open sessions         the Codex tabs of this window, the one last in front first, each with its status colour
- *   Pinned, <sections>    Codex's own pins and sections, as its sidebar keeps them
+ *   <groups>              Codex's sections (src/session-groups.js)
  *   Ungrouped             the rest of this workspace's
- *   Archived sessions     Codex's archived threads of this workspace (collapsed)
  *
- * The group names are Claude Code's, so that both lists read the same way. Each carries its count; an empty one is
- * left out, except Open sessions, which says there is none.
+ * The group names are Claude Code's, so that both lists read the same way. Each carries its count. A group the user
+ * made is drawn even while empty, so it can be found and filled; the others are left out while empty, Codex's built-in
+ * Pinned section among them. An archived conversation is not listed: VS Code's Codex has no page that shows one, so
+ * the list offers no way to archive either.
  *
  * Like Claude Code's list, it holds this workspace's conversations only, and every conversation in a window with no
  * folder open. The workspace filter compares real paths (src/folders.js): the same directory reached through a symbolic link used to
@@ -24,8 +25,8 @@
  * rollout is asked for, and the answer comes back on the next scheduled poll (getChildren, ask).
  *
  * Threads Codex started by itself - sub-agents, the reviews of approval requests - and `codex exec` runs are left out
- * unless codexPlus.hideBackgroundSessions is off, when they are listed under Background. Clicking a conversation opens
- * it in a tab. The hover gives its thread id and which group it sits in, and the title can be given a colour.
+ * unless codexPlus.hideBackgroundSessions is off, when they are listed with the rest. Clicking a conversation opens it
+ * in a tab. The hover gives the group it sits in and its thread id, and the title can be given a colour.
  *
  * It is drawn in this extension's own activity bar container, so it does not sit in the work plan sidebar while another
  * agent's conversation is in front. The threads come
@@ -97,7 +98,7 @@ function group(threads, { open = [], closed = [], sections = new Map(), hideBack
   if (sidebar && !open.includes(sidebar)) open = [...open, sidebar];
   const byId = new Map(threads.map((t) => [t.id, t]));
   const kindOk = (t) => (hideBackground ? t.kind === 'user' : true);
-  const here = threads.filter((t) => kindOk(t) && (!cwdFilter || cwdFilter(t.cwd)));
+  const here = threads.filter((t) => kindOk(t) && !t.archived && (!cwdFilter || cwdFilter(t.cwd)));
   const openRows = open.map((id) => byId.get(id) || { id, title: '', kind: 'user', updatedMs: 0, createdMs: 0 })
     .sort((a, b) => (frontAt(b.id) - frontAt(a.id)) || (b.updatedMs - a.updatedMs));
   const openSet = new Set(open);
@@ -105,28 +106,22 @@ function group(threads, { open = [], closed = [], sections = new Map(), hideBack
     .filter((t) => !openSet.has(t.id));
   const out = [{ key: 'closed', label: 'Recently closed', expanded: false, threads: closedRows },
     { key: 'open', label: 'Open sessions', expanded: true, threads: openRows }];
-  const rest = here.filter((t) => t.kind === 'user' && !t.archived);
-  const pinned = rest.filter((t) => t.pinned);
-  if (pinned.length) out.push({ key: 'pinned', label: 'Pinned', expanded: true, threads: pinned });
   for (const [id, name] of sections) {
-    const inSection = rest.filter((t) => !t.pinned && t.section === id);
-    if (inSection.length) out.push({ key: `section:${id}`, label: name || 'Section', expanded: true, threads: inSection });
+    const inSection = here.filter((t) => t.section === id);
+    if (id === PINNED_SECTION && !inSection.length) continue;
+    out.push({ key: `section:${id}`, label: name || 'Group', expanded: true, threads: inSection, made: id !== PINNED_SECTION });
   }
   const known = new Set(sections.keys());
-  out.push({ key: 'ungrouped', label: 'Ungrouped', expanded: true, threads: rest.filter((t) => !t.pinned && (!t.section || !known.has(t.section))) });
-  const background = here.filter((t) => t.kind !== 'user');
-  if (!hideBackground && background.length) out.push({ key: 'background', label: 'Background', expanded: false, threads: background });
-  out.push({ key: 'archived', label: 'Archived sessions', expanded: false, threads: here.filter((t) => t.kind === 'user' && t.archived) });
+  out.push({ key: 'ungrouped', label: 'Ungrouped', expanded: true, threads: here.filter((t) => !t.section || !known.has(t.section)) });
   return out;
 }
 
-/** Where a thread sits below Open sessions, in words, for the hover. */
+/* The groups drawn: those holding something, and every group the user made. */
+const drawn = (groups) => groups.filter((g) => g.threads.length || g.made);
+
+/** The group a thread is listed under below Open sessions, for the hover. */
 function placeOf(t, sections) {
-  if (t.archived) return 'Archived sessions';
-  if (t.kind !== 'user') return `Background (${t.kind === 'guardian' ? 'approval review' : t.kind === 'subagent' ? 'sub-agent' : 'codex exec'})`;
-  if (t.pinned) return 'Pinned';
-  if (t.section && sections.has(t.section)) return sections.get(t.section);
-  return 'Ungrouped';
+  return t.section && sections.has(t.section) ? sections.get(t.section) || 'Group' : 'Ungrouped';
 }
 
 class SessionsProvider {
@@ -195,10 +190,9 @@ class SessionsProvider {
    * was due anyway rather than on a timer of its own.
    */
   getChildren(element) {
-    if (!element) return this.groups.filter((g) => g.threads.length || g.key === 'open').map((g) => ({ kind: 'group', group: g }));
+    if (!element) return drawn(this.groups).map((g) => ({ kind: 'group', group: g }));
     if (element.kind === 'group') {
       const g = element.group;
-      if (!g.threads.length && g.key === 'open') return [{ kind: 'empty', text: 'No conversation open in this window' }];
       this.ask(g.threads);
       return g.threads.map((t) => ({ kind: 'thread', thread: t, group: g.key }));
     }
@@ -227,18 +221,11 @@ class SessionsProvider {
 
   getTreeItem(element) {
     const vscode = this.vscode;
-    if (element.kind === 'empty') {
-      const item = new vscode.TreeItem(element.text, vscode.TreeItemCollapsibleState.None);
-      item.id = 'empty:open';
-      item.contextValue = 'codexPlusEmpty';
-      return item;
-    }
     if (element.kind === 'group') {
       const g = element.group;
       const item = new vscode.TreeItem(g.label, g.expanded ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed);
       item.id = `group:${g.key}`;
-      // An empty group says so in a row of its own instead of carrying a nought.
-      if (g.threads.length) item.description = String(g.threads.length);
+      item.description = String(g.threads.length);
       item.contextValue = g.key === `section:${PINNED_SECTION}` ? 'codexPlusGroup-pinned'
         : g.key.startsWith('section:') ? 'codexPlusGroup-section' : `codexPlusGroup-${g.key}`;
       return item;
@@ -255,16 +242,9 @@ class SessionsProvider {
     item.description = dateSpan(t.createdMs, t.updatedMs);
     item.iconPath = new vscode.ThemeIcon(look.icon, new vscode.ThemeColor(look.color));
     const open = element.group === 'open';
-    item.contextValue = (t.archived ? 'codexPlusThreadArchived' : open ? 'codexPlusThreadOpen' : 'codexPlusThread')
-      + (t.section && this.sections.has(t.section) ? ' grouped' : '');
-    const md = new vscode.MarkdownString();
-    md.appendMarkdown(`**${(t.title || '(untitled)').replace(/[*_`[\]]/g, '\\$&')}**\n\n`);
-    const place = placeOf(t, this.sections);
+    item.contextValue = (open ? 'codexPlusThreadOpen' : 'codexPlusThread') + (t.section && this.sections.has(t.section) ? ' grouped' : '');
     const inSidebar = open && t.id === this.sidebarNow && !this.memory.openThreads().includes(t.id);
-    md.appendMarkdown(`${look.word} · ${place}${inSidebar ? ' · in Codex\'s sidebar' : open ? ' · open in this window' : ''}\n\n`);
-    md.appendCodeblock(t.id, 'text');
-    if (t.cwd) md.appendMarkdown(`\n${t.cwd}${t.branch ? ` (${t.branch})` : ''}`);
-    item.tooltip = md;
+    item.tooltip = `Group: ${placeOf(t, this.sections)}\nSession ID: ${t.id}`;
     item.command = inSidebar ? { command: 'codexPlus.openThreadInSidebar', title: 'Show in the sidebar', arguments: [t.id] }
       : { command: 'codexPlus.openThreadInTab', title: 'Open in a tab', arguments: [t.id] };
     return item;

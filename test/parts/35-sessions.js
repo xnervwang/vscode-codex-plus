@@ -153,21 +153,16 @@ module.exports = async ({ ok, bad, eq, tmp }) => {
   const inWs = (cwd) => cwd === inside;
   const shaped = group([thread(1, inside), thread(2, outsideA), thread(5, inside, { archived: true })],
     { open: [], closed: [], cwdFilter: inWs });
-  eq(shaped.map((g) => g.label), ['Recently closed', 'Open sessions', 'Ungrouped', 'Archived sessions'],
+  eq(shaped.map((g) => g.label), ['Recently closed', 'Open sessions', 'Ungrouped'],
     'the group names are the ones Claude Code\'s session list uses, in its order');
-  eq(shaped.filter((g) => !g.expanded).map((g) => g.label), ['Recently closed', 'Archived sessions'],
-    'the two a reader opens only when looking for something start collapsed');
+  eq(shaped.filter((g) => !g.expanded).map((g) => g.label), ['Recently closed'],
+    'the one a reader opens only when looking for something starts collapsed');
 
-  /* ── an empty open group says so; no group carries a nought ── */
+  /* ── an empty Open sessions is left out, as Claude Code Plus leaves it out ── */
   const bare = new SessionsProvider(vscode, { memory: stubMemory(), memento: fake.memento(), reader: stubReader([thread(1, inside)]),
     stateOf: () => null, settings: () => ({ recentClosedSessions: 10, hideBackgroundSessions: true }) });
   bare.refresh();
-  const openRow = bare.getChildren().find((r) => r.group.key === 'open');
-  const openItem = bare.getTreeItem(openRow);
-  const openKids = bare.getChildren(openRow);
-  eq([openItem.label, openItem.description, openKids.map((k) => k.kind), bare.getTreeItem(openKids[0]).label],
-    ['Open sessions', undefined, ['empty'], 'No conversation open in this window'],
-    'with nothing open the group says so in a row of its own rather than showing a nought');
+  eq(bare.getChildren().map((r) => r.group.key), ['ungrouped'], 'with nothing open there is no Open sessions group at all');
   eq(bare.getTreeItem(bare.getChildren().find((r) => r.group.key === 'ungrouped')).description, '1', 'a group that holds something counts it after its name');
 
   /* ── a conversation the user has not read gets no dot, and asks for one when its group opens ── */
@@ -182,30 +177,22 @@ module.exports = async ({ ok, bad, eq, tmp }) => {
   const kids = lazy.getChildren(groupRow);
   const known = lazy.getTreeItem(kids.find((k) => k.thread.id === ID(1)));
   const notRead = lazy.getTreeItem(kids.find((k) => k.thread.id === ID(7)));
-  eq([known.iconPath.id, notRead.iconPath.id, notRead.tooltip.value.includes('not read')], ['circle-filled', 'blank', true],
-    'the one whose rollout was read carries its status dot; the one that was not carries none, and says not read rather than idle');
+  eq([known.iconPath.id, notRead.iconPath.id], ['circle-filled', 'blank'],
+    'the one whose rollout was read carries its status dot; the one that was not carries none rather than an idle one');
   eq(asked, [ID(7)], 'opening the group asks for that one rollout, and only that one');
   asked.length = 0;
   lazy.getChildren(groupRow);
   eq(asked, [ID(7)], 'a group nobody opened asks for nothing, so the cost follows what is on screen');
 
-  /* ── what Recently closed and Archived sessions do with their settings ── */
+  /* ── what Recently closed does with its setting ── */
   const closedList = [{ thread: ID(8), title: 'closed one', at: 9 }];
   const noneKept = group([thread(1, inside)], { open: [], closed: [] });
   eq(noneKept.find((g) => g.key === 'closed').threads.length, 0, 'with none kept, Recently closed is empty and so is left out of the tree');
   const kept = group([thread(1, inside)], { open: [], closed: closedList });
   eq(kept.find((g) => g.key === 'closed').threads.map((t) => t.title), ['closed one'],
     'a conversation closed here is listed by the title it was closed under, even with no thread row left for it');
-  const archivedOnly = group([thread(5, inside, { archived: true })], { open: [], closed: [] });
-  const arch = archivedOnly.find((g) => g.key === 'archived');
-  eq([arch.threads.length, arch.expanded], [1, false], 'Archived sessions holds the archived ones and starts closed');
-  const archProvider = new SessionsProvider(vscode, { memory: stubMemory(), memento: fake.memento(),
-    reader: stubReader([thread(5, inside, { archived: true })]), stateOf: () => null,
-    settings: () => ({ recentClosedSessions: 10, hideBackgroundSessions: true }) });
-  archProvider.refresh();
-  const archRow = archProvider.getChildren().find((r) => r.group.key === 'archived');
-  eq(archProvider.getTreeItem(archProvider.getChildren(archRow)[0]).contextValue, 'codexPlusThreadArchived',
-    'and its rows are the ones whose right-click menu offers Delete Conversation');
+  eq(group([thread(5, inside, { archived: true })], { open: [], closed: [] }).flatMap((g) => g.threads).length, 0,
+    'an archived conversation is not listed anywhere');
 
   ok('the session list was checked against real directories and a symbolic link');
   /*
@@ -246,8 +233,7 @@ module.exports = async ({ ok, bad, eq, tmp }) => {
     listing.refresh();
     const open = listing.getChildren(listing.getChildren().find((r) => r.group.key === 'open'));
     const row = listing.getTreeItem(open[0]);
-    eq([open.length, row.command.command, /in Codex's sidebar/.test(row.tooltip.value)], [1, 'codexPlus.openThreadInSidebar', true],
-      'its row goes to the sidebar when clicked, and says that it is there');
+    eq([open.length, row.command.command], [1, 'codexPlus.openThreadInSidebar'], 'its row goes to the sidebar when clicked');
     patching._approvals.clear();
   }
 };

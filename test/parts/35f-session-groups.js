@@ -107,6 +107,9 @@ module.exports = async ({ eq, tmp, root }) => {
       'nor the group the conversation is already in, so with that the only one it says there is no other');
     eq(await run('removeFromGroup', row(made[0]), [row(made[0]), row(made[1])]), [['thread/section/move', { threadId: made[0].id, sectionId: null }]],
       'Remove from Group takes out the selected conversations that are in a group, and leaves the others');
+    control.state.inputAnswer = 'Third';
+    eq(await run('newGroupFromThreads', row(made[1]), [row(made[0])]).then((r) => r.filter(([m]) => m === 'thread/section/move').map(([, p]) => p.threadId)),
+      [made[1].id], 'a right-click on a row outside the selection acts on that row alone, as in a file explorer');
 
     const tree = control.state.treeViews['codexPlus.sessions'].opts.treeDataProvider;
     tree.refresh();

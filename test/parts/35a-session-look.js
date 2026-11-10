@@ -41,7 +41,6 @@ module.exports = async ({ eq }) => {
     'running green, waiting for you blue, replied and unread red, and idle a grey dot rather than a ring');
   eq(look(2), ['circle-outline', 'charts.green'], 'running with no tab of it in this window, that is in another window, is a ring of the same green');
   const failed = provider.getTreeItem(rows.find((r) => r.thread.id === ID(6)));
-  eq([failed.iconPath.id, failed.iconPath.color.id, failed.tooltip.value.includes('last turn failed')], ['circle-filled', 'charts.red', true],
-    'a conversation whose last turn failed is red, and says so on hover');
+  eq([failed.iconPath.id, failed.iconPath.color.id], ['circle-filled', 'charts.red'], 'a conversation whose last turn failed is red');
 
 };

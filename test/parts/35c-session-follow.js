@@ -53,7 +53,7 @@ module.exports = async ({ eq, tmp, root }) => {
 
   /* ── the extension registers it that way ── */
   const home = tmp('home');
-  const made = fixture.codexHome(home, [{ title: 'Kept', cwd: home, archived: true, turns: [{}] }, { title: 'Also kept', cwd: home, archived: true, turns: [{}] }]);
+  fixture.codexHome(home, [{ title: 'Kept', cwd: home, turns: [{}] }, { title: 'Also kept', cwd: home, turns: [{}] }]);
   process.env.CODEX_HOME = home;
   control.state.config = { reopenDroppedTabs: false };
   control.state.extensions.set('xnervwang.agent-plus', { isActive: true, exports: { agentPlus: { protocol: 1, accepts: [1], features: [],
@@ -67,14 +67,6 @@ module.exports = async ({ eq, tmp, root }) => {
     eq([!!tree, tree && tree.opts.canSelectMany, tree && tree.opts.treeDataProvider instanceof SessionsProvider], [true, true, true],
       'the session list is a tree view of its own, with several rows selectable at once');
     await new Promise((r) => setTimeout(r, 300));
-    const said = [];
-    control.answer('permanently', (message) => { said.push(message); return undefined; });
-    const [a, b] = made.map((t) => ({ kind: 'thread', thread: { id: t.id }, group: 'archived' }));
-    await control.state.handlers['codexPlus.deleteArchivedThread'](a, [a, b]);
-    eq(said, ['Delete 2 archived conversations permanently?'], 'deleting with two archived rows selected asks once, for both');
-    said.length = 0;
-    await control.state.handlers['codexPlus.deleteArchivedThread'](a, [b]);
-    eq(said, ['Delete "Kept" permanently?'], 'and a right-click on a row outside the selection deletes that row alone');
   } finally {
     for (const d of subs) { try { d.dispose(); } catch (_) { /* gone */ } }
     ext.deactivate();

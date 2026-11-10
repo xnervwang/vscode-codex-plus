@@ -4,8 +4,8 @@
 
 'use strict';
 /*
- * The session list and the conversation page offer the same actions as Claude Code's: rename, archive or unarchive,
- * add to one of Codex's sections, and mark as unread. The first four are sent to Codex's app-server on
+ * The session list and the conversation page offer the same actions as Claude Code's: rename, add to one of Codex's
+ * sections, and mark as unread. The first two are sent to Codex's app-server on
  * Codex's own connection (src/patching.js hostRequest); the method names and parameters are the ones an offline
  * app-server of Codex 26.1021.22027 accepted. Mark as unread is kept in this extension's own read record
  * (src/seen.js), not in Codex.
@@ -80,19 +80,17 @@ module.exports = async ({ eq, tmp, root }) => {
     control.state.inputAnswer = undefined;
     eq(await run('renameThread', row(made[0])), [], 'and a dismissed box renames nothing');
 
-    eq(await run('archiveThread', row(made[0]), [row(made[0]), row(made[1])]),
-      [['thread/archive', { threadId: made[0].id }], ['thread/archive', { threadId: made[1].id }]], 'Archive takes every row selected');
-    eq(await run('unarchiveThread', row(made[2], 'archived')), [['thread/unarchive', { threadId: made[2].id }]], 'Unarchive brings one back');
-
     control.state.pickAnswer = (items) => items.find((i) => i.label === 'Pinned');
     eq(await run('moveThreadToSection', row(made[1])), [['thread/section/move', { threadId: made[1].id, sectionId: 'sec-1' }]],
       'Add to Group offers Codex\'s sections and moves the conversation into the one picked');
 
     answer = (r) => ({ id: r.id, error: { code: -32600, message: 'thread not found' } });
     control.state.said.length = 0;
-    await run('archiveThread', row(made[0]));
+    control.state.inputAnswer = 'Refused';
+    await run('renameThread', row(made[0]));
     eq(control.state.said.some((s) => /thread not found/.test(s.message)), true, 'a refusal from Codex is passed on');
     answer = (r) => ({ id: r.id, result: {} });
+    control.state.inputAnswer = undefined;
 
     /* From the conversation page's own context menu, which names no conversation: it is the one in that tab. */
     control.setTabs([control.codexTab(made[0].id)], 0);
@@ -113,14 +111,13 @@ module.exports = async ({ eq, tmp, root }) => {
   /* ── the manifest ── */
   const menus = pkg.contributes.menus;
   const item = (cmd) => (menus['view/item/context'] || []).filter((m) => m.command === `codexPlus.${cmd}`);
-  eq([item('renameThread').some((m) => /^inline/.test(m.group)), item('archiveThread').some((m) => /^inline/.test(m.group))], [true, true],
-    'Rename and Archive are buttons on a row, shown on hover');
-  eq(['unarchiveThread', 'moveThreadToSection', 'markThreadUnread'].map((c) => item(c).some((m) => !/^inline/.test(m.group))), [true, true, true],
-    'Unarchive, Move to Section and Mark as Unread are in a row\'s right-click menu');
+  eq(item('renameThread').some((m) => /^inline/.test(m.group)), true, 'Rename is a button on a row, shown on hover');
+  eq(['moveThreadToSection', 'markThreadUnread'].map((c) => item(c).some((m) => !/^inline/.test(m.group))), [true, true],
+    'Add to Group and Mark as Unread are in a row\'s right-click menu');
   const onPage = (menus['webview/context'] || []).filter((m) => m.when === "webviewId == 'chatgpt.conversationEditor'").map((m) => m.command).sort();
   eq(onPage, ['codexPlus.markThreadUnread', 'codexPlus.moveThreadToSection', 'codexPlus.renameThread'],
-    'a conversation tab\'s own right-click menu has Rename, Mark as Unread and Move to Section, as Claude Code\'s has its three');
+    'a conversation tab\'s own right-click menu has Rename, Mark as Unread and Add to Group, as Claude Code\'s has its three');
   const hidden = (menus.commandPalette || []).filter((m) => m.when === 'false').map((m) => m.command);
-  eq(['renameThread', 'archiveThread', 'unarchiveThread', 'moveThreadToSection', 'markThreadUnread'].filter((c) => !hidden.includes(`codexPlus.${c}`)), [],
+  eq(['renameThread', 'moveThreadToSection', 'markThreadUnread'].filter((c) => !hidden.includes(`codexPlus.${c}`)), [],
     'none of them is in the command palette, where Claude Code has none of them either');
 };

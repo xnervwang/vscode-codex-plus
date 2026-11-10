@@ -281,17 +281,17 @@ module.exports = async ({ ok, bad, eq, tmp }) => {
     const groups = group(threads, { open: [working.id], closed: [{ thread: idle.id, title: 'Idle here', at: 1 }, { thread: working.id, at: 2 }],
       sections: new Map(), hideBackground: true });
     const names = groups.filter((g) => g.threads.length).map((g) => `${g.key}:${g.threads.map((t) => t.title).join('|')}`);
-    eq(names, ['closed:Idle here', 'open:Working here', 'ungrouped:Working here|Unread elsewhere|Idle here|Old', 'archived:Archived'],
-      'recently closed (without the open one), then open, the rest newest first, archived last; no guardian review');
-    const withBg = group(threads, { hideBackground: false }).find((g) => g.key === 'background');
-    eq(withBg && withBg.threads.map((t) => t.id), [guardian.id], 'turning the filter off lists the background threads');
+    eq(names, ['closed:Idle here', 'open:Working here', 'ungrouped:Working here|Unread elsewhere|Idle here|Old'],
+      'recently closed (without the open one), then open, the rest newest first; no archived one and no guardian review');
+    const withBg = group(threads, { hideBackground: false }).find((g) => g.key === 'ungrouped');
+    eq(withBg.threads.filter((t) => t.kind !== 'user').map((t) => t.id), [guardian.id], 'turning the filter off lists the background threads with the rest');
     const day = 86400e3, t0 = new Date(2026, 8, 5, 12).getTime();
     eq(dateSpan(t0, t0 + 11 * day, t0 + 22 * day), '11d · 09/05→09/16', 'the date span reads like the session list\'s');
     eq([looksLikeId('69f9'), looksLikeId('69f'), looksLikeId('fix bug')], [true, false, false], 'four hex characters search the id');
     const provider = new SessionsProvider(vscode, { memory: { openThreads: () => [], recentlyClosed: () => [], frontAt: () => 0 }, memento: fake.memento(),
       settings: () => ({ recentClosedSessions: 10, hideBackgroundSessions: true }), stateOf: () => null, reader: inWorker });
     provider.refresh();
-    eq(provider.getChildren().map((e) => e.group.key), ['open', 'ungrouped', 'archived'], 'the session list draws from the reader\'s snapshot');
+    eq(provider.getChildren().map((e) => e.group.key), ['section:sec-1', 'ungrouped'], 'the session list draws from the reader\'s snapshot');
 
     /* ── what the window remembers ── */
     const { TabMemory, OPEN_KEY, LAST_KEY } = require('../../src/tab-memory');
