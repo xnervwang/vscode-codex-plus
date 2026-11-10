@@ -174,7 +174,7 @@ MAX_DETAIL_CHARS = 900
 
 
 def detail_over(value):
-    """How a description breaks the limit, or None. Mirrors detail() in the extension's src/workplan.js.
+    """How a description breaks the limit, or None. Mirrors detail() in Agent Plus's src/workplan.js.
 
     The character count is taken over the lines that would survive, not over the whole value, because that is what the
     view measures after dropping the rest - counting the whole thing would refuse a description the view shows in full.

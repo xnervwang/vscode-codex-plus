@@ -9,7 +9,7 @@
 - `src/folders.js`: whether a conversation's folder is in this window's workspace, by real path.
 - `src/codex-source.js`: Codex as a source of Agent Plus, protocol 1, defined in Agent Plus's `docs/protocol.md`.
 - `src/host-link.js`: finding Agent Plus's `agentPlus` interface, registering, the `codexPlus.registered` key.
-- `src/workplan.js`: plan files (reading, and the sweep of plans whose conversation is gone).
+- `src/workplan.js`: plan files: the states and limits they share with the plugin and Agent Plus, and the sweep of plans whose conversation is gone.
 - `src/logo-dot.js`: Codex's logo with a state dot, for the tab icons.
 - `src/sessions-view.js`, `src/tab-memory.js`, `src/session-info.js`: the Codex sessions view, recently closed and dropped tabs, session information.
 - `src/appserver.js`: a short-lived `codex app-server` client.
