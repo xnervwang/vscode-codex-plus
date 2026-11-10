@@ -91,6 +91,14 @@ function createSeen(state = memoryState(), { now = () => Date.now(), setTimer = 
       if (inFront) held.add(id); else held.delete(id);
       setFlag(id, true);
     },
+    /* Claude Code's Mark as Read: `id` counts as looked at now. */
+    markRead(id) {
+      if (!id) return;
+      held.delete(id);
+      if (flagged()[id]) setFlag(id, false);
+      pending.set(id, now());
+      if (!timer) timer = setTimer(write, WRITE_MS);
+    },
     /* `id` is no longer in front. */
     left(id) { held.delete(id); },
     flush() {

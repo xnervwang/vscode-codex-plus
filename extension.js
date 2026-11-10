@@ -26,7 +26,7 @@ const { CodexReader } = require('./src/codex-reader');
 const hostLink = require('./src/host-link');
 const { TabMemory } = require('./src/tab-memory');
 const { SessionsProvider, createFollower, COLORS, looksLikeId } = require('./src/sessions-view');
-const { createGroups } = require('./src/session-groups');
+const { createGroups, createPlacer } = require('./src/session-groups');
 const patching = require('./src/patching');
 const supported = require('./src/supported');
 const pythonRuntime = require('./src/python-runtime');
@@ -219,7 +219,16 @@ async function activate(context) {
     groups.probe({ fallback: false }).then((yes) => { if (yes === false) vscode.commands.executeCommand('setContext', 'codexPlus.noGroups', true); })
       .catch(() => { /* asked again on the next redraw */ });
   };
-  const relist = () => { sessionsProvider.refresh(); follow(); probeGroups(); };
+  /* Start New Session in This Group, waiting for its conversation to exist (src/session-groups.js createPlacer). */
+  const placer = createPlacer({ threads: () => reader.threads(), shown: () => patching.panelThreads(), move: (ids, id) => groups.move(ids, id) });
+  const place = () => {
+    placer.check().then((r) => {
+      if (!r) return;
+      if (r.outcome === 'failed') vscode.window.showErrorMessage(`Codex could not move the new conversation into its group: ${r.reason}`);
+      else source._poll();
+    }).catch(() => { /* left where Codex put it */ });
+  };
+  const relist = () => { sessionsProvider.refresh(); follow(); probeGroups(); place(); };
   const redrawSessions = async () => {
     try { lastConversations = new Map((await source.listConversations()).map((c) => [c.sessionId, c])); } catch (_) { /* the last one stays */ }
     relist();
@@ -262,7 +271,7 @@ async function activate(context) {
   const userTimes = (id) => reader.request('userTimes', { home: files.codexHome(), id });
   /* How long Codex's pages took to open, from Codex's own log; read only when Show Status or its command asks. */
   const opens = openTimes.createOpenTimes(openTimes.whereLogs(context.logUri && context.logUri.fsPath));
-  registerCommands(context, { source, memory, sessionsProvider, say, link, opens, groups });
+  registerCommands(context, { source, memory, sessionsProvider, say, link, opens, groups, placer });
 
   /* Delayed start-up work is cancelled with the extension, so a window that closes within the delay starts none of it. */
   const later = (fn, ms) => {
@@ -322,7 +331,7 @@ async function newConversationInTab(say) {
   await vscode.commands.executeCommand('chatgpt.newCodexPanel');
 }
 
-function registerCommands(context, { source, memory, sessionsProvider, say, link, opens, groups }) {
+function registerCommands(context, { source, memory, sessionsProvider, say, link, opens, groups, placer }) {
   const reg = (name, fn) => context.subscriptions.push(vscode.commands.registerCommand(`${CONFIG}.${name}`, fn));
   const threadArg = (arg) => (typeof arg === 'string' ? arg : arg && arg.thread ? arg.thread.id : arg && arg.sessionId) || '';
   const restricted = () => {
@@ -554,6 +563,12 @@ function registerCommands(context, { source, memory, sessionsProvider, say, link
   };
   reg('newGroup', () => newGroup([]));
   reg('newGroupFromThreads', (arg, selected) => newGroup(chosen(arg, selected)));
+  reg('newThreadInGroup', async (arg) => {
+    const id = sectionArg(arg);
+    if (!id || restricted() || !await groupsHere()) return;
+    placer.start(id);
+    await newConversationInTab(say);
+  });
   reg('renameGroup', async (arg) => {
     const id = sectionArg(arg);
     if (!id || restricted() || !await groupsHere()) return;
@@ -583,6 +598,7 @@ function registerCommands(context, { source, memory, sessionsProvider, say, link
     done('take it out of its group', await groups.move(ids, null));
   });
   reg('markThreadUnread', (arg, selected) => { for (const id of chosen(arg, selected)) source.markUnread(id); });
+  reg('markThreadRead', (arg, selected) => { for (const id of chosen(arg, selected)) source.markRead(id); });
 
 }
 

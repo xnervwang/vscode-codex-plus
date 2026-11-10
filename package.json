@@ -141,6 +141,10 @@
         "title": "Codex Plus: New Group from Conversation..."
       },
       {
+        "command": "codexPlus.newThreadInGroup",
+        "title": "Codex Plus: Start New Session in This Group"
+      },
+      {
         "command": "codexPlus.renameGroup",
         "title": "Codex Plus: Rename Group..."
       },
@@ -151,6 +155,10 @@
       {
         "command": "codexPlus.markThreadUnread",
         "title": "Codex Plus: Mark as Unread"
+      },
+      {
+        "command": "codexPlus.markThreadRead",
+        "title": "Codex Plus: Mark as Read"
       },
       {
         "command": "codexPlus.removePatch",
@@ -179,6 +187,12 @@
         }
       ]
     },
+    "viewsWelcome": [
+      {
+        "view": "codexPlus.sessions",
+        "contents": "No sessions yet"
+      }
+    ],
     "menus": {
       "view/title": [
         {
@@ -205,37 +219,37 @@
       "view/item/context": [
         {
           "command": "codexPlus.renameThread",
-          "when": "view == codexPlus.sessions && viewItem =~ /^codexPlusThread(Open)?( grouped)?$/",
+          "when": "view == codexPlus.sessions && viewItem =~ /^codexPlusThread(Open)?( grouped)?( unread)?$/",
           "group": "inline@1"
         },
         {
           "command": "codexPlus.openThreadInTab",
-          "when": "view == codexPlus.sessions && viewItem =~ /^codexPlusThread(Open)?( grouped)?$/",
+          "when": "view == codexPlus.sessions && viewItem =~ /^codexPlusThread(Open)?( grouped)?( unread)?$/",
           "group": "1_open@1"
         },
         {
           "command": "codexPlus.openThreadInSidebar",
-          "when": "view == codexPlus.sessions && viewItem =~ /^codexPlusThread(Open)?( grouped)?$/",
+          "when": "view == codexPlus.sessions && viewItem =~ /^codexPlusThread(Open)?( grouped)?( unread)?$/",
           "group": "1_open@2"
         },
         {
           "command": "codexPlus.renameThread",
-          "when": "view == codexPlus.sessions && viewItem =~ /^codexPlusThread(Open)?( grouped)?$/",
+          "when": "view == codexPlus.sessions && viewItem =~ /^codexPlusThread(Open)?( grouped)?( unread)?$/",
           "group": "2_edit@1"
         },
         {
           "command": "codexPlus.newGroupFromThreads",
-          "when": "view == codexPlus.sessions && viewItem =~ /^codexPlusThread(Open)?( grouped)?$/ && !codexPlus.noGroups",
+          "when": "view == codexPlus.sessions && viewItem =~ /^codexPlusThread(Open)?( grouped)?( unread)?$/ && !codexPlus.noGroups",
           "group": "2_edit@3"
         },
         {
           "command": "codexPlus.moveThreadToSection",
-          "when": "view == codexPlus.sessions && viewItem =~ /^codexPlusThread(Open)?( grouped)?$/ && !codexPlus.noGroups",
+          "when": "view == codexPlus.sessions && viewItem =~ /^codexPlusThread(Open)?( grouped)?( unread)?$/ && !codexPlus.noGroups",
           "group": "2_edit@3"
         },
         {
           "command": "codexPlus.removeFromGroup",
-          "when": "view == codexPlus.sessions && viewItem =~ /^codexPlusThread(Open)? grouped$/",
+          "when": "view == codexPlus.sessions && viewItem =~ /^codexPlusThread(Open)? grouped( unread)?$/",
           "group": "2_edit@3"
         },
         {
@@ -244,9 +258,24 @@
           "group": "2_edit@4"
         },
         {
+          "command": "codexPlus.markThreadRead",
+          "when": "view == codexPlus.sessions && viewItem =~ /^codexPlusThread(Open)?( grouped)? unread$/",
+          "group": "2_edit@4"
+        },
+        {
           "command": "codexPlus.setTitleColor",
-          "when": "view == codexPlus.sessions && viewItem =~ /^codexPlusThread(Open)?( grouped)?$/",
+          "when": "view == codexPlus.sessions && viewItem =~ /^codexPlusThread(Open)?( grouped)?( unread)?$/",
           "group": "3_look@1"
+        },
+        {
+          "command": "codexPlus.newThreadInGroup",
+          "when": "view == codexPlus.sessions && viewItem == codexPlusGroup-section && !codexPlus.noGroups",
+          "group": "1_new@1"
+        },
+        {
+          "command": "codexPlus.newGroup",
+          "when": "view == codexPlus.sessions && viewItem =~ /^codexPlusGroup-(section|ungrouped)$/ && !codexPlus.noGroups",
+          "group": "1_new@2"
         },
         {
           "command": "codexPlus.renameGroup",
@@ -306,6 +335,14 @@
         },
         {
           "command": "codexPlus.newGroup",
+          "when": "false"
+        },
+        {
+          "command": "codexPlus.markThreadRead",
+          "when": "false"
+        },
+        {
+          "command": "codexPlus.newThreadInGroup",
           "when": "false"
         }
       ],

@@ -242,7 +242,8 @@ class SessionsProvider {
     item.description = dateSpan(t.createdMs, t.updatedMs);
     item.iconPath = new vscode.ThemeIcon(look.icon, new vscode.ThemeColor(look.color));
     const open = element.group === 'open';
-    item.contextValue = (open ? 'codexPlusThreadOpen' : 'codexPlusThread') + (t.section && this.sections.has(t.section) ? ' grouped' : '');
+    item.contextValue = (open ? 'codexPlusThreadOpen' : 'codexPlusThread') + (t.section && this.sections.has(t.section) ? ' grouped' : '')
+      + (conv && conv.state === 'unread' ? ' unread' : '');
     const inSidebar = open && t.id === this.sidebarNow && !this.memory.openThreads().includes(t.id);
     item.tooltip = `Group: ${placeOf(t, this.sections)}\nSession ID: ${t.id}`;
     item.command = inSidebar ? { command: 'codexPlus.openThreadInSidebar', title: 'Show in the sidebar', arguments: [t.id] }

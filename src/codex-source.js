@@ -425,6 +425,11 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
       seen.markUnread(sessionId, frontThreads().includes(sessionId));
       changed.fire();
     },
+    markRead(sessionId) {
+      if (!sessionId || typeof seen.markRead !== 'function') return;
+      seen.markRead(sessionId);
+      changed.fire();
+    },
     _poll: poll,
     wantState,
     /* For tests: the tab listener this source installed, without an editor to fire it. */

@@ -98,4 +98,35 @@ function createGroups({ ask, sections, memento }) {
   };
 }
 
-module.exports = { createGroups, ordered, cleanName, PINNED_SECTION, ORDER_KEY, NAME_MAX, GROUPS_MAX };
+/*
+ * Start New Session in This Group: Codex has no way to start a conversation in a section, so the conversation is moved
+ * there once it exists. That is when its first message has been sent and it reaches the snapshot. The candidate is the
+ * oldest conversation in no group made since the command ran, one shown in a panel of this window first; it is looked
+ * for on each redraw of the list, and the wait ends after PLACE_MS. `threads()` is the snapshot, `shown()` the
+ * conversations this window's panels show, `move(ids, sectionId)` as createGroups's.
+ */
+const PLACE_MS = 30 * 60e3;
+function createPlacer({ threads, shown, move, now = Date.now }) {
+  let pending = null;
+  return {
+    start(sectionId) { pending = sectionId ? { sectionId, at: now() } : null; },
+    pending: () => pending,
+    /* Resolves to the move's answer when a conversation was placed, else null. */
+    check() {
+      if (!pending) return Promise.resolve(null);
+      if (now() - pending.at > PLACE_MS) { pending = null; return Promise.resolve(null); }
+      const since = pending.at - 2000;
+      const fresh = (threads() || []).filter((t) => t.kind === 'user' && !t.archived && !t.section && t.createdMs >= since)
+        .sort((a, b) => a.createdMs - b.createdMs);
+      if (!fresh.length) return Promise.resolve(null);
+      let here = [];
+      try { here = shown() || []; } catch (_) { here = []; }
+      const pick = fresh.find((t) => here.includes(t.id)) || fresh[0];
+      const { sectionId } = pending;
+      pending = null;
+      return Promise.resolve(move([pick.id], sectionId)).then((r) => ({ thread: pick.id, sectionId, ...r }));
+    },
+  };
+}
+
+module.exports = { createGroups, createPlacer, ordered, cleanName, PINNED_SECTION, ORDER_KEY, NAME_MAX, GROUPS_MAX, PLACE_MS };
