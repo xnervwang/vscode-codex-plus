@@ -55,10 +55,6 @@
   };
   const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
   const button = (cls, title, ...kids) => { const b = el('button', cls); b.type = 'button'; if (title) { b.title = title; b.setAttribute('aria-label', title); } b.append(...kids); return b; };
-  const context = (e, value) => {
-    const v = JSON.stringify(Object.assign({ preventDefaultContextMenuItems: true }, value));
-    if (e.getAttribute('data-vscode-context') !== v) e.setAttribute('data-vscode-context', v);
-  };
   /* Text written only when it differs, so a model that changed nothing changes nothing on the page. */
   const setText = (e, text) => { if (e.textContent !== text) e.textContent = text; };
 
@@ -121,7 +117,6 @@
   const menu = el('div', 'cp-menu cp-hidden');
   menu.setAttribute('role', 'menu');
   root.append(account.s, closed.s, open.s, manager.s, hoverBox, menu);
-  context(root, {});
 
   /* ── rows ── */
   function makeRow() {
@@ -167,8 +162,9 @@
     setText(r._p.goal, GOAL_WORD[row.goal] || (row.goal ? 'goal' : ''));
     r._p.goal.classList.toggle('cp-hidden', !row.goal);
     r._p.goal.classList.toggle('cp-goal-active', row.goal === 'active');
-    context(r, { webviewSection: 'thread', threadId: row.id, codexPlusGrouped: !!row.grouped, codexPlusUnread: !!row.unread,
-      codexPlusGoal: row.goal || '', codexPlusGoalResumable: RESUMABLE.includes(row.goal), codexPlusOpenHere: !!row.here });
+    /* What the row's right-click menu is chosen by, under the names the when clauses of LIST_MENU use. */
+    r._ctx = { webviewSection: 'thread', threadId: row.id, codexPlusGrouped: !!row.grouped, codexPlusUnread: !!row.unread,
+      codexPlusGoal: row.goal || '', codexPlusGoalResumable: RESUMABLE.includes(row.goal), codexPlusOpenHere: !!row.here };
   }
   /* The title, with the part the search matched marked, written only when that changed. */
   function markTitle(r) {
@@ -246,7 +242,7 @@
       if (!ge) { ge = makeGroup(g.key); groupEls.set(g.key, ge); }
       ge._g = g;
       if (!ge._p.name.isContentEditable) setText(ge._p.name, g.label);
-      context(ge._p.head, { webviewSection: 'group', groupKey: g.key, codexPlusMade: !!g.made });
+      ge._p.head._ctx = { webviewSection: 'group', groupKey: g.key, codexPlusMade: !!g.made };
       reconcile(ge._p.list, ge._p.rows, g.rows, g.key);
       const at = groupsEl.children[i];
       if (at !== ge) groupsEl.insertBefore(ge, at || null);
@@ -408,58 +404,7 @@
   const closeMenu = () => menu.classList.add('cp-hidden');
   const toggleStatus = (item) => { ui.status[item.dataset.status] = !ui.status[item.dataset.status]; keep(); filter(); };
 
-  /* ── the lists Text Color and Add to Group open beside the right-clicked row, in the status filter's look ── */
-  let pick = null;
-  let ctxX = null;
-  function closePick() {
-    if (!pick) return;
-    pick.box.remove();
-    pick = null;
-  }
-  /* Built when the host asks and removed when it closes. `made(value)` is the message an item sends when picked. */
-  function openPick(title, ids, items, made) {
-    closeMenu();
-    closePick();
-    hideHover();
-    const box = el('div', 'cp-menu cp-pick');
-    box.setAttribute('role', 'menu');
-    box.append(el('div', 'cp-menu-title', title));
-    items.forEach((it, i) => {
-      const item = el('div', `cp-menu-item${it.checked ? ' cp-checked' : ''}`);
-      item.tabIndex = 0;
-      item.setAttribute('role', 'menuitem');
-      item.dataset.pick = String(i);
-      if ('swatch' in it) {
-        const s = el('span', it.swatch ? 'cp-swatch' : 'cp-swatch cp-swatch-none');
-        if (it.swatch) s.style.background = it.swatch;
-        item.append(s);
-      }
-      item.append(el('span', '', it.label));
-      if (it.checked) item.append(icon('check', 'cp-icon cp-check'));
-      box.append(item);
-      if (it.sepAfter) box.append(el('div', 'cp-menu-sep'));
-    });
-    root.appendChild(box);
-    pick = { box, items, made };
-    const r = ctxRow && ctxRow.isConnected && ids.includes(ctxRow._row.id) ? ctxRow : ids.map(rowFor).find((x) => x && onScreen(x));
-    const w = box.offsetWidth, h = box.offsetHeight;
-    if (r) {
-      const b = r.getBoundingClientRect();
-      const x = r === ctxRow && ctxX !== null ? ctxX : b.left + 8;
-      box.style.left = `${Math.max(4, Math.min(x, window.innerWidth - w - 4))}px`;
-      box.style.top = `${b.bottom + 2 + h <= window.innerHeight ? b.bottom + 2 : Math.max(4, b.top - h - 2)}px`;
-    } else { box.style.left = '4px'; box.style.top = '4px'; }
-    const first = box.querySelector('.cp-menu-item.cp-checked') || box.querySelector('.cp-menu-item');
-    if (first) first.focus();
-  }
-  function choosePick(item) {
-    const it = pick && pick.items[Number(item.dataset.pick)];
-    const msg = it ? pick.made(it.value) : null;
-    closePick();
-    root.focus();
-    if (msg) send(msg);
-  }
-  /* Keys in an open menu: the arrows move between its items, Enter or Space picks one, Esc closes it. */
+  /* Keys in the status filter's menu: the arrows move between its items, Enter or Space picks one, Esc closes it. */
   function menuKey(e, box) {
     const items = [...box.querySelectorAll('.cp-menu-item')];
     const item = e.target.closest('.cp-menu-item');
@@ -468,14 +413,229 @@
       const next = items[at < 0 ? (down ? 0 : n - 1) : (at + (down ? 1 : n - 1)) % n];
       if (next) next.focus();
     } else if ((e.key === 'Enter' || e.key === ' ') && item) {
-      if (item.dataset.pick !== undefined) choosePick(item); else toggleStatus(item);
+      toggleStatus(item);
     } else if (e.key === 'Escape') {
       closeMenu();
-      closePick();
       root.focus();
     } else return false;
     e.preventDefault();
     return true;
+  }
+
+  /* ── the right-click menus of rows and group headers ── */
+  /*
+   * The page draws these menus itself. VS Code's native menu can list only the commands in package.json, so it cannot
+   * offer the user's own groups or show a colour swatch. They copy the context menu in Claude Code's webview (its
+   * index.js; the class names there end in __ozcbg). The model carries the items and when each is offered (LIST_MENU
+   * in src/sessions-view.js).
+   */
+  const EDGE = 8;
+  const SUB_CLOSE_MS = 150;
+  let cm = null;
+  let swallowClick = false;
+  const inCtx = (t) => !!(cm && t && t.closest && t.closest('.cp-ctx'));
+  const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+
+  /* A when clause of the table: `key == 'value'`, `key` and `!key`, joined by &&. */
+  function holds(when, ctx) {
+    return String(when || '').split('&&').map((p) => p.trim()).filter(Boolean).every((p) => {
+      const m = /^([\w.]+) == '([^']*)'$/.exec(p);
+      if (m) return String(ctx[m[1]]) === m[2];
+      return p.charAt(0) === '!' ? !ctx[p.slice(1)] : !!ctx[p];
+    });
+  }
+  /* Text Color's submenu, as Claude Code Plus builds it. A colour is checked only when every conversation in `ids` has it. */
+  function colorItems(ids) {
+    const nameOf = new Map((model.colors || []).map((c) => [c.color, c.name]));
+    const of = (id) => { const r = rowsOf(id)[0]; return r && r._row.color ? nameOf.get(r._row.color) || '' : ''; };
+    const first = ids.length ? of(ids[0]) : '';
+    const current = ids.every((id) => of(id) === first) ? first : null;
+    return [{ label: 'Default', pick: '', swatch: '', checked: current === '' },
+      ...(model.colors || []).map((c, i) => ({ label: cap(c.name), pick: c.name, swatch: themeColor(c.color), checked: current === c.name,
+        separatorBefore: i === 0 }))];
+  }
+  /* Add to Group's: the groups the user made, except one that already holds every conversation in `ids`. */
+  const groupItems = (ids) => (model.groups || []).filter((g) => g.made && !ids.every((id) => g.rows.some((r) => r.id === id)))
+    .map((g) => ({ label: g.label, pick: g.key }));
+  /* The items for the context of a row or header. An item whose submenu would be empty is left out, as Claude Code does
+     with Add to group. */
+  function itemsFor(ctx, ids) {
+    const at = Object.assign({ 'codexPlus.noGroups': !!model.noGroups }, ctx);
+    const out = [];
+    let last = '';
+    for (const m of model.menu || []) {
+      if (!holds(m.when, at)) continue;
+      const sub = m.submenu === 'color' ? colorItems(ids) : m.submenu === 'group' ? groupItems(ids) : null;
+      if (sub && !sub.length) continue;
+      const group = String(m.group).split('@')[0];
+      out.push({ label: m.title, command: m.command, submenu: sub, separatorBefore: out.length > 0 && group !== last });
+      last = group;
+    }
+    return out;
+  }
+
+  /* Claude Code's placement of a menu opened at x. When its submenu would fit on neither side, the menu moves left to
+     make room for one as wide as itself on its right. */
+  function mainLeft(x, w, hasSub) {
+    const left = Math.max(EDGE, Math.min(x, window.innerWidth - w - EDGE));
+    if (!hasSub || left + w - 2 + w <= window.innerWidth - EDGE || left - w + 2 >= EDGE) return left;
+    return Math.max(EDGE, window.innerWidth - EDGE - w + 2 - w);
+  }
+  /* And of a submenu beside its item `at`. With no room on either side, it goes against the edge where it covers less
+     of the item. */
+  function subLeft(at, w) {
+    if (at.right - 2 + w <= window.innerWidth - EDGE) return at.right - 2;
+    if (at.left - w + 2 >= EDGE) return at.left - w + 2;
+    const right = Math.max(EDGE, window.innerWidth - w - EDGE);
+    return EDGE + w - at.left < at.right - right ? EDGE : right;
+  }
+  const fitTop = (y, h) => Math.max(EDGE, Math.min(y, window.innerHeight - h - EDGE));
+
+  /* An item is a button, as in Claude Code's menu. A colour has Claude Code Plus's swatch before its name. */
+  function itemButton(it) {
+    const b = el('button', 'cp-ctx-item');
+    b.type = 'button';
+    b.setAttribute('role', 'menuitem');
+    if (typeof it.swatch === 'string') {
+      const s = el('span', it.swatch ? 'cp-swatch' : 'cp-swatch cp-swatch-none');
+      if (it.swatch) s.style.background = it.swatch;
+      const label = el('span', 'cp-ctx-label');
+      label.append(s, `${it.label}${it.checked ? ' ✓' : ''}`);
+      b.append(label);
+    } else b.append(it.label);
+    if (it.submenu) {
+      b.setAttribute('aria-haspopup', 'menu');
+      b.setAttribute('aria-expanded', 'false');
+      b.append(el('span', 'cp-ctx-chevron', '›'));
+    }
+    return b;
+  }
+  function menuBox(items, sub) {
+    const box = el('div', sub ? 'cp-ctx cp-ctx-sub' : 'cp-ctx');
+    box.setAttribute('role', 'menu');
+    const buttons = items.map((it) => {
+      if (it.separatorBefore) box.append(el('div', 'cp-ctx-sep'));
+      const b = itemButton(it);
+      box.append(b);
+      return b;
+    });
+    return { box, buttons };
+  }
+  const rectOf = (e) => { const b = e.getBoundingClientRect(); return { left: b.left, right: b.left + b.width, top: b.top, bottom: b.top + b.height }; };
+
+  function openCtx(x, y, ctx, items) {
+    closeCtx();
+    closeMenu();
+    hideHover();
+    const { box, buttons } = menuBox(items, false);
+    buttons.forEach((b, i) => b.addEventListener('mouseenter', () => hoverItem(i)));
+    box.addEventListener('scroll', () => closeSub(false));
+    root.appendChild(box);
+    cm = { box, buttons, items, ctx, back: document.activeElement || null, sub: null, subButtons: [], subAt: -1, timer: 0 };
+    box.style.left = `${mainLeft(x, box.offsetWidth, items.some((it) => it.submenu))}px`;
+    box.style.top = `${fitTop(y, box.offsetHeight)}px`;
+    if (buttons[0]) buttons[0].focus();
+  }
+  const stopTimer = () => { if (cm && cm.timer) { clearTimeout(cm.timer); cm.timer = 0; } };
+  /* The pointer on item i: its submenu opens at once; any other item closes an open submenu a moment later. */
+  function hoverItem(i) {
+    if (!cm) return;
+    if (cm.items[i].submenu) { openSub(i, false); return; }
+    if (!cm.sub) return;
+    stopTimer();
+    cm.timer = setTimeout(() => { if (cm) { cm.timer = 0; closeSub(false); } }, SUB_CLOSE_MS);
+  }
+  function openSub(i, focus) {
+    stopTimer();
+    if (cm.subAt !== i) {
+      closeSub(false);
+      const parent = cm.buttons[i];
+      const { box, buttons } = menuBox(cm.items[i].submenu, true);
+      box.addEventListener('mouseenter', stopTimer);
+      root.appendChild(box);
+      parent.classList.add('cp-ctx-open');
+      parent.setAttribute('aria-expanded', 'true');
+      Object.assign(cm, { sub: box, subButtons: buttons, subAt: i });
+      const at = rectOf(parent);
+      box.style.left = `${subLeft(at, box.offsetWidth)}px`;
+      box.style.top = `${fitTop(at.top - 3, box.offsetHeight)}px`;
+    }
+    if (focus && cm.subButtons[0]) cm.subButtons[0].focus();
+  }
+  function closeSub(focusParent) {
+    stopTimer();
+    if (!cm || !cm.sub) return;
+    const parent = cm.buttons[cm.subAt];
+    cm.sub.remove();
+    Object.assign(cm, { sub: null, subButtons: [], subAt: -1 });
+    parent.classList.remove('cp-ctx-open');
+    parent.setAttribute('aria-expanded', 'false');
+    if (focusParent) parent.focus();
+  }
+  /* Takes the menu off the page, and gives the focus back to where it was if the menu had it. */
+  function closeCtx() {
+    if (!cm) return;
+    const was = cm;
+    stopTimer();
+    const a = document.activeElement;
+    const had = !a || a === document.body || was.box.contains(a) || (!!was.sub && was.sub.contains(a));
+    if (was.sub) was.sub.remove();
+    was.box.remove();
+    cm = null;
+    if (had && was.back && was.back.isConnected) was.back.focus({ preventScroll: true });
+  }
+  /* Runs the item `b`. An item of a submenu sends the command of the item that opened it, with what was picked. */
+  function pressItem(b) {
+    if (!cm) return;
+    const j = cm.subButtons.indexOf(b);
+    const i = j >= 0 ? cm.subAt : cm.buttons.indexOf(b);
+    const it = cm.items[i];
+    if (!it) return;
+    if (j < 0 && it.submenu) { openSub(i, true); return; }
+    const msg = { kind: 'menu', command: it.command, context: cm.ctx };
+    if (j >= 0) msg.pick = it.submenu[j].pick;
+    closeCtx();
+    send(msg);
+  }
+  /* Claude Code's keys, except that Esc closes an open submenu before the menu. Other keys are ignored while the menu
+     has the focus; typing would otherwise start a search behind it. */
+  function ctxKey(e) {
+    const inSub = !!cm.sub && cm.sub.contains(e.target);
+    const list = inSub ? cm.subButtons : cm.buttons;
+    const b = e.target.closest('.cp-ctx-item');
+    const at = b ? list.indexOf(b) : -1;
+    const k = e.key;
+    if (k === 'ArrowDown' || k === 'ArrowUp') {
+      if (!inSub) closeSub(false);
+      const n = list.length, down = k === 'ArrowDown';
+      const next = list[at < 0 ? (down ? 0 : n - 1) : (at + (down ? 1 : n - 1)) % n];
+      if (next) next.focus();
+    } else if (k === 'ArrowRight') {
+      if (!inSub && at >= 0 && cm.items[at].submenu) openSub(at, true);
+    } else if (k === 'ArrowLeft') {
+      if (inSub) closeSub(true);
+    } else if (k === 'Enter' || k === ' ') {
+      if (b) pressItem(b);
+    } else if (k === 'Escape') {
+      if (cm.sub) closeSub(inSub); else closeCtx();
+    } else if (k !== 'Tab') return;
+    e.preventDefault();
+  }
+  /* Opens the menu of a row or a group header: where the pointer is for a right-click, under the row for a key. */
+  function openFor(where, e) {
+    if (!model || !where._ctx || where._editing || where.querySelector('.cp-editing')) return false;
+    const items = itemsFor(where._ctx, where._ctx.webviewSection === 'thread' ? [...selection] : []);
+    if (!items.length) return false;
+    const at = rectOf(where);
+    const pointer = !!e && typeof e.clientX === 'number' && !!(e.clientX || e.clientY);
+    openCtx(pointer ? e.clientX : at.left + 8, pointer ? e.clientY : at.bottom, where._ctx, items);
+    return true;
+  }
+  /* A row whose menu opens is selected alone if it was not selected, and the menu's commands act on the selection. */
+  function aimAt(r) {
+    ctxRow = r;
+    if (!selection.has(r._row.id)) { anchor = r._row.id; select([r._row.id]); }
+    highlight(r, false);
   }
 
   /* ── selection ── */
@@ -492,10 +652,11 @@
     paintSelection();
     send({ kind: 'select', ids: [...selection] });
   }
-  function highlight(r) {
+  /* `scroll` is false where a scroll would close the menu being opened. */
+  function highlight(r, scroll = true) {
     if (hl && hl !== r) hl.classList.remove('cp-hl');
     hl = r || null;
-    if (hl) { hl.classList.add('cp-hl'); hl.scrollIntoView({ block: 'nearest' }); }
+    if (hl) { hl.classList.add('cp-hl'); if (scroll) hl.scrollIntoView({ block: 'nearest' }); }
   }
   function openRow(r) {
     if (!r || !r._row) return;
@@ -606,8 +767,11 @@
   /* ── events ── */
   root.addEventListener('click', (e) => {
     const t = e.target;
+    if (swallowClick) { swallowClick = false; e.preventDefault(); return; }
+    const ctxItem = t.closest('.cp-ctx-item');
+    if (ctxItem) { pressItem(ctxItem); return; }
+    if (t.closest('.cp-ctx')) return;
     if (!t.closest('.cp-menu') && !t.closest('[data-tool="filter"]')) closeMenu();
-    if (pick && !t.closest('.cp-pick')) closePick();
     const act = t.closest('.cp-act');
     if (act) { e.stopPropagation(); const r = act.closest('.cp-row'); if (r && act.dataset.act === 'rename') startRename(r); return; }
     const sendBtn = t.closest('[data-send]');
@@ -622,7 +786,7 @@
       return;
     }
     const item = t.closest('.cp-menu-item');
-    if (item) { if (item.dataset.pick !== undefined) choosePick(item); else toggleStatus(item); return; }
+    if (item) { toggleStatus(item); return; }
     const sectionToggle = t.closest('[data-toggle]');
     if (sectionToggle) { toggle(sectionToggle.dataset.toggle); return; }
     const gh = t.closest('.cp-group-head');
@@ -648,18 +812,26 @@
     highlight(r);
     openRow(r);
   });
-  /* A right-click on a row outside the selection acts on that row alone. VS Code builds the menu from the row's
-     data-vscode-context, so the page only has to update the selection the host keeps. */
+  /* A right-click on a row or a group header opens the page's menu and cancels the event. VS Code opens its own menu
+     for any right-click that reaches it uncancelled (webview/browser/pre/index.html). */
   root.addEventListener('contextmenu', (e) => {
     hideHover();
     closeMenu();
-    closePick();
+    if (inCtx(e.target)) { e.preventDefault(); return; }
+    closeCtx();
     const r = e.target.closest('.cp-row');
     ctxRow = r || null;
-    ctxX = r && typeof e.clientX === 'number' ? e.clientX : null;
-    if (r && !selection.has(r._row.id)) { anchor = r._row.id; select([r._row.id]); }
-    if (r) highlight(r);
+    if (r) aimAt(r);
+    const where = r || e.target.closest('.cp-group-head');
+    if (where && openFor(where, e)) e.preventDefault();
   });
+  /* A press outside the menu closes it. As in Claude Code's menu, a left click there does nothing else, so it does not
+     also open a row. */
+  root.addEventListener('mousedown', (e) => {
+    swallowClick = false;
+    if (cm && !inCtx(e.target)) { swallowClick = e.button === 0; closeCtx(); }
+  });
+  root.addEventListener('wheel', (e) => { if (cm && (e.deltaX || e.deltaY) && !inCtx(e.target)) closeCtx(); }, { passive: true });
   root.addEventListener('mouseover', (e) => {
     const r = e.target.closest('.cp-row');
     if (r && r !== hoverRow && !r._editing) showHover(r);
@@ -667,7 +839,7 @@
   });
   root.addEventListener('mouseleave', hideHover);
   root.addEventListener('mousedown', hideHover);
-  root.addEventListener('scroll', () => { hideHover(); closeMenu(); closePick(); }, { passive: true });
+  root.addEventListener('scroll', () => { hideHover(); closeMenu(); closeCtx(); }, { passive: true });
 
   searchInput.addEventListener('input', () => { ui.search = searchInput.value; keep(); filter(); });
   searchInput.addEventListener('keydown', (e) => {
@@ -678,8 +850,16 @@
 
   root.addEventListener('keydown', (e) => {
     if (e.target === searchInput || e.target.isContentEditable) return;
+    if (inCtx(e.target)) { ctxKey(e); return; }
     const inMenu = e.target.closest && e.target.closest('.cp-menu');
     if (inMenu && menuKey(e, inMenu)) return;
+    /* Shift+F10 and the menu key open the menu of the focused or highlighted row. Chromium on macOS does not turn
+       Shift+F10 into a contextmenu event. */
+    if (e.key === 'ContextMenu' || (e.key === 'F10' && e.shiftKey)) {
+      const r = (e.target.closest && e.target.closest('.cp-row')) || hl;
+      if (r && r._row && onScreen(r)) { e.preventDefault(); closeCtx(); aimAt(r); openFor(r, null); }
+      return;
+    }
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault();
       const list = visibleRows();
@@ -692,7 +872,7 @@
     if (e.key === 'Escape') {
       e.preventDefault();
       closeMenu();
-      closePick();
+      closeCtx();
       if (ui.search) { ui.search = ''; keep(); filter(); } else if (selection.size) select([]); else highlight(null);
       return;
     }
@@ -750,17 +930,9 @@
     if (msg.type === 'model') apply(msg.model);
     else if (msg.type === 'startRename' && typeof msg.id === 'string') startRename(rowFor(msg.id));
     else if (msg.type === 'startRenameGroup' && typeof msg.key === 'string') renameGroup(msg.key);
-    else if (msg.type === 'pickColor' && Array.isArray(msg.ids) && Array.isArray(msg.colors)) {
-      /* Claude Code Plus's Text color submenu: Default, then the colours, each with a swatch. */
-      const items = [{ label: 'Default', value: '', swatch: '', checked: msg.current === '', sepAfter: true },
-        ...msg.colors.map((c) => ({ label: c.name.charAt(0).toUpperCase() + c.name.slice(1), value: c.name, swatch: themeColor(c.color),
-          checked: msg.current === c.name }))];
-      openPick('Text color', msg.ids, items, (color) => ({ kind: 'setColor', ids: msg.ids, color }));
-    } else if (msg.type === 'pickGroup' && Array.isArray(msg.ids) && Array.isArray(msg.groups)) {
-      openPick('Add to group', msg.ids, msg.groups.map((g) => ({ label: g.label, value: g.key })), (key) => ({ kind: 'move', ids: msg.ids, key }));
-    }
   });
-  window.addEventListener('blur', () => { hideHover(); closeMenu(); closePick(); });
+  window.addEventListener('blur', () => { hideHover(); closeMenu(); closeCtx(); });
+  window.addEventListener('resize', closeCtx);
   filter();
   send({ kind: 'ready' });
 }());

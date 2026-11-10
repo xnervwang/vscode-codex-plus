@@ -169,10 +169,24 @@ svg.cp-icon { width: 16px; height: 16px; flex-shrink: 0; fill: none; stroke: cur
 .cp-menu-item .cp-n { margin-left: auto; padding-left: 16px; opacity: .7; font-variant-numeric: tabular-nums; }
 .cp-menu-sep { height: 1px; margin: 4px 0; background: var(--vscode-menu-separatorBackground, var(--vscode-widget-border, rgba(127, 127, 127, .3))); }
 .cp-menu-title { padding: 4px 8px 2px; font-size: .85em; opacity: .7; }
-/* Text Color and Add to Group: the same menu beside a row, with Claude Code Plus's 10 px swatch before each colour,
-   a ring for Default, and 8 px between swatch and name. */
-.cp-pick { max-height: calc(100vh - 8px); overflow-y: auto; }
-.cp-pick .cp-menu-item { gap: 8px; }
-.cp-pick .cp-check { margin-left: auto; }
-.cp-swatch { width: 10px; height: 10px; flex-shrink: 0; border-radius: 50%; box-sizing: border-box; }
+
+/* The right-click menus take their values from Claude Code's own context menu (the __ozcbg rules of its webview's
+   index.css). Claude Code's --app-menu-* variables are set to the theme's --vscode-menu-* ones, used here directly. */
+.cp-ctx {
+  position: fixed; z-index: 1000; min-width: 140px; max-height: calc(100vh - 16px); padding: 2px 0; overflow-x: hidden; overflow-y: auto;
+  background: var(--vscode-menu-background); border: 1px solid var(--vscode-menu-border); border-radius: 6px;
+  box-shadow: 0 2px 8px #00000026; animation: cp-ctx-in .1s ease-out;
+}
+@keyframes cp-ctx-in { 0% { opacity: 0; transform: scale(.95); } to { opacity: 1; transform: scale(1); } }
+.cp-ctx-item {
+  display: block; width: 100%; max-width: 260px; padding: 6px 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  text-align: left; cursor: pointer; background: none; border: none; color: var(--vscode-menu-foreground);
+  font-size: var(--vscode-chat-font-size, 13px); font-family: var(--vscode-chat-font-family);
+}
+.cp-ctx-item:hover, .cp-ctx-item.cp-ctx-open { background: var(--vscode-menu-selectionBackground); color: var(--vscode-menu-selectionForeground); }
+.cp-ctx-sep { height: 1px; margin: 2px 0; background: var(--vscode-menu-border); }
+.cp-ctx-chevron { float: right; margin-left: 12px; opacity: .7; }
+/* A colour in Text Color's submenu, as Claude Code Plus draws it: a 10 px swatch, a ring for Default, 8 px, the name. */
+.cp-ctx-label { display: inline-flex; align-items: center; gap: 8px; }
+.cp-swatch { flex: none; width: 10px; height: 10px; border-radius: 50%; box-sizing: border-box; }
 .cp-swatch-none { border: 1px solid currentColor; }

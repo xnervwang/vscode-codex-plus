@@ -8,10 +8,15 @@
  * Unread, a group header's four (Start New Session in This Group, New Group, Rename Group, Delete Group), and the
  * empty-list text. Every item's title starts "Codex Plus: ", which is how the user tells
  * this extension's items from Codex's own.
+ *
+ * The page draws these menus from a table the host sends with the model (LIST_MENU in src/sessions-view.js), each item
+ * with a VS Code when clause. This part checks the table against the native menu it replaced, and the page's menus
+ * against the table.
  */
 const fs = require('fs');
 const path = require('path');
 const fake = require('../fake-vscode');
+const { runSessionsPage } = require('../sessions-page-run');
 
 const ID = (n) => `01a1f0f0-0000-7000-8000-${String(n).padStart(12, '0')}`;
 
@@ -21,7 +26,8 @@ module.exports = async ({ eq, root }) => {
   fake.install(vscode);
   const { createSeen } = require('../../src/seen');
   const { createPlacer, PLACE_MS } = require('../../src/session-groups');
-  const { SessionsModel } = require('../../src/sessions-view');
+  const { SessionsModel, LIST_MENU } = require('../../src/sessions-view');
+  const table = Array.isArray(LIST_MENU) ? LIST_MENU : [];
 
   /* ── Mark as Read ── */
   let now = 1000;
@@ -37,16 +43,52 @@ module.exports = async ({ eq, root }) => {
     reader: { threads: () => threads, sections: () => new Map(), state: () => ({}), thread: () => null },
     stateOf: (id) => ({ state: id === ID(1) ? 'unread' : 'idle' }), settings: () => ({ recentClosedSessions: 10, hideBackgroundSessions: true }) });
   const rows = provider.model().groups[0].rows;
-  /* The when clauses of the list's right-click menu, against what the page puts on a row or a header
-     (data-vscode-context), with VS Code's own key for the view. Only `a == 'b'`, `x` and `!x` joined by && are used. */
-  const menus = pkg.contributes.menus['webview/context'];
+
+  /* ── the table, against the native menu it replaced ── */
+  eq(table.map((m) => [m.command.replace('codexPlus.', ''), m.group, m.when]), [
+    ['openThreadInTab', '1_open@1', "webviewSection == 'thread' && !codexPlusOpenHere"],
+    ['openThreadInSidebar', '1_open@2', "webviewSection == 'thread' && !codexPlusOpenHere"],
+    ['moveThreadToSection', '2_group@2', "webviewSection == 'thread' && !codexPlus.noGroups"],
+    ['removeFromGroup', '2_group@3', "webviewSection == 'thread' && codexPlusGrouped"],
+    ['markThreadUnread', '3_read@1', "webviewSection == 'thread' && !codexPlusUnread"],
+    ['markThreadRead', '3_read@1', "webviewSection == 'thread' && codexPlusUnread"],
+    ['renameThread', '4_edit@1', "webviewSection == 'thread'"],
+    ['setTitleColor', '5_look@1', "webviewSection == 'thread'"],
+    ['setGoal', '6_goal@1', "webviewSection == 'thread'"],
+    ['pauseGoal', '6_goal@2', "webviewSection == 'thread' && codexPlusGoal == 'active'"],
+    ['resumeGoal', '6_goal@3', "webviewSection == 'thread' && codexPlusGoalResumable"],
+    ['clearGoal', '6_goal@4', "webviewSection == 'thread' && codexPlusGoal"],
+    ['newThreadInGroup', '1_new@1', "webviewSection == 'group' && codexPlusMade && !codexPlus.noGroups"],
+    ['newGroup', '1_new@2', "webviewSection == 'group' && !codexPlus.noGroups"],
+    ['renameGroup', '2_group@1', "webviewSection == 'group' && codexPlusMade && !codexPlus.noGroups"],
+    ['deleteGroup', '9_delete@1', "webviewSection == 'group' && codexPlusMade && !codexPlus.noGroups"],
+  ], 'the list\'s menus have the sixteen items its native menu had, with the same groups and the same when clauses');
+  const bySection = (sec) => table.filter((m) => m.when.startsWith(`webviewSection == '${sec}'`));
+  const vscodeOrder = (list) => [...list].sort((a, b) => a.group.localeCompare(b.group)).map((m) => m.command);
+  eq(table.map((m) => m.command), [...vscodeOrder(bySection('thread')), ...vscodeOrder(bySection('group'))],
+    'listed in the order VS Code drew them: by group, then by the number after @');
+  const native = pkg.contributes.menus['webview/context'] || [];
+  eq([native.filter((m) => /codexPlus\.sessions/.test(m.when)).length, native.map((m) => [m.command, m.when, m.group])],
+    [0, [['codexPlus.markThreadUnread', "webviewId == 'chatgpt.conversationEditor'", 'codexPlus@1'],
+      ['codexPlus.renameThread', "webviewId == 'chatgpt.conversationEditor'", 'codexPlus@2'],
+      ['codexPlus.moveThreadToSection', "webviewId == 'chatgpt.conversationEditor'", 'codexPlus@3']]],
+    'VS Code is given none of them, and a conversation tab keeps its three in VS Code\'s own menu');
+  const titled = new Map(pkg.contributes.commands.map((c) => [c.command, c.title]));
+  const SUBMENUS = { 'codexPlus.setTitleColor': 'color', 'codexPlus.moveThreadToSection': 'group' };
+  eq(table.map((m) => [m.command, m.title, m.submenu || '']),
+    table.map((m) => [m.command, SUBMENUS[m.command] ? (titled.get(m.command) || '').replace(/\.\.\.$/, '') : titled.get(m.command), SUBMENUS[m.command] || '']),
+    'each item is titled as its command is, and Text Color and Add to Group, which open a submenu, lose their "..."');
+  eq([table.length, table.filter((m) => !/^Codex Plus: /.test(m.title)).map((m) => m.title)], [16, []],
+    'every item of the list\'s right-click menus starts "Codex Plus: "');
+
+  /* The when clauses, against what the page knows of a row or a header. Only `a == 'b'`, `x` and `!x` joined by && are
+     used. */
   const holds = (when, ctx) => when.split('&&').map((p) => p.trim()).every((p) => {
     const m = /^([\w.]+) == '([^']*)'$/.exec(p);
     if (m) return String(ctx[m[1]]) === m[2];
     return p.startsWith('!') ? !ctx[p.slice(1)] : !!ctx[p];
   });
-  const offered = (ctx) => menus.filter((m) => holds(m.when, { webviewId: 'codexPlus.sessions', ...ctx }))
-    .sort((a, b) => a.group.localeCompare(b.group)).map((m) => m.command.replace('codexPlus.', ''));
+  const offered = (ctx) => table.filter((m) => holds(m.when, ctx)).map((m) => m.command.replace('codexPlus.', ''));
   const rowCtx = (r) => ({ webviewSection: 'thread', threadId: r.id, codexPlusGrouped: r.grouped, codexPlusUnread: r.unread });
   const unreadRow = rows.find((r) => r.id === ID(1)), readRow = rows.find((r) => r.id === ID(2));
   eq([offered(rowCtx(readRow)).filter((c) => /^markThread/.test(c)), offered(rowCtx(unreadRow)).filter((c) => /^markThread/.test(c))],
@@ -77,11 +119,64 @@ module.exports = async ({ eq, root }) => {
   eq([resumes(inGroups.get(ID(1))), resumes(inGroups.get(ID(2))), resumes(hm.open.find((r) => r.id === ID(4))), resumes(inGroups.get(ID(3)))],
     [[], [], [], ['openThreadInTab', 'openThreadInSidebar']],
     'so Resume in Tab and Resume in Sidebar are offered for a conversation that is not open here, and for no row of Open sessions');
+  eq([hm.menu === LIST_MENU && table.length > 0, (hm.colors || []).map((c) => c.name)], [true, ['red', 'blue', 'green', 'yellow', 'purple', 'orange', 'pink', 'cyan']],
+    'the model hands the page this table, and the colours of Text Color in Claude Code Plus\'s order');
 
   /* ── a group header's menu ── */
   eq(offered({ webviewSection: 'group', groupKey: 'section:a', codexPlusMade: true }),
     ['newThreadInGroup', 'newGroup', 'renameGroup', 'deleteGroup'], 'a group header offers Claude Code\'s four, in its order');
   eq(offered({ webviewSection: 'group', groupKey: 'ungrouped', codexPlusMade: false }), ['newGroup'], 'Ungrouped offers only New Group');
+
+  /* ── the page's menus, against the table ── */
+  const p = runSessionsPage(root);
+  const prow = (n, extra = {}) => ({ id: ID(n), title: `Conversation ${n}`, time: '1d', dot: 'idle', color: '', open: false, sidebar: false,
+    unread: false, grouped: false, group: 'Ungrouped', branch: '', goal: '', goalText: '', here: false, ...extra });
+  const pageModel = (noGroups) => ({ account: null, closed: [], front: '', noGroups, menu: table, colors: hm.colors,
+    open: [prow(6, { here: true, open: true })],
+    groups: [{ key: 'section:pin', label: 'Pinned', made: false, rows: [prow(7, { grouped: true, group: 'Pinned' })] },
+      { key: 'section:a', label: 'Alpha', made: true, rows: [prow(3, { grouped: true, group: 'Alpha' })] },
+      { key: 'section:b', label: 'Beta', made: true, rows: [] },
+      { key: 'ungrouped', label: 'Ungrouped', made: false, rows: [prow(1), prow(2, { unread: true }), prow(4, { goal: 'active' }),
+        prow(5, { goal: 'budgetLimited' }), prow(6, { here: true, open: true })] }] });
+  /* What a right-click on `target` draws: each item's title, and '-' for a separator. A click elsewhere closes it. */
+  const drawn = (target) => {
+    target.bubble('contextmenu', { clientX: 20, clientY: 40, button: 2 });
+    const box = p.$$('.cp-ctx').find((b) => !b.classList.contains('cp-ctx-sub'));
+    const out = box ? box.children.map((c) => (c.classList.contains('cp-ctx-sep') ? '-' : c.childNodes[0].textContent)) : [];
+    p.page.bubble('mousedown', { button: 0 });
+    p.page.bubble('click');
+    return out;
+  };
+  /* What the table gives for `ctx`: the titles of the items that hold, with a separator wherever the group changes. */
+  const expected = (ctx) => {
+    const out = [];
+    let last = '';
+    for (const m of table) {
+      if (!holds(m.when, ctx)) continue;
+      const g = m.group.split('@')[0];
+      if (out.length && g !== last) out.push('-');
+      out.push(m.title);
+      last = g;
+    }
+    return out;
+  };
+  for (const noGroups of [false, true]) {
+    const m = pageModel(noGroups);
+    p.toPage({ type: 'model', model: m });
+    const thread = (r) => ({ webviewSection: 'thread', codexPlusGrouped: !!r.grouped, codexPlusUnread: !!r.unread, codexPlusGoal: r.goal || '',
+      codexPlusGoalResumable: ['paused', 'blocked', 'usageLimited', 'budgetLimited'].includes(r.goal), codexPlusOpenHere: !!r.here, 'codexPlus.noGroups': noGroups });
+    const cases = [];
+    for (const g of m.groups) {
+      cases.push([`${g.key} header`, p.$(`.cp-group[data-key="${g.key}"] .cp-group-head`),
+        { webviewSection: 'group', groupKey: g.key, codexPlusMade: g.made, 'codexPlus.noGroups': noGroups }]);
+      for (const r of g.rows) cases.push([`${g.key} row ${r.id.slice(-1)}`, p.$(`.cp-group[data-key="${g.key}"] .cp-row[data-id="${r.id}"]`), thread(r)]);
+    }
+    cases.push(['Open sessions row 6', p.$(`.cp-section[data-key="open"] .cp-row[data-id="${ID(6)}"]`), thread(m.open[0])]);
+    const got = cases.map(([name, target, ctx]) => [name, drawn(target), expected(ctx)]);
+    eq(got.filter(([, d, e]) => JSON.stringify(d) !== JSON.stringify(e)), [],
+      `${noGroups ? 'with no groups in this Codex, ' : ''}each row and group header gets from the page the items the table gives for it, in its order and with its separators`);
+    eq(got.filter(([, d]) => d.length).length, noGroups ? 8 : 12, `${noGroups ? 'with no groups, ' : ''}and every row, and every header that has any item, did get a menu`);
+  }
 
   /* ── Start New Session in This Group ── */
   let t = 10000;
@@ -100,11 +195,8 @@ module.exports = async ({ eq, root }) => {
   list.push({ id: ID(6), kind: 'user', section: '', createdMs: t });
   eq([await placer.check(), moved.length], [null, 1], 'after half an hour it stops waiting');
 
-  /* ── the words for an empty list, and the prefix ── */
-  const page = require('fs').readFileSync(path.join(root, 'src', 'page', 'sessions-page.js'), 'utf8');
+  /* ── the words for an empty list ── */
+  const page = fs.readFileSync(path.join(root, 'src', 'page', 'sessions-page.js'), 'utf8');
   eq([/'No sessions yet'/.test(page), /'No sessions found'/.test(page)], [true, true],
     'a list with nothing in it says "No sessions yet", and a search that finds nothing "No sessions found", as Claude Code\'s do');
-  const titled = new Map(pkg.contributes.commands.map((c) => [c.command, c.title]));
-  const onList = [...new Set(menus.filter((m) => /codexPlus\.sessions/.test(m.when)).map((m) => m.command))];
-  eq(onList.filter((c) => !/^Codex Plus: /.test(titled.get(c) || '')), [], 'every item of the list\'s right-click menus starts "Codex Plus: "');
 };

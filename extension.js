@@ -25,7 +25,7 @@ const { createSeen } = require('./src/seen');
 const { CodexReader } = require('./src/codex-reader');
 const hostLink = require('./src/host-link');
 const { TabMemory } = require('./src/tab-memory');
-const { SessionsModel, SessionsView, COLORS, COLOR_NAMES, looksLikeId } = require('./src/sessions-view');
+const { SessionsModel, SessionsView, COLOR_NAMES, LIST_MENU, looksLikeId } = require('./src/sessions-view');
 const { createGroups, createPlacer } = require('./src/session-groups');
 const accountUsage = require('./src/account-usage');
 const patching = require('./src/patching');
@@ -248,13 +248,12 @@ async function activate(context) {
     sidebarShowing: () => patching.sidebarShowing(), sections: () => new Map(groups.list()),
     account: () => account.view(), front: frontNow, noGroups: () => groups.supported() === false });
   /* Once the list is visible, check for the section methods over Codex's own connection, never through a short-lived
-     app-server. The group commands stay visible until it answers. */
+     app-server. The group items stay in the list's menus until Codex answers. */
   let sessionsView = null;
   const probeGroups = () => {
     if (groups.supported() !== null || !sessionsView || !sessionsView.visible) return;
     groups.probe({ fallback: false }).then((yes) => {
       if (yes !== false) return;
-      vscode.commands.executeCommand('setContext', 'codexPlus.noGroups', true);
       sessionsModel.refresh();
     }).catch(() => { /* asked again on the next redraw */ });
   };
@@ -403,7 +402,7 @@ async function newConversationInTab(say) {
 
 function registerCommands(context, { source, memory, sessionsModel, sessionsView, say, link, opens, groups, placer }) {
   const reg = (name, fn) => context.subscriptions.push(vscode.commands.registerCommand(`${CONFIG}.${name}`, fn));
-  /* A conversation as a command is given it: its id, a row of the session list (data-vscode-context), or Agent Plus's. */
+  /* A conversation as a command is given it: its id, the context of a session list row, or Agent Plus's. */
   const threadArg = (arg) => (typeof arg === 'string' ? arg : arg && typeof arg.threadId === 'string' ? arg.threadId
     : arg && arg.thread ? arg.thread.id : arg && arg.sessionId) || '';
   /* Whether a command came from the session list's own right-click menu. */
@@ -580,15 +579,12 @@ function registerCommands(context, { source, memory, sessionsModel, sessionsView
     vscode.window.showInformationMessage('Codex did not take the link that opens a conversation in its sidebar, so it was opened in a tab instead.');
     await tabs.openInTab(vscode, id);
   });
-  /* From the list's own menu, the page shows the choices next to the right-clicked row, like Claude Code Plus's
-     submenus; when the list is hidden, a quick pick at the top of the window is used instead. */
-  const inList = (arg, msg) => fromList(arg) && sessionsView.visible && sessionsView.tell(msg);
+  /* `pick` comes from a submenu of the session list's right-click menu. */
+  const picked = (arg) => (fromList(arg) && typeof arg.pick === 'string' ? arg.pick : null);
   reg('setTitleColor', async (arg, selected) => {
     const ids = chosen(arg, selected);
     if (!ids.length) return;
-    const had = sessionsModel.colors();
-    const current = ids.every((id) => (had[id] || '') === (had[ids[0]] || '')) ? had[ids[0]] || '' : null;
-    if (inList(arg, { type: 'pickColor', ids, current, colors: COLOR_NAMES.map((name) => ({ name, color: COLORS[name] })) })) return;
+    if (picked(arg) !== null) { await sessionsModel.setColor(ids, picked(arg)); return; }
     const pick = await vscode.window.showQuickPick(['', ...COLOR_NAMES].map((name) => ({ label: name ? name[0].toUpperCase() + name.slice(1) : 'Default', name })),
       { placeHolder: 'Text color' });
     if (pick) await sessionsModel.setColor(ids, pick.name);
@@ -649,12 +645,12 @@ function registerCommands(context, { source, memory, sessionsModel, sessionsView
   });
   /*
    * Group commands. If it is not yet known whether this Codex has sections, groupsHere() checks first. When it has
-   * none, the user is told, and setting codexPlus.noGroups hides the commands.
+   * none, the user is told, and the list's menus lose their group items (the model's noGroups).
    */
   const groupsHere = async () => {
     const yes = await groups.probe({ fallback: true });
     if (yes === false) {
-      vscode.commands.executeCommand('setContext', 'codexPlus.noGroups', true);
+      sessionsModel.refresh();
       vscode.window.showInformationMessage('Codex Plus: this Codex has no groups (sections) to sort conversations into.');
     }
     return yes !== false;
@@ -702,8 +698,12 @@ function registerCommands(context, { source, memory, sessionsModel, sessionsView
     if (!ids.length || restricted() || !await groupsHere()) return;
     const items = groups.choices().filter(([sectionId]) => !ids.every((id) => (reader.thread(id) || {}).section === sectionId))
       .map(([sectionId, name]) => ({ label: name || 'Group', sectionId }));
+    if (picked(arg) !== null) {
+      const sec = sectionArg({ groupKey: picked(arg) });
+      if (items.some((i) => i.sectionId === sec)) done('move it', await groups.move(ids, sec));
+      return;
+    }
     if (!items.length) { vscode.window.showInformationMessage('Codex Plus: there is no other group to add it to. New group, above the groups in the Codex sessions list, makes one.'); return; }
-    if (inList(arg, { type: 'pickGroup', ids, groups: items.map((i) => ({ key: `section:${i.sectionId}`, label: i.label })) })) return;
     const pick = await vscode.window.showQuickPick(items, { placeHolder: 'Add to which group?' });
     if (pick) done('move it', await groups.move(ids, pick.sectionId));
   });
@@ -746,11 +746,18 @@ function registerCommands(context, { source, memory, sessionsModel, sessionsView
   });
   /*
    * Messages from the session list's page, each handled like the matching command: a row clicked, New in tab, New in
-   * sidebar, New group, an inline rename of a title or a group, and rows dropped on a group.
+   * sidebar, New group, an inline rename of a title or a group, rows dropped on a group, and an item of the list's
+   * right-click menu. Its command is run with the argument a VS Code menu would pass, the row's or header's context with
+   * the view's id, plus `pick` from a submenu.
    */
+  const listCommands = new Set(LIST_MENU.map((m) => m.command));
   sessionsView.receive = async (msg) => {
     const id = typeof msg.id === 'string' ? msg.id : '';
-    if (msg.kind === 'open' && id) await vscode.commands.executeCommand(msg.where === 'sidebar' ? 'codexPlus.openThreadInSidebar' : 'codexPlus.openThreadInTab', id);
+    if (msg.kind === 'menu' && listCommands.has(msg.command) && msg.context && typeof msg.context === 'object') {
+      const arg = { ...msg.context, webview: 'codexPlus.sessions' };
+      if (typeof msg.pick === 'string') arg.pick = msg.pick;
+      await vscode.commands.executeCommand(msg.command, arg);
+    } else if (msg.kind === 'open' && id) await vscode.commands.executeCommand(msg.where === 'sidebar' ? 'codexPlus.openThreadInSidebar' : 'codexPlus.openThreadInTab', id);
     else if (msg.kind === 'newInTab') await vscode.commands.executeCommand('codexPlus.newInTab');
     else if (msg.kind === 'newInSidebar') await vscode.commands.executeCommand('codexPlus.newInSidebar');
     else if (msg.kind === 'newGroup') await newGroup(true);
@@ -766,9 +773,6 @@ function registerCommands(context, { source, memory, sessionsModel, sessionsView
       const sec = msg.key === 'ungrouped' ? null : sectionArg({ groupKey: msg.key });
       const ids = msg.ids.filter((x) => typeof x === 'string' && (reader.thread(x) || {}).section !== (sec || ''));
       if ((sec || msg.key === 'ungrouped') && ids.length && !restricted() && await groupsHere()) done('move it', await groups.move(ids, sec));
-    } else if (msg.kind === 'setColor' && Array.isArray(msg.ids) && typeof msg.color === 'string') {
-      const ids = msg.ids.filter((x) => typeof x === 'string').slice(0, 1000);
-      if (ids.length) await sessionsModel.setColor(ids, msg.color);
     }
   };
   reg('markThreadRead', (arg, selected) => { for (const id of chosen(arg, selected)) source.markRead(id); });

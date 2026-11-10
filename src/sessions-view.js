@@ -44,6 +44,39 @@ const COLORS = {
 };
 const COLOR_NAMES = Object.keys(COLORS);
 const COLOR_KEY = 'codexPlus.titleColors';
+/* The colours in the order Text Color lists them, for the page. */
+const COLOR_LIST = COLOR_NAMES.map((name) => ({ name, color: COLORS[name] }));
+
+/*
+ * The right-click menus of the list's rows and group headers, in the order src/page/sessions-page.js draws them. A native
+ * menu cannot list the user's own groups or show a colour swatch, so the page draws them itself.
+ *
+ * A separator goes wherever the part of `group` before the @ changes. `when` is a VS Code when clause: the page
+ * evaluates it against the context of the row or header and the model's noGroups. The titles are the commands' own,
+ * except that the two items that open a submenu drop the trailing "...".
+ */
+const COMMAND_TITLES = new Map(require('../package.json').contributes.commands.map((c) => [c.command, c.title]));
+const LIST_MENU = [
+  ['codexPlus.openThreadInTab', '1_open@1', "webviewSection == 'thread' && !codexPlusOpenHere"],
+  ['codexPlus.openThreadInSidebar', '1_open@2', "webviewSection == 'thread' && !codexPlusOpenHere"],
+  ['codexPlus.moveThreadToSection', '2_group@2', "webviewSection == 'thread' && !codexPlus.noGroups", 'group'],
+  ['codexPlus.removeFromGroup', '2_group@3', "webviewSection == 'thread' && codexPlusGrouped"],
+  ['codexPlus.markThreadUnread', '3_read@1', "webviewSection == 'thread' && !codexPlusUnread"],
+  ['codexPlus.markThreadRead', '3_read@1', "webviewSection == 'thread' && codexPlusUnread"],
+  ['codexPlus.renameThread', '4_edit@1', "webviewSection == 'thread'"],
+  ['codexPlus.setTitleColor', '5_look@1', "webviewSection == 'thread'", 'color'],
+  ['codexPlus.setGoal', '6_goal@1', "webviewSection == 'thread'"],
+  ['codexPlus.pauseGoal', '6_goal@2', "webviewSection == 'thread' && codexPlusGoal == 'active'"],
+  ['codexPlus.resumeGoal', '6_goal@3', "webviewSection == 'thread' && codexPlusGoalResumable"],
+  ['codexPlus.clearGoal', '6_goal@4', "webviewSection == 'thread' && codexPlusGoal"],
+  ['codexPlus.newThreadInGroup', '1_new@1', "webviewSection == 'group' && codexPlusMade && !codexPlus.noGroups"],
+  ['codexPlus.newGroup', '1_new@2', "webviewSection == 'group' && !codexPlus.noGroups"],
+  ['codexPlus.renameGroup', '2_group@1', "webviewSection == 'group' && codexPlusMade && !codexPlus.noGroups"],
+  ['codexPlus.deleteGroup', '9_delete@1', "webviewSection == 'group' && codexPlusMade && !codexPlus.noGroups"],
+].map(([command, group, when, submenu]) => {
+  const title = COMMAND_TITLES.get(command) || command;
+  return submenu ? { command, title: title.replace(/\.\.\.$/, ''), group, when, submenu } : { command, title, group, when };
+});
 /* The same dots Claude Code's list uses: green running, blue waiting for you, red replied and unread or last turn
    failed, grey idle. A conversation running or waiting in another window gets a ring in that colour. */
 const STATE_LOOK = {
@@ -245,6 +278,8 @@ class SessionsModel {
       groups: manager.map((g) => ({ key: g.key, label: g.label, made: !!g.made, rows: rowsOf(g) })),
       front,
       noGroups: !!this.noGroups(),
+      menu: LIST_MENU,
+      colors: COLOR_LIST,
     };
   }
 
@@ -345,4 +380,4 @@ function pageHtml({ js, css, csp, nonce: n }) {
 const looksLikeId = (q) => /^[0-9a-f-]{4,}$/i.test(String(q || '').trim());
 
 module.exports = { SessionsModel, SessionsView, pageHtml, group, drawn, dateSpan, placeOf, looksLikeId, lookOf, lookKey, goalText,
-  COLORS, COLOR_NAMES, COLOR_KEY, STATE_LOOK, GOAL_WORD, PAGE_FILES };
+  COLORS, COLOR_NAMES, COLOR_KEY, STATE_LOOK, GOAL_WORD, PAGE_FILES, LIST_MENU };

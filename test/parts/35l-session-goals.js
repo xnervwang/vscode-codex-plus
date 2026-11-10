@@ -22,7 +22,7 @@ module.exports = async ({ eq, tmp, root }) => {
   const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
   const cmds = ['setGoal', 'pauseGoal', 'resumeGoal', 'clearGoal'].map((c) => `codexPlus.${c}`);
   eq(cmds.filter((c) => !pkg.contributes.commands.some((x) => x.command === c)), [], 'Set, Pause, Resume and Clear Goal are commands');
-  const inList = (c) => (pkg.contributes.menus['webview/context'] || []).find((m) => m.command === c);
+  const inList = (c) => (require('../../src/sessions-view').LIST_MENU || []).find((m) => m.command === c);
   eq(cmds.map((c) => !!inList(c) && /webviewSection == 'thread'/.test(inList(c).when)), [true, true, true, true],
     'all four are in a session row\'s right-click menu');
   eq([/codexPlusGoal == 'active'/.test(inList('codexPlus.pauseGoal').when), /codexPlusGoalResumable/.test(inList('codexPlus.resumeGoal').when),
@@ -123,11 +123,21 @@ module.exports = async ({ eq, tmp, root }) => {
   const r = (id, goal) => ({ id, title: id, time: '1d', dot: 'idle', color: '', open: false, sidebar: false, unread: false, grouped: false,
     group: 'Ungrouped', branch: '', goal, goalText: goal ? `Goal: x (${goal})` : '' });
   for (const fn of listeners.message) fn({ data: { type: 'model', model: { account: null, closed: [], open: [], front: '', noGroups: false,
+    menu: require('../../src/sessions-view').LIST_MENU,
     groups: [{ key: 'ungrouped', label: 'Ungrouped', made: false, rows: [r('01a1f0f0-0000-7000-8000-000000000001', 'active'),
       r('01a1f0f0-0000-7000-8000-000000000002', 'paused'), r('01a1f0f0-0000-7000-8000-000000000003', '')] }] } } });
   const rows = page.querySelectorAll('.cp-row');
   const badge = (e) => { const b = e.querySelector('.cp-goal'); return b && !b.classList.contains('cp-hidden') ? b.textContent : ''; };
   eq(rows.map(badge), ['goal', 'goal paused', ''], 'a row shows its goal\'s state before the time');
-  eq(rows.map((e) => { const c = JSON.parse(e.getAttribute('data-vscode-context')); return [c.codexPlusGoal, c.codexPlusGoalResumable]; }),
-    [['active', false], ['paused', true], ['', false]], 'and hands it to the right-click menu, which offers what fits it');
+  const goalItems = (e) => {
+    e.bubble('contextmenu', { clientX: 10, clientY: 10, button: 2 });
+    const box = page.querySelector('.cp-ctx');
+    const out = box ? box.querySelectorAll('.cp-ctx-item').map((b) => b.childNodes[0].textContent).filter((t) => /Goal/.test(t)) : [];
+    page.bubble('mousedown', { button: 0 });
+    page.bubble('click');
+    return out;
+  };
+  eq(rows.map(goalItems), [['Codex Plus: Set Goal...', 'Codex Plus: Pause Goal', 'Codex Plus: Clear Goal'],
+    ['Codex Plus: Set Goal...', 'Codex Plus: Resume Goal', 'Codex Plus: Clear Goal'], ['Codex Plus: Set Goal...']],
+  'and hands it to the right-click menu, which offers what fits it');
 };

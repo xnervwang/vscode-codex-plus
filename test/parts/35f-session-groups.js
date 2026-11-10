@@ -133,31 +133,38 @@ module.exports = async ({ eq, tmp, root }) => {
     eq([requests.filter((r) => r.method === 'threadSection/create').map((r) => r.params.name), page.posted.filter((x) => x.type === 'startRenameGroup').map((x) => x.key)],
       [['New group'], [`section:sec-new-${made2}`]], 'New group in the list makes "New group" and has the page edit its name where it is drawn, as Claude Code\'s does');
 
-    /* Text Color and Add to Group from the list's own menu: the page opens the choice beside the row. */
-    const listRow = (t) => ({ webview: 'codexPlus.sessions', webviewSection: 'thread', threadId: t.id });
+    /* The list's right-click menu: the page sends the item's command with the row's context, and for Text Color and
+       Add to Group what was picked in the submenu. */
+    const listRow = (t) => ({ webviewSection: 'thread', threadId: t.id });
     const both = [made[0].id, made[1].id];
     await page.fromPage({ kind: 'select', ids: both });
     page.posted.length = 0;
     control.state.picks.length = 0;
-    await control.state.handlers['codexPlus.moveThreadToSection'](listRow(made[1]));
-    await control.state.handlers['codexPlus.setTitleColor'](listRow(made[1]));
-    eq([page.posted.filter((x) => x.type === 'pickGroup').map((x) => [x.ids, x.groups]), control.state.picks.length],
-      [[[both, [{ key: 'section:sec-1', label: 'Pinned' }]]], 0],
-      'Add to Group from a row\'s menu has the page list the groups beside the row, for every selected conversation, with no box at the top of the window');
-    eq(page.posted.filter((x) => x.type === 'pickColor').map((x) => [x.ids, x.current, x.colors.map((c) => c.name), x.colors[6].color]),
-      [[both, '', ['red', 'blue', 'green', 'yellow', 'purple', 'orange', 'pink', 'cyan'], 'terminal.ansiBrightMagenta']],
-      'and so does Text Color, with Claude Code Plus\'s colours in its order and none of them current');
-    page.posted.length = 0;
-    await page.fromPage({ kind: 'setColor', ids: both, color: 'green' });
+    control.state.commands.length = 0;
+    requests.length = 0;
+    await page.fromPage({ kind: 'menu', command: 'codexPlus.moveThreadToSection', context: listRow(made[1]), pick: 'section:sec-1' });
+    await page.fromPage({ kind: 'menu', command: 'codexPlus.setTitleColor', context: listRow(made[1]), pick: 'green' });
+    await tick();
     const colourOf = () => new Map(page.posted.filter((x) => x.type === 'model').pop().model.groups.flatMap((gr) => gr.rows).map((r) => [r.id, r.color]));
-    eq([colourOf().get(made[0].id), colourOf().get(made[1].id)], ['charts.green', 'charts.green'], 'the colour picked there is given to each of them');
-    page.setVisible(false);
+    eq([requests.filter((r) => r.method === 'thread/section/move').map((r) => r.params), [colourOf().get(made[0].id), colourOf().get(made[1].id)],
+      control.state.picks.length, page.posted.filter((x) => x.type !== 'model').length],
+    [[{ threadId: made[0].id, sectionId: 'sec-1' }, { threadId: made[1].id, sectionId: 'sec-1' }], ['charts.green', 'charts.green'], 0, 0],
+    'a group or a colour picked in the menu\'s submenu is applied to every selected conversation, with nothing asked at the top of the window');
+    eq(control.state.commands.filter(([c]) => /^codexPlus\./.test(c)).map(([c, a]) => [c, a.webview, a.threadId]),
+      [['codexPlus.moveThreadToSection', 'codexPlus.sessions', made[1].id], ['codexPlus.setTitleColor', 'codexPlus.sessions', made[1].id]],
+      'through the same commands, given the argument VS Code\'s own menu gave them: the row\'s context and the view\'s id');
+    requests.length = 0;
+    control.state.commands.length = 0;
+    await page.fromPage({ kind: 'menu', command: 'codexPlus.moveThreadToSection', context: listRow(made[1]), pick: `section:${PINNED_SECTION}` });
+    await page.fromPage({ kind: 'menu', command: 'codexPlus.status', context: listRow(made[1]) });
+    await tick();
+    eq([requests.filter((r) => r.method === 'thread/section/move').length, control.state.picks.length, control.state.commands.map(([c]) => c).includes('codexPlus.status')],
+      [0, 0, false], 'a group the submenu could not have offered moves nothing, and a command that is not in the list\'s menus is not run');
     control.state.pickAnswer = (items) => items.find((i) => i.label === 'Purple');
-    await control.state.handlers['codexPlus.setTitleColor'](listRow(made[1]));
-    page.setVisible(true);
+    await control.state.handlers['codexPlus.setTitleColor']({ webview: 'codexPlus.sessions', ...listRow(made[1]) });
     eq([(control.state.picks[0] || []).map((i) => i.label), colourOf().get(made[0].id)],
       [['Default', 'Red', 'Blue', 'Green', 'Yellow', 'Purple', 'Orange', 'Pink', 'Cyan'], 'charts.purple'],
-      'with the list not on screen the colours are offered at the top of the window, in the same order');
+      'the command with nothing picked offers the colours at the top of the window, in the same order');
   } finally {
     for (const d of subs) { try { d.dispose(); } catch (_) { /* gone */ } }
     ext.deactivate();
@@ -168,7 +175,7 @@ module.exports = async ({ eq, tmp, root }) => {
   eq(['newGroup', 'renameGroup', 'deleteGroup', 'moveThreadToSection', 'removeFromGroup'].map((id) => (cmd(id) || {}).title),
     ['Codex Plus: New Group...', 'Codex Plus: Rename Group...', 'Codex Plus: Delete Group',
       'Codex Plus: Add to Group...', 'Codex Plus: Remove from Group'], 'each group command is named as Claude Code names it, after "Codex Plus: "');
-  const menus = Object.values(pkg.contributes.menus).flat().filter((m) => ['codexPlus.newGroup',
+  const menus = [...Object.values(pkg.contributes.menus).flat(), ...(require('../../src/sessions-view').LIST_MENU || [])].filter((m) => ['codexPlus.newGroup',
     'codexPlus.renameGroup', 'codexPlus.deleteGroup', 'codexPlus.moveThreadToSection'].includes(m.command) && m.when !== 'false');
   eq(menus.filter((m) => !/!codexPlus\.noGroups/.test(m.when) && !/webviewId == 'chatgpt\.conversationEditor'/.test(m.when)).map((m) => m.command), [],
     'none of them is offered once this Codex is known to have no groups');

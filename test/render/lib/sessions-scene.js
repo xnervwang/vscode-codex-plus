@@ -8,13 +8,13 @@
  * sets, in a headless Chromium at sidebar width, using the Dark Modern theme variables and the webview API stand-in in
  * harness/vscode-stub.js. It posts made-up models and checks layout that only a real browser computes: Claude Code's
  * sizes, the time flush right, the rename button replacing the time on hover, the two new-conversation buttons side by
- * side, and draw and search times at 200 and 1000 rows. It also reads the renderer's memory with the list shown and with
- * a blank page. It needs no Codex.
+ * side, Claude Code's look and placement for the right-click menus, and draw and search times at 200 and 1000 rows. It
+ * also reads the renderer's memory with the list shown and with a blank page. It needs no Codex.
  */
 const fs = require('fs');
 const path = require('path');
 const { serve, launch, sleep } = require('./cdp');
-const { pageHtml, COLORS, COLOR_NAMES } = require('../../../src/sessions-view');
+const { pageHtml, COLORS, COLOR_NAMES, LIST_MENU } = require('../../../src/sessions-view');
 
 const ROOT = path.join(__dirname, '..', '..', '..');
 const HARNESS = path.join(__dirname, '..', 'harness');
@@ -39,7 +39,7 @@ function fakeModel(n, { stamp = '' } = {}) {
   });
   return { account: { account: [{ label: 'Signed in with', value: 'Amazon Bedrock' }], windows: [], tokens: [] },
     closed: [row(n + 1, { title: 'Closed this morning' }), row(n + 2, { title: 'Closed yesterday' })],
-    open: rows.slice(0, 2), groups, front: ID(0), noGroups: false };
+    open: rows.slice(0, 2), groups, front: ID(0), noGroups: false, menu: LIST_MENU, colors: COLOR_NAMES.map((name) => ({ name, color: COLORS[name] })) };
 }
 
 /* Proportional set size of a process, in MB, from /proc; 0 where that cannot be read. */
@@ -225,7 +225,14 @@ async function run({ env, check, shots, out, results }) {
     await b.evaluate('window.__posted.length = 0');
     await rightClick(twice[0], twice[1]);
     await sleep(100);
-    const rightClicked = await b.evaluate(`window.__posted.some((m) => m.kind === 'select' && m.ids.join() === ${JSON.stringify(ID(1))})`);
+    await sleep(100);
+    const renameItem = await b.evaluate(`(() => { const i = [...document.querySelectorAll('.cp-ctx-item')].find((x) => x.childNodes[0] && x.childNodes[0].textContent === 'Codex Plus: Rename...');
+      if (!i) return null; const r = i.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; })()`);
+    if (renameItem) await b.click(renameItem[0], renameItem[1]);
+    await sleep(100);
+    const rightClicked = await b.evaluate(`window.__posted.some((m) => m.kind === 'select' && m.ids.join() === ${JSON.stringify(ID(1))})
+      && window.__posted.some((m) => m.kind === 'menu' && m.command === 'codexPlus.renameThread' && m.context.threadId === ${JSON.stringify(ID(1))})
+      && document.querySelectorAll('.cp-ctx').length === 0`);
     await toPage({ type: 'startRename', id: ID(1) });
     await sleep(150);
     await shot('sessions-rename-in-group', { x: 0, y: 0, width: 360, height: 560 });
@@ -240,78 +247,207 @@ async function run({ env, check, shots, out, results }) {
     await b.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
     await sleep(100);
 
-    /* Text Color and Add to Group: a list beside the right-clicked row, in the same style as the status filter's
-       menu, created when it opens and removed when it closes. */
+    /* The right-click menus and their submenus, each timed from the right-click or the hover to the drawn menu. */
     const esc = () => b.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
-    /* The status filter's menu draws its items when it first opens, and the list is compared with them. */
-    const filterAt = await b.evaluate(`(() => { const r = document.querySelector('[data-tool="filter"]').getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; })()`);
-    await b.click(filterAt[0], filterAt[1]);
-    await sleep(100);
+    const ctxRow = `.cp-group[data-key="section:b"] .cp-row[data-id="${ID(2)}"]`;
+    const at = await rowAt(ctxRow);
+    const opened = (sel, x, y) => b.evaluate(`(() => {
+      const e = new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: ${x}, clientY: ${y}, button: 2 });
+      const t = performance.now(); document.querySelector(${JSON.stringify(sel)}).dispatchEvent(e); void document.body.offsetHeight;
+      return { ms: +(performance.now() - t).toFixed(2), prevented: e.defaultPrevented, menus: document.querySelectorAll('.cp-ctx').length }; })()`);
+    const rowOpen = await opened(ctxRow, Math.round(at[0]), Math.round(at[1]));
     await esc();
-    const pickRow = `.cp-group[data-key="section:b"] .cp-row[data-id="${ID(2)}"]`;
-    const at = await rowAt(pickRow);
+    await sleep(100);
     await rightClick(at[0], at[1]);
-    await sleep(100);
-    const colors = COLOR_NAMES.map((name) => ({ name, color: COLORS[name] }));
-    const openPick = (msg) => b.evaluate(`(() => { const t = performance.now(); window.__fromHost(${JSON.stringify(msg)});
-      void document.body.offsetHeight; return +(performance.now() - t).toFixed(2); })()`);
-    const pickMeasure = () => b.evaluate(`(() => {
-      const p = document.querySelector('.cp-pick'), f = document.querySelector('.cp-menu:not(.cp-pick)');
-      if (!p) return null;
-      const row = document.querySelector(${JSON.stringify(pickRow)}).getBoundingClientRect(), box = p.getBoundingClientRect();
-      const st = (e, keys) => { const s = getComputedStyle(e); return keys.map((k) => s[k]).join('|'); };
-      const LOOK = ['backgroundColor', 'borderRadius', 'borderTopColor', 'boxShadow', 'paddingTop', 'position'];
-      const ITEM = ['paddingTop', 'paddingLeft', 'borderRadius', 'fontSize'];
-      return { gapBelowRow: Math.round(box.top - row.bottom), left: Math.round(box.left), right: Math.round(box.right), width: innerWidth,
-        sameLook: st(p, LOOK) === st(f, LOOK), sameItems: st(p.querySelector('.cp-menu-item'), ITEM) === st(f.querySelector('.cp-menu-item'), ITEM),
-        items: [...p.querySelectorAll('.cp-menu-item')].map((i) => i.textContent),
-        swatches: [...p.querySelectorAll('.cp-swatch')].map((s) => { const r = s.getBoundingClientRect(), c = getComputedStyle(s);
-          return [r.width, r.height, c.backgroundColor, c.borderTopStyle]; }),
-        focused: document.activeElement && document.activeElement.textContent };
-    })()`);
-    const colorMs = await openPick({ type: 'pickColor', ids: [ID(2)], current: 'purple', colors });
-    await sleep(100);
-    await shot('sessions-pick-color', { x: 0, y: 0, width: 360, height: 900 });
-    const pc = await pickMeasure();
-    await esc();
-    await sleep(100);
-    const goneAfterEsc = await b.evaluate('document.querySelectorAll(".cp-pick").length === 0');
+    await sleep(200);
+    await shot('sessions-ctx-row', { x: 0, y: 0, width: 360, height: 900 });
+    const MEASURE_CTX = `(() => {
+      const st = (e) => getComputedStyle(e);
+      const box = (e) => { const r = e.getBoundingClientRect(); return { l: r.left, r: r.right, t: r.top, b: r.bottom, w: e.offsetWidth, h: e.offsetHeight }; };
+      const one = (m) => {
+        if (!m) return null;
+        const s = st(m), items = [...m.querySelectorAll('.cp-ctx-item')], sep = m.querySelector('.cp-ctx-sep'), chev = m.querySelector('.cp-ctx-chevron');
+        const i = items[0] ? st(items[0]) : null;
+        return { box: box(m), radius: s.borderTopLeftRadius, border: [s.borderTopWidth, s.borderTopStyle, s.borderTopColor].join(' '), padding: [s.paddingTop, s.paddingRight, s.paddingBottom, s.paddingLeft].join(' '),
+          minWidth: s.minWidth, maxHeight: s.maxHeight, shadow: s.boxShadow, bg: s.backgroundColor, zIndex: s.zIndex, position: s.position,
+          item: i && { padding: [i.paddingTop, i.paddingRight, i.paddingBottom, i.paddingLeft].join(' '), fontSize: i.fontSize, color: i.color, maxWidth: i.maxWidth, h: items[0].offsetHeight },
+          sep: sep && { h: sep.offsetHeight, margin: [st(sep).marginTop, st(sep).marginBottom].join(' '), bg: st(sep).backgroundColor },
+          chevron: chev && { text: chev.textContent, float: st(chev).cssFloat, opacity: st(chev).opacity, marginLeft: st(chev).marginLeft },
+          labels: items.map((x) => (x.childNodes[0] ? x.childNodes[0].textContent : '')), texts: items.map((x) => x.textContent),
+          cut: items.filter((x) => x.scrollWidth > x.clientWidth).map((x) => \`\${x.textContent} (needs \${x.scrollWidth} px, has \${x.clientWidth})\`),
+          swatches: [...m.querySelectorAll('.cp-swatch')].map((x) => { const c = st(x); return [x.offsetWidth, x.offsetHeight, c.backgroundColor, c.borderTopStyle]; }),
+          seps: [...m.children].map((c) => (c.classList.contains('cp-ctx-sep') ? '-' : 'item')).join('') };
+      };
+      const main = [...document.querySelectorAll('.cp-ctx')].find((m) => !m.classList.contains('cp-ctx-sub')) || null, sub = document.querySelector('.cp-ctx-sub');
+      const parent = main && main.querySelector('.cp-ctx-item.cp-ctx-open');
+      return { main: one(main), sub: one(sub), parent: parent && box(parent), vw: innerWidth, vh: innerHeight,
+        focused: document.activeElement && document.activeElement.classList.contains('cp-ctx-item') ? document.activeElement.textContent : '' };
+    })()`;
+    const row = await b.evaluate(MEASURE_CTX);
+    /* Claude Code's values, with --app-menu-* resolved through the Dark Modern colours of harness/vscode-stub.js. */
+    const CC = { radius: '6px', border: '1px solid rgb(69, 69, 69)', padding: '2px 0px 2px 0px', minWidth: '140px', shadow: 'rgba(0, 0, 0, 0.15) 0px 2px 8px 0px',
+      bg: 'rgb(31, 31, 31)', zIndex: '1000', position: 'fixed', itemPadding: '6px 12px 6px 12px', fontSize: '13px', color: 'rgb(204, 204, 204)', maxWidth: '260px' };
+    const looks = (m) => !!m && m.radius === CC.radius && m.border === CC.border && m.padding === CC.padding && m.minWidth === CC.minWidth
+      && m.shadow === CC.shadow && m.bg === CC.bg && m.zIndex === CC.zIndex && m.position === CC.position && !!m.item && m.item.padding === CC.itemPadding
+      && m.item.fontSize === CC.fontSize && m.item.color === CC.color && m.item.maxWidth === CC.maxWidth;
+    /* Claude Code's placement of a menu and of a submenu, from wBt in its webview's index.js. */
+    const EDGE = 8;
+    const ccMainLeft = (x, w, vw) => {
+      const left = Math.max(EDGE, Math.min(x, vw - w - EDGE));
+      return left + w - 2 + w <= vw - EDGE || left - w + 2 >= EDGE ? left : Math.max(EDGE, vw - EDGE - w + 2 - w);
+    };
+    const ccSubLeft = (p, w, vw) => {
+      if (p.r - 2 + w <= vw - EDGE) return p.r - 2;
+      if (p.l - w + 2 >= EDGE) return p.l - w + 2;
+      const right = Math.max(EDGE, vw - w - EDGE);
+      return EDGE + w - p.l < p.r - right ? EDGE : right;
+    };
+    const near = (a, want) => Math.abs(a - want) <= 1;
+    r.measures.ctxRow = { open: rowOpen, ...row };
+    check(rowOpen.prevented && rowOpen.menus === 1, 'sessions: a right-click on a row is cancelled, so VS Code opens no menu of its own, and the page opens one', rowOpen);
+    check(looks(row.main), 'sessions: the menu has Claude Code\'s corners, border, padding, shadow, colours and item size', row.main);
+    check(row.main && near(row.main.box.l, ccMainLeft(Math.round(at[0]), row.main.box.w, row.vw)) && near(row.main.box.t, Math.round(at[1])),
+      'sessions: it opens where Claude Code would put it for a click there', { main: row.main && row.main.box, at });
+    check(row.main && row.main.labels.join('|') === 'Codex Plus: Resume in Tab|Codex Plus: Resume in Sidebar|Codex Plus: Add to Group|Codex Plus: Remove from Group|'
+      + 'Codex Plus: Mark as Unread|Codex Plus: Rename...|Codex Plus: Text Color|Codex Plus: Set Goal...' && row.main.seps === 'itemitem-itemitem-item-item-item-item'
+      && row.main.sep && row.main.sep.h === 1 && row.main.sep.margin === '2px 2px' && row.main.sep.bg === CC.border.slice(10)
+      && row.main.chevron && row.main.chevron.text === '›' && row.main.chevron.float === 'right' && row.main.chevron.opacity === '0.7' && row.main.chevron.marginLeft === '12px'
+      && row.focused === 'Codex Plus: Resume in Tab',
+    'sessions: a grouped row\'s items, separators 1 px with 2 px above and below, Claude Code\'s › on the two with a submenu, the first item focused', row.main);
+    if (row.main && row.main.cut.length) console.log(`  note  sessions: cut short at Claude Code's 260 px: ${row.main.cut.join('; ')}`);
+
+    const centre = (label) => b.evaluate(`(() => { const i = [...document.querySelectorAll('.cp-ctx-item')].find((x) => x.childNodes[0] && x.childNodes[0].textContent === ${JSON.stringify(label)});
+      if (!i) return null; const r = i.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; })()`);
+    const move = (x, y) => b.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y, button: 'none' });
+    const subTimed = (label) => b.evaluate(`(() => { const i = [...document.querySelectorAll('.cp-ctx-item')].find((x) => x.childNodes[0] && x.childNodes[0].textContent === ${JSON.stringify(label)});
+      const t = performance.now(); i.dispatchEvent(new MouseEvent('mouseenter')); void document.body.offsetHeight; return +(performance.now() - t).toFixed(2); })()`);
+    const colourAt = await centre('Codex Plus: Text Color');
+    const colourMs = await subTimed('Codex Plus: Text Color');
+    if (colourAt) await move(colourAt[0], colourAt[1]);
+    await sleep(200);
+    await shot('sessions-ctx-text-color', { x: 0, y: 0, width: 360, height: 900 });
+    const tc = await b.evaluate(MEASURE_CTX);
     const HEX = { red: '241, 76, 76', blue: '55, 148, 255', green: '137, 209, 133', yellow: '204, 167, 0', purple: '177, 128, 215', orange: '209, 134, 22',
       pink: '214, 112, 214', cyan: '17, 168, 205' };
-    r.measures.pickColor = { ms: colorMs, ...pc, goneAfterEsc };
-    check(pc && pc.gapBelowRow === 2 && Math.abs(pc.left - Math.round(at[0])) <= 1 && pc.right <= pc.width - 4,
-      'sessions: Text Color opens its list just under the right-clicked row, where the click was', r.measures.pickColor);
-    check(pc && pc.sameLook && pc.sameItems, 'sessions: the list is drawn as the status filter\'s menu is', r.measures.pickColor);
-    check(pc && pc.items.join() === 'Default,Red,Blue,Green,Yellow,Purple,Orange,Pink,Cyan' && pc.focused === 'Purple'
-      && pc.swatches.length === 9 && pc.swatches.every(([w, h]) => w === 10 && h === 10) && pc.swatches[0][3] === 'solid'
-      && COLOR_NAMES.every((n, i) => pc.swatches[i + 1][2] === `rgb(${HEX[n]})`),
-    'sessions: it offers Default and Claude Code Plus\'s eight colours in its order, each with a 10 px swatch in the theme\'s colour', r.measures.pickColor);
-    check(goneAfterEsc, 'sessions: Esc closes the list and takes it off the page', goneAfterEsc);
+    r.measures.ctxTextColor = { ms: colourMs, ...tc };
+    check(tc.sub && looks(tc.sub) && tc.parent && near(tc.sub.box.l, ccSubLeft(tc.parent, tc.sub.box.w, tc.vw)) && near(tc.sub.box.t, Math.max(EDGE, Math.min(tc.parent.t - 3, tc.vh - tc.sub.box.h - EDGE))),
+      'sessions: resting on Text Color opens its submenu beside it, drawn and placed as Claude Code\'s submenu is', { sub: tc.sub && tc.sub.box, parent: tc.parent });
+    check(tc.sub && tc.sub.texts.join('|') === `Default ✓|${COLOR_NAMES.map((n) => n[0].toUpperCase() + n.slice(1)).join('|')}` && tc.sub.seps === 'item-itemitemitemitemitemitemitemitem'
+      && tc.sub.swatches.length === 9 && tc.sub.swatches.every(([w, h]) => w === 10 && h === 10) && tc.sub.swatches[0][3] === 'solid'
+      && COLOR_NAMES.every((n, i) => tc.sub.swatches[i + 1][2] === `rgb(${HEX[n]})`),
+    'sessions: it lists Default, checked for a row with no colour, a separator and Claude Code Plus\'s eight colours, each with a 10 px swatch in its theme colour', tc.sub);
 
-    await rightClick(at[0], at[1]);
-    await sleep(100);
-    const groupMs = await openPick({ type: 'pickGroup', ids: [ID(2)], groups: [{ key: 'section:a', label: 'Release 1.2' }, { key: 'section:e', label: 'Later' }] });
-    await sleep(100);
-    await shot('sessions-pick-group', { x: 0, y: 0, width: 360, height: 900 });
-    const pg = await pickMeasure();
-    const laterAt = await b.evaluate(`(() => { const i = [...document.querySelectorAll('.cp-pick .cp-menu-item')].find((x) => x.textContent === 'Later');
-      const r = i.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; })()`);
+    const groupAt = await centre('Codex Plus: Add to Group');
+    if (groupAt) await move(groupAt[0], groupAt[1]);
+    await sleep(300);
+    await shot('sessions-ctx-add-to-group', { x: 0, y: 0, width: 360, height: 900 });
+    const ag = await b.evaluate(MEASURE_CTX);
+    const laterAt = await b.evaluate(`(() => { const i = [...document.querySelectorAll('.cp-ctx-sub .cp-ctx-item')].find((x) => x.textContent === 'Later');
+      if (!i) return null; const r = i.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; })()`);
     await b.evaluate('window.__posted.length = 0');
-    await b.click(laterAt[0], laterAt[1]);
+    if (laterAt) { await move(laterAt[0], laterAt[1]); await b.click(laterAt[0], laterAt[1]); }
     await sleep(100);
-    const moved = await b.evaluate('({ posted: window.__posted.filter((m) => m.kind === "move"), left: document.querySelectorAll(".cp-pick").length })');
-    const many = Array.from({ length: 100 }, (_, i) => ({ key: `section:g${i}`, label: `Group ${i + 1}` }));
-    await rightClick(at[0], at[1]);
-    const manyMs = await openPick({ type: 'pickGroup', ids: [ID(2)], groups: many });
-    const fits = await b.evaluate('(() => { const r = document.querySelector(".cp-pick").getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight; })()');
+    const picked = await b.evaluate('({ posted: window.__posted.filter((m) => m.kind === "menu"), left: document.querySelectorAll(".cp-ctx").length })');
+    r.measures.ctxAddToGroup = { ...ag, picked };
+    check(ag.sub && looks(ag.sub) && ag.sub.texts.join('|') === 'Release 1.2|Later' && ag.parent && near(ag.sub.box.l, ccSubLeft(ag.parent, ag.sub.box.w, ag.vw)),
+      'sessions: moving onto Add to Group swaps in its submenu, of the groups the user made except the row\'s own', ag.sub);
+    check(picked.left === 0 && picked.posted.length === 1 && picked.posted[0].command === 'codexPlus.moveThreadToSection' && picked.posted[0].pick === 'section:e'
+      && picked.posted[0].context.threadId === ID(2), 'sessions: a group clicked there is sent to the host with the row\'s context, and the menu goes', picked);
+
+    const headSel = '.cp-group[data-key="section:a"] .cp-group-head';
+    const headAt = await b.evaluate(`(() => { const r = document.querySelector(${JSON.stringify(headSel)}).getBoundingClientRect(); return [r.left + 40, r.top + r.height / 2]; })()`);
+    const headOpen = await opened(headSel, Math.round(headAt[0]), Math.round(headAt[1]));
     await esc();
-    r.measures.pickGroup = { ms: groupMs, manyMs, ...pg, moved, fits };
-    check(pg && pg.gapBelowRow === 2 && pg.sameLook && pg.items.join() === 'Release 1.2,Later' && pg.focused === 'Release 1.2',
-      'sessions: Add to Group opens the groups in the same kind of list under the row', r.measures.pickGroup);
-    check(moved.left === 0 && moved.posted.length === 1 && moved.posted[0].key === 'section:e' && moved.posted[0].ids.join() === ID(2),
-      'sessions: a group clicked there is sent to the host, and the list goes', moved);
-    check(colorMs < 100 && groupMs < 100 && manyMs < 100 && fits,
-      'sessions: either list is on screen within 100 ms of the host asking, 100 groups included, and fits in the view', r.measures.pickGroup);
+    await sleep(100);
+    await rightClick(headAt[0], headAt[1]);
+    await sleep(200);
+    await shot('sessions-ctx-group', { x: 0, y: 0, width: 360, height: 900 });
+    const gh = await b.evaluate(MEASURE_CTX);
+    r.measures.ctxGroup = { open: headOpen, ...gh };
+    check(headOpen.prevented && looks(gh.main) && gh.main.labels.join('|') === 'Codex Plus: Start New Session in This Group|Codex Plus: New Group...|Codex Plus: Rename Group...|Codex Plus: Delete Group'
+      && gh.main.seps === 'itemitem-item-item' && !gh.main.chevron, 'sessions: a group header\'s menu has its four items in the same look', gh.main);
+    if (gh.main && gh.main.cut.length) console.log(`  note  sessions: cut short at Claude Code's 260 px: ${gh.main.cut.join('; ')}`);
+    await esc();
+    await sleep(100);
+    const gone = await b.evaluate('document.querySelectorAll(".cp-ctx").length');
+
+    /* Keys in the real page: Shift+F10 on the row the arrows reached, → into Text Color, Esc twice. */
+    await b.evaluate(`(() => { document.getElementById('root').focus(); })()`);
+    await b.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'ArrowDown', code: 'ArrowDown', windowsVirtualKeyCode: 40 });
+    await b.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'F10', code: 'F10', windowsVirtualKeyCode: 121, modifiers: 8 });
+    await sleep(150);
+    const byKey = await b.evaluate(MEASURE_CTX);
+    const key = (k, code, vk) => b.send('Input.dispatchKeyEvent', { type: 'keyDown', key: k, code, windowsVirtualKeyCode: vk });
+    for (let i = 0; i < 20 && byKey.main && !/Text Color/.test(await b.evaluate('document.activeElement.textContent')); i++) await key('ArrowDown', 'ArrowDown', 40);
+    await key('ArrowRight', 'ArrowRight', 39);
+    await sleep(100);
+    const intoSub = await b.evaluate(MEASURE_CTX);
+    await esc();
+    await sleep(50);
+    const afterOne = await b.evaluate(MEASURE_CTX);
+    await esc();
+    await sleep(50);
+    const afterTwo = await b.evaluate('document.querySelectorAll(".cp-ctx").length');
+    r.measures.ctxKeys = { gone, byKey: byKey.main && byKey.main.labels, intoSub: intoSub.focused, afterOne: [!!afterOne.main, !!afterOne.sub], afterTwo };
+    check(gone === 0 && !!byKey.main && intoSub.focused === 'Default ✓' && afterOne.main && !afterOne.sub && afterTwo === 0,
+      'sessions: Shift+F10 opens the highlighted row\'s menu, → enters Text Color, and Esc closes the submenu and then the menu', r.measures.ctxKeys);
+
+    /* 100 groups: Add to Group still fits in the window, and opens as fast. */
+    const many = JSON.parse(JSON.stringify(small));
+    for (let i = 0; i < 100; i++) many.groups.splice(3, 0, { key: `section:g${i}`, label: `Group ${i + 1}`, made: true, rows: [] });
+    await toPage({ type: 'model', model: many });
+    await sleep(200);
+    const at2 = await rowAt(ctxRow);
+    const manyOpen = await opened(ctxRow, Math.round(at2[0]), Math.round(at2[1]));
+    const manyMs = await subTimed('Codex Plus: Add to Group');
+    const fits = await b.evaluate('(() => { const s = document.querySelector(".cp-ctx-sub"); if (!s) return null; const r = s.getBoundingClientRect(); return { top: r.top, bottom: r.bottom, h: innerHeight, items: s.querySelectorAll(".cp-ctx-item").length }; })()');
+    await esc();
+    await esc();
+    await toPage({ type: 'model', model: small });
+    await sleep(100);
+    r.measures.ctxTiming = { row: rowOpen.ms, textColor: colourMs, group: headOpen.ms, manyRow: manyOpen.ms, manyGroups: manyMs, fits };
+    console.log(`  note  sessions: right-click to drawn menu ${rowOpen.ms} ms (row), ${headOpen.ms} ms (group header), ${manyOpen.ms} ms with 100 groups; `
+      + `submenu ${colourMs} ms (Text Color), ${manyMs} ms (Add to Group, 100 groups)`);
+    check(rowOpen.ms < 100 && headOpen.ms < 100 && manyOpen.ms < 100 && colourMs < 100 && manyMs < 100 && fits && fits.items === 102 && fits.top >= EDGE - 1 && fits.bottom <= fits.h - EDGE + 1,
+      'sessions: each menu and submenu is drawn within 100 ms of the right-click or the hover, 100 groups included, and fits in the window', r.measures.ctxTiming);
+
+    /* A sidebar 300 px wide. */
+    const narrow = await open(env, path.join(work, 'narrow'), { width: 300, height: 700 });
+    try {
+      const nb = narrow.b;
+      await nb.navigate(`http://127.0.0.1:${narrow.port}/sessions.html`);
+      for (let i = 0; i < 50; i++) { if (await nb.evaluate('(window.__posted || []).some((m) => m.kind === "ready")')) break; await sleep(100); }
+      await nb.evaluate(`window.__fromHost(${JSON.stringify({ type: 'model', model: small })})`);
+      await sleep(300);
+      const nAt = await nb.evaluate(`(() => { const r = document.querySelector(${JSON.stringify(ctxRow)}).getBoundingClientRect(); return [r.right - 30, r.top + r.height / 2]; })()`);
+      await nb.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: nAt[0], y: nAt[1], button: 'none' });
+      await nb.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: nAt[0], y: nAt[1], button: 'right', clickCount: 1 });
+      await nb.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: nAt[0], y: nAt[1], button: 'right', clickCount: 1 });
+      await sleep(200);
+      const nColour = await nb.evaluate(`(() => { const i = [...document.querySelectorAll('.cp-ctx-item')].find((x) => x.childNodes[0] && x.childNodes[0].textContent === 'Codex Plus: Text Color');
+        if (!i) return null; const r = i.getBoundingClientRect(); return [r.left + 20, r.top + r.height / 2]; })()`);
+      if (nColour) await nb.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: nColour[0], y: nColour[1], button: 'none' });
+      await sleep(300);
+      await nb.screenshot(path.join(shots, 'sessions-ctx-narrow.png'));
+      const n = await nb.evaluate(MEASURE_CTX);
+      const inView = (m) => !!m && m.box.l >= EDGE - 1 && m.box.r <= n.vw - EDGE + 1 && m.box.t >= EDGE - 1 && m.box.b <= n.vh - EDGE + 1;
+      const redAt = await nb.evaluate(`(() => { const i = [...document.querySelectorAll('.cp-ctx-sub .cp-ctx-item')].find((x) => x.textContent.startsWith('Red'));
+        if (!i) return null; const r = i.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; })()`);
+      const hit = redAt ? await nb.evaluate(`(() => { const e = document.elementFromPoint(${redAt[0]}, ${redAt[1]}); return e && e.closest('.cp-ctx-item') ? e.closest('.cp-ctx-item').textContent : ''; })()`) : '';
+      await nb.evaluate('window.__posted.length = 0');
+      if (redAt) {
+        await nb.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: redAt[0], y: redAt[1], button: 'none' });
+        await nb.click(redAt[0], redAt[1]);
+      }
+      await sleep(100);
+      const nPicked = await nb.evaluate('window.__posted.filter((m) => m.kind === "menu").map((m) => m.pick)');
+      r.measures.ctxNarrow = { ...n, hit, picked: nPicked };
+      check(n.vw === 300 && inView(n.main) && inView(n.sub) && n.parent && near(n.main.box.l, ccMainLeft(Math.round(nAt[0]), n.main.box.w, n.vw))
+        && near(n.sub.box.l, ccSubLeft(n.parent, n.sub.box.w, n.vw)),
+      'sessions: in a 300 px sidebar the menu and the Text Color submenu are placed as Claude Code places them, both wholly in the window', { main: n.main && n.main.box, sub: n.sub && n.sub.box, parent: n.parent });
+      check(hit === 'Red' && nPicked.join() === 'red', 'sessions: and a colour there is the topmost thing under the pointer and can be clicked', { hit, picked: nPicked });
+      check(nb.errors.length === 0, 'sessions: the 300 px page threw nothing', nb.errors);
+    } finally { await narrow.close(); }
 
     /* The status filter's menu, and the search. */
     const fb = await b.evaluate(`(() => { const r = document.querySelector('[data-tool="filter"]').getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; })()`);

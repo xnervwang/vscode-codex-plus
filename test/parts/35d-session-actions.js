@@ -110,7 +110,8 @@ module.exports = async ({ eq, tmp, root }) => {
 
   /* ── the manifest ── */
   const menus = pkg.contributes.menus;
-  const item = (cmd) => (menus['webview/context'] || []).filter((m) => m.command === `codexPlus.${cmd}` && /webviewId == 'codexPlus\.sessions' && webviewSection == 'thread'/.test(m.when));
+  const { LIST_MENU } = require('../../src/sessions-view');
+  const item = (cmd) => (LIST_MENU || []).filter((m) => m.command === `codexPlus.${cmd}` && /^webviewSection == 'thread'/.test(m.when));
   const page = fs.readFileSync(path.join(root, 'src', 'page', 'sessions-page.js'), 'utf8');
   eq([/dataset\.act = 'rename'/.test(page), item('renameThread').length], [true, 1], 'Rename is a button on a row, shown on hover, and in its right-click menu');
   eq(['moveThreadToSection', 'markThreadUnread'].map((c) => item(c).length), [1, 1], 'Add to Group and Mark as Unread are in a row\'s right-click menu');
