@@ -6,8 +6,8 @@
 programs and opened credential files in the file named by ROUTE_GUARD_LOG, and with ROUTE_GUARD=deny refuses them. The
 skill routing tests put it under the hook to prove which paths never touch any of them.
 
-The one program it lets through is the index rebuild the hook starts (skill_route.py --build), which runs under this
-same guard.
+It lets one program start: the hook's background index rebuild (skill_route.py --build), which runs under this
+guard too.
 """
 import builtins
 import io

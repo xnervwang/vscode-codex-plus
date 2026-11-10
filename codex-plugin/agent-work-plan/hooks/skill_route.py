@@ -85,7 +85,7 @@ SCAN_MAX_DIRS = 4000
 FRONTMATTER_BYTES = 64 * 1024
 EMBED_BATCH = 96         # texts per request; the model takes no more
 EMBED_MODEL = "cohere.embed-v4:0"
-SEARCH_COUNT_MAX = 20
+SEARCH_COUNT_MAX = 20    # the most skills one skill_search call returns
 
 # Keyword search: field weights and the BM25 constants, tuned on the 540 past requests above.
 W_NAME, W_TRIGGER, W_DESC = 4.0, 1.0, 1.0
