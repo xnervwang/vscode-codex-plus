@@ -29,7 +29,8 @@
  * their rollout is asked for; the answer comes back on the next scheduled poll (SessionsModel.expanded).
  *
  * Threads Codex started by itself - sub-agents, the reviews of approval requests - and `codex exec` runs are left out
- * unless codexPlus.hideBackgroundSessions is off, when they are listed with the rest.
+ * unless codexPlus.hideBackgroundSessions is off, when they are listed with the rest. A sub-agent whose parent is listed
+ * is then drawn straight after its parent, indented, wherever the parent is drawn.
  */
 const { folderTest } = require('./folders');
 const { PINNED_SECTION } = require('./session-groups');
@@ -107,10 +108,22 @@ function group(threads, { open = [], closed = [], sections = new Map(), hideBack
   if (sidebar && !open.includes(sidebar)) open = [...open, sidebar];
   const byId = new Map(threads.map((t) => [t.id, t]));
   const kindOk = (t) => (hideBackground ? t.kind === 'user' : true);
-  const here = threads.filter((t) => kindOk(t) && !t.archived && (!cwdFilter || cwdFilter(t.cwd)));
-  const openRows = open.map((id) => byId.get(id) || { id, title: '', kind: 'user', updatedMs: 0, createdMs: 0 })
-    .sort((a, b) => (frontAt(b.id) - frontAt(a.id)) || (b.updatedMs - a.updatedMs));
+  const listed = threads.filter((t) => kindOk(t) && !t.archived && (!cwdFilter || cwdFilter(t.cwd)));
+  /* Sub-agents by parent, oldest first, for the ones whose parent is listed too. */
+  const kids = new Map();
+  const ids = new Set(listed.map((t) => t.id));
+  for (const t of hideBackground ? [] : listed) {
+    if (t.kind !== 'subagent' || !t.parent || t.parent === t.id || !ids.has(t.parent)) continue;
+    if (!kids.has(t.parent)) kids.set(t.parent, []);
+    kids.get(t.parent).push(t);
+  }
+  for (const list of kids.values()) list.sort((a, b) => (a.createdMs - b.createdMs) || a.id.localeCompare(b.id));
+  const nested = new Set([...kids.values()].flat().map((t) => t.id));
+  const here = listed.filter((t) => !nested.has(t.id));
   const openSet = new Set(open);
+  const withKids = (list, skip = new Set()) => list.flatMap((t) => [t, ...(kids.get(t.id) || []).filter((k) => !skip.has(k.id))]);
+  const openRows = withKids(open.map((id) => byId.get(id) || { id, title: '', kind: 'user', updatedMs: 0, createdMs: 0 })
+    .sort((a, b) => (frontAt(b.id) - frontAt(a.id)) || (b.updatedMs - a.updatedMs)), openSet);
   const closedRows = closed.map((c) => byId.get(c.thread) || { id: c.thread, title: c.title, kind: 'user', updatedMs: c.at, createdMs: 0 })
     .filter((t) => !openSet.has(t.id));
   const out = [{ key: 'closed', label: 'Recently closed', expanded: false, threads: closedRows },
@@ -118,10 +131,12 @@ function group(threads, { open = [], closed = [], sections = new Map(), hideBack
   for (const [id, name] of sections) {
     const inSection = here.filter((t) => t.section === id);
     if (id === PINNED_SECTION && !inSection.length) continue;
-    out.push({ key: `section:${id}`, label: name || 'Group', expanded: true, threads: inSection, made: id !== PINNED_SECTION });
+    out.push({ key: `section:${id}`, label: name || 'Group', expanded: true, threads: withKids(inSection), made: id !== PINNED_SECTION });
   }
   const known = new Set(sections.keys());
-  out.push({ key: 'ungrouped', label: 'Ungrouped', expanded: true, threads: here.filter((t) => !t.section || !known.has(t.section)) });
+  out.push({ key: 'ungrouped', label: 'Ungrouped', expanded: true, threads: withKids(here.filter((t) => !t.section || !known.has(t.section))) });
+  /* Which threads are drawn under a parent, for the model's rows. */
+  out.nested = nested;
   return out;
 }
 
@@ -210,6 +225,8 @@ class SessionsModel {
     const open = new Set(this.memory.openThreads());
     let front = '';
     try { front = this.frontOf() || ''; } catch (_) { front = ''; }
+    const nested = this.groups.nested || new Set();
+    const byId = new Map(this.threads.map((t) => [t.id, t]));
     const row = (t, where) => {
       const here = open.has(t.id) || t.id === this.sidebarNow;
       /* No dot for a conversation whose rollout has not been read: unread state is unknown, not idle, and reading
@@ -220,7 +237,9 @@ class SessionsModel {
       return { id: t.id, title: t.title || '(untitled)', time: dateSpan(t.createdMs, t.updatedMs, now), dot,
         color: COLORS[colors[t.id]] || '', open: open.has(t.id), sidebar: where === 'open' && t.id === this.sidebarNow && !open.has(t.id),
         unread: !!(conv && conv.state === 'unread'), grouped: !!(t.section && this.sections.has(t.section)),
-        group: placeOf(t, this.sections), branch: t.branch || '', goal: (goal && goal.status) || '', goalText: goalText(goal) };
+        group: placeOf(t, this.sections), branch: t.branch || '', goal: (goal && goal.status) || '', goalText: goalText(goal),
+        child: nested.has(t.id), parentTitle: nested.has(t.id) ? ((byId.get(t.parent) || {}).title || '(untitled)') : '',
+        nickname: nested.has(t.id) ? String(t.nickname || '') : '' };
     };
     const keep = (key) => this.groups.find((g) => g.key === key);
     const rowsOf = (g) => (g ? g.threads.map((t) => row(t, g.key)) : []);

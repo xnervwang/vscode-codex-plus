@@ -154,11 +154,12 @@
     r._row = row;
     r._place = place;
     const sig = `${row.id}\u0001${row.title}\u0001${row.time}\u0001${row.dot}\u0001${row.color}\u0001${row.grouped}\u0001${row.unread}`
-      + `\u0001${row.goal || ''}\u0001${row.goalText || ''}`;
+      + `\u0001${row.goal || ''}\u0001${row.goalText || ''}\u0001${row.child ? 1 : 0}\u0001${row.parentTitle || ''}\u0001${row.nickname || ''}`;
     if (sig === r._sig) return;
     r._sig = sig;
     r.dataset.id = row.id;
     r._p.dot.className = `cp-dot d-${row.dot}`;
+    r.classList.toggle('cp-child', !!row.child);
     if (!r._editing) { r._mark = ''; markTitle(r); }
     r._p.title.style.color = themeColor(row.color);
     setText(r._p.time, row.time);
@@ -510,7 +511,8 @@
     hoverTimer = setTimeout(() => {
       hoverTimer = 0;
       if (!r.isConnected || hoverRow !== r || !r._row) return;
-      hoverBox.textContent = `Group: ${r._row.group}\nSession ID: ${r._row.id}${r._row.goalText ? `\n${r._row.goalText}` : ''}`;
+      const under = r._row.child ? `\nSub-agent${r._row.nickname ? ` ${r._row.nickname}` : ''} of: ${r._row.parentTitle}` : '';
+      hoverBox.textContent = `Group: ${r._row.group}\nSession ID: ${r._row.id}${under}${r._row.goalText ? `\n${r._row.goalText}` : ''}`;
       hoverBox.classList.remove('cp-hidden');
       const b = r.getBoundingClientRect();
       const w = hoverBox.offsetWidth, h = hoverBox.offsetHeight;
