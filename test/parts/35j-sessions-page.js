@@ -108,8 +108,8 @@ module.exports = async ({ eq, root }) => {
   input.bubble('keydown', { key: 'Escape' });
   eq([input.value, visibleIds().length, shown($('.cp-none'))], ['', 4, false], 'Esc clears the search');
   $('[data-tool="filter"]').bubble('click');
-  const items = $$('.cp-menu-item').map((i) => [i.dataset.status, i.querySelector('.cp-n').textContent]);
-  eq(items, [['needs_input', '1'], ['working', '1'], ['completed', '2'], ['open', '1'], ['closed', '3']],
+  const items = $$('.cp-menu-item').map((i) => [i.dataset.status, i.textContent]);
+  eq(items, [['needs_input', 'Needs input · 1'], ['working', 'Working · 1'], ['completed', 'Completed · 2'], ['open', 'Open · 1'], ['closed', 'Closed · 3']],
     'the status filter offers Needs input, Working and Completed, and Open and Closed tabs, each with its count');
   $('.cp-menu-item[data-status="needs_input"]').bubble('click');
   eq(visibleIds(), [ID(2)], 'and picking one shows only those');

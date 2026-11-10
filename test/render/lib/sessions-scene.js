@@ -155,9 +155,11 @@ async function run({ env, check, shots, out, results }) {
     const look = await b.evaluate(`(() => {
       const st = (e) => getComputedStyle(e);
       const rows = [...document.querySelectorAll('.cp-row')].filter((x) => x.offsetParent);
+      const icon = (sel) => { const s = document.querySelector(sel); return s ? [st(s).fill, st(s).stroke] : null; };
       const dot = (x) => { const d = x.querySelector('.cp-dot'); const c = st(d); return [d.className.replace('cp-dot d-', ''), c.display === 'none' ? '' : c.backgroundColor, c.borderTopColor]; };
       return {
         dots: rows.map(dot),
+        icons: { funnel: icon('[data-tool="filter"] svg'), bolt: icon('[data-tool="active"] svg') },
         noDot: rows.filter((x) => st(x.querySelector('.cp-dot')).display === 'none').map((x) => Math.round(x.querySelector('.cp-title').getBoundingClientRect().left - x.getBoundingClientRect().left)),
       };
     })()`);
@@ -168,6 +170,7 @@ async function run({ env, check, shots, out, results }) {
       'sessions: the dots are Claude Code Plus\'s #22c55e, #3b82f6 and #ef4444, rings in the same colours, failed in errorForeground', look.dots);
     check(look.dots.some(([s]) => s === 'none') && look.noDot.length > 0 && look.noDot.every((x) => x === 8),
       'sessions: an idle row not open here has no dot, and its title starts at the row\'s 8 px padding, as in Claude Code\'s list', look.noDot);
+    check(['funnel', 'bolt'].every((k) => look.icons[k] && look.icons[k][0] !== 'none' && look.icons[k][1] === 'none'), 'sessions: the funnel and the bolt are solid shapes', look.icons);
 
     /* An expanded section leaves 10 px under its last row before the next section; a collapsed one leaves none. */
     const gapBelowOpen = () => b.evaluate(`(() => {
@@ -483,8 +486,24 @@ async function run({ env, check, shots, out, results }) {
     await shot('sessions-filter-menu');
     const menuItems = await b.evaluate('[...document.querySelectorAll(".cp-menu-item")].map((x) => x.textContent)');
     check(menuItems.length === 5, 'sessions: the status filter\'s menu opens with its five choices', menuItems);
+    const fm = await b.evaluate(`(() => {
+      const m = document.querySelector('.cp-menu'), s = getComputedStyle(m), items = [...m.querySelectorAll('.cp-menu-item')], i = getComputedStyle(items[0]);
+      const head = m.querySelector('.cp-menu-title'), h = getComputedStyle(head), check = items[0].querySelector('.cp-check');
+      return { radius: s.borderTopLeftRadius, border: [s.borderTopWidth, s.borderTopStyle, s.borderTopColor].join(' '), padding: [s.paddingTop, s.paddingRight, s.paddingBottom, s.paddingLeft].join(' '),
+        minWidth: s.minWidth, shadow: s.boxShadow, bg: s.backgroundColor, item: { padding: [i.paddingTop, i.paddingRight, i.paddingBottom, i.paddingLeft].join(' '), fontSize: i.fontSize,
+          h: items[0].offsetHeight, radius: i.borderTopLeftRadius }, head: { opacity: h.opacity, padding: [h.paddingTop, h.paddingRight].join(' '), size: h.fontSize },
+        check: check && [check.offsetWidth, getComputedStyle(check).marginRight], texts: items.map((x) => x.textContent) }; })()`);
+    r.measures.filterMenu = fm;
+    check(fm.radius === CC.radius && fm.border === CC.border && fm.padding === CC.padding && fm.minWidth === CC.minWidth && fm.shadow === CC.shadow && fm.bg === CC.bg
+      && fm.item.padding === CC.itemPadding && fm.item.fontSize === CC.fontSize && fm.item.radius === '0px' && fm.head.opacity === '0.5' && fm.head.padding === '4px 12px'
+      && fm.head.size === '11.7px' && fm.check && fm.check[0] === 16 && fm.check[1] === '6px',
+    'sessions: the status filter\'s menu is the right-click menus\' Claude Code menu: 2 px padding, 6 by 12 px items with square corners, Claude Code\'s headings and its 16 px check', fm);
+    check(fm.texts.every((t) => /^(Needs input|Working|Completed|Open|Closed) · \d+$/.test(t)), 'sessions: each choice reads "Needs input · 3", as Claude Code writes it', fm.texts);
     await b.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
     await b.click(fb[0], fb[1]);
+    await sleep(100);
+    /* The click left the menu open; Esc closes it, so the search is shot with nothing over it. */
+    await b.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
     await sleep(100);
     for (const ch of 'export') {
       await b.send('Input.dispatchKeyEvent', { type: 'keyDown', key: ch, text: ch, code: `Key${ch.toUpperCase()}` });
@@ -494,6 +513,17 @@ async function run({ env, check, shots, out, results }) {
     await shot('sessions-search');
     const found = await b.evaluate('[...document.querySelectorAll(".cp-group .cp-row")].filter((x) => x.offsetParent).map((x) => x.querySelector(".cp-title").textContent)');
     check(found.length > 0 && found.every((t) => /export/i.test(t)), 'sessions: typing in the list searches it', found);
+    const sb = await b.evaluate(`(() => {
+      const box = document.querySelector('.cp-search'), input = box.querySelector('input'), c = getComputedStyle(input), f = document.querySelector('[data-tool="filter"]').getBoundingClientRect();
+      const mark = document.querySelector('.cp-mark'), q = document.createElement('span'); q.style.background = 'color-mix(in srgb, #d97757 20%, transparent)'; document.body.appendChild(q);
+      const want = getComputedStyle(q).backgroundColor; q.remove();
+      return { above: Math.round(box.getBoundingClientRect().bottom) <= Math.round(f.top), border: c.borderTopWidth, radius: c.borderTopLeftRadius, h: Math.round(input.getBoundingClientRect().height),
+        size: c.fontSize, bg: c.backgroundColor, placeholder: input.placeholder, magnifier: getComputedStyle(document.querySelector('[data-tool="search"]')).display,
+        mark: mark ? getComputedStyle(mark).backgroundColor : null, want }; })()`);
+    r.measures.search = sb;
+    check(sb.above && sb.border === '0px' && sb.radius === '4px' && sb.h === 31 && sb.size === '11.7px' && sb.bg === 'rgb(49, 49, 49)' && sb.placeholder === 'Search sessions…'
+      && sb.magnifier === 'none', 'sessions: the search box opens above the filter buttons, Claude Code\'s: no border, 4 px corners, 31 px high at 0.9em, "Search sessions…", the magnifier hidden', sb);
+    check(!!sb.mark && sb.mark === sb.want, 'sessions: the matched words are marked in Claude\'s orange at 20%', sb);
     await b.evaluate(`(() => { const i = document.querySelector('.cp-search input'); i.value = ''; i.dispatchEvent(new Event('input')); })()`);
 
     /* Time to draw and to search, timed inside the page with the layout it forces. */

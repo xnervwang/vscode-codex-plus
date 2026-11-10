@@ -38,17 +38,19 @@
     plus: ['M8 3v10', 'M3 8h10'],
     sidebar: ['M3.5 3h9A1.5 1.5 0 0 1 14 4.5v7a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 11.5v-7A1.5 1.5 0 0 1 3.5 3z', 'M10 3v10'],
     search: ['M7 3a4 4 0 1 1 0 8a4 4 0 0 1 0-8z', 'M10 10l3.5 3.5'],
-    funnel: ['M2.5 3.5h11l-4.2 5v4l-2.6 1.2v-5.2z'],
+    funnel: ['M2.6 2.5h10.8c.5 0 .8.6.5 1L9.6 8.7v4.4c0 .3-.2.5-.4.6l-2 .9c-.4.2-.8-.1-.8-.5V8.7L2.1 3.5c-.3-.4 0-1 .5-1z'],
     caret: ['M5 6.5l3 3 3-3'],
     pencil: ['M10.5 2.5l3 3-7.5 7.5H3v-3z'],
-    bolt: ['M9 1.5L3.5 9H8l-1 5.5L12.5 7H8z'],
+    bolt: ['M9.4 1.1c.3.1.5.4.4.7L9 6.4h3.4c.5 0 .8.6.5 1l-5.6 7.3c-.4.5-1.1.1-1-.5l.8-4.6H3.6c-.5 0-.8-.6-.5-1L8.7 1.3c.2-.2.5-.3.7-.2z'],
     close: ['M4.5 4.5l7 7', 'M11.5 4.5l-7 7'],
-    check: ['M3.5 8.5l3 3 6-7'],
+    check: ['M12.9 4.1c.3.3.4.8.1 1.1l-5.6 6.6c-.3.3-.8.4-1.1.1L3.2 8.8c-.3-.3-.3-.8 0-1.1.3-.3.8-.3 1.1 0l2.5 2.4 5-5.9c.3-.3.8-.4 1.1-.1z'],
   };
+  /* Drawn filled, as Claude Code draws these three; the others are line drawings. */
+  const SOLID = new Set(['funnel', 'bolt', 'check']);
   const icon = (name, cls = 'cp-icon') => {
     const s = document.createElementNS(SVG, 'svg');
     s.setAttribute('viewBox', '0 0 16 16');
-    s.setAttribute('class', cls);
+    s.setAttribute('class', SOLID.has(name) ? `${cls} cp-solid` : cls);
     s.setAttribute('aria-hidden', 'true');
     for (const d of ICONS[name]) { const p = document.createElementNS(SVG, 'path'); p.setAttribute('d', d); s.appendChild(p); }
     return s;
@@ -102,13 +104,14 @@
   const searchBox = el('div', 'cp-search');
   const searchInput = el('input');
   searchInput.type = 'text';
-  searchInput.placeholder = 'Search sessions';
+  searchInput.placeholder = 'Search sessions…';
   searchInput.setAttribute('aria-label', 'Search sessions');
   searchInput.spellcheck = false;
   const clearBtn = button('cp-clear', 'Clear search', icon('close'));
   clearBtn.dataset.tool = 'clear';
   searchBox.append(icon('search'), searchInput, clearBtn);
-  filterRow.append(filterBtn, activeBtn, tail, searchBox);
+  /* The search box comes first and takes the whole line, so it opens above the buttons, as Claude Code's does. */
+  filterRow.append(searchBox, filterBtn, activeBtn, tail);
   const groupsEl = el('div', 'cp-groups');
   const nullText = el('div', 'cp-null', 'No sessions yet');
   const noneText = el('div', 'cp-none', 'No sessions found');
@@ -365,7 +368,8 @@
     activeBtn.classList.toggle('cp-on', ui.active);
     filterBtn.classList.toggle('cp-on', ['needs_input', 'working', 'completed', 'open', 'closed'].some((k) => ui.status[k]));
     searchBox.classList.toggle('cp-hidden', !ui.searchOpen);
-    searchBtn.classList.toggle('cp-on', ui.searchOpen);
+    searchBtn.classList.toggle('cp-hidden', ui.searchOpen);
+    searchBox.classList.toggle('cp-clearable', !!ui.search);
     clearBtn.classList.toggle('cp-hidden', !ui.search);
     if (searchInput.value !== ui.search) searchInput.value = ui.search;
     const made = (model.groups || []).some((g) => g.made);
@@ -375,6 +379,8 @@
   }
 
   /* ── the status filter's menu ── */
+  /* Claude Code's own menu with its headings, as the right-click menus below copy it: each choice has the place for a
+     check and reads "Needs input · 3". */
   const MENU = [['Status'], ['needs_input', 'Needs input'], ['working', 'Working'], ['completed', 'Completed'], ['-'], ['Tabs'], ['open', 'Open'], ['closed', 'Closed']];
   function drawMenu(rows) {
     const counts = { needs_input: 0, working: 0, completed: 0, open: 0, closed: 0 };
@@ -387,7 +393,9 @@
       item.setAttribute('role', 'menuitemcheckbox');
       item.setAttribute('aria-checked', ui.status[key] ? 'true' : 'false');
       item.dataset.status = key;
-      item.append(icon('check', 'cp-icon cp-check'), el('span', '', label), el('span', 'cp-n', String(counts[key])));
+      const check = el('span', 'cp-check');
+      check.appendChild(icon('check'));
+      item.append(check, `${label} · ${counts[key]}`);
       return item;
     }));
   }

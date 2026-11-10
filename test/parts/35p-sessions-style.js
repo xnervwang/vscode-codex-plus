@@ -57,6 +57,51 @@ module.exports = async ({ eq, root }) => {
       'an idle conversation open in this window keeps its grey dot; one that is not open has none, while running, unread and not-yet-read rows keep theirs');
   }
 
+  /* ── the page ── */
+  const p = runSessionsPage(root);
+  const model = {
+    account: { account: [{ label: 'Signed in with', value: 'Amazon Bedrock' }], windows: [], tokens: [] },
+    closed: [], open: [row(1, { open: true, here: true, dot: 'working' })],
+    groups: [{ key: 'ungrouped', label: 'Ungrouped', made: false,
+      rows: [row(1, { open: true, here: true, dot: 'working' }), row(2, { dot: 'prompt' }), row(3, { dot: 'none' })] }],
+    front: '', noGroups: false, menu: [], colors: [], font: { family: 'Fira Sans, sans-serif', size: 15 },
+  };
+  p.toPage({ type: 'model', model });
+
+  /* The search box: above the filter buttons, the magnifier hidden while it is open, Claude Code's placeholder. */
+  const filterRow = p.$('.cp-filter-row');
+  eq([filterRow.childNodes[0].className.split(' ')[0], p.$('.cp-search input').placeholder], ['cp-search', 'Search sessions…'],
+    'the search box is the filter row\'s first part, so it opens above the buttons, and says "Search sessions…"');
+  p.$('[data-tool="search"]').bubble('click');
+  eq([p.$('[data-tool="search"]').classList.contains('cp-hidden'), p.$('.cp-search').classList.contains('cp-hidden')], [true, false],
+    'opening it hides the magnifier that opened it, as Claude Code does');
+  eq([has('.cp-search input', 'border: 0'), has('.cp-search input', 'border-radius: 4px'), has('.cp-search input', 'margin: 4px'),
+    has('.cp-search input', 'padding: 8px 12px 8px 32px'), has('.cp-search.cp-clearable input', 'padding-right: 28px'),
+    has('.cp-search input', 'background: var(--vscode-input-background)'), has('.cp-search input::placeholder', 'opacity: .5')],
+  [true, true, true, true, true, true, true],
+  'the box is Claude Code\'s: no border, 4 px corners and margin, 8 px padding with room for the magnifier and the clear button, a placeholder at half strength');
+  eq(has('.cp-mark', 'background: color-mix(in srgb, #d97757 20%, transparent)'), true, 'the matched text is marked in Claude\'s orange at 20%, as Claude Code marks it');
+
+  /* The status filter's menu: Claude Code's menu, the count written after the label. */
+  p.$('[data-tool="search"]').bubble('click');
+  p.$('[data-tool="filter"]').bubble('click');
+  const items = p.$$('.cp-menu-item');
+  eq(items.map((i) => i.textContent), ['Needs input · 1', 'Working · 1', 'Completed · 1', 'Open · 1', 'Closed · 2'],
+    'each choice reads as Claude Code writes it, "Needs input · 1", with no count column');
+  eq(items.every((i) => !!i.querySelector('.cp-check')), true, 'each carries the 16 px place Claude Code keeps for its check');
+  eq([rule('.cp-menu') === rule('.cp-ctx'), rule('.cp-menu-item') === rule('.cp-ctx-item'), rule('.cp-menu-sep') === rule('.cp-ctx-sep')], [true, true, true],
+    'the menu, its items and its separator share the right-click menus\' rules, which copy Claude Code\'s menu');
+  eq([has('.cp-menu-title', 'opacity: .5'), has('.cp-menu-title', 'padding: 4px 12px'), has('.cp-menu-title', 'font-size: .9em'),
+    has('.cp-check', 'width: 16px'), has('.cp-check', 'margin-right: 6px')], [true, true, true, true, true],
+  'its headings are Claude Code\'s section headers, at half strength, 4 by 12 px, 0.9em, and the check takes 16 px and 6 px after it');
+  p.$('[data-tool="filter"]').bubble('click');
+
+  /* The funnel and the bolt. */
+  const cls = (sel) => (p.$(sel) || { getAttribute: () => '' }).getAttribute('class') || '';
+  eq([/\bcp-solid\b/.test(cls('[data-tool="filter"] svg')), /\bcp-solid\b/.test(cls('[data-tool="active"] svg')),
+    has('svg.cp-icon.cp-solid', 'fill: currentColor'), has('svg.cp-icon.cp-solid', 'stroke: none')], [true, true, true, true],
+  'the funnel and the bolt are solid shapes, as Claude Code\'s are');
+
   /* The hover box: Claude Code Plus's look, over the row. */
   eq([has('.cp-hover', 'padding: 8px'), has('.cp-hover', 'border-radius: 8px'), has('.cp-hover', 'font-size: .9em'),
     has('.cp-hover', 'background: var(--vscode-menu-background, var(--vscode-editorWidget-background))'),
