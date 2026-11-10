@@ -83,6 +83,39 @@ function beingUninstalled(extensionPath, id = [ID, ...FORMER_IDS]) {
   return !liveCopies(dir, id).some((d) => path.basename(d) !== mine);
 }
 
+/** The install stamp VS Code wrote into the manifest of the copy at extensionPath, or 0 when there is none. */
+function installStamp(extensionPath) {
+  try {
+    const meta = JSON.parse(fs.readFileSync(path.join(extensionPath, 'package.json'), 'utf8')).__metadata;
+    return (meta && meta.installedTimestamp) || 0;
+  } catch (_) { return 0; }
+}
+
+/*
+ * Whether the same version was installed again over this copy after it was loaded. A version number cannot tell two
+ * builds of one version apart, and between releases it stays the same, but VS Code stamps every install into the
+ * manifest (__metadata.installedTimestamp). With no stamp on either side there is nothing to compare, and the answer is
+ * no.
+ */
+function replacedSince(extensionPath, loadedStamp) {
+  if (!extensionPath || !loadedStamp) return false;
+  const now = installStamp(extensionPath);
+  return !!now && now !== loadedStamp;
+}
+
+/*
+ * Where the copy a window loaded stands: 'uninstalling', 'replaced', or '' for neither. Replaced is a window running a
+ * build that is no longer the installed one: the same version installed again over it (replacedSince), or another
+ * version installed beside it, which marks this folder for deletion and leaves the new one unmarked. Such a window
+ * leaves every file the windows share to the ones running the installed build.
+ */
+function standing(extensionPath, id = [ID, ...FORMER_IDS], loadedStamp = 0) {
+  if (!extensionPath) return '';
+  const own = path.resolve(extensionPath);
+  if (obsolete(path.dirname(own))[path.basename(own)] === true) return beingUninstalled(own, id) ? 'uninstalling' : 'replaced';
+  return replacedSince(own, loadedStamp) ? 'replaced' : '';
+}
+
 /* The Codex installs in one extensions folder that its editor has not marked for deletion. */
 function codexInstalls(extensionsDir) {
   const marked = obsolete(extensionsDir);
@@ -113,4 +146,4 @@ function finishUninstall(extensionPath, id = [ID, ...FORMER_IDS], spawn = requir
 }
 
 module.exports = { ID, FORMER_IDS, EDITORS, roots, obsolete, liveCopies, restoreDirs, lastCopy, beingUninstalled, codexInstalls,
-  finishUninstall };
+  finishUninstall, installStamp, replacedSince, standing };

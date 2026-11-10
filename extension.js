@@ -38,12 +38,39 @@ const CONFIG = 'codexPlus';
 /* This copy's id and folder, kept for deactivate, which runs after the editor's API is gone. */
 const ID = (() => { try { const p = require('./package.json'); return `${p.publisher}.${p.name}`; } catch (_) { return uninstallPlan.ID; } })();
 let selfPath = '';
+/* The install stamp of the copy this window loaded (src/uninstall-plan.js standing). */
+let loadedStamp = 0;
 let log = null;
 let reader = null;
 /* The memento that remembers "Remove the Patch" (patching.PATCH_REMOVED_KEY) until Turn On or Toggle. */
 let memento = null;
 
 function cfg() { return vscode.workspace.getConfiguration(CONFIG); }
+
+/*
+ * Whether this window runs a build that is no longer the installed one, or one being uninstalled
+ * (src/uninstall-plan.js standing), as 'replaced' or 'uninstalling', or '' for neither. Such a window writes none of
+ * the files every window shares: the hooks' settings, the plugin in Codex and the patch. Said once in the log.
+ */
+let toldStale = false;
+function standsDown() {
+  const s = uninstallPlan.standing(selfPath, [ID, ...uninstallPlan.FORMER_IDS], loadedStamp);
+  if (s && !toldStale && log) {
+    toldStale = true;
+    const what = s === 'replaced' ? 'no longer the installed one' : 'being uninstalled';
+    log.appendLine(`${new Date().toISOString()} this window runs a build of Codex Plus that is ${what}; `
+      + 'it leaves the hooks\' settings, the plugin and the patch to the windows running the installed build');
+  }
+  return s;
+}
+
+/* Said by a command that a replaced window will not carry out. */
+async function offerReloadForStale() {
+  const reload = 'Reload Window';
+  const pick = await vscode.window.showInformationMessage('This window is running an earlier build of Codex Plus than the one now installed. '
+    + 'Reload the window to run it.', reload);
+  if (pick === reload) await vscode.commands.executeCommand('workbench.action.reloadWindow');
+}
 
 /*
  * The settings, with the master switch (codexPlus.enabled) already applied to the ones it covers.
@@ -113,7 +140,7 @@ function codexProgram() {
 
 /* What the plugin's hooks read: the few settings that change their behaviour, and the user's time zone. */
 function writeHookSettings(context) {
-  if (!trusted()) return;
+  if (!trusted() || standsDown()) return;
   const c = cfg();
   try {
     install.writeHookSettings(files.codexHome(), {
@@ -130,6 +157,7 @@ function writeHookSettings(context) {
 
 async function activate(context) {
   selfPath = context.extensionPath || '';
+  loadedStamp = uninstallPlan.installStamp(selfPath);
   log = vscode.window.createOutputChannel('Codex Plus');
   context.subscriptions.push(log);
   memento = context.globalState;
@@ -346,7 +374,9 @@ function registerCommands(context, { source, memory, sessionsProvider, say, link
     patching.refreshPanels().catch((e) => say(`redrawing the Codex pages: ${e.message}`));
     /* Only the patch is applied again here. Activation already added the hooks and listeners; adding them on every
        Turn On would stack up copies, and each copy redraws every panel on each change. */
-    if (unremoving) patching.ensurePatched(vscode, context, say, 'on').catch((e) => say(`patch: ${e.message}`));
+    const stale = unremoving && standsDown();
+    if (stale === 'replaced') offerReloadForStale().catch(() => { /* dismissed */ });
+    else if (unremoving && !stale) patching.ensurePatched(vscode, context, say, 'on').catch((e) => say(`patch: ${e.message}`));
   };
   reg('turnOn', () => setEnabled(true));
   reg('turnOff', () => setEnabled(false));
@@ -539,7 +569,7 @@ function registerCommands(context, { source, memory, sessionsProvider, say, link
  * to load stays not loaded through such an install; the install command is what loads it again.
  */
 async function ensurePlugin(context, say) {
-  if (!trusted()) return;
+  if (!trusted() || standsDown()) return;
   if (!cfg().get('workPlan', true)) { for (const k of Object.keys(problems)) problem(k, null); return; }
   /* The Python found now is part of it: a copy installed while there was none has no hooks, and one is fitted to the
      Python it was installed with. */
@@ -620,6 +650,8 @@ function notePython(context, say, python) {
 }
 
 async function installPlugin(context, say, { interactive }) {
+  const stale = standsDown();
+  if (stale) { if (interactive && stale === 'replaced') await offerReloadForStale(); return; }
   const binary = codexProgram();
   if (!binary) {
     problem('install', notInstalled('Finding the codex program of the Codex extension', 'It is looked for in that extension\'s bin folder, and at chatgpt.cliExecutable when that is set.'));
