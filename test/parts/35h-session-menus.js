@@ -51,8 +51,10 @@ module.exports = async ({ eq, root }) => {
   const unreadRow = rows.find((r) => r.id === ID(1)), readRow = rows.find((r) => r.id === ID(2));
   eq([offered(rowCtx(readRow)).filter((c) => /^markThread/.test(c)), offered(rowCtx(unreadRow)).filter((c) => /^markThread/.test(c))],
     [['markThreadUnread'], ['markThreadRead']], 'a read conversation offers Mark as Unread, an unread one Mark as Read');
-  eq(offered(rowCtx(readRow)), ['openThreadInTab', 'openThreadInSidebar', 'newGroupFromThreads', 'moveThreadToSection', 'markThreadUnread', 'renameThread', 'setTitleColor', 'setGoal'],
-    'a row offers Resume, New Group from Conversation, Add to Group, Mark as Unread, Rename, Text Color and Set Goal; Remove from Group only in a group');
+  eq(offered(rowCtx(readRow)), ['openThreadInTab', 'openThreadInSidebar', 'moveThreadToSection', 'markThreadUnread', 'renameThread', 'setTitleColor', 'setGoal'],
+    'a row offers Resume, Add to Group, Mark as Unread, Rename, Text Color and Set Goal; Remove from Group only in a group');
+  eq(pkg.contributes.commands.filter((c) => c.command === 'codexPlus.newGroupFromThreads').length, 0,
+    'and no New Group from Conversation, which Claude Code\'s menu lacks: New group above the list makes a group');
   eq([offered({ ...rowCtx(readRow), codexPlusGoal: 'active' }).filter((c) => /Goal$/.test(c)),
     offered({ ...rowCtx(readRow), codexPlusGoal: 'budgetLimited', codexPlusGoalResumable: true }).filter((c) => /Goal$/.test(c))],
   [['setGoal', 'pauseGoal', 'clearGoal'], ['setGoal', 'resumeGoal', 'clearGoal']],

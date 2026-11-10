@@ -141,10 +141,6 @@
         "icon": "$(new-folder)"
       },
       {
-        "command": "codexPlus.newGroupFromThreads",
-        "title": "Codex Plus: New Group from Conversation..."
-      },
-      {
         "command": "codexPlus.newThreadInGroup",
         "title": "Codex Plus: Start New Session in This Group"
       },
@@ -239,10 +235,6 @@
           "when": "false"
         },
         {
-          "command": "codexPlus.newGroupFromThreads",
-          "when": "false"
-        },
-        {
           "command": "codexPlus.renameGroup",
           "when": "false"
         },
@@ -283,11 +275,6 @@
           "command": "codexPlus.openThreadInSidebar",
           "when": "webviewId == 'codexPlus.sessions' && webviewSection == 'thread'",
           "group": "1_open@2"
-        },
-        {
-          "command": "codexPlus.newGroupFromThreads",
-          "when": "webviewId == 'codexPlus.sessions' && webviewSection == 'thread' && !codexPlus.noGroups",
-          "group": "2_group@1"
         },
         {
           "command": "codexPlus.moveThreadToSection",

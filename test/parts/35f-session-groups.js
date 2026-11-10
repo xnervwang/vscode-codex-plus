@@ -4,8 +4,7 @@
 
 'use strict';
 /*
- * Session list groups (Codex sections): New Group, New Group from Conversation, Rename Group,
- * Delete Group, Add to Group and Remove from Group, each sent to Codex's app-server with the method and parameters an
+ * Session list groups (Codex sections): New Group, Rename Group, Delete Group, Add to Group and Remove from Group, each sent to Codex's app-server with the method and parameters an
  * offline app-server of Codex 26.1021.22027 accepted (threadSection/create, /update, /delete, /list and
  * thread/section/move). Codex keeps no order for its sections, so the list's order is this extension's own; Codex's
  * built-in Pinned section is never offered as a group to add to.
@@ -82,11 +81,6 @@ module.exports = async ({ eq, tmp, root }) => {
     control.state.inputAnswer = (o) => (o.value === 'New group' ? 'Reading list' : undefined);
     eq(await run('newGroup'), [['threadSection/create', { name: 'Reading list' }]], 'New Group asks for a name, starting from "New group", and makes it');
     eq(globalState.get(ORDER_KEY), ['sec-new-1'], 'and remembers where it goes');
-    control.state.inputAnswer = 'From two';
-    eq(await run('newGroupFromThreads', row(made[1]), [row(made[1]), row(made[0])]),
-      [['threadSection/create', { name: 'From two' }], ['thread/section/move', { threadId: made[1].id, sectionId: 'sec-new-2' }],
-        ['thread/section/move', { threadId: made[0].id, sectionId: 'sec-new-2' }]],
-      'New Group from Conversation makes a group and moves every selected conversation into it');
     control.state.inputAnswer = (o) => (o.value === 'Pinned' ? 'Renamed' : undefined);
     eq(await run('renameGroup', header('sec-1')), [['threadSection/update', { sectionId: 'sec-1', name: 'Renamed' }]],
       'Rename Group starts from the group\'s name and renames it');
@@ -107,8 +101,8 @@ module.exports = async ({ eq, tmp, root }) => {
       'nor the group the conversation is already in, so with that the only one it says there is no other');
     eq(await run('removeFromGroup', row(made[0]), [row(made[0]), row(made[1])]), [['thread/section/move', { threadId: made[0].id, sectionId: null }]],
       'Remove from Group takes out the selected conversations that are in a group, and leaves the others');
-    control.state.inputAnswer = 'Third';
-    eq(await run('newGroupFromThreads', row(made[1]), [row(made[0])]).then((r) => r.filter(([m]) => m === 'thread/section/move').map(([, p]) => p.threadId)),
+    control.state.pickAnswer = (items) => items.find((i) => i.sectionId === 'sec-1');
+    eq(await run('moveThreadToSection', row(made[1]), [row(made[0])]).then((r) => r.map(([, p]) => p.threadId)),
       [made[1].id], 'a right-click on a row outside the selection acts on that row alone, as in a file explorer');
 
     const page = control.showWebviewView('codexPlus.sessions');
@@ -145,10 +139,10 @@ module.exports = async ({ eq, tmp, root }) => {
 
   /* ── the manifest ── */
   const cmd = (id) => pkg.contributes.commands.find((c) => c.command === `codexPlus.${id}`);
-  eq(['newGroup', 'newGroupFromThreads', 'renameGroup', 'deleteGroup', 'moveThreadToSection', 'removeFromGroup'].map((id) => (cmd(id) || {}).title),
-    ['Codex Plus: New Group...', 'Codex Plus: New Group from Conversation...', 'Codex Plus: Rename Group...', 'Codex Plus: Delete Group',
+  eq(['newGroup', 'renameGroup', 'deleteGroup', 'moveThreadToSection', 'removeFromGroup'].map((id) => (cmd(id) || {}).title),
+    ['Codex Plus: New Group...', 'Codex Plus: Rename Group...', 'Codex Plus: Delete Group',
       'Codex Plus: Add to Group...', 'Codex Plus: Remove from Group'], 'each group command is named as Claude Code names it, after "Codex Plus: "');
-  const menus = Object.values(pkg.contributes.menus).flat().filter((m) => ['codexPlus.newGroup', 'codexPlus.newGroupFromThreads',
+  const menus = Object.values(pkg.contributes.menus).flat().filter((m) => ['codexPlus.newGroup',
     'codexPlus.renameGroup', 'codexPlus.deleteGroup', 'codexPlus.moveThreadToSection'].includes(m.command) && m.when !== 'false');
   eq(menus.filter((m) => !/!codexPlus\.noGroups/.test(m.when) && !/webviewId == 'chatgpt\.conversationEditor'/.test(m.when)).map((m) => m.command), [],
     'none of them is offered once this Codex is known to have no groups');

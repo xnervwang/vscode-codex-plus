@@ -633,17 +633,15 @@ function registerCommands(context, { source, memory, sessionsModel, sessionsView
   const askName = (prompt, value) => vscode.window.showInputBox({ prompt, value, valueSelection: [0, value.length] })
     .then((name) => (name === undefined || !name.trim() ? '' : name.trim()));
   /* From the list, as in Claude Code's: the group is made as "New group" and its name is then edited where it is drawn. */
-  const newGroup = async (ids, inList) => {
+  const newGroup = async (inList) => {
     if (restricted() || !await groupsHere()) return;
     const name = inList ? 'New group' : await askName('A name for the new group', 'New group');
     if (!name) return;
     const r = await groups.create(name);
-    if (r.outcome !== 'done') { done('make the group', r); return; }
-    done('move it', ids.length ? await groups.move(ids, r.id) : r);
-    if (inList) sessionsView.tell({ type: 'startRenameGroup', key: `section:${r.id}` });
+    done('make the group', r);
+    if (inList && r.outcome === 'done') sessionsView.tell({ type: 'startRenameGroup', key: `section:${r.id}` });
   };
-  reg('newGroup', (arg) => newGroup([], fromList(arg)));
-  reg('newGroupFromThreads', (arg, selected) => newGroup(chosen(arg, selected), fromList(arg)));
+  reg('newGroup', (arg) => newGroup(fromList(arg)));
   reg('newThreadInGroup', async (arg) => {
     const id = sectionArg(arg);
     if (!id || restricted() || !await groupsHere()) return;
@@ -670,7 +668,7 @@ function registerCommands(context, { source, memory, sessionsModel, sessionsView
     if (!ids.length || restricted() || !await groupsHere()) return;
     const items = groups.choices().filter(([sectionId]) => !ids.every((id) => (reader.thread(id) || {}).section === sectionId))
       .map(([sectionId, name]) => ({ label: name || 'Group', sectionId }));
-    if (!items.length) { vscode.window.showInformationMessage('Codex Plus: there is no other group to add it to. New Group from Conversation makes one.'); return; }
+    if (!items.length) { vscode.window.showInformationMessage('Codex Plus: there is no other group to add it to. New group, above the groups in the Codex sessions list, makes one.'); return; }
     const pick = await vscode.window.showQuickPick(items, { placeHolder: 'Add to which group?' });
     if (pick) done('move it', await groups.move(ids, pick.sectionId));
   });
@@ -720,7 +718,7 @@ function registerCommands(context, { source, memory, sessionsModel, sessionsView
     if (msg.kind === 'open' && id) await vscode.commands.executeCommand(msg.where === 'sidebar' ? 'codexPlus.openThreadInSidebar' : 'codexPlus.openThreadInTab', id);
     else if (msg.kind === 'newInTab') await vscode.commands.executeCommand('codexPlus.newInTab');
     else if (msg.kind === 'newInSidebar') await vscode.commands.executeCommand('codexPlus.newInSidebar');
-    else if (msg.kind === 'newGroup') await newGroup([], true);
+    else if (msg.kind === 'newGroup') await newGroup(true);
     else if (msg.kind === 'rename' && id && typeof msg.title === 'string') {
       const was = (reader.thread(id) || {}).title || '';
       const title = msg.title.replace(/\s+/g, ' ').trim();
