@@ -4,10 +4,9 @@
 
 'use strict';
 /*
- * Where this script's hover boxes go, as Claude Code Plus places its own. A label is centred on its control and drawn
- * above it, or below it when there is no room above, so it never covers the control the pointer is on. A row's preview
- * in a page too narrow to put it beside the list goes just below the row, or just above it when it would run off the
- * bottom of the page.
+ * A label is centred on its control and drawn above it, or below it when there is no room above, so it never covers the
+ * control the pointer is on. A row's preview in a page too narrow to put it beside the list goes just below the row, or
+ * just above it when it would run off the bottom of the page.
  */
 const fs = require('fs');
 const path = require('path');

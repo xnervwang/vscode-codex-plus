@@ -6,7 +6,7 @@
 /*
  * The model is told the command line that changes a row, which starts with the Python launcher in launcher.json. When
  * that launcher is a path the shell has to quote, as the Python this extension downloads on Windows is, PowerShell runs
- * the line only with `&` in front of it, and the model is told so.
+ * the line only with `&` in front of it.
  */
 const cp = require('child_process');
 const fs = require('fs');

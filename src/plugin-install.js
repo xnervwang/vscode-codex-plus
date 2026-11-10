@@ -310,7 +310,7 @@ function writeHookSettings(home, values, { marker = '' } = {}) {
 /*
  * The reader's time zone, for the time-zone hook (tell-time-zone.py), which cannot ask Codex's page for it. A hook that
  * reads a half-written file leaves the zone out of that turn, so the new content goes into a temporary file that is then
- * renamed over this one, and nothing is written when the file already holds this zone. Returns whether it wrote.
+ * renamed over this one. Returns whether it wrote.
  */
 function writeClientZone(home, zone) {
   if (!zone) return false;
@@ -418,8 +418,8 @@ function leftAfterRemoval(home) {
 const savedNote = (home) => `These files are work plans from the agent-work-plan plugin for Codex. Each one belongs to a
 conversation and is named by its thread id.
 
-Codex Plus copied them here when it removed the plugin from Codex, since removing a plugin may remove its data
-directory too. Nothing reads this folder; keep it or delete it.
+Codex Plus copied them here before removing the plugin from Codex, which may delete the plugin's data directory with
+it. Nothing reads this folder; keep it or delete it.
 
 To use them again, install Codex Plus, then copy these files back into
 ${planDir(home)}

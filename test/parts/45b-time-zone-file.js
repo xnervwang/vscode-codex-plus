@@ -6,7 +6,7 @@
 /*
  * The plugin's time-zone hook reads the reader's zone from client-time-zone.json beside the plans, and leaves the zone
  * out of a turn in which it reads that file half-written. So the file is replaced by a rename instead of being rewritten
- * in place, and is not written at all when its content would stay the same.
+ * in place.
  */
 const fs = require('fs');
 const path = require('path');

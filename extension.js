@@ -47,11 +47,8 @@ let memento = null;
 
 function cfg() { return vscode.workspace.getConfiguration(CONFIG); }
 
-/*
- * What src/uninstall-plan.js standing says of this window's copy: 'replaced', 'uninstalling' or ''. A window whose copy
- * is replaced or being uninstalled writes none of the files every window shares: the hooks' settings, the plugin in
- * Codex and the patch. The first time, it writes a line to the log saying so.
- */
+/* A window whose copy is replaced or being uninstalled (src/uninstall-plan.js standing) leaves the shared files alone:
+   the hooks' settings, the plugin in Codex and the patch. */
 let toldStale = false;
 function standsDown() {
   const s = uninstallPlan.standing(selfPath, [ID, ...uninstallPlan.FORMER_IDS], loadedStamp);

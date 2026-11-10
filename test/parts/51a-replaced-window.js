@@ -4,11 +4,11 @@
 
 'use strict';
 /*
- * A window that has not reloaded since another build of this extension was installed goes on running the build it
- * loaded. VS Code stamps every install into the manifest it writes (__metadata.installedTimestamp), and an update or a
- * downgrade marks the old folder in .obsolete while the new one stays unmarked. Either way the window must leave the
- * files every window shares alone: written by the older build, the hooks' settings lose every key only the newer one
- * knows, until some reloaded window writes them again.
+ * A window keeps running the build it loaded until it reloads, even after another build of this extension is
+ * installed. VS Code stamps every install into the manifest it writes (__metadata.installedTimestamp), and an update or
+ * a downgrade marks the old folder in .obsolete while the new one stays unmarked. Either way the window must leave the
+ * files every window shares alone. If it wrote the hooks' settings, every key only the newer build knows would be lost
+ * until a reloaded window wrote them again.
  */
 const fs = require('fs');
 const path = require('path');

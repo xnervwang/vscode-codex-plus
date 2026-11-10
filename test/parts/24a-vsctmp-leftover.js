@@ -6,7 +6,7 @@
 /*
  * A folder VS Code failed to delete. It renames a folder to <folder>.<random>.vsctmp before deleting it, and one whose
  * deletion failed (a file held open, which happens most on Windows) stays under that name until its next start. The name
- * still starts like a copy of this extension, and it is not one: nothing in it runs.
+ * still starts like a copy of this extension, but nothing in it runs.
  */
 const fs = require('fs');
 const path = require('path');
