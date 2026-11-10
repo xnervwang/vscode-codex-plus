@@ -141,9 +141,10 @@ The work plan's hooks and its MCP server need Python 3.7 or later. `py -3`, `pyt
 
 | | |
 | --- | --- |
-| No Python found | The plugin is installed without its hooks, its MCP server or its skill (the instructions that tell Codex how to use the work plan), so the work plan stays empty rather than putting a failed hook in every turn. `Codex Plus: Show Status` says which names were tried. |
-| No Python, on Windows | `Codex Plus: Download Python for the Work Plan Hooks` fetches python.org's embeddable build (11 MB) into this extension's own storage, checks it against a recorded SHA-256, and installs the plugin again. It installs nothing system-wide, and it fetches nothing until you run the command or press its button. |
-| No Python, elsewhere | Install Python 3 and run `Codex Plus: Install the Work Plan Plugin into Codex` again. python.org publishes an embeddable build for Windows only. |
+| No Python found | The plugin is installed without its hooks, its MCP server or its skill (the instructions that tell Codex how to use the work plan), so the work plan stays empty rather than putting a failed hook in every turn. A row above the work plan says so, and which names were tried; so does `Codex Plus: Show Status`. |
+| No Python, on Windows | Clicking that row fetches python.org's embeddable build (11 MB) into this extension's own storage, checks it against a recorded SHA-256, and installs the plugin again; the download is also offered once per version of that build at start-up, as Claude Code Plus offers it. It installs nothing system-wide, and it fetches nothing until you press a button. |
+| No Python, elsewhere | Install Python 3 and click that row, or run `Codex Plus: Install the Work Plan Plugin into Codex`. python.org publishes an embeddable build for Windows only. |
+| The row above the work plan | As Claude Code Plus draws it: the plugin could not be installed (click to try again), there is no Python (click to download it, or to install again), or Codex has not been told to trust the plugin's hooks (click to trust them). The one to fix first is shown, and it goes once that is fixed. |
 | A Python installed later | The next install finds it. Nothing is remembered between installs. |
 
 ## Verified Codex builds

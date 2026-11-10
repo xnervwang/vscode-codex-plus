@@ -304,6 +304,10 @@
         {
           "command": "codexPlus.markThreadUnread",
           "when": "false"
+        },
+        {
+          "command": "codexPlus.downloadPython",
+          "when": "false"
         }
       ],
       "editor/title": [

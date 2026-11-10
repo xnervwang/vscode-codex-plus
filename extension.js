@@ -143,6 +143,7 @@ async function activate(context) {
   const source = createCodexSource(vscode, { log: say, reader, patching, trusted, enabled: () => cfg().get('workPlan', true),
     seen: createSeen(context.globalState) });
   context.subscriptions.push(source);
+  planSource = source;
   /* The user's time zone, as Codex's page reported it through the patch. */
   source.timeZone = () => context.globalState.get('codexPlus.clientTimeZone') || '';
   const reportTimeZone = async (zone) => {
@@ -577,11 +578,18 @@ function registerCommands(context, { source, memory, sessionsProvider, say, link
  * to load stays not loaded through such an install; the install command is what loads it again.
  */
 async function ensurePlugin(context, say) {
-  if (!trusted() || !cfg().get('workPlan', true)) return;
+  if (!trusted()) return;
+  if (!cfg().get('workPlan', true)) { for (const k of Object.keys(problems)) problem(k, null); return; }
   /* The Python found now is part of it: a copy installed while there was none has no hooks, and one is fitted to the
      Python it was installed with. */
-  const st = install.installState(files.codexHome(), undefined, await findPython(context));
-  if (st.current) { await trustPlugin(say, { interactive: false }); return; }
+  const python = await findPython(context);
+  const st = install.installState(files.codexHome(), undefined, python);
+  if (st.current) {
+    problem('install', null);
+    notePython(context, say, python);
+    await trustPlugin(say, { interactive: false });
+    return;
+  }
   say(`work plan plugin in Codex: ${st.why} (${st.versions.join(', ') || 'none'}; this extension carries ${st.want})`);
   await installPlugin(context, say, { interactive: false });
 }
@@ -610,9 +618,53 @@ async function downloadPython(context, say) {
   return r;
 }
 
+/*
+ * The row above the work plan (Agent Plus's planNotice), as Claude Code Plus draws its own: the plugin could not be
+ * installed, there is no Python for its hooks, or Codex has not been told to trust them. Each is set where it is found
+ * out and cleared where it is found fixed; of those holding, the first is shown, being the one to fix first.
+ */
+let planSource = null;
+const problems = { install: null, python: null, trust: null };
+function problem(kind, notice) {
+  problems[kind] = notice || null;
+  if (planSource && typeof planSource._setNotice === 'function') planSource._setNotice(problems.install || problems.python || problems.trust);
+}
+const notInstalled = (step, said) => ({ title: 'The plugin that writes work plans is not installed', description: 'click to try again',
+  detail: `${step} failed. ${said || 'It gave no reason.'} Until this succeeds nothing writes a work plan, so the plan stays empty.`,
+  command: 'codexPlus.installWorkPlanPlugin', arguments: [] });
+function noPython(context) {
+  const canDownload = !!pythonRuntime.build();
+  const tried = pythonRuntime.pythons(context.globalStorageUri.fsPath).map((l) => l.join(' ')).join(', ');
+  return { title: 'Work plans need Python 3', description: canDownload ? 'click to download it' : 'click to try again',
+    detail: `Finding Python 3 failed. No Python 3.7 or later was found (tried ${tried}). `
+      + (canDownload ? 'Click to download it, or install Python and reload the window. ' : 'Install it from python.org, then click this to install the plugin again. ')
+      + 'Until then the plugin is in Codex without its hooks, MCP server and skill, so nothing writes a work plan.',
+    command: canDownload ? 'codexPlus.downloadPython' : 'codexPlus.installWorkPlanPlugin', arguments: [] };
+}
+const NOT_TRUSTED = { title: 'Codex does not run the work plan hooks yet', description: 'click to trust them',
+  detail: 'Codex runs a plugin\'s hooks only after you trust them, and the work plan plugin\'s are not trusted. Until they are, the open '
+    + 'rows of a plan are not put in front of the model each turn and nothing reminds it at the end of one.',
+  command: 'codexPlus.trustWorkPlanHooks', arguments: [] };
+
+/* With no Python, the row says so, and where python.org has a build for this machine the download is offered once per
+   version, as Claude Code Plus offers it; after "Not now" the row is the way to get it. */
+const PYTHON_OFFER_KEY = 'codexPlus.pythonOffer';
+function notePython(context, say, python) {
+  problem('python', python ? null : noPython(context));
+  if (python || !pythonRuntime.build() || context.globalState.get(PYTHON_OFFER_KEY, '') === pythonRuntime.VERSION) return;
+  context.globalState.update(PYTHON_OFFER_KEY, pythonRuntime.VERSION);
+  Promise.resolve(vscode.window.showInformationMessage('Work plans need Python 3. Download it from python.org (11 MB)?', 'Download', 'Not now'))
+    .then(async (pick) => { if (pick === 'Download' && await downloadPython(context, say)) await installPlugin(context, say, { interactive: false }); })
+    .catch((e) => say(`offering Python: ${e.message}`));
+}
+
 async function installPlugin(context, say, { interactive }) {
   const binary = codexProgram();
-  if (!binary) { if (interactive) vscode.window.showErrorMessage('The codex program of the Codex extension was not found.'); return; }
+  if (!binary) {
+    problem('install', notInstalled('Finding the codex program of the Codex extension', 'It is looked for in that extension\'s bin folder, and at chatgpt.cliExecutable when that is set.'));
+    if (interactive) vscode.window.showErrorMessage('The codex program of the Codex extension was not found.');
+    return;
+  }
   try {
     const stage = path.join(context.globalStorageUri.fsPath, 'marketplace');
     let python = await findPython(context);
@@ -634,8 +686,11 @@ async function installPlugin(context, say, { interactive }) {
     const r = await install.install({ binary, home: files.codexHome(), stage, python, load: interactive ? true : 'keep' });
     say(`installed work plan plugin ${r.version} into ${files.codexHome()}${r.loaded === false ? '; Codex is still set not to load it' : ''}`);
     writeHookSettings(context);
+    problem('install', null);
+    notePython(context, say, python);
     await trustPlugin(say, { interactive: true });
   } catch (e) {
+    problem('install', notInstalled('Installing it into Codex', e.message));
     say(`installing the plugin failed: ${e.message}`);
     if (interactive) vscode.window.showErrorMessage(`Could not install the work plan plugin: ${e.message}`);
   }
@@ -658,12 +713,13 @@ async function trustPlugin(say, { interactive }) {
     const cwds = folders.length ? folders : [home];
     let st;
     try { st = await install.hookStatus({ binary, home, cwds }); } catch (e) { say(`listing hooks failed: ${e.message}`); return; }
-    if (!st.review.length) { if (interactive) vscode.window.setStatusBarMessage('The work plan hooks are trusted.', 4000); return; }
+    if (!st.review.length) { problem('trust', null); if (interactive) vscode.window.setStatusBarMessage('The work plan hooks are trusted.', 4000); return; }
     const go = 'Trust them';
     const detail = `Codex runs hooks outside its sandbox and only after you trust them. These ${st.review.length} come from the work plan plugin`
       + ` in ${home}:\n\n` + st.review.map((h) => `${h.eventName}: ${h.command}`).join('\n')
       + '\n\nYou can also trust them in Codex: Settings > Hooks.';
     const pick = await vscode.window.showWarningMessage('Trust the work plan hooks in Codex?', { modal: interactive || round > 0, detail }, go, 'Open Codex settings');
+    if (pick !== go) problem('trust', NOT_TRUSTED);
     if (pick === 'Open Codex settings') { try { await vscode.commands.executeCommand('chatgpt.openSidebar'); } catch (_) { /* gone */ } return; }
     if (pick !== go) return;
     if (files.codexHome() !== home) { say('the Codex home changed while the trust dialog was open; listing the hooks again'); continue; }
@@ -671,6 +727,7 @@ async function trustPlugin(say, { interactive }) {
       const r = await install.trustHooks({ binary, home, cwds, shown: st.review.map((h) => ({ key: h.key, currentHash: h.currentHash })) });
       if (r.changed) { say('the hooks needing trust changed while the dialog was open; listing them again'); continue; }
       say(`trusted ${r.trusted} work plan hook(s) in ${home}`);
+      problem('trust', null);
       return;
     } catch (e) { vscode.window.showErrorMessage(`Could not trust the hooks: ${e.message}`); return; }
   }

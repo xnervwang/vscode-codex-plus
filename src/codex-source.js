@@ -14,6 +14,8 @@
  *   listConversations              every conversation a person started, from the reader's latest snapshot
  *   reveal                         bring one to the front: only a tab already in this window
  *   canDeliver, deliverAnswer      typing an answer into one, through the patch to Codex (src/patching.js)
+ *   planNotice, timeZone           the row above the plan (the plugin missing, no Python, its hooks not trusted), which
+ *                                  the extension sets, and the reader's time zone, which Codex's page reports
  *
  * `working` comes from files: its rollout has a task_started with no task_complete after it, corrected by the turn
  * starts and ends this window's app-server reported since the last read, which arrive at once (turnOf). `unread` is a turn that
@@ -170,6 +172,9 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
   seen = createSeen() } = {}) {
   const changed = new vscode.EventEmitter();
   const focused = new vscode.EventEmitter();
+  /* The row above the work plan, set by the extension (_setNotice): { title, description, detail, command, arguments }. */
+  const noticeChanged = new vscode.EventEmitter();
+  let notice = null;
   let timer = null;
   /* Delivery ids already handled, so an answer handed over twice is typed once. Never trimmed: an id that fell off the
      end would be typed a second time, which is the one thing it is here to prevent. */
@@ -353,6 +358,13 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
       return out;
     },
     onDidChangeConversations: changed.event,
+    planNotice() { return notice; },
+    onDidChangePlanNotice: noticeChanged.event,
+    _setNotice(next) {
+      const was = JSON.stringify(notice);
+      notice = next || null;
+      if (JSON.stringify(notice) !== was) noticeChanged.fire();
+    },
     /*
      * Brings a conversation to the front in this window, if a tab here shows it. A conversation running with no tab here
      * is running in another window, which an extension cannot raise, so that is false. One with no tab and not running
@@ -426,6 +438,7 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
       for (const d of subs.splice(0)) { try { d.dispose(); } catch (_) { /* already disposed */ } }
       changed.dispose();
       focused.dispose();
+      noticeChanged.dispose();
     },
   };
   timer = setInterval(() => poll(), POLL_MS);
