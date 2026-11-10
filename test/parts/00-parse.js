@@ -50,8 +50,8 @@ module.exports = ({ ok, bad, eq, root }) => {
   eq(/claudeCodeExtras|codexPlus\.(standalone|hosted|answer"|sessionsHosted|conversations")/.test(JSON.stringify(c)), false, 'nothing names the old host or the standalone views');
   const open = c.commands.find((x) => x.command === 'codexPlus.openCodex');
   eq([c.menus['editor/title'], open && open.icon, ['codex-light.svg', 'codex-dark.svg'].every((f) => fs.existsSync(path.join(root, 'images', f)))],
-    [[{ command: 'codexPlus.openCodex', group: 'navigation' }], { light: 'images/codex-light.svg', dark: 'images/codex-dark.svg' }, true],
-    'the tab bar has the one Codex button, with its icons, and nothing else of this extension\'s');
+    [[{ command: 'codexPlus.openCodex', when: '!codexPlus.tabBarHooked', group: 'navigation' }], { light: 'images/codex-light.svg', dark: 'images/codex-dark.svg' }, true],
+    'the tab bar has the one Codex button, with its icons, while Codex\'s own does not do its work, and nothing else of this extension\'s');
   /* What the Claude side has no counterpart of, and so is not here either. */
   const trimmed = ['goToWaiting', 'refreshSessions', 'copyThreadId', 'loadWorkPlanPlugin', 'sampleConversationDom', 'pageSelfCheck']
     .map((n) => 'codexPlus.' + n);

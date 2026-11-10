@@ -544,6 +544,21 @@ function registerCommands(context, { source, memory, sessionsModel, sessionsView
    */
   reg('openCodex', () => (cfg().get('tabBarButton', 'tab') === 'sidebar'
     ? vscode.commands.executeCommand('codexPlus.newInSidebar') : newConversationInTab(say)));
+  /*
+   * Codex's own tab bar button, once the host patch asks this extension about its click (src/host.js, "tab bar
+   * button"): set to tab, it starts a conversation in a tab as the button above does, and that button is then hidden.
+   * VS Code runs a tab bar button with the editor's resource and its group; any call without them is Codex's own.
+   */
+  const fromTabBar = (args) => (Array.isArray(args) ? args : []).some((a) => !!a && typeof a === 'object'
+    && ((typeof a.scheme === 'string' && typeof a.path === 'string') || typeof a.groupId === 'number'));
+  globalThis.__codexExtrasTabBar = (args) => {
+    if (!fromTabBar(args) || settings().enabled === false || cfg().get('tabBarButton', 'tab') !== 'tab') return false;
+    newConversationInTab(say).catch((e) => say(`new conversation in a tab: ${e.message}`));
+    return true;
+  };
+  const hooked = () => { vscode.commands.executeCommand('setContext', 'codexPlus.tabBarHooked', true); };
+  globalThis.__codexExtrasTabBarReady = hooked;
+  if (globalThis.__codexExtrasTabBarHooked) hooked();
   reg('openThreadInTab', async (arg) => {
     const id = threadArg(arg);
     if (!id) return;
@@ -923,6 +938,9 @@ async function trustPlugin(say, { interactive }) {
 /* An uninstall is handed to the uninstall script here rather than left until VS Code deletes the folder
    (src/uninstall-plan.js finishUninstall). */
 function deactivate() {
+  /* A patched Codex still running then finds no one to ask, and its button opens its sidebar again. */
+  delete globalThis.__codexExtrasTabBar;
+  delete globalThis.__codexExtrasTabBarReady;
   files.closeAll();
   try { uninstallPlan.finishUninstall(selfPath, [ID, ...uninstallPlan.FORMER_IDS]); } catch (_) { /* VS Code runs the hook later */ }
 }

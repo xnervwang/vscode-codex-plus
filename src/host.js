@@ -109,6 +109,19 @@ const EDITS = [
     re: /sendResponse\(([\w$]+),([\w$]+)\)\{/g,
     to: (m, id, result) => `sendResponse(${id},${result}){${call('__codexExtrasAppServer', `"answer",{id:${id}}`)};`,
   },
+  /*
+   * Codex's button on the editor tab bar runs chatgpt.openSidebar, and VS Code runs a tab bar button's command with the
+   * editor's resource and its group as arguments. This extension is asked first about that click, and with
+   * codexPlus.tabBarButton set to tab it starts a conversation in a tab instead; any other call has no such argument
+   * and goes to Codex's own function. The flag tells this extension that the running Codex has the button, so its own
+   * button can stay hidden.
+   */
+  {
+    name: 'tab bar button',
+    re: /registerCommand\("chatgpt\.openSidebar",([\w$]+)\)/g,
+    to: (m, fn) => `registerCommand("chatgpt.openSidebar",(globalThis.__codexExtrasTabBarHooked=!0,${call('__codexExtrasTabBarReady', '')},`
+      + `(...a)=>{let _cx=!1;try{_cx=!!(globalThis.__codexExtrasTabBar&&globalThis.__codexExtrasTabBar(a))}catch(_e){}return _cx?void 0:${fn}(...a)}))`,
+  },
 ];
 
 const MARK = `/* CODEX-EXTRAS-HOST v${VERSION}-` + crypto.createHash('sha256')

@@ -245,6 +245,54 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
       'and starts a new conversation in the sidebar instead');
   }
   {
+    /*
+     * Codex's own tab bar button, with the host patch's "tab bar button" edit: its command asks this extension first. VS
+     * Code runs a tab bar button with the editor's resource and { groupId } (its editor title menu forwards both); a
+     * key, the command palette or another extension calls it with neither.
+     */
+    const vm = require('vm');
+    const host = require(path.join(root, 'src', 'host.js'));
+    const edit = host.EDITS.find((e) => e.name === 'tab bar button');
+    const code = edit ? 'commands.registerCommand("chatgpt.openSidebar",open);'.replace(edit.re, edit.to) : '';
+    const sandbox = { calls: [], handlers: {}, readied: 0 };
+    sandbox.commands = { registerCommand: (n, f) => { sandbox.handlers[n] = f; } };
+    sandbox.open = (...a) => { sandbox.calls.push(a.length); return 'sidebar'; };
+    sandbox.__codexExtrasTabBarReady = () => { sandbox.readied++; };
+    if (code) vm.runInNewContext(code, sandbox);
+    const button = sandbox.handlers['chatgpt.openSidebar'] || (() => undefined);
+    const results = [button({ scheme: 'file', path: '/w/a.ts' }, { groupId: 1 })];
+    sandbox.__codexExtrasTabBar = (args) => args.length > 0;
+    results.push(button({ scheme: 'file', path: '/w/a.ts' }, { groupId: 1 }), button());
+    sandbox.__codexExtrasTabBar = () => { throw new Error('broken'); };
+    results.push(button({ groupId: 2 }));
+    eq([!!edit, sandbox.__codexExtrasTabBarHooked, sandbox.readied, results, sandbox.calls], [true, true, 1, ['sidebar', undefined, 'sidebar', 'sidebar'], [2, 0, 1]],
+      'the patched command says it is hooked, and runs Codex\'s own function unless this extension takes the click: '
+      + 'without this extension, for a call with no arguments, and when this extension fails');
+
+    const fromBar = [{ scheme: 'file', path: '/w/a.ts', fsPath: '/w/a.ts' }, { groupId: 1 }];
+    /* Asked while the extension is up: run() deactivates it before it returns. */
+    const asked = (calls) => async ({ control }) => {
+      const take = globalThis.__codexExtrasTabBar || (() => null);
+      const before = control.state.commands.length;
+      const took = calls.map((args) => take(args));
+      await new Promise((r) => setTimeout(r, 50));
+      return { took, tabs: control.state.commands.slice(before).filter((c) => c[0] === 'vscode.openWith').length };
+    };
+    globalThis.__codexExtrasTabBarHooked = true;
+    const w = await run(root, tmp, { takesRoute: true, probe: asked([fromBar, [], [{ groupId: 1 }]]) });
+    delete globalThis.__codexExtrasTabBarHooked;
+    eq([w.probed.took, w.probed.tabs], [[true, false, true], 2],
+      'with codexPlus.tabBarButton at tab, a click on Codex\'s button starts a conversation in a tab, and a call from anywhere else is left to Codex');
+    eq(w.state.commands.some((c) => c[0] === 'setContext' && c[1] === 'codexPlus.tabBarHooked' && c[2] === true), true,
+      'and a running Codex with the edit hides this extension\'s own button');
+    const side = await run(root, tmp, { takesRoute: true, config: { tabBarButton: 'sidebar' }, probe: asked([fromBar]) });
+    const off = await run(root, tmp, { takesRoute: true, config: { enabled: false }, probe: asked([fromBar]) });
+    eq([side.probed.took, off.probed.took], [[false], [false]], 'set to sidebar, or with the additions off, the click is Codex\'s own: it opens Codex\'s sidebar');
+    eq(typeof globalThis.__codexExtrasTabBar, 'undefined', 'and once this extension is deactivated a patched Codex has no one to ask, so its button is Codex\'s again');
+    const bar = (pkg.contributes.menus['editor/title'] || []).find((m) => m.command === 'codexPlus.openCodex');
+    eq(bar && bar.when, '!codexPlus.tabBarHooked', 'this extension\'s own button is shown only while the running Codex has no such edit');
+  }
+  {
     /* The group choice on its own, against the tab groups Claude Code's choice is made from. */
     const tabsMod = require(path.join(root, 'src', 'codex-tabs.js'));
     const { vscode, control } = fake.create();

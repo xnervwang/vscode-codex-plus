@@ -2,7 +2,7 @@
   "comment": "Codex builds this extension has been verified against, and what was checked on each. Maintained by hand, one entry per build that somebody actually ran the checks against; see src/supported.js for what each field claims and test/parts/70-supported.js for what is enforced. For a build that is no longer listed, git log -S<version> -- src/supported-versions.json finds the commits that claimed it.",
   "codex": {
     "26.1021.22027": {
-      "checked": "2026-11-09",
+      "checked": "2026-11-10",
       "hostEdits": [
         "provider instance",
         "conversation panels",
@@ -12,7 +12,8 @@
         "window broadcasts",
         "page messages",
         "app-server requests",
-        "app-server answers"
+        "app-server answers",
+        "tab bar button"
       ],
       "pagePatch": true,
       "stateDb": "state_5.sqlite",

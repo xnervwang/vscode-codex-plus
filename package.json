@@ -262,6 +262,7 @@
       "editor/title": [
         {
           "command": "codexPlus.openCodex",
+          "when": "!codexPlus.tabBarHooked",
           "group": "navigation"
         }
       ],
@@ -388,9 +389,9 @@
         "codexPlus.tabBarButton": {
           "type": "string",
           "enum": ["tab", "sidebar"],
-          "enumDescriptions": ["A new Codex conversation in a tab.", "A new Codex conversation in Codex's sidebar."],
+          "enumDescriptions": ["A new Codex conversation in a tab.", "Codex's sidebar: with the patch in effect, as Codex's own button opens it; without it, a new conversation there."],
           "default": "tab",
-          "markdownDescription": "What the Codex button on the editor tab bar opens. With either choice one button is enough: Codex's own button beside it, which opens its sidebar, can be hidden by right-clicking it and choosing **Hide**."
+          "markdownDescription": "What the Codex button on the editor tab bar opens. With the patch in effect the button is Codex's own: set to `tab` it starts a conversation in a tab, and set to `sidebar` it opens Codex's sidebar, as it always did. Its hover still reads Codex's own title, *Open Codex Sidebar*, whichever is set. Without the patch this extension shows a button of its own instead, and Codex's beside it can be hidden by right-clicking it and choosing **Hide**."
         },
         "codexPlus.sessionList": {
           "type": "boolean",
