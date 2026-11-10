@@ -111,7 +111,7 @@ function sweepOrphans(opts = {}) {
   let names;
   try { names = fs.readdirSync(dir); } catch (_) { names = null; }
   /* Abandoned locks are removed regardless of the rollouts, since each one delays every writer of that plan until it
-     times out, and so are a killed hook's temporary files. rmdir only removes an empty directory. */
+     times out. rmdir only removes an empty directory. */
   for (const name of names || []) {
     const lock = LOCK.test(name), temp = !lock && TEMP.test(name);
     if (!lock && !temp) continue;

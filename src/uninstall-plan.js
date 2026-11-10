@@ -93,8 +93,7 @@ function installStamp(extensionPath) {
 
 /*
  * Whether the same version was installed again over this copy after it was loaded. A version number cannot tell two
- * builds of one version apart, and between releases it stays the same, but VS Code stamps every install into the
- * manifest (__metadata.installedTimestamp).
+ * builds of one version apart, but VS Code stamps every install into the manifest (__metadata.installedTimestamp).
  */
 function replacedSince(extensionPath, loadedStamp) {
   if (!extensionPath || !loadedStamp) return false;

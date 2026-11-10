@@ -309,8 +309,7 @@ function writeHookSettings(home, values, { marker = '' } = {}) {
 
 /*
  * The reader's time zone, for the time-zone hook (tell-time-zone.py), which cannot ask Codex's page for it. A hook that
- * reads a half-written file leaves the zone out of that turn, so the new content goes into a temporary file that is then
- * renamed over this one. Returns whether it wrote.
+ * reads a half-written file leaves the zone out of that turn. Returns whether it wrote.
  */
 function writeClientZone(home, zone) {
   if (!zone) return false;

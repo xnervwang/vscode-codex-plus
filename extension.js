@@ -38,7 +38,6 @@ const CONFIG = 'codexPlus';
 /* This copy's id and folder, kept for deactivate, which runs after the editor's API is gone. */
 const ID = (() => { try { const p = require('./package.json'); return `${p.publisher}.${p.name}`; } catch (_) { return uninstallPlan.ID; } })();
 let selfPath = '';
-/* The install stamp of the copy this window loaded. */
 let loadedStamp = 0;
 let log = null;
 let reader = null;
@@ -47,8 +46,6 @@ let memento = null;
 
 function cfg() { return vscode.workspace.getConfiguration(CONFIG); }
 
-/* A window whose copy is replaced or being uninstalled (src/uninstall-plan.js standing) leaves the shared files alone:
-   the hooks' settings, the plugin in Codex and the patch. */
 let toldStale = false;
 function standsDown() {
   const s = uninstallPlan.standing(selfPath, [ID, ...uninstallPlan.FORMER_IDS], loadedStamp);
@@ -61,7 +58,6 @@ function standsDown() {
   return s;
 }
 
-/* Shown when a replaced window is asked to install the plugin or to put the patch back. */
 async function offerReloadForStale() {
   const reload = 'Reload Window';
   const pick = await vscode.window.showInformationMessage('This window is running an earlier build of Codex Plus than the one now installed. '
