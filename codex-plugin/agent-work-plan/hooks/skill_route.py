@@ -15,8 +15,8 @@ The search is by keywords: BM25 over words, four-letter pieces of words and pair
 counted four times over its description. It needs no network or credentials and is the default. With the
 skillRouteVector setting on (off by default) and Codex's model provider Amazon Bedrock,
 the search is by meaning instead, through cohere.embed-v4 on the account and region Codex already uses, and any failure
-falls back to the keywords. Measured on 540 past requests that opened a skill first, the right skill was among the top
-five for 44% by keywords and 55% by meaning.
+falls back to the keywords. Measured on 540 past requests whose turn opened a skill within its first three tool calls,
+the skill it opened was among the top five for 44% by keywords and 55% by meaning.
 
 The index sits in the plugin's data directory. A turn only checks the modification times of what it was built from, and
 when one has changed it starts a background process to rebuild the index and searches the old one meanwhile, so no turn
@@ -57,8 +57,8 @@ BUILD_LOCK = "build.lock"
 BUILT_AT = "build.started"
 INDEX_VERSION = 4
 
-# What the injected block starts with. The VS Code extension finds the block in the rollout by this text
-# (src/user-times.js ROUTE_MARK) to show which skills a turn was given.
+# What the injected block starts with. The VS Code extension (src/user-times.js ROUTE_MARK) finds the block by this
+# text in the rollout, Codex's record of the conversation, to show which skills a turn was given.
 MARK = "Skills that may fit this message"
 # Messages under this many characters ("yes", "go on") are skipped. Measured over 20,114 requests, the cut skips 6.8%
 # of them and misses 2.0% of those that loaded a skill.
@@ -70,7 +70,7 @@ DESC_CHARS = 1024        # Codex's own cut for a description
 # Codex cuts a hook's injected text past its additionalContextLimit, counted as bytes / 4. hooks.json gives this hook
 # 4,000; the block is kept under this many bytes, with room to spare, by shortening descriptions.
 CONTEXT_BYTES = 15000
-MAX_COUNT = 10
+MAX_COUNT = 10           # the most skills a turn is given, whatever skillRouteCount says
 BUDGET = 1.5             # seconds for the whole hook, network included
 CREDENTIAL_TIMEOUT = 1.0
 CREDENTIAL_BYTES = 64 * 1024
@@ -87,7 +87,7 @@ EMBED_BATCH = 96         # texts per request; the model takes no more
 EMBED_MODEL = "cohere.embed-v4:0"
 SEARCH_COUNT_MAX = 20
 
-# Keyword search: field weights and the BM25 constants, tuned on the past requests above.
+# Keyword search: field weights and the BM25 constants, tuned on the 540 past requests above.
 W_NAME, W_TRIGGER, W_DESC = 4.0, 1.0, 1.0
 K1, B = 1.2, 0.75
 NGRAM, NGRAM_WEIGHT = 4, 0.6
