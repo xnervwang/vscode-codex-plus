@@ -398,6 +398,13 @@
           "default": true,
           "markdownDescription": "Keep a work plan for each Codex conversation: the open rows put in front of the model every turn, and the reminders at the end of one. Agent Plus draws the plans. Off makes the hooks say nothing and refuse to change a plan, and no Codex plan is shown."
         },
+        "codexPlus.tabBarButton": {
+          "type": "string",
+          "enum": ["tab", "sidebar"],
+          "enumDescriptions": ["A new Codex conversation in a tab.", "A new Codex conversation in Codex's sidebar."],
+          "default": "tab",
+          "markdownDescription": "What the Codex button on the editor tab bar opens. With either choice one button is enough: Codex's own button beside it, which opens its sidebar, can be hidden by right-clicking it and choosing **Hide**."
+        },
         "codexPlus.sessionList": {
           "type": "boolean",
           "default": true,

@@ -235,6 +235,16 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
       'when the route leaves no conversation tab, Codex\'s own command is asked instead');
   }
   {
+    /* codexPlus.tabBarButton set to sidebar: the button does what New in sidebar does, so Codex's own button can be hidden. */
+    const w = await run(root, tmp, { takesRoute: true, config: { tabBarButton: 'sidebar' } });
+    const before = w.state.commands.length;
+    await w.state.handlers['codexPlus.openCodex']();
+    eq(w.state.commands.slice(before).map((c) => c[0]).includes('vscode.openWith'), false,
+      'with codexPlus.tabBarButton set to sidebar the tab bar button opens no tab');
+    eq(w.state.commands.slice(before).map((c) => c[0]).includes('codexPlus.newInSidebar'), true,
+      'and starts a new conversation in the sidebar instead');
+  }
+  {
     /* The group choice on its own, against the tab groups Claude Code's choice is made from. */
     const tabsMod = require(path.join(root, 'src', 'codex-tabs.js'));
     const { vscode, control } = fake.create();

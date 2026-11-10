@@ -526,11 +526,12 @@ function registerCommands(context, { source, memory, sessionsModel, sessionsView
     try { await vscode.commands.executeCommand('chatgpt.newChat'); } catch (_) { /* the shortcut is not enabled in every build */ }
   });
   /*
-   * The tab bar's button: a new Codex conversation in a tab. Codex's own button beside it opens its sidebar. It never
-   * raises a conversation that is already open: the session list is where an existing one is picked, and a button that
-   * sometimes only moved the focus read as doing nothing.
+   * The tab bar's button: a new Codex conversation, in a tab or, with codexPlus.tabBarButton set to sidebar, in Codex's
+   * sidebar. It never raises a conversation that is already open: the session list is where an existing one is picked,
+   * and a button that sometimes only moved the focus read as doing nothing.
    */
-  reg('openCodex', () => newConversationInTab(say));
+  reg('openCodex', () => (cfg().get('tabBarButton', 'tab') === 'sidebar'
+    ? vscode.commands.executeCommand('codexPlus.newInSidebar') : newConversationInTab(say)));
   reg('openThreadInTab', async (arg) => {
     const id = threadArg(arg);
     if (!id) return;
