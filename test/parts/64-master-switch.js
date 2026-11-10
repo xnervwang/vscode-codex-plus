@@ -64,12 +64,6 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
     if (c) ok(`${name} is declared, as "${c.title}"`);
     else bad(`${name} is not declared`);
   }
-  /* The two that turn things off say so in their own titles: a "Turn Off" taken for one that restores Codex's files
-     would be found out only much later, when the files turned out still to be patched. */
-  for (const name of ['codexPlus.toggle', 'codexPlus.turnOff']) {
-    const title = (pkg.contributes.commands.find((x) => x.command === name) || {}).title || '';
-    eq(/leaves Codex's files alone/.test(title), true, `${name} says in its title that it leaves Codex's files alone`);
-  }
 
   /*
    * What the switch covers, and what it does not. Read through activate(), because the switch only works if it has
@@ -123,17 +117,9 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
   eq(w.control.state.config.enabled, false, 'Toggle turns it off from on');
   await w.control.state.handlers['codexPlus.toggle']();
   eq(w.control.state.config.enabled, true, 'and on again from off');
-  /* Asking for the patch while the additions are off would leave a patched Codex with nothing drawing through it. */
-  await w.control.state.handlers['codexPlus.turnOff']();
-  await w.control.state.handlers['codexPlus.applyPatch']();
-  eq(w.control.state.config.enabled, true,
-    'and asking for the patch turns them back on, since the patch is of no use to anything else');
-  /* Remove the Patch is remembered as Claude Code Plus remembers its Remove, until Patch Codex is run again. */
+  /* Remove the Patch is remembered as Claude Code Plus remembers its Remove, until Turn On or Toggle (test/parts/64a-trimmed-commands.js). */
   await w.control.state.handlers['codexPlus.removePatch']();
-  const afterRemove = w.ext._settings().patchCodex;
-  await w.control.state.handlers['codexPlus.applyPatch']();
-  eq([afterRemove, w.ext._settings().patchCodex], ['off', 'on'],
-    'after Remove the Patch nothing patches Codex, with the additions still on, until Patch Codex is run');
+  eq(w.ext._settings().patchCodex, 'off', 'after Remove the Patch nothing patches Codex, with the additions still on');
   w.stop();
 
   /* ── the switch reaches the pages and the tabs, which is the half of it that is not a setting ── */

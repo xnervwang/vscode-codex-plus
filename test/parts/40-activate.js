@@ -99,8 +99,15 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
         const mark = control.state.log.length;
         await control.state.handlers['codexPlus.status']();
         const id = /([0-9a-f-]{36})\.jsonl$/.exec(fs.readdirSync(path.join(home, 'sessions'), { recursive: true }).map(String).find((f) => f.endsWith('.jsonl')).replace(/\\/g, '/'))[1];
-        await control.state.handlers['codexPlus.sessionInfo'](id);
-        return { status: control.state.log.slice(mark).join('\n'), info: (control.state.picks[control.state.picks.length - 1] || []).map((p) => `${p.label}=${p.value}`) };
+        /* Session information is the information button's, in the page of a tab showing the conversation. */
+        const posted = [];
+        const provider = { postMessageToWebview: (w, m) => posted.push(m), sendMessageToPanel() {} };
+        const panel = { webview: {}, reveal() {}, onDidDispose() {}, iconPath: null };
+        globalThis.__codexExtrasPanel(panel, id, provider);
+        globalThis.__codexExtrasMessage(panel.webview, { kind: 'infoAsk', id: 'i1' }, provider);
+        await new Promise((r) => setTimeout(r, 300));
+        const rows = (posted.find((m) => m.type === 'codex-extras-info') || {}).rows || [];
+        return { status: control.state.log.slice(mark).join('\n'), info: rows.map((p) => `${p.label}=${p.value}`) };
       } });
     eq([/^Account: Amazon Bedrock · us-west-2 /m.test(w.probed.status), w.probed.info.includes('Account=Amazon Bedrock · us-west-2')], [true, true],
       'Show Status and Session Information name the account as the provider and region Codex is set to use');
@@ -146,12 +153,13 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
       [true, true, true], 'its command writes how long this window\'s Codex page took to open, and Show Status includes it');
   }
 
-  /* Session Information on a tab Codex opened with its own New button, whose URI names no conversation: the patch has
-     tied its panel to the thread its own page started, and the command finds it through the source. */
+  /* Session information on a tab Codex opened with its own New button, whose URI names no conversation: the patch has
+     tied its panel to the thread its own page started, and the information button in that page asks for that one. */
   {
     const w = await run(root, tmp, { probe: async ({ vscode, control, home }) => {
       const id = /([0-9a-f-]{36})\.jsonl$/.exec(fs.readdirSync(path.join(home, 'sessions'), { recursive: true }).map(String).find((f) => f.endsWith('.jsonl')).replace(/\\/g, '/'))[1];
-      const provider = { postMessageToWebview() {}, sendMessageToPanel() {} };
+      const posted = [];
+      const provider = { postMessageToWebview: (w, m) => posted.push(m), sendMessageToPanel() {} };
       const panel = { webview: {}, visible: true, viewColumn: 1, reveal() {}, onDidDispose() {}, iconPath: null };
       globalThis.__codexExtrasPanel(panel, null, provider, '/extension/panel/new');
       globalThis.__codexExtrasPageRequest(panel.webview, { id: 7, method: 'thread/start' }, 'request');
@@ -159,8 +167,9 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
       await new Promise((r) => setTimeout(r, 200));
       control.setTabs([{ label: 'Codex', input: new vscode.TabInputCustom(vscode.Uri.from({ scheme: 'openai-codex', authority: 'route',
         path: '/extension/panel/new' }), 'chatgpt.conversationEditor') }], 0);
-      await control.state.handlers['codexPlus.sessionInfo']();
-      const rows = (control.state.picks[control.state.picks.length - 1] || []).map((p) => `${p.label}=${p.value}`);
+      globalThis.__codexExtrasMessage(panel.webview, { kind: 'infoAsk', id: 'i2' }, provider);
+      await new Promise((r) => setTimeout(r, 300));
+      const rows = ((posted.find((m) => m.type === 'codex-extras-info') || {}).rows || []).map((p) => `${p.label}=${p.value}`);
       return { id, rows, said: control.state.said.map((x) => x.message) };
     } });
     eq([w.probed.rows.includes(`Thread id=${w.probed.id}`), w.probed.said.some((m) => /Bring a Codex conversation tab/.test(m))], [true, false],

@@ -14,8 +14,8 @@
  * machine that no longer holds a copy of this extension. Another editor that still holds one leaves its Codex to that
  * copy.
  *
- * Once no editor holds a copy, it removes the work plan plugin from Codex as "Remove the Work Plan Plugin from Codex"
- * does: the plans are copied to CODEX_HOME first, and nothing is removed when they cannot be. A plugin already gone is
+ * Once no editor holds a copy, it removes the work plan plugin from Codex (src/plugin-install.js uninstall):
+ * the plans are copied to CODEX_HOME first, and nothing is removed when they cannot be. A plugin already gone is
  * left alone, and so is one no codex program is left to remove; the hooks of such a plugin do nothing once VS Code has
  * deleted this extension's global storage (src/plugin-install.js writeHookSettings).
  */

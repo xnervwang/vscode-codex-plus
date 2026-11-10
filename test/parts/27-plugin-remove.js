@@ -75,35 +75,5 @@ module.exports = async ({ eq, note, tmp, root }) => {
   const trust = await tryRemove(homeWithPlugin('remove-trust'), ['config/batchWrite']);
   eq([trust !== 'removed', /trust/.test(trust)], [true, true], 'or the trust given to the hooks');
 
-  /* ── the command ── */
-  const { vscode, control } = fake.create();
-  vscode.workspace.isTrusted = false;
-  vscode.workspace.onDidGrantWorkspaceTrust = () => ({ dispose() {} });
-  fake.install(vscode);
-  for (const k of Object.keys(require.cache)) if (k.startsWith(root + path.sep) && !k.includes(`${path.sep}test${path.sep}`)) delete require.cache[k];
-  const codexHome = homeWithPlugin('remove-command');
-  fixture.codexHome(codexHome, [{ title: 'One', cwd: codexHome, turns: [{}] }]);
-  process.env.CODEX_HOME = codexHome;
-  control.state.config = { reopenDroppedTabs: false, cliExecutable: codex };
-  control.state.extensions.set('xnervwang.agent-plus', { isActive: true, exports: { agentPlus: { protocol: 1, accepts: [1], features: [],
-    registerSource: () => ({ accepted: true, code: '', reason: '', registration: { dispose() {} } }) } } });
-  const ext = require(path.join(root, 'extension.js'));
-  const subs = [];
-  const context = { subscriptions: subs, workspaceState: fake.memento(), globalState: fake.memento({ 'codexPlus.patchRemoved': true }),
-    globalStorageUri: vscode.Uri.file(tmp('gs')), extensionPath: root };
-  await ext.activate(context);
-  vscode.workspace.isTrusted = true;
-  control.state.answers.push(['Remove the work plan plugin from Codex?', 'Remove']);
-  try {
-    process.env.FAKE_CODEX_FAIL = 'plugin/uninstall';
-    control.state.said.length = 0;
-    await control.state.handlers['codexPlus.removeWorkPlanPlugin']();
-    const told = control.state.said.map((s) => s.message).filter((m) => !/Remove the work plan plugin from Codex\?/.test(m));
-    eq([told.some((m) => /^Removed/.test(m)), told.some((m) => /Could not remove the plugin/.test(m))], [false, true],
-      'the command says the plugin could not be removed, rather than Removed, when Codex refused');
-  } finally {
-    delete process.env.FAKE_CODEX_FAIL;
-    for (const d of subs) { try { d.dispose(); } catch (_) { /* gone */ } }
-    ext.deactivate();
-  }
+  /* There is no command for it: uninstalling the extension takes the plugin out (uninstall.js, test/parts/24-uninstall-plugin.js). */
 };

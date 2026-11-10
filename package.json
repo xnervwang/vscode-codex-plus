@@ -57,15 +57,15 @@
       },
       {
         "command": "codexPlus.toggle",
-        "title": "Codex Plus: Toggle All the Additions On/Off (leaves Codex's files alone)"
+        "title": "Codex Plus: Toggle On/Off"
       },
       {
         "command": "codexPlus.turnOn",
-        "title": "Codex Plus: Turn All the Additions On"
+        "title": "Codex Plus: Turn On"
       },
       {
         "command": "codexPlus.turnOff",
-        "title": "Codex Plus: Turn All the Additions Off (leaves Codex's files alone)"
+        "title": "Codex Plus: Turn Off"
       },
       {
         "command": "codexPlus.installWorkPlanPlugin",
@@ -82,10 +82,6 @@
       {
         "command": "codexPlus.stopLoadingWorkPlanPlugin",
         "title": "Codex Plus: Stop Loading the Work Plan Plugin (keeps it installed)"
-      },
-      {
-        "command": "codexPlus.removeWorkPlanPlugin",
-        "title": "Codex Plus: Remove the Work Plan Plugin from Codex"
       },
       {
         "command": "codexPlus.newInTab",
@@ -149,25 +145,12 @@
         "title": "Codex Plus: Delete Conversation..."
       },
       {
-        "command": "codexPlus.sessionInfo",
-        "title": "Codex Plus: Session Information",
-        "icon": "$(info)"
-      },
-      {
-        "command": "codexPlus.applyPatch",
-        "title": "Codex Plus: Patch Codex (tab dots, sidebar opening, answers, chimes, turn figures, message times, navigation)"
-      },
-      {
         "command": "codexPlus.removePatch",
         "title": "Codex Plus: Remove the Patch from Codex (restore original files)"
       },
       {
         "command": "codexPlus.showOpenTimes",
         "title": "Codex Plus: Show How Long Opening a Codex Page Took"
-      },
-      {
-        "command": "codexPlus.showRunningCommands",
-        "title": "Codex Plus: Show the Commands Codex Is Still Running"
       }
     ],
     "viewsContainers": {
@@ -226,11 +209,6 @@
           "command": "codexPlus.openThreadInSidebar",
           "when": "view == codexPlus.sessions && viewItem =~ /^codexPlusThread/",
           "group": "1_open@2"
-        },
-        {
-          "command": "codexPlus.sessionInfo",
-          "when": "view == codexPlus.sessions && viewItem =~ /^codexPlusThread/",
-          "group": "2_info@2"
         },
         {
           "command": "codexPlus.renameThread",

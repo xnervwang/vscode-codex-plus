@@ -8,7 +8,7 @@
  *
  * Codex is patched at start-up without asking, as Claude Code Plus patches Claude Code, and the patch takes effect after
  * a reload; a build of this extension that changes what the patch writes refreshes it the same way. "Remove the Patch
- * from Codex" puts Codex's files back and is remembered (PATCH_REMOVED_KEY) until "Patch Codex" is run, as Claude Code
+ * from Codex" puts Codex's files back and is remembered (PATCH_REMOVED_KEY) until Turn On or Toggle, as Claude Code
  * Plus remembers its Remove; the uninstall hook restores Codex's files too (uninstall.js).
  *
  * What the patched host hands over (src/host.js), and what is done with it:
@@ -57,7 +57,7 @@ const TAB_DOTS = { working: '#22c55e', unread: '#ef4444', prompt: '#3b82f6' };
 const TAB_DOT_SIZE = { r: 5.5, gap: 1 };
 /* As long a tab title as Claude Code Extras gives one; the tab bar cuts what does not fit. */
 const TITLE_MAX = 200;
-/* Set by "Remove the Patch from Codex" and cleared by "Patch Codex": while it is set nothing patches Codex. */
+/* Set by "Remove the Patch from Codex" and cleared by Turn On or Toggle: while it is set nothing patches Codex. */
 const PATCH_REMOVED_KEY = 'codexPlus.patchRemoved';
 let state = { active: false, reason: 'not checked yet', provider: null };
 /*
@@ -370,13 +370,13 @@ function pagePatchState() {
  */
 async function askPage(kind, { field, doing, noun, busy, failed, timeoutMs = ASK_MS }) {
   if (!state.active) {
-    return { error: 'the patch to Codex is not in effect, so its page cannot be asked. Run "Codex Plus: Patch Codex" '
+    return { error: 'the patch to Codex is not in effect, so its page cannot be asked. Run "Codex Plus: Turn On" '
       + 'and reload the window.' };
   }
   const pageState = pagePatchState();
   if (pageState && pageState !== 'patched') {
     return { error: `Codex's page carries ${pageState === 'outdated' ? 'an older version of' : 'none of'} this extension's `
-      + `page script, so it does not know how to ${doing}. Run "Codex Plus: Patch Codex" and reload the window.` };
+      + `page script, so it does not know how to ${doing}. Run "Codex Plus: Turn On" and reload the window.` };
   }
   const panel = activePanel();
   if (!panel) return { error: `bring a Codex conversation tab to the front first: the ${noun} is of the page in front.` };
@@ -998,7 +998,7 @@ async function ensurePatched(vscode, context, log, mode) {
   if (states.every((s) => s === 'patched')) { state.reason = state.active ? 'connected' : 'patched; reload to connect'; return; }
   if (mode === 'off') {
     state.reason = context.globalState.get(PATCH_REMOVED_KEY) === true
-      ? 'removed by "Remove the Patch from Codex"; "Patch Codex" puts it back' : 'the additions are off (codexPlus.enabled)';
+      ? 'removed by "Remove the Patch from Codex"; "Codex Plus: Turn On" puts it back' : 'the additions are off (codexPlus.enabled)';
     return;
   }
   const refresh = states.every((s) => s === 'patched' || s === 'outdated');

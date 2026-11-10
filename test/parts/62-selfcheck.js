@@ -437,7 +437,7 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
   /* ── the request and the reply across the patch ── */
   const { vscode, control } = fake.create();
   fake.install(vscode);
-  eq(/Patch Codex/.test((await patching.selfCheckPage()).error || ''), true,
+  eq(/Turn On/.test((await patching.selfCheckPage()).error || ''), true,
     'with no patch in effect the page cannot be asked, and the answer names the command that puts it in place');
   const sent = [];
   const provider = { postMessageToWebview: (w, m) => sent.push(m) };

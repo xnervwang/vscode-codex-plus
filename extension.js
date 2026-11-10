@@ -40,7 +40,7 @@ const ID = (() => { try { const p = require('./package.json'); return `${p.publi
 let selfPath = '';
 let log = null;
 let reader = null;
-/* The memento that remembers "Remove the Patch" (patching.PATCH_REMOVED_KEY) until "Patch Codex" is run again. */
+/* The memento that remembers "Remove the Patch" (patching.PATCH_REMOVED_KEY) until Turn On or Toggle. */
 let memento = null;
 
 function cfg() { return vscode.workspace.getConfiguration(CONFIG); }
@@ -57,7 +57,7 @@ function cfg() { return vscode.workspace.getConfiguration(CONFIG); }
  * much.
  *
  * `patchCodex` is 'on' or 'off' and is not a setting: Codex is patched at start-up unless the switch is off or the user
- * ran "Remove the Patch from Codex", which holds until they run "Patch Codex". 'off' stops the patch being applied or
+ * ran "Remove the Patch from Codex", which holds until they run Turn On or Toggle. 'off' stops the patch being applied or
  * kept up to date; with the switch off it does not take an applied patch out of Codex's files, which only the remove
  * command does.
  */
@@ -208,7 +208,7 @@ async function activate(context) {
       patching.refreshPanels().catch((err) => say(`redrawing the Codex pages: ${err.message}`));
     }
   }));
-  /* A conversation's session information, as its rows: Session Information and the page's own info button both show it. */
+  /* A conversation's session information, as its rows, for the information button in its page. */
   const sessionInfoRows = async (id) => [...await reader.request('info', { home: files.codexHome(), id }),
     { label: 'Account', value: codexConfig.accountLine(files.codexHome()) }];
   /* When the user's own messages were sent, for the stamps Codex's page draws on them: read in the worker thread, since
@@ -216,7 +216,7 @@ async function activate(context) {
   const userTimes = (id) => reader.request('userTimes', { home: files.codexHome(), id });
   /* How long Codex's pages took to open, from Codex's own log; read only when Show Status or its command asks. */
   const opens = openTimes.createOpenTimes(openTimes.whereLogs(context.logUri && context.logUri.fsPath));
-  registerCommands(context, { source, memory, sessionsProvider, say, link, userTimes, opens, sessionInfoRows });
+  registerCommands(context, { source, memory, sessionsProvider, say, link, opens });
 
   /* Delayed start-up work is cancelled with the extension, so a window that closes within the delay starts none of it. */
   const later = (fn, ms) => {
@@ -269,7 +269,7 @@ async function newConversationInTab(say) {
   await vscode.commands.executeCommand('chatgpt.newCodexPanel');
 }
 
-function registerCommands(context, { source, memory, sessionsProvider, say, link, userTimes, opens, sessionInfoRows }) {
+function registerCommands(context, { source, memory, sessionsProvider, say, link, opens }) {
   const reg = (name, fn) => context.subscriptions.push(vscode.commands.registerCommand(`${CONFIG}.${name}`, fn));
   const threadArg = (arg) => (typeof arg === 'string' ? arg : arg && arg.thread ? arg.thread.id : arg && arg.sessionId) || '';
   const restricted = () => {
@@ -321,43 +321,34 @@ function registerCommands(context, { source, memory, sessionsProvider, say, link
     log.show(true);
   });
   /*
-   * The master switch: one act for all the additions at once, rather than six settings to find.
+   * The master switch, as Claude Code Plus's: one act for all the additions at once, rather than six settings to find,
+   * and it says nothing, as there.
    *
    * It writes the one setting the others are read through (settings()), so the user's own choices among them survive
-   * being turned off and come back as they were. What it does not do is take the patch out of Codex's files: with the
-   * switch off the patch is left in place and nothing is drawn with it, and the file is put back only by
-   * `Codex Plus: Remove the Patch from Codex`. The command titles say so, because a "Turn Off" that was thought to
-   * restore Codex's own files would be found out only much later.
+   * being turned off and come back as they were. Off leaves the patch in Codex's files with nothing drawn through it;
+   * `Codex Plus: Remove the Patch from Codex` is what puts those files back. On after that Remove puts the patch back
+   * in, which is how Claude Code Plus comes back from its own Remove.
    */
+  const removed = () => context.globalState.get(patching.PATCH_REMOVED_KEY) === true;
   const setEnabled = async (on) => {
-    await vscode.workspace.getConfiguration(CONFIG).update('enabled', on, vscode.ConfigurationTarget.Global);
+    const unremoving = on && removed();
+    if (unremoving) {
+      if (restricted()) return;
+      await context.globalState.update(patching.PATCH_REMOVED_KEY, false);
+    }
+    if (settings().enabled !== on) await vscode.workspace.getConfiguration(CONFIG).update('enabled', on, vscode.ConfigurationTarget.Global);
     sessionsProvider.refresh();
     patching.refreshPanels().catch((e) => say(`redrawing the Codex pages: ${e.message}`));
-    vscode.window.showInformationMessage(on
-      ? 'Codex Plus: the additions are on again, each as you had it set.'
-      : 'Codex Plus: the additions are off. The patch to Codex\'s files is still in place and unchanged; '
-        + '"Remove the Patch from Codex" is what puts those back.');
+    /* Only the patching itself: activation already wired the hooks and the listeners, and wiring them again would
+       redraw every panel once more on each change for every time this has run. */
+    if (unremoving) patching.ensurePatched(vscode, context, say, 'on').catch((e) => say(`patch: ${e.message}`));
   };
   reg('turnOn', () => setEnabled(true));
   reg('turnOff', () => setEnabled(false));
-  reg('toggle', () => setEnabled(!settings().enabled));
-  reg('applyPatch', async () => {
-    if (restricted()) return;
-    /* Patching while the switch is off would leave the patch in Codex with nothing drawing anything through it, so the
-       command that asks for the patch turns the switch back on as part of doing it. */
-    if (!settings().enabled) {
-      await vscode.workspace.getConfiguration(CONFIG).update('enabled', true, vscode.ConfigurationTarget.Global);
-      say('the additions were off; turned back on, since the patch is only of use to them');
-    }
-    await context.globalState.update(patching.PATCH_REMOVED_KEY, false);
-    vscode.window.showInformationMessage('Codex will be patched now; reload the window when asked.');
-    /* Only the patching itself: activation already wired the hooks and the listeners, and wiring them again would
-       redraw every panel once more on each change for every time this command has run. */
-    patching.ensurePatched(vscode, context, say, 'on').catch((e) => say(`patch: ${e.message}`));
-  });
+  reg('toggle', () => setEnabled(!(settings().enabled && !removed())));
   reg('removePatch', async () => {
     if (restricted()) return;
-    /* Remembered before the files are put back, and kept until "Patch Codex" is run: every start-up patches Codex
+    /* Remembered before the files are put back, and kept until Turn On or Toggle: every start-up patches Codex
        otherwise. */
     await context.globalState.update(patching.PATCH_REMOVED_KEY, true);
     const lines = patching.removePatch(vscode);
@@ -371,16 +362,6 @@ function registerCommands(context, { source, memory, sessionsProvider, say, link
     const spans = await opens.read().catch(() => []);
     log.appendLine(openTimes.reportLines(spans, { zone: context.globalState.get('codexPlus.clientTimeZone') || '', last: 20 }).join('\n'));
     log.show(true);
-  });
-  reg('showRunningCommands', async () => {
-    const running = patching.runningCommands();
-    if (!running.length) { vscode.window.showInformationMessage('Codex Plus: no command Codex started is running in this window.'); return; }
-    const zone = context.globalState.get('codexPlus.clientTimeZone') || undefined;
-    const when = (ms) => { try { return new Date(ms).toLocaleTimeString('en-GB', { timeZone: zone }); } catch (_) { return new Date(ms).toISOString().slice(11, 19); } };
-    const pick = await vscode.window.showQuickPick(running.map((c) => ({ label: c.command.slice(0, 120) || '(no command line)',
-      description: c.cwd, detail: `since ${when(c.startedMs)} · ${(reader.thread(c.thread) || {}).title || c.thread}`, thread: c.thread })),
-    { placeHolder: 'Commands Codex started that are still running; pick one to open its conversation' });
-    if (pick && pick.thread) await tabs.openInTab(vscode, pick.thread);
   });
   reg('openSettings', () => vscode.commands.executeCommand('workbench.action.openSettings', '@ext:xnervwang.codex-plus'));
   /* The command is also the way back after "Stop Loading": it tells Codex to load the plugin again, as Claude Code Plus's
@@ -406,21 +387,6 @@ function registerCommands(context, { source, memory, sessionsProvider, say, link
       vscode.window.showInformationMessage('Codex Plus: Codex will not load the work plan plugin. It stays installed, with its '
         + 'hooks still trusted; "Install the Work Plan Plugin into Codex" has it loaded again.');
     } catch (e) { vscode.window.showErrorMessage(`Could not change whether Codex loads the plugin: ${e.message}`); }
-  });
-  /* Uninstalling this extension removes the plugin only once no editor on the machine holds a copy (uninstall.js), so
-     this is how one editor's user takes it out of a Codex home the others still share. */
-  reg('removeWorkPlanPlugin', async () => {
-    if (restricted()) return;
-    const binary = codexProgram();
-    if (!binary) { vscode.window.showErrorMessage('The codex program of the Codex extension was not found.'); return; }
-    const go = 'Remove';
-    const pick = await vscode.window.showWarningMessage('Remove the work plan plugin from Codex?', { modal: true,
-      detail: 'Codex stops loading its hooks, skill and tools. Plans are first copied to a folder under CODEX_HOME.' }, go);
-    if (pick !== go) return;
-    try {
-      const kept = await install.uninstall({ binary, home: files.codexHome() });
-      vscode.window.showInformationMessage(kept ? `Removed. The plans were copied to ${kept}.` : 'Removed.');
-    } catch (e) { vscode.window.showErrorMessage(`Could not remove the plugin: ${e.message}`); }
   });
   reg('newInTab', () => newConversationInTab(say));
   reg('newInSidebar', async () => {
@@ -558,17 +524,7 @@ function registerCommands(context, { source, memory, sessionsProvider, say, link
       source._poll();
     } catch (e) { vscode.window.showErrorMessage(`Codex could not delete ${one ? 'it' : 'them'}: ${e.message}`); }
   });
-  reg('sessionInfo', async (arg) => {
-    /* A tab Codex opened with its New button names no conversation in its URI; the source knows it through the patch. */
-    const front = (vscode.window.tabGroups.activeTabGroup || {}).activeTab;
-    const id = threadArg(arg) || (front && source.sessionForTab(front)) || tabs.activeThread(vscode);
-    if (!id) { vscode.window.showInformationMessage('Bring a Codex conversation tab to the front first; a new one counts once its first message is sent.'); return; }
-    let rows = [];
-    try { rows = await sessionInfoRows(id); } catch (e) { vscode.window.showErrorMessage(`Could not read it: ${e.message}`); return; }
-    const pick = await vscode.window.showQuickPick(rows.map((r) => ({ label: r.label, description: r.value, value: r.value })),
-      { placeHolder: 'Click a value to copy it' });
-    if (pick && pick.value) { await vscode.env.clipboard.writeText(pick.value); vscode.window.setStatusBarMessage(`Copied ${pick.label}`, 3000); }
-  });
+
 }
 
 /*
