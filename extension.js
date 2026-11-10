@@ -161,6 +161,11 @@ function writeHookSettings(context) {
       quietWhenReplyMatches: c.get('workPlanQuietWhenReplyMatches', ''),
       tellTimeZone: c.get('tellCodexYourTimeZone', true),
       compactTokenLimit: codexConfig.compactLimit(files.codexHome()),
+      skillRoute: c.get('skillRouting', true),
+      skillRouteVector: c.get('skillRoutingVectorSearch', false),
+      skillRouteCount: c.get('skillRoutingCount', 5),
+      skillRouteExtraDirs: c.get('skillRoutingExtraFolders', ['~/.claude/skills']),
+      skillRouteClaudePlugins: c.get('skillRoutingClaudePlugins', []),
     }, { marker: context.globalStorageUri && context.globalStorageUri.fsPath });
     install.writeClientZone(files.codexHome(), context.globalState.get('codexPlus.clientTimeZone'));
   } catch (e) { log.appendLine(`could not write the hooks' settings: ${e.message}`); }

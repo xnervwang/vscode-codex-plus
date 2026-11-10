@@ -17,8 +17,8 @@
  * The same pass notes where Codex compacted the conversation's context, as the number of the user's messages that came
  * before each compaction, which places it in the page's list of those messages under the same condition.
  *
- * It also notes, per turn, the model and effort the turn ran with and how much of the context window its last model call
- * used, for the line under each reply; when each message the user typed in the turn was sent and each reply written; and
+ * It also notes, per turn, the model and effort the turn ran with, how much of the context window its last model call
+ * used, and which skills the work plan plugin's skill search gave it, for the line under each reply; when each message the user typed in the turn was sent and each reply written; and
  * how long the turn took once it ended. A token_count or a message carries no turn id, so it belongs to the turn whose
  * task_started or turn_context came last before it. The page places all of these by the turn id Codex puts on each turn,
  * not by position, which is what lets a stamp carry seconds where the conversation's counts do not line up.
@@ -50,6 +50,14 @@ const PER_TURN = 8;
  * begin with such a tag is counted out here. The counts then differ, and the page shows no times at all.
  */
 const INJECTED = /^\s*<[a-z][a-z0-9_]*>/;
+/*
+ * How the block the work plan plugin's skill search puts in front of the model begins (MARK in
+ * codex-plugin/agent-work-plan/hooks/skill_route.py). Codex records it in the rollout as a developer message, one line
+ * per skill under that first line, each "- <name>: <description> (file: <path>)".
+ */
+const ROUTE_MARK = 'Skills that may fit this message';
+/* Names kept per turn: the hook gives a turn ten at most. */
+const SKILLS_KEPT = 10;
 
 const cache = new Map();
 
@@ -82,10 +90,12 @@ function timesIn(lines, into = [], compactions = [], turns = { byId: new Map(), 
     const turnish = line.includes('"token_count"') || line.includes('"turn_context"') || line.includes('"task_started"')
       || line.includes('"task_complete"') || line.includes('"turn_aborted"');
     const reply = line.includes('"assistant"');
-    if (!compacted && !turnish && !reply && !line.includes('"user"')) continue;
+    const routed = line.includes(ROUTE_MARK);
+    if (!compacted && !turnish && !reply && !routed && !line.includes('"user"')) continue;
     let row;
     try { row = JSON.parse(line); } catch (_) { continue; }
     if (turnish && row) noteTurn(row, turns);
+    if (routed && row) { noteSkills(row, turns); continue; }
     if (row && row.type === 'compacted') {
       const at = Date.parse(row.timestamp);
       compactions.push({ after: into.length, at: Number.isFinite(at) ? at : 0 });
@@ -100,6 +110,31 @@ function timesIn(lines, into = [], compactions = [], turns = { byId: new Map(), 
     if (Number.isFinite(at)) into.push(at); else broken = true;
   }
   return { times: into, compactions, turns, broken };
+}
+
+/*
+ * The skills a developer message handed a turn, on the turn its own metadata names, or else the turn begun last. Only
+ * the lines straight under the block's first line count, so another hook's text in the same message adds nothing.
+ */
+function noteSkills(row, turns) {
+  const p = row.type === 'response_item' && row.payload;
+  if (!p || p.type !== 'message' || p.role !== 'developer') return;
+  const meta = p.internal_chat_message_metadata_passthrough;
+  const id = String((meta && typeof meta === 'object' && meta.turn_id) || turns.current || '');
+  const e = id ? turns.byId.get(id) : null;
+  if (!e) return;
+  const names = [];
+  for (const part of Array.isArray(p.content) ? p.content : []) {
+    const text = part && typeof part.text === 'string' ? part.text : '';
+    const at = text.indexOf(ROUTE_MARK);
+    if (at < 0) continue;
+    for (const l of text.slice(at).split('\n').slice(1)) {
+      const m = /^- ([^\s:][^:]*(?::[^\s:][^:]*)?): /.exec(l);
+      if (!m) break;
+      if (names.length < SKILLS_KEPT) names.push(m[1].slice(0, 120));
+    }
+  }
+  if (names.length) e.skills = names;
 }
 
 /* A message's time, on the turn begun last before it. */
@@ -136,12 +171,16 @@ function noteTurn(row, turns) {
   if (e && used && window) { e.used = used; e.window = window; }
 }
 
-/** `ctx 33% · gpt-6.1-sol high` for one turn, or '' when nothing about it is known. */
+/**
+ * `ctx 33% · gpt-6.1-sol high · skills web-fetching, disk-cleanup` for one turn, or '' when nothing about it is known. A
+ * plugin's skill is shown without its plugin's name, which is the part every skill of that plugin shares.
+ */
 function turnFigure(e) {
   const parts = [];
   if (e.used && e.window) parts.push(`ctx ${Math.round(100 * e.used / e.window)}%`);
   const model = [String(e.model || '').replace(/^openai\./, ''), e.effort].filter(Boolean).join(' ');
   if (model) parts.push(model);
+  if (e.skills && e.skills.length) parts.push(`skills ${e.skills.map((n) => n.split(':').pop()).join(', ')}`);
   return parts.join(' · ');
 }
 
@@ -219,4 +258,4 @@ function userTimes(rollout) {
 
 function forget() { cache.clear(); }
 
-module.exports = { MAX_BYTES, MAX_TIMES, TURNS_SENT, INJECTED, textOf, wholeLines, timesIn, turnFigures, turnTimes, userTimes, rolloutMarks, forget };
+module.exports = { MAX_BYTES, MAX_TIMES, TURNS_SENT, INJECTED, ROUTE_MARK, textOf, wholeLines, timesIn, turnFigures, turnTimes, userTimes, rolloutMarks, forget };

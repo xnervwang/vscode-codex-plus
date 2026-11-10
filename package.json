@@ -395,6 +395,46 @@
           "default": true,
           "markdownDescription": "Tell Codex the time zone you read in, when it differs from the machine Codex runs on, so it gives you times in your zone. The zone is the one Codex's page runs in. Nothing is said while Codex's own page has already told the model that zone in the conversation (it does at the start of every conversation it drives), so this speaks in `codex exec`, the terminal client, sub-agents, and after a compaction or a long stretch of conversation."
         },
+        "codexPlus.skillRouting": {
+          "scope": "application",
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Before each turn, give Codex the installed skills that best fit your message, each with its full description and the path of its `SKILL.md` (`#codexPlus.skillRoutingCount#` of them at most). Codex's own list cuts every description short once many skills are installed, and leaves out the ones it has no room for. The search runs on this machine, by keywords, with no network and no credentials. The line under each reply names the skills that turn was given."
+        },
+        "codexPlus.skillRoutingVectorSearch": {
+          "scope": "application",
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Search the skills by meaning rather than by keywords. Used only while Codex's model provider is Amazon Bedrock; with any other provider this setting does nothing. Each message, its first 1,500 characters and nothing else, is sent to `cohere.embed-v4` on the Bedrock account and region Codex already uses, with the credentials Codex is configured with. If that fails or takes too long, the message is searched by keywords."
+        },
+        "codexPlus.skillRoutingCount": {
+          "scope": "application",
+          "type": "integer",
+          "default": 5,
+          "minimum": 1,
+          "maximum": 10,
+          "markdownDescription": "How many skills each turn is given."
+        },
+        "codexPlus.skillRoutingExtraFolders": {
+          "scope": "application",
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "~/.claude/skills"
+          ],
+          "markdownDescription": "Folders of skills that Codex does not read itself, searched as well. Each skill is a folder holding a `SKILL.md`. `~/.claude/skills` is where the skills you keep for Claude Code live; remove it to leave them out."
+        },
+        "codexPlus.skillRoutingClaudePlugins": {
+          "scope": "application",
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "markdownDescription": "Plugins installed for Claude Code but not for Codex whose skills are searched too: their names, or `*` for all of them."
+        },
         "codexPlus.workPlanOfferMinTurns": {
           "scope": "application",
           "type": "number",

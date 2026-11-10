@@ -17,6 +17,7 @@ The Codex sessions list in the Codex Plus sidebar:
 | Codex conversations in the work plan, Conversations and Answer views | Agent Plus's views | Agent Plus (installed with this extension) |
 | Work plan per conversation: rows with states, numbered, kept across turns and compactions | Agent Plus's Work plan view; Codex's context every turn | Work plan plugin, its hooks trusted |
 | Plan changes through MCP tools `set_row` / `add_row`, no sandbox approval | Codex | Work plan plugin |
+| The installed skills that best fit your message, put in front of Codex before each turn with their full descriptions; their names after that turn's figures under its reply. See Skill search | Codex's context; Codex conversation | Work plan plugin, its hooks trusted; `codexPlus.skillRouting` |
 | End-of-turn reminders: rows left `doing`, questions not on a row, plan not reconciled | Codex | Work plan plugin |
 | Reminder to bring `doing` rows up to date before an automatic compaction, at 70% and 85% of where Codex compacts (90% of the model's window, or `model_auto_compact_token_limit` in `config.toml` when that is lower); pointer to the plan after one | Codex | Work plan plugin |
 | Your time zone told to Codex when it runs on another machine, with this machine's zone and the time now; quiet while Codex's own page has told it the same zone since the last compaction (`<codex_apps_client_time_context>`) | Codex's context | Work plan plugin; the patch; `codexPlus.tellCodexYourTimeZone` |
@@ -93,6 +94,23 @@ Codex asks its client for an approval as a request, and records it in no file of
 | Why not `/compact` itself | Codex offers `/compact` only on an empty message box. The meter never touches the box, so a draft stays |
 | When it does not compact | While a turn runs or an approval waits, as Codex refuses its own `/compact` then: "Compact is disabled while a chat is in progress" |
 | Where Codex compacts | 90% of the model's full window, or `model_auto_compact_token_limit` in `config.toml` when that is lower |
+
+## Skill search
+
+| | |
+| --- | --- |
+| What it does | Before each turn, the skills that best fit your message (`codexPlus.skillRoutingCount`, 5 by default) are put in front of Codex with their full descriptions and the path of each `SKILL.md`, after a sentence telling the model to judge whether one fits before reading it. Codex's own list cuts every description to about 50 characters once a hundred or so skills are installed, and drops what its budget cannot hold without saying so |
+| Which skills | The folders Codex reads: the repository's `.agents/skills` and `.codex/skills` from the working folder up to the repository's root, `$CODEX_HOME/skills`, `~/.agents/skills`, Codex's system skills, `/etc/codex/skills`, and the skills of every plugin `config.toml` enables. Also each folder in `codexPlus.skillRoutingExtraFolders` (`~/.claude/skills` by default), and the Claude Code plugins named in `codexPlus.skillRoutingClaudePlugins` (none by default) |
+| Which are left out | A skill turned off in `[[skills.config]]`; one whose `agents/openai.yaml` sets `allow_implicit_invocation: false`; one you name with `$name` in the message, which Codex puts in front of the model whole. A skill with the name or the description of one found earlier is kept once. A message under six characters gets nothing |
+| How it searches | By keywords, on this machine: words, pieces of words and pairs of Chinese or Japanese characters, with a skill's name weighed above its description. No network, no credentials |
+| What a turn costs | One Python process, which Codex starts for the hook: it checks the times of the files the index was built from and reads the index, about 1 MB for 250 skills. Measured with 245 skills: 44 ms at the median and 53 ms at the 95th percentile, Python's own start-up not counted. The block adds roughly 1,300 input tokens |
+| When skills change | The next turn notices, starts a rebuild in a process of its own and searches the old index meanwhile. Rebuilding 245 skills takes about a third of a second |
+| Search by meaning | Off unless `codexPlus.skillRoutingVectorSearch` is on, and then used only while Codex's model provider is Amazon Bedrock. Each message, its first 1,500 characters and nothing else, goes to `cohere.embed-v4` on the Bedrock account and region Codex uses, signed with the credentials Codex is set up with: the provider's `credential_export` command, its `profile`, or the standard AWS variables. Each skill's name and description are sent when the index is built, and again only after they change. `HTTPS_PROXY` is used when it is set |
+| Its limits | A turn waits at most 1.5 seconds for it, network included, and falls back to keywords on any failure. A failure that will not pass by itself (no credentials, access denied, no such model in the region) turns it off for six hours, or until the provider, the region or the setting changes |
+| When nothing is sent | With the setting off; with a provider other than Bedrock; during those six hours; for a message under six characters. The credentials are never written to disk |
+| `skill_search` | A read-only tool of the work plan's MCP server: the same search with words the model chooses, so it can rephrase, try synonyms, or turn a request made in another language into English keywords |
+| What is logged | `skill-route/route.log` in the plugin's data folder: which skills each turn was given, by which search, and how long that took; which `SKILL.md` files the turn then read. Never the words of a message. Kept under 256 KB, with one older file |
+| After this extension updates the plugin | The hook is new, so Codex asks once more to trust the plugin's hooks |
 
 ## Not here
 

@@ -2245,7 +2245,7 @@
       hostTurns = {};
       if (m.turns && typeof m.turns === 'object') {
         Object.keys(m.turns).forEach(function (k) {
-          if (typeof m.turns[k] === 'string' && m.turns[k].length <= 120) hostTurns[k] = m.turns[k];
+          if (typeof m.turns[k] === 'string' && m.turns[k].length <= 600) hostTurns[k] = m.turns[k];
         });
       }
       hostTurnTimes = {};
