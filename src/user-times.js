@@ -18,8 +18,8 @@
  * before each compaction, which places it in the page's list of those messages under the same condition.
  *
  * It also notes, per turn, the model and effort the turn ran with, how much of the context window its last model call
- * used, and which skills the work plan plugin's skill search gave it, for the line under each reply; when each message the user typed in the turn was sent and each reply written; and
- * how long the turn took once it ended. A token_count or a message carries no turn id, so it belongs to the turn whose
+ * used, and which skills the work plan plugin's skill search gave it, for the line under each reply; when each message
+ * the user typed in the turn was sent and each reply written; and how long the turn took once it ended. A token_count or a message carries no turn id, so it belongs to the turn whose
  * task_started or turn_context came last before it. The page places all of these by the turn id Codex puts on each turn,
  * not by position, which is what lets a stamp carry seconds where the conversation's counts do not line up.
  *
@@ -56,7 +56,7 @@ const INJECTED = /^\s*<[a-z][a-z0-9_]*>/;
  * per skill under that first line, each "- <name>: <description> (file: <path>)".
  */
 const ROUTE_MARK = 'Skills that may fit this message';
-/* Names kept per turn: the hook gives a turn ten at most. */
+/* The hook gives a turn at most ten skills. */
 const SKILLS_KEPT = 10;
 
 const cache = new Map();
@@ -173,7 +173,7 @@ function noteTurn(row, turns) {
 
 /**
  * `ctx 33% · gpt-6.1-sol high · skills web-fetching, disk-cleanup` for one turn, or '' when nothing about it is known. A
- * plugin's skill is shown without its plugin's name, which is the part every skill of that plugin shares.
+ * plugin's skill is shown without its plugin prefix.
  */
 function turnFigure(e) {
   const parts = [];

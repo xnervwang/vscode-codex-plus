@@ -13,8 +13,8 @@ else there; everything it writes goes to a temporary folder it removes. It is no
 credentials and the network: it makes one request at a time, waits and retries on a throttle, and sends the catalogue's
 descriptions and the requests of corpus.py, nothing else.
 
-It prints the share of requests whose skill is in the top five, the share of name-only requests whose skill comes first,
-and how many skills the sentences no skill is for would be given, beside the same figures for the keyword search.
+It prints the top-five hit rate, the first-place rate for name-only requests, and how many skills the negative
+sentences get, for both the vector and the keyword search.
 """
 import json
 import os

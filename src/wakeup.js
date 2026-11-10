@@ -4,8 +4,8 @@
 
 'use strict';
 /*
- * Wake-ups: a conversation woken every few minutes so that work it was left to do carries on between turns, as Claude
- * Code's periodic alarm does.
+ * Wake-ups, Claude Code's periodic alarm for Codex: an idle conversation is sent a message every few minutes, so
+ * unfinished work goes on without the user.
  *
  * The model sets one with the work plan's MCP tool set_wakeup, which writes <thread>.wakeup into the plugin's data
  * folder: the interval, the prompt, when it was set and when it expires, seven days later. Each window runs one timer

@@ -2,9 +2,9 @@
 # Copyright (c) 2026, Xnerv Wang
 # All rights reserved.
 
-"""Loaded by any Python started with this folder on PYTHONPATH: records, and with ROUTE_GUARD=deny refuses, every
-network connection, every name lookup, every program started and every credential file opened, into the file named by
-ROUTE_GUARD_LOG. The skill routing tests put it under the hook to prove which paths never touch any of them.
+"""Loaded by any Python started with this folder on PYTHONPATH. It records network connections, DNS lookups, started
+programs and opened credential files in the file named by ROUTE_GUARD_LOG, and with ROUTE_GUARD=deny refuses them. The
+skill routing tests put it under the hook to prove which paths never touch any of them.
 
 The one program it lets through is the index rebuild the hook starts (skill_route.py --build), which runs under this
 same guard.

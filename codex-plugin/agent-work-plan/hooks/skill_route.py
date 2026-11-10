@@ -12,8 +12,8 @@ searches every installed skill for the user's words and puts the best few, with 
 front of the model. The MCP server's skill_search tool runs the same search with words the model chooses.
 
 The search is by keywords: BM25 over words, four-letter pieces of words and pairs of CJK characters, with a skill's name
-counted four times over its description. It needs no network and no credentials, and it is how every Codex searches.
-With the skillRouteVector setting on (it is off unless the user turns it on) and Codex's model provider Amazon Bedrock,
+counted four times over its description. It needs no network or credentials and is the default. With the
+skillRouteVector setting on (it is off unless the user turns it on) and Codex's model provider Amazon Bedrock,
 the search is by meaning instead, through cohere.embed-v4 on the account and region Codex already uses, and any failure
 falls back to the keywords. Measured on 540 past requests that opened a skill first, the right skill was among the top
 five for 44% by keywords and 55% by meaning.
@@ -63,8 +63,8 @@ MARK = "Skills that may fit this message"
 # A request shorter than this many characters is a "yes" or a "go on", which no skill is for. Measured over 20,114
 # requests, the cut skips 6.8% of them and misses 2.0% of those that loaded a skill.
 MIN_CHARS = 6
-QUERY_CHARS = 1500       # what the vector request carries of the user's message
-KEYWORD_CHARS = 300      # what the keyword search reads of it
+QUERY_CHARS = 1500       # characters of the message sent to be embedded
+KEYWORD_CHARS = 300      # characters of the message the keyword search reads
 DOC_CHARS = 2048         # what a skill's text sent to be embedded is cut to
 DESC_CHARS = 1024        # Codex's own cut for a description
 # Codex cuts a hook's injected text past its additionalContextLimit, counted as bytes / 4. hooks.json gives this hook
@@ -116,8 +116,8 @@ def data_root(directory):
 """Reading config.toml.
 
 Python 3.7 has no TOML parser, and the values wanted here are plain: strings, arrays, booleans and integers, in tables,
-arrays of tables and inline tables. A statement this reader does not understand is skipped up to the end of its line, so
-one unusual value costs that value only.
+arrays of tables and inline tables. A statement this reader does not understand is skipped to the end of its line, and
+the rest of the file is still read.
 """
 
 
@@ -318,7 +318,7 @@ def profiled(conf, key):
     return conf.get(key)
 
 
-"""Which skills there are, and the files a turn checks to know the index still describes them.
+"""Finding the skills, and the files whose stamps tell a turn that the index is out of date.
 
 These are the folders Codex itself reads (codex-rs/ext/skills/src/host_roots.rs): the repository's .agents/skills and
 .codex/skills from the working directory up to the repository's root, $CODEX_HOME/skills, ~/.agents/skills, the system
@@ -328,7 +328,7 @@ and the plugins installed for Claude Code that are named in skillRouteClaudePlug
 itself, but the injected path lets the model read the file.
 
 Left out: a skill Codex has turned off in [[skills.config]], and one whose agents/openai.yaml sets
-allow_implicit_invocation to false, which says it is to run only when someone names it. When two skills share a name
+allow_implicit_invocation to false (meant to run only when named). When two skills share a name
 (in any letter case) or a description, the one found first is kept, in the order above, so a skill Codex lists itself
 wins over a copy kept elsewhere.
 """
@@ -508,8 +508,8 @@ def turned_off(conf):
 
 
 def stamp(path):
-    """What a file's or folder's change shows in: two writes within one second of each other may leave the time the
-    same, and an editor that saves by renaming a new file into place gives it another inode."""
+    """Modification time, size and inode. Two writes in the same second can leave the time unchanged, and an editor
+    that saves by renaming a new file into place gives it a new inode."""
     try:
         st = os.stat(path)
         return [st.st_mtime_ns, st.st_size, st.st_ino]
@@ -623,7 +623,7 @@ the whole index, and fifty thousand small tuples took a quarter of the time a tu
 
 
 def stem(w):
-    """A plural's singular, for the few English endings that are regular."""
+    """Strip a regular English plural ending (-s, -es, -ies)."""
     if len(w) > 4 and w.endswith("ies"):
         return w[:-3] + "y"
     if len(w) > 4 and w.endswith(("ches", "shes", "sses", "xes", "zes")):
@@ -703,7 +703,7 @@ def keyword_scores(index, text):
     return {i: v for i, v in scores.items() if v > 0}
 
 
-"""Signing a request to Amazon Bedrock, and where its credentials and region come from.
+"""Bedrock request signing (Signature Version 4), credentials and region.
 
 Everything is read the way Codex reads it for its model provider: the provider's `aws` table in config.toml, with its
 credential_export command first, then its named profile, then the standard AWS environment variables, then the default
@@ -712,7 +712,7 @@ stays on keywords. The region is the table's own, else AWS_REGION, else AWS_DEFA
 request goes to AWS_ENDPOINT_URL_BEDROCK_RUNTIME or AWS_ENDPOINT_URL when either is set, as the AWS SDKs do, and through
 HTTPS_PROXY when that is set (NO_PROXY is honoured), as urllib does by default.
 
-The credentials are held in memory for the one request and never written anywhere.
+Credentials must not reach a file or a log line; test_credentials_are_written_nowhere checks the data directory for them.
 """
 
 
@@ -722,7 +722,7 @@ class Unavailable(Exception):
 
 
 class Transient(Exception):
-    """A timeout, a throttle or a server error: this turn falls back to keywords and the next turn tries again."""
+    """Timeout, throttling or a server error: keywords for this turn only."""
 
 
 def bedrock_provider(conf):
@@ -968,8 +968,8 @@ def embed(texts, input_type, model, region, creds, timeout, dim=None):
     url, body, headers = embed_request(texts, input_type, model, region, creds)
     req = urllib.request.Request(url, data=body, method="POST", headers=headers)
     try:
-        # An opener of its own for each request, so the proxy variables are read now: urlopen keeps the first opener it
-        # makes for the life of the process, and the MCP server lives long.
+        # build_opener() reads the proxy variables on every call; urlopen() keeps its first opener for the life of the
+        # process, and the MCP server runs for hours.
         with urllib.request.build_opener().open(req, timeout=max(0.05, timeout)) as r:
             raw = r.read()
     except urllib.error.HTTPError as e:
@@ -1007,8 +1007,8 @@ def embed(texts, input_type, model, region, creds, timeout, dim=None):
 
 
 def model_candidates(region):
-    """The ids to try for the embedding model in `region`: its geography's cross-region profile, the global one, and
-    the plain model id. The first that answers is kept in the index."""
+    """Model ids to try in `region`: the cross-region inference profile of the region's area (us., eu., apac.), the
+    global profile, then the plain model id. The first that answers is kept in the index."""
     geo = {"us": "us.", "ca": "us.", "eu": "eu.", "ap": "apac."}.get(region.split("-")[0], "")
     if region.startswith("us-gov-"):
         geo = "us-gov."
@@ -1312,8 +1312,8 @@ def build_locked(directory, home, cwd):
 
 
 def applies(skill, cwd_repos, mentioned):
-    """Whether a skill may be offered here: a repository's skill only in that repository, a skill the user named with
-    $name never (Codex puts that one's whole SKILL.md in front of the model itself), and one whose file is gone never."""
+    """False for a repository's skill outside that repository, for a skill named with $name (Codex already puts its
+    whole SKILL.md in front of the model), and for a skill whose file was deleted."""
     if skill["kind"] == "repo" and skill["root"] not in cwd_repos:
         return False
     if skill["name"].casefold() in mentioned or skill["short"].casefold() in mentioned:
@@ -1498,7 +1498,7 @@ def skills_read(tail, turn_id, index, cwd):
 
 
 def selftest():
-    """The checks that need nothing but this file. The full suite is test/route/test_skill_route.py in the extension's
+    """Self-test that needs no other file. The full suite is test/route/test_skill_route.py in the extension's
     repository."""
     failures = []
 

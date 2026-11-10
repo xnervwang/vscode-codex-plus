@@ -6,7 +6,7 @@
 """The skill search (codex-plugin/agent-work-plan/hooks/skill_route.py and route-skills.py), case by case.
 
     python3 test/route/test_skill_route.py          every case, one line each
-    python3 test/route/test_skill_route.py Vector   only the classes whose name holds "Vector"
+    python3 test/route/test_skill_route.py Vector   only the classes whose name contains "Vector"
 
 test/parts/20b-skill-route.js runs it as part of the suite. Each case builds its own Codex home, home folder and plugin
 data directory under a temporary folder, with every AWS and proxy variable taken out of the environment, so nothing
@@ -1365,7 +1365,7 @@ class J_Quality(unittest.TestCase):
 
     def test_floors(self):
         """the right skill is in the top five for 85% or more of the requests, first for 92% of those that name it,
-        and the sentences no skill is for get nothing"""
+        and the negative sentences get no skills"""
         top5, first, negatives = self.rates()
         self.assertGreaterEqual(top5, self.TOP5_FLOOR)
         self.assertGreaterEqual(first, self.BY_NAME_FLOOR)

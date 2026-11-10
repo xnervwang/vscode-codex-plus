@@ -16,7 +16,7 @@ one place. A path it is given must be a plan file in this plugin's data director
 for, named by a thread id: the tools write only there.
 
 A third tool, skill_search, only reads: it searches every installed skill with the words the model gives it
-(skill_route.py), which reaches the skills Codex's own list shortens or leaves out.
+(skill_route.py), including skills missing from Codex's own list.
 
 set_wakeup and clear_wakeup keep a conversation's wake-up, <thread id>.wakeup in the same data directory: the Codex Plus
 extension reads it in every window and, when it is due, queues the prompt for that conversation (src/wakeup.js there).

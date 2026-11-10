@@ -3,15 +3,15 @@
 # Copyright (c) 2026, Xnerv Wang
 # All rights reserved.
 
-"""Give each turn the installed skills that best fit the user's message, and note afterwards which ones it read.
+"""UserPromptSubmit and Stop hook of the skill search.
 
 On UserPromptSubmit it searches the skill index (skill_route.py) for the message and puts the best few in front of the
 model, each with its full description and the path of its SKILL.md. A message under six characters gets nothing. The
 whole run, network included, is held to 1.5 seconds, and anything that goes wrong leaves the turn with the keyword
-results or with nothing; it never stops the turn.
+results or with nothing.
 
-On Stop it reads the turn back from the rollout and writes down which SKILL.md files its tool calls named. Together the
-two log lines say how often the model read what it was given. Neither holds the user's words.
+On Stop it reads the turn back from the rollout and logs which SKILL.md files its tool calls named, so the log shows
+whether the model read the skills it was given.
 """
 import time
 
