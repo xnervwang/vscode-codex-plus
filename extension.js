@@ -225,7 +225,7 @@ async function activate(context) {
     sidebarShowing: () => patching.sidebarShowing(), sections: () => new Map(groups.list()),
     account: () => account.view(), front: frontNow, noGroups: () => groups.supported() === false });
   /* Once the list is visible, check for the section methods over Codex's own connection, never through a short-lived
-     app-server. Until the answer is in, the group commands stay offered. */
+     app-server. The group commands stay visible until it answers. */
   let sessionsView = null;
   const probeGroups = () => {
     if (groups.supported() !== null || !sessionsView || !sessionsView.visible) return;

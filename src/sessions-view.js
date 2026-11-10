@@ -9,7 +9,7 @@
  *
  *   ACCOUNT & USAGE       the sign-in, and usage when Codex reports it (src/account-usage.js)
  *   RECENTLY CLOSED       tabs closed in this workspace, newest first (collapsed)
- *   OPEN SESSIONS         this window's Codex tabs and the conversation in Codex's sidebar, by when each was last in front
+ *   OPEN SESSIONS         this window's Codex tabs and the conversation in Codex's sidebar, last focused first
  *   SESSION MANAGER       New in tab and New in sidebar, the filter row, then the groups (Codex's sections,
  *                         src/session-groups.js) and Ungrouped
  *
@@ -124,7 +124,7 @@ function placeOf(t, sections) {
 }
 
 /*
- * Builds the plain-value model the page draws (model()). `groups` holds the groups as group() returned them.
+ * Builds the plain-value model the page draws (model()).
  */
 class SessionsModel {
   constructor(vscode, { memory, memento, settings, stateOf, reader, wantState = () => {}, sidebarShowing = () => '', sections = null,

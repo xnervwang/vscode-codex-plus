@@ -9,7 +9,7 @@
  *
  * Elements are kept per key (row id, group key) and reused, and a field is written only when its value differs, so a
  * one-row change rewrites one row. Filters and search run over the model already in the page and toggle only rows
- * whose visibility changes. The hover delay is the page's only timer.
+ * whose visibility changes.
  *
  * Collapsed sections and groups, the status filter, Active and the search text are saved with setState, so they survive
  * VS Code dropping the page while the view is hidden.
@@ -552,8 +552,8 @@
     highlight(r);
     openRow(r);
   });
-  /* A right-click on a row outside the selection acts on that row alone; VS Code's own menu is drawn from the row's
-     data-vscode-context, so only the selection the host keeps has to follow. */
+  /* A right-click on a row outside the selection acts on that row alone. VS Code builds the menu from the row's
+     data-vscode-context, so the page only has to update the selection the host keeps. */
   root.addEventListener('contextmenu', (e) => {
     hideHover();
     closeMenu();

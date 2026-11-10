@@ -100,7 +100,7 @@ function createGroups({ ask, sections, memento }) {
 
 /*
  * Start New Session in This Group. Codex cannot start a conversation inside a section, so the new conversation is moved
- * there after its first message, when it first shows up in the snapshot. check() runs on each redraw of the list and
+ * there after its first message, once it appears in the snapshot. check() runs on each redraw of the list and
  * takes the oldest ungrouped conversation created since start(), preferring one that a panel in this window shows; it
  * stops looking after PLACE_MS. `threads()` returns the snapshot, `shown()` the conversations this window's panels show,
  * and `move(ids, sectionId)` is createGroups().move.
