@@ -280,6 +280,12 @@ async function meterHover(s, where, file) {
   await sleep(500);
   return box;
 }
+/* A hover label of this script's, measured while it shows: Claude Code Plus's box, in the page's font at 0.9 of its size. */
+const LABEL_LOOK = `(() => { const b = document.querySelector('[data-codex-extras="label"]'); if (!b) return null; const a = getComputedStyle(b), d = getComputedStyle(document.body);
+  return { padding: a.padding, radius: a.borderTopLeftRadius, bg: a.backgroundColor, border: a.borderTopColor, colour: a.color,
+    size: +(parseFloat(a.fontSize) / parseFloat(d.fontSize)).toFixed(3), sameFont: a.fontFamily === d.fontFamily }; })()`;
+const labelLooks = (l) => !!l && l.padding === '8px' && l.radius === '8px' && l.bg === 'rgb(31, 31, 31)' && l.border === 'rgb(60, 60, 60)'
+  && l.colour === 'rgb(204, 204, 204)' && l.size === 0.9 && l.sameFont;
 const innerW = (s) => s.width || 1100;
 
 function selfchecked(r, where, { turns, users, rows, replies = turns }) {
@@ -364,8 +370,11 @@ function selfchecked(r, where, { turns, users, rows, replies = turns }) {
       await s.b.hover(handle[0], handle[1]);
       await sleep(200);
       const label = await s.b.evaluate(`(() => { const b = document.querySelector('[data-codex-extras="label"]'); return b ? b.textContent : null; })()`);
+      const look = await s.b.evaluate(LABEL_LOOK);
+      results.scenes.conversation.labelLook = look;
       await shot(s, 'rail-handle-hover');
       check(/Your messages in this conversation/.test(label || ''), 'conversation: resting on the rail\'s handle shows its explanation in a box of this script\'s own', label);
+      check(labelLooks(look), 'conversation: the box is Claude Code Plus\'s: the menu background, the input border, 8 px corners and padding, 0.9 of the page\'s font', look);
       const row = await centre(s, '[data-codex-extras="nav-row"]');
       if (row) {
         await s.b.hover(row[0], row[1]);

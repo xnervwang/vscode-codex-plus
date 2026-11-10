@@ -757,10 +757,13 @@
       const under = r._row.child ? `\nSub-agent${r._row.nickname ? ` ${r._row.nickname}` : ''} of: ${r._row.parentTitle}` : '';
       hoverBox.textContent = `Group: ${r._row.group}\nSession ID: ${r._row.id}${under}${r._row.goalText ? `\n${r._row.goalText}` : ''}`;
       hoverBox.classList.remove('cp-hidden');
+      /* Placed as agentPlusKit.labels places Claude Code Plus's: centred on the row, 8 px above it when that fits in
+         the window and 8 px below it otherwise, and kept 8 px inside the window's sides. */
       const b = r.getBoundingClientRect();
       const w = hoverBox.offsetWidth, h = hoverBox.offsetHeight;
-      hoverBox.style.left = `${Math.max(4, Math.min(b.left + 8, window.innerWidth - w - 4))}px`;
-      hoverBox.style.top = `${b.bottom + 4 + h <= window.innerHeight ? b.bottom + 4 : Math.max(4, b.top - h - 4)}px`;
+      const left = b.left + b.width / 2 - w / 2;
+      hoverBox.style.left = `${Math.round(Math.max(8, Math.min(window.innerWidth - w - 8, left)))}px`;
+      hoverBox.style.top = `${Math.round(b.top - h - 8 >= 8 ? b.top - h - 8 : b.bottom + 8)}px`;
     }, HOVER_MS);
   }
 

@@ -56,4 +56,13 @@ module.exports = async ({ eq, root }) => {
     eq([dot(1), dot(2), dot(3), dot(4), dot(5)], ['idle', 'none', 'workingElsewhere', 'unread', 'unknown'],
       'an idle conversation open in this window keeps its grey dot; one that is not open has none, while running, unread and not-yet-read rows keep theirs');
   }
+
+  /* The hover box: Claude Code Plus's look, over the row. */
+  eq([has('.cp-hover', 'padding: 8px'), has('.cp-hover', 'border-radius: 8px'), has('.cp-hover', 'font-size: .9em'),
+    has('.cp-hover', 'background: var(--vscode-menu-background, var(--vscode-editorWidget-background))'),
+    has('.cp-hover', 'border: 1px solid var(--vscode-inlineChatInput-border, var(--vscode-input-border, var(--vscode-widget-border, #7f7f7f66)))'),
+    has('.cp-hover', 'color: var(--vscode-foreground)'), has('.cp-hover', 'max-width: 260px'), has('.cp-hover', 'white-space: pre-line'),
+    has('.cp-hover', 'line-height: 1.35')], [true, true, true, true, true, true, true, true, true],
+  'the hover box is Claude Code Plus\'s: the menu background, the input border, 8 px corners and padding, 0.9em, at most 260 px, wrapping');
+
 };

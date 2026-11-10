@@ -226,10 +226,17 @@ async function run({ env, check, shots, out, results }) {
     const hv = await b.evaluate(`(() => { const x = document.querySelector('.cp-group[data-key="section:a"] .cp-row'); const t = x.querySelector('.cp-time'), a = x.querySelector('.cp-actions');
       const box = document.querySelector('.cp-hover');
       return { time: getComputedStyle(t).visibility, acts: getComputedStyle(a).visibility, actRight: Math.round(x.getBoundingClientRect().right - a.getBoundingClientRect().right),
-        text: box.classList.contains('cp-hidden') ? '' : box.textContent }; })()`);
+        text: box.classList.contains('cp-hidden') ? '' : box.textContent,
+        look: (() => { const c = getComputedStyle(box), a = box.getBoundingClientRect(), w = x.getBoundingClientRect();
+          return { padding: c.padding, radius: c.borderTopLeftRadius, bg: c.backgroundColor, border: c.borderTopColor, colour: c.color, size: c.fontSize, maxWidth: c.maxWidth,
+            gap: Math.round(w.top - a.bottom), centre: Math.round((a.left + a.right) / 2 - (w.left + w.right) / 2) }; })() }; })()`);
     r.measures.hover = hv;
     check(hv.time === 'hidden' && hv.acts === 'visible' && hv.actRight === 8, 'sessions: on hover the rename button is where the time was', hv);
     check(/^Group: Release 1\.2\nSession ID: 01a1f0f0-/.test(hv.text), 'sessions: the hover box gives the group and the session ID', hv.text);
+    const hl = hv.look;
+    check(hl.padding === '8px' && hl.radius === '8px' && hl.bg === 'rgb(31, 31, 31)' && hl.border === 'rgb(60, 60, 60)' && hl.colour === 'rgb(204, 204, 204)'
+      && hl.size === '11.7px' && hl.maxWidth === '260px' && hl.gap === 8 && Math.abs(hl.centre) <= 1,
+    'sessions: the hover box is Claude Code Plus\'s, drawn 8 px above the row and centred on it: the menu background, the input border, 8 px corners and padding, 0.9em', hl);
     await b.hover(5, 890);
     await sleep(200);
 

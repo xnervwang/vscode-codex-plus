@@ -42,6 +42,17 @@ module.exports = async ({ eq, root }) => {
   const css = () => (p.q('[data-codex-extras="style"]')[0] || {}).textContent || '';
   const ruleOf = (text, sel) => { const i = text.indexOf(sel + '{'); return i < 0 ? '' : text.slice(i + sel.length + 1, text.indexOf('}', i)); };
 
+  /* ── the hover label: Claude Code Plus's box ── */
+  const [info, mute] = p.q('[data-codex-extras="bar-button"]');
+  mute.dispatch('mouseenter', {});
+  const label = p.q('[data-codex-extras="label"]')[0];
+  const look = label ? label.style.cssText : '';
+  eq(['padding:8px;', 'background:var(--vscode-menu-background,', 'border:1px solid var(--vscode-inlineChatInput-border,var(--vscode-input-border,',
+    'border-radius:8px;', 'color:var(--vscode-foreground,', 'font-size:.9em;'].map((x) => look.includes(x)).concat(/font:/.test(look)),
+  [true, true, true, true, true, true, false],
+  'a hover label is Claude Code Plus\'s: the menu background, the input border, 8 px corners and padding, the foreground, 0.9em in the page\'s own font');
+  mute.dispatch('mouseleave', {});
+
   /* ── the Agent map's dots ── */
   eq(/DOT_TONE = \{ working: '#22c55e', prompt: '#3b82f6',\s*unread: '#ef4444', failed: 'var\(--vscode-errorForeground,#f85149\)'/.test(source), true,
     'a sub-agent\'s dot has the session list\'s colours');

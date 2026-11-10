@@ -311,12 +311,14 @@
   }
 
   /* A hover label drawn by this script, because a native title is not reliably shown in Codex's page
-     (agentPlusKit.labels). A message shown after a click (flash) removes itself after FLASH_MS. */
+     (agentPlusKit.labels). It is Claude Code Plus's label, in the page's own font: the theme values behind the --app-*
+     variables its box uses, which Codex's page does not define. A message shown after a click (flash) removes itself
+     after FLASH_MS. */
   var FLASH_MS = 3000;
-  var tips = kit.labels({ mark: [MARK, 'label'], css: 'z-index:' + Z_BELOW_CODEX_BOX + ';padding:6px 8px;'
-    + 'background:var(--vscode-editorHoverWidget-background,#252526);color:var(--vscode-editorHoverWidget-foreground,#ccc);'
-    + 'border:1px solid var(--vscode-editorHoverWidget-border,#454545);border-radius:4px;'
-    + 'font:11px var(--vscode-font-family,sans-serif);' });
+  var tips = kit.labels({ mark: [MARK, 'label'], css: 'z-index:' + Z_BELOW_CODEX_BOX + ';padding:8px;'
+    + 'background:var(--vscode-menu-background,var(--vscode-editorWidget-background,#252526));'
+    + 'border:1px solid var(--vscode-inlineChatInput-border,var(--vscode-input-border,var(--vscode-widget-border,#7f7f7f66)));border-radius:8px;'
+    + 'color:var(--vscode-foreground,#ccc);font-size:.9em;' });
   var hideLabel = tips.hide, showLabel = tips.show;
   function flash(el, text) {
     showLabel(el, text);
