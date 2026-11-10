@@ -25,7 +25,7 @@ svg.cp-icon.cp-solid { fill: currentColor; stroke: none; }
   display: flex; align-items: center; gap: 6px; height: 26px; padding: 0 8px; box-sizing: border-box; cursor: pointer;
   background: none; border: none; width: 100%; text-align: left; font-family: inherit; font-size: inherit; color: inherit;
 }
-.cp-chevron { width: 14px; height: 14px; flex-shrink: 0; color: var(--vscode-descriptionForeground); transition: transform .1s; }
+.cp-chevron { width: 14px; height: 14px; flex-shrink: 0; color: var(--vscode-descriptionForeground); }
 .cp-open > .cp-section-head .cp-chevron, .cp-group.cp-open > .cp-group-head .cp-chevron { transform: rotate(90deg); }
 .cp-section-label {
   color: var(--vscode-descriptionForeground); text-transform: uppercase; letter-spacing: .5px; font-size: .85em; font-weight: 600;
@@ -54,7 +54,7 @@ svg.cp-icon.cp-solid { fill: currentColor; stroke: none; }
 .cp-usage-pct { font-variant-numeric: tabular-nums; }
 .cp-track { height: 6px; border-radius: 3px; overflow: hidden; background: var(--vscode-input-border, var(--vscode-widget-border, rgba(127, 127, 127, .4))); }
 .cp-fill { height: 100%; border-radius: 3px; background: var(--vscode-progressBar-background); }
-.cp-fill.cp-high { background: var(--vscode-charts-orange); }
+.cp-fill.cp-high { background: #d97757; }
 .cp-reset { opacity: .5; font-size: calc(var(--vscode-chat-font-size, 13px) - 2px); }
 
 /* SESSION MANAGER: the two new-conversation buttons, then the filter row. */
@@ -114,7 +114,10 @@ svg.cp-icon.cp-solid { fill: currentColor; stroke: none; }
 }
 .cp-group > .cp-list { display: none; }
 .cp-group.cp-open > .cp-list { display: flex; }
-.cp-editing { outline: 1px solid var(--vscode-focusBorder); border-radius: 3px; padding: 0 2px; cursor: text; user-select: text; text-overflow: clip; }
+/* Claude Code's outlines while a name is edited: the link colour for a title, the active input border for a group. */
+.cp-editing { border-radius: 3px; min-width: 20px; padding: 0 2px; cursor: text; user-select: text; text-overflow: clip; }
+.cp-title.cp-editing { outline: 1px solid var(--vscode-textLink-foreground); }
+.cp-group-name.cp-editing { outline: 1px solid var(--vscode-inputOption-activeBorder); }
 
 /* Rows */
 .cp-row {
@@ -156,6 +159,13 @@ svg.cp-icon.cp-solid { fill: currentColor; stroke: none; }
 .cp-act:hover { background: var(--vscode-toolbar-hoverBackground); color: var(--vscode-foreground); }
 .cp-act svg.cp-icon { width: 20px; height: 20px; }
 .cp-mark { background: color-mix(in srgb, #d97757 20%, transparent); color: inherit; border-radius: 2px; }
+
+/* What a drag shows beside the pointer: Claude Code's pill, off screen until the browser takes its picture. */
+.cp-drag {
+  position: fixed; top: -1000px; left: 0; max-width: 240px; padding: 2px 8px; border-radius: 6px; pointer-events: none;
+  background: var(--vscode-list-activeSelectionBackground); color: var(--vscode-list-activeSelectionForeground);
+  font-family: inherit; font-size: inherit; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 
 /* Empty states */
 .cp-null { padding: 4px 14px; color: var(--vscode-descriptionForeground); opacity: .7; cursor: default; }

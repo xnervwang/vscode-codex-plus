@@ -276,6 +276,7 @@ async function meterHover(s, where, file) {
   check(!!box && box.rect[0] >= 0 && box.rect[1] >= 0 && box.rect[2] <= innerW(s) && box.rect[3] <= box.meterTop
     && ['In context', 'Free', 'Auto-compact at', 'This conversation', 'Cached input', 'Reasoning', 'Click to compact now'].every((w) => box.text.includes(w)),
   `${where}: resting on the meter opens its figures above it, inside the page`, box);
+  check(!!box && box.rect[2] - box.rect[0] === Math.min(330, innerW(s) - 16), `${where}: the figures' box is 330 px wide, as Claude Code Plus's`, box);
   await s.b.hover(10, 10);
   await sleep(500);
   return box;
@@ -292,11 +293,13 @@ const PARITY = `(() => {
   const info = document.querySelector('[data-codex-extras="info"]');
   const line = info && info.firstElementChild;
   const body = st(document.body).fontFamily;
+  const panel = document.querySelector('.codex-extras-panel');
   const boxes = ['.codex-extras-panel', '[data-codex-extras="info"]', '[data-codex-extras="context"]', '[data-codex-extras="figures"]', '[data-codex-extras="bar"]']
     .map((sel) => [sel, document.querySelector(sel)]).filter(([, e]) => e).map(([sel, e]) => [sel, st(e).fontFamily === body]);
   return { info: info && info.style.display === 'block' ? { w: Math.round(info.getBoundingClientRect().width), name: Math.round(line.firstElementChild.getBoundingClientRect().width),
       align: st(line).alignItems } : null,
-    stamps: { user: stamp('user'), assistant: stamp('assistant') }, mono: probe('fontFamily', 'var(--vscode-editor-font-family, monospace)'), boxes };
+    stamps: { user: stamp('user'), assistant: stamp('assistant') }, mono: probe('fontFamily', 'var(--vscode-editor-font-family, monospace)'),
+    boxes, panelLine: panel ? st(panel).lineHeight : '' };
 })()`;
 async function parity(s, where) {
   /* inputUnchanged clicked the information button; the answer is what this extension's host would send. */
@@ -314,6 +317,7 @@ async function parity(s, where) {
   check(sides.every((x) => x && x.family === m.mono && x.size === 0.8 && x.opacity === '0.6' && x.sameColour),
     `${where}: a stamp is in the editor's monospace font at 0.8 of its message's size, in the text's own colour at 60%`, m.stamps);
   check(m.boxes.length >= 2 && m.boxes.every(([, same]) => same), `${where}: every box of this script's is in the page's own font`, m.boxes);
+  check(m.panelLine === '15.4px', `${where}: the list's lines are 1.4 high, as Claude Code Plus's`, m.panelLine);
 }
 /* A hover label of this script's, measured while it shows: Claude Code Plus's box, in the page's font at 0.9 of its size. */
 const LABEL_LOOK = `(() => { const b = document.querySelector('[data-codex-extras="label"]'); if (!b) return null; const a = getComputedStyle(b), d = getComputedStyle(document.body);
@@ -387,6 +391,20 @@ function selfchecked(r, where, { turns, users, rows, replies = turns }) {
     await parity(s, 'conversation');
     await s.b.evaluate(`(() => { const a = [...document.querySelectorAll('[data-local-conversation-user-anchor]')].pop(); const b = a && a.querySelector('button'); if (b) b.focus(); })()`);
     await shot(s, 'user-message-focused', { x: 600, y: 380, width: 500, height: 140 });
+    /* Codex's own clock beside your message, shown while the message has the focus, is hidden while this script's stamp is
+       there, as Claude Code Plus hides Claude Code's: the only time left on screen is the stamp. */
+    {
+      const own = await s.b.evaluate(`(() => { const a = [...document.querySelectorAll('[data-local-conversation-user-anchor]')].pop(); if (!a) return null;
+        const body = a.querySelector('[data-user-message-bubble]'), out = [];
+        const walk = document.createTreeWalker(a, NodeFilter.SHOW_TEXT);
+        for (let n = walk.nextNode(); n; n = walk.nextNode()) {
+          const e = n.parentElement; if (!e || e.closest('[data-codex-extras]') || (body && body.contains(e))) continue;
+          const t = n.nodeValue.trim(); if (/^\\d{1,2}:\\d\\d(\\s?[AP]M)?$/i.test(t) && e.getClientRects().length) out.push(t);
+        }
+        return { shown: out, stamp: (a.querySelector('.codex-extras-stamp-user') || {}).textContent || '' }; })()`);
+      results.scenes.conversation.ownTime = own;
+      check(!!own && own.shown.length === 0 && /\d\d:\d\d:\d\d/.test(own.stamp), 'conversation: with your message focused, Codex\'s own time beside it is hidden and this script\'s stamp is the one time shown', own);
+    }
     await s.b.evaluate('document.activeElement && document.activeElement.blur()');
     const handle = await centre(s, '.codex-extras-rail-handle');
     if (handle) {
@@ -554,6 +572,8 @@ function selfchecked(r, where, { turns, users, rows, replies = turns }) {
           sections: [...d.querySelectorAll('[data-codex-extras^="map-"]')].map((x) => x.getAttribute('data-codex-extras')).filter((k) => /^map-(wakeups|goal|agents)$/.test(k)),
           rows, dots: [...d.querySelectorAll('[data-codex-extras="map-agent"] [data-codex-extras-dot]')].map((x) => Math.round(x.getBoundingClientRect().width)),
           tones: [...d.querySelectorAll('[data-codex-extras="map-agent"] [data-codex-extras-dot]')].map((x) => [x.getAttribute('data-codex-extras-dot'), getComputedStyle(x).backgroundColor]),
+          border: st.borderTopColor, focusBorder: (() => { const q = document.createElement('span'); q.style.color = 'color-mix(in srgb, #2488db 65%, transparent)';
+            document.body.appendChild(q); const v = getComputedStyle(q).color; q.remove(); return v; })(),
           focused: document.activeElement === d };
       })()`);
       results.scenes[name].measures.dialog = { ...dlg, openMs: +(opened2 - t0).toFixed(1) };
@@ -563,6 +583,8 @@ function selfchecked(r, where, { turns, users, rows, replies = turns }) {
       check(!!dlg && dlg.sections.join() === 'map-wakeups,map-goal,map-agents' && dlg.box[0] >= 16 && dlg.box[2] <= dlg.vw - 16 && dlg.box[1] >= 0 && dlg.box[3] <= dlg.vh
         && dlg.rows.every(([w, rad]) => w === Math.min(300, dlg.box[2] - dlg.box[0] - 32 - 8) && rad === '4px') && dlg.dots.length === 2 && dlg.dots.every((x) => x === 8),
       `${name}: it holds the wake-up, the goal and the sub-agents in that order, inside the page, each agent a 4 px rounded row with an 8 px dot`, dlg);
+      check(!!dlg && dlg.focused && dlg.border === dlg.focusBorder, `${name}: holding the focus, its border is the active input border at 65%, as Claude Code's dialog`,
+        dlg && { border: dlg.border, want: dlg.focusBorder });
       check(!!dlg && dlg.tones.some(([k, c]) => k === 'working' && c === 'rgb(34, 197, 94)'), `${name}: a working sub-agent's dot is the session list's green, #22c55e`, dlg && dlg.tones);
       const press = async (sel) => { const c = await centre(s, sel); if (c) { await s.b.click(c[0], c[1]); await sleep(150); } return !!c; };
       await s.b.evaluate('window.__posted.length = 0');

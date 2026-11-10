@@ -59,6 +59,14 @@ module.exports = async ({ eq, root }) => {
     /(^|;)color:/.test(stamp), /font:/.test(stamp)], [true, true, true, false, false],
   'a stamp is in the editor\'s monospace font at 0.8em, in the colour of the text around it at 60%, as Claude Code Plus\'s');
 
+  /* ── Codex's own time beside a message of yours is hidden while the stamps are on ── */
+  const own = p.q('[data-own]')[0];
+  eq([own.classList.contains('codex-extras-own-time'), /\.codex-extras-own-time\{display:none !important;\}/.test(css())], [true, true],
+    'the clock Codex renders beside your message is hidden while this script stamps it, as Claude Code Plus hides Claude Code\'s');
+  p.view({ timestamps: false });
+  eq(/\.codex-extras-own-time\{/.test(css()), false, 'and shown again with the stamps off');
+  p.view();
+
   /* ── the two glyphs: ℹ and ♪, the note struck straight through at 40% while chimes are off ── */
   const parts = (b) => b.querySelectorAll('svg')[0].childNodes;
   eq(parts(info).some((n) => n.getAttribute('fill') === 'none'), false, 'the information button is the letter ℹ, not a ringed i');
@@ -110,7 +118,19 @@ module.exports = async ({ eq, root }) => {
   const info2 = require('../../src/session-info');
   eq(info2.rows('019a6a10-0000-7000-8000-00000000ffff', { pid: '4242' }).map((r) => r.label), ['Thread', 'Process'],
     'the box names its rows in a word or two, as Claude Code Plus\'s Session and Process');
-  /* ── the Agent map's dots ── */
+  /* ── the Agent map: the list's dots, the dialog's border while it has the focus ── */
   eq(/DOT_TONE = \{ working: '#22c55e', prompt: '#3b82f6',\s*unread: '#ef4444', failed: 'var\(--vscode-errorForeground,#f85149\)'/.test(source), true,
     'a sub-agent\'s dot has the session list\'s colours');
+  eq(/\[data-codex-extras="map-dialog"\]:focus-within\{border-color:color-mix\(in srgb,var\(--vscode-inputOption-activeBorder,#2488db\) 65%,transparent\) !important;\}/.test(css()),
+    true, 'the dialog\'s border turns to the active input border at 65% while it holds the focus, as Claude Code\'s');
+
+  /* ── the context box and the rail's list ── */
+  eq([/width:330px;/.test(source.slice(source.indexOf('function ctxShow'), source.indexOf('function ctxHideNow'))),
+    /width:54px;/.test(source.slice(source.indexOf('function ctxRow'), source.indexOf('function ctxNote')))], [true, true],
+  'the context box is 330 px wide with a 54 px column for the figures, as Claude Code Plus\'s');
+  const panel = ruleOf(css(), '.codex-extras-panel');
+  eq([panel.includes('line-height:1.4;'), /\.codex-extras-row-when/.test(css()),
+    /setAttribute\('title'/.test(source.slice(source.indexOf('function addRule'), source.indexOf('function addRule') + 1200))], [true, false, false],
+  'the list\'s rows are 1.4 high with the time in the same text as the words, and a compaction line has a drawn label rather than a native title');
+
 };

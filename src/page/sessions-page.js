@@ -910,7 +910,8 @@
 
   /* ── dragging rows onto a group ── */
   const DRAG = 'application/x-codex-plus-threads';
-  let dragging = null;
+  let dragging = null, dragImage = null;
+  const dropImage = () => { if (dragImage) { dragImage.remove(); dragImage = null; } };
   root.addEventListener('dragstart', (e) => {
     const r = e.target.closest && e.target.closest('.cp-row');
     if (!r || r._editing) return;
@@ -919,8 +920,13 @@
     dragging = ids;
     e.dataTransfer.setData(DRAG, JSON.stringify(ids));
     e.dataTransfer.effectAllowed = 'move';
+    /* Claude Code's drag image: the row's title, or how many rows go, in a pill beside the pointer. */
+    dropImage();
+    dragImage = el('div', 'cp-drag', ids.length === 1 ? r._row.title : `${ids.length} sessions`);
+    root.appendChild(dragImage);
+    if (typeof e.dataTransfer.setDragImage === 'function') e.dataTransfer.setDragImage(dragImage, -12, -12);
   });
-  root.addEventListener('dragend', () => { dragging = null; for (const h of root.querySelectorAll('.cp-drop')) h.classList.remove('cp-drop'); });
+  root.addEventListener('dragend', () => { dragging = null; dropImage(); for (const h of root.querySelectorAll('.cp-drop')) h.classList.remove('cp-drop'); });
   const target = (e) => {
     const h = e.target.closest && e.target.closest('.cp-group-head');
     const ge = h && groupEls.get(h.dataset.group);

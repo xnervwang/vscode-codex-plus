@@ -834,7 +834,7 @@
     a.textContent = name;
     a.style.cssText = 'flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
     b.textContent = value;
-    b.style.cssText = 'flex:0 0 auto;width:62px;text-align:right;font-variant-numeric:tabular-nums;';
+    b.style.cssText = 'flex:0 0 auto;width:54px;text-align:right;font-variant-numeric:tabular-nums;';
     c.textContent = share || '';
     c.style.cssText = 'flex:0 0 auto;width:48px;text-align:right;opacity:.75;font-variant-numeric:tabular-nums;';
     row.appendChild(a); row.appendChild(b); row.appendChild(c);
@@ -904,7 +904,7 @@
     if (!ctxBox || !ctxBox.isConnected) {
       ctxBox = document.createElement('div');
       ctxBox.setAttribute(MARK, 'context');
-      ctxBox.style.cssText = 'position:fixed;z-index:' + Z_BELOW_CODEX_BOX + ';display:none;width:300px;max-width:calc(100vw - 16px);'
+      ctxBox.style.cssText = 'position:fixed;z-index:' + Z_BELOW_CODEX_BOX + ';display:none;width:330px;max-width:calc(100vw - 16px);'
         + 'box-sizing:border-box;padding:8px 10px;border-radius:5px;' + pageFont(11) + 'line-height:1.5;'
         + 'background:var(--vscode-editorHoverWidget-background,rgba(30,30,30,.99));color:var(--vscode-editorHoverWidget-foreground,#ddd);'
         + 'border:1px solid var(--vscode-editorHoverWidget-border,rgba(255,255,255,.18));box-shadow:0 4px 14px rgba(0,0,0,.5);';
@@ -1448,7 +1448,8 @@
    * span in the row of buttons beside the message, with no stable name to select it by. So it is found by reading
    * instead, as the one text in the message that reads as a clock and is not the message's own words. Only a clock
    * counts, not an epoch count or a date string, because this is looking for something Codex has already rendered for
-   * display. With two candidates there is no telling which is the time, so none is returned.
+   * display. With two candidates there is no telling which is the time, so none is returned. What is returned carries
+   * the element that shows the clock (`el`), so that it can be hidden while this script's stamp is on the message.
    */
   function userWhenInPage(anchor, dayMs) {
     var body = one(anchor, SEL.bubble);
@@ -1467,6 +1468,7 @@
         if (!when) continue;
         if (found) return null;
         found = when;
+        found.el = n.parentNode && String(n.parentNode.textContent || '').trim() === t ? n.parentNode : null;
       }
     }
     return found;
@@ -1640,6 +1642,7 @@
       var tt = e.turn && own(hostTurnTimes, e.turn) ? hostTurnTimes[e.turn] : null;
       if (view.timestamps) {
         var when = e.kind === 'assistant' ? assistantWhen(e.node, e.day) : userWhenInPage(e.node, e.day);
+        var ownEl = e.kind === 'user' && when ? when.el : null;
         if (e.kind === 'user') took = when ? 'clock' : '';
         /*
          * The turn's own times are tried first. A user message takes the time at its position in the turn, when the
@@ -1665,6 +1668,9 @@
         }
         text = clockOf(when);
         if (e.kind === 'user') e.when = text;
+        /* Codex's own clock beside the message, hidden as Claude Code Plus hides Claude Code's while its stamp is on.
+           Codex's redraws drop the class, so each pass puts it back. */
+        if (ownEl && text && !(ownEl.classList && ownEl.classList.contains(OWN_TIME_CLASS))) flag(ownEl, OWN_TIME_CLASS, true);
       }
       if (e.kind === 'user') {
         if (!text) lastPass.unstamped++;
@@ -1714,6 +1720,7 @@
   }
 
   var sheet = null, sheetText = '';
+  var OWN_TIME_CLASS = 'codex-extras-own-time';
   function dropSheet() {
     if (sheet) { try { sheet.remove(); } catch (e) { /* gone */ } }
     sheet = null; sheetText = '';
@@ -1737,7 +1744,8 @@
       css += '.' + LOW_CLASS + '{outline:1px solid var(--vscode-editorWarning-foreground,#cca700) !important;'
         + 'outline-offset:1px;border-radius:4px;}';
     }
-    if (view.timestamps) css += SEL.assistant + ':has(> [' + TIMED_ATTR + ']) ' + SEL.sent + '{display:none !important;}';
+    if (view.timestamps) css += SEL.assistant + ':has(> [' + TIMED_ATTR + ']) ' + SEL.sent + '{display:none !important;}'
+      + '.' + OWN_TIME_CLASS + '{display:none !important;}';
     /* While the rail is drawn, the scroller's content gets right padding as wide as the rail, as in Claude Code Plus.
        The scroller itself gets none, so its scrollbar stays at the right edge of the page and the rail sits just left
        of it. */
@@ -1781,7 +1789,7 @@
     + 'width:min(' + PANEL_W + 'px,calc(100vw - ' + (RAIL_W + 14) + 'px));'
     + 'max-height:calc(100vh - 16px);overflow-y:auto;z-index:' + Z_PANEL + ';display:none;'
     + 'padding:5px 0;border-radius:5px;box-sizing:border-box;' + pageFont(11)
-    + 'line-height:1.45;background:var(--vscode-editorWidget-background,rgba(35,35,35,.98));'
+    + 'line-height:1.4;background:var(--vscode-editorWidget-background,rgba(35,35,35,.98));'
     + 'border:1px solid var(--vscode-widget-border,rgba(255,255,255,.14));box-shadow:0 4px 14px rgba(0,0,0,.45);}'
     + '.codex-extras-panel-head{position:sticky;top:0;z-index:1;padding:3px 8px 6px 8px;'
     + 'background:var(--vscode-editorWidget-background,rgba(35,35,35,.98));}'
@@ -1797,7 +1805,9 @@
     /* The Agent map's pill, its rows and its buttons, hovered as Claude Code's are. */
     + '[data-codex-extras="agents"]:hover{background:color-mix(in srgb,var(--vscode-foreground,#ccc) 18%,transparent) !important;}'
     + '[data-codex-extras="map-agent"]:hover{background-color:var(--vscode-list-hoverBackground,rgba(255,255,255,.08)) !important;}'
-    + '[data-codex-extras="map-close"]:hover,[data-codex-extras="map-act"]:hover{background:var(--vscode-toolbar-hoverBackground,rgba(255,255,255,.12)) !important;}';
+    + '[data-codex-extras="map-close"]:hover,[data-codex-extras="map-act"]:hover{background:var(--vscode-toolbar-hoverBackground,rgba(255,255,255,.12)) !important;}'
+    /* Claude Code's dialog border while the dialog holds the focus: the active input border at 65%. */
+    + '[data-codex-extras="map-dialog"]:focus-within{border-color:color-mix(in srgb,var(--vscode-inputOption-activeBorder,#2488db) 65%,transparent) !important;}';
 
   /* ── the list of your own messages, and stepping between them ── */
   var nav = null, railBox = null, panel = null, rowsBox = null, filter = null, chevron = null;
@@ -2138,13 +2148,15 @@
   }
 
   /* A compaction point, as a rule across the list. Clicking it goes to the first message after it, or to the end of the
-     conversation when there is none yet. */
+     conversation when there is none yet. Its label is drawn as a row's is, since a native title is not reliably shown
+     in Codex's page. */
   function addRule(rule) {
     var label = 'Context compacted' + (rule.at ? ' ' + clockOf({ ms: rule.at, secs: false }) : '');
     var d = document.createElement('div');
     d.setAttribute('class', 'codex-extras-rule');
     d.setAttribute(MARK, 'nav-rule');
-    d.setAttribute('title', label);
+    d.addEventListener('mouseenter', function () { showTip(d, label); });
+    d.addEventListener('mouseleave', hideTip);
     var line = function () { var l = document.createElement('div'); l.setAttribute('class', 'codex-extras-rule-line'); return l; };
     var t = document.createElement('span');
     t.textContent = label;

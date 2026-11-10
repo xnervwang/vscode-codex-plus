@@ -165,6 +165,7 @@ async function run({ env, check, shots, out, results }) {
         icons: { funnel: icon('[data-tool="filter"] svg'), bolt: icon('[data-tool="active"] svg') },
         font: [st(document.querySelector('.cp-root')).fontFamily, st(document.querySelector('.cp-root')).fontSize],
         account: label && { opacity: st(label).opacity, colour: st(label).color, size: st(label).fontSize, pad: st(kv).paddingTop, nameOpacity: st(name).opacity, nameColour: st(name).color },
+        chevron: st(document.querySelector('.cp-chevron')).transitionDuration,
         rename: act ? [act.getBoundingClientRect().width, act.getBoundingClientRect().height, act.closest('.cp-act').getAttribute('aria-label')] : null,
         noDot: rows.filter((x) => st(x.querySelector('.cp-dot')).display === 'none').map((x) => Math.round(x.querySelector('.cp-title').getBoundingClientRect().left - x.getBoundingClientRect().left)),
       };
@@ -181,6 +182,7 @@ async function run({ env, check, shots, out, results }) {
     check(!!look.account && look.account.opacity === '0.7' && look.account.colour === 'rgb(204, 204, 204)' && look.account.size === '12px' && look.account.pad === '4px'
       && look.account.nameOpacity === '0.7' && look.account.nameColour === 'rgb(204, 204, 204)',
     'sessions: ACCOUNT is the foreground at 70% and 12 px, and each row has 4 px above it with its name at 70%, as in Claude Code', look.account);
+    check(look.chevron === '0s', 'sessions: a chevron turns without an animation, as Claude Code\'s', look.chevron);
     check(!!look.rename && look.rename[0] === 20 && look.rename[1] === 20 && look.rename[2] === 'Rename session', 'sessions: a row\'s rename button has a 20 px icon and says "Rename session"', look.rename);
 
     /* An expanded section leaves 10 px under its last row before the next section; a collapsed one leaves none. */
@@ -223,11 +225,13 @@ async function run({ env, check, shots, out, results }) {
       windows: [{ name: '5h', usedPercent: 23, resetsAt: soon }, { name: 'Weekly', usedPercent: 86, resetsAt: later }], tokens: [{ label: 'Tokens today', value: 1234567 }] } }) });
     await sleep(200);
     const usage = await b.evaluate(`[...document.querySelectorAll('.cp-usage')].map((u) => { const t = u.querySelector('.cp-track').getBoundingClientRect(), f = u.querySelector('.cp-fill');
-      return { text: u.textContent, share: Math.round(100 * f.getBoundingClientRect().width / t.width), high: f.classList.contains('cp-high'), h: t.height }; })`);
+      return { text: u.textContent, share: Math.round(100 * f.getBoundingClientRect().width / t.width), high: f.classList.contains('cp-high'), h: t.height,
+        fill: getComputedStyle(f).backgroundColor }; })`);
     r.measures.usage = usage;
     await shot('sessions-account-usage', { x: 0, y: 0, width: 360, height: 220 });
     check(usage.length === 2 && usage[0].share === 23 && usage[1].share === 86 && !usage[0].high && usage[1].high && usage.every((u) => u.h === 6),
       'sessions: each window is a 6 px bar filled to its share, the one past 80% in the warning colour', usage);
+    check(usage.length === 2 && usage[1].fill === 'rgb(217, 119, 87)', 'sessions: the bar past 80% is Claude\'s orange, #d97757, as Claude Code draws it', usage.map((u) => u.fill));
     await toPage({ type: 'model', model: small });
     await sleep(100);
 
@@ -280,13 +284,23 @@ async function run({ env, check, shots, out, results }) {
     const renamed = await b.evaluate(`(() => {
       const t = [...document.querySelectorAll('.cp-title.cp-editing')];
       return t.map((x) => { const row = x.closest('.cp-row'), a = row.getBoundingClientRect(), e = x.getBoundingClientRect();
-        return { where: (x.closest('.cp-group') || x.closest('.cp-section')).dataset.key, id: row.dataset.id, inside: e.top >= a.top && e.bottom <= a.bottom }; });
+        return { where: (x.closest('.cp-group') || x.closest('.cp-section')).dataset.key, id: row.dataset.id, inside: e.top >= a.top && e.bottom <= a.bottom,
+          outline: getComputedStyle(x).outlineColor }; });
     })()`);
     r.measures.renameTwice = { rightClicked, renamed };
     check(rightClicked && renamed.length === 1 && renamed[0].where === 'section:a' && renamed[0].id === ID(1) && renamed[0].inside,
       'sessions: Rename on a group\'s row edits that row, not the same conversation\'s row in Open sessions', r.measures.renameTwice);
     await b.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
     await sleep(100);
+    await toPage({ type: 'startRenameGroup', key: 'section:a' });
+    await sleep(150);
+    const groupOutline = await b.evaluate(`(() => { const e = document.querySelector('.cp-group-name.cp-editing'); return e ? getComputedStyle(e).outlineColor : null; })()`);
+    await shot('sessions-rename-group', { x: 0, y: 0, width: 360, height: 560 });
+    await b.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+    await sleep(100);
+    r.measures.editOutlines = { title: renamed[0] && renamed[0].outline, group: groupOutline };
+    check(r.measures.editOutlines.title === 'rgb(77, 170, 252)' && groupOutline === 'rgb(36, 136, 219)',
+      'sessions: a title being renamed is outlined in the link colour and a group name in the active input border, as in Claude Code', r.measures.editOutlines);
 
     /* The right-click menus and their submenus, each timed from the right-click or the hover to the drawn menu. */
     const esc = () => b.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
@@ -536,6 +550,19 @@ async function run({ env, check, shots, out, results }) {
       && sb.magnifier === 'none', 'sessions: the search box opens above the filter buttons, Claude Code\'s: no border, 4 px corners, 31 px high at 0.9em, "Search sessions…", the magnifier hidden', sb);
     check(!!sb.mark && sb.mark === sb.want, 'sessions: the matched words are marked in Claude\'s orange at 20%', sb);
     await b.evaluate(`(() => { const i = document.querySelector('.cp-search input'); i.value = ''; i.dispatchEvent(new Event('input')); })()`);
+
+    /* Dragging a row: the image is Claude Code's pill with the row's title. */
+    const drag = await b.evaluate(`(() => {
+      const row = document.querySelector('.cp-group .cp-row'), dt = new DataTransfer(); let got = null;
+      dt.setDragImage = (e, x, y) => { const c = getComputedStyle(e); got = { text: e.textContent, x, y, bg: c.backgroundColor, colour: c.color, radius: c.borderTopLeftRadius,
+        padding: [c.paddingTop, c.paddingRight].join(' '), maxWidth: c.maxWidth, title: row.querySelector('.cp-title').textContent }; };
+      row.dispatchEvent(new DragEvent('dragstart', { bubbles: true, cancelable: true, dataTransfer: dt }));
+      row.dispatchEvent(new DragEvent('dragend', { bubbles: true }));
+      return { got, left: document.querySelectorAll('.cp-drag').length }; })()`);
+    r.measures.drag = drag;
+    check(!!drag.got && drag.got.text === drag.got.title && drag.got.x === -12 && drag.got.y === -12 && drag.got.bg === 'rgb(4, 57, 94)' && drag.got.colour === 'rgb(255, 255, 255)'
+      && drag.got.radius === '6px' && drag.got.padding === '2px 8px' && drag.got.maxWidth === '240px' && drag.left === 0,
+    'sessions: a dragged row is shown as Claude Code\'s pill, its title in the selection colour, and the pill goes when the drag ends', drag);
 
     /* Time to draw and to search, timed inside the page with the layout it forces. */
     const timing = async (n) => {

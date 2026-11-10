@@ -128,6 +128,15 @@ module.exports = async ({ eq, root }) => {
     /var\(--vscode-sideBarActivityBarTop-border, var\(--vscode-sideBarSectionHeader-border/.test(rule('.cp-new-row'))], [true, true],
   'the section lines try Claude Code\'s sideBarActivityBarTop.border first');
 
+  /* Lines, chevrons, outlines, the high usage bar. */
+  eq([/var\(--vscode-sideBarActivityBarTop-border, var\(--vscode-sideBarSectionHeader-border/.test(rule('.cp-section')),
+    /var\(--vscode-sideBarActivityBarTop-border, var\(--vscode-sideBarSectionHeader-border/.test(rule('.cp-new-row'))], [true, true],
+  'the section lines try Claude Code\'s sideBarActivityBarTop.border first');
+  eq([/transition/.test(rule('.cp-chevron')), has('.cp-title.cp-editing', 'outline: 1px solid var(--vscode-textLink-foreground)'),
+    has('.cp-group-name.cp-editing', 'outline: 1px solid var(--vscode-inputOption-activeBorder)'), has('.cp-fill.cp-high', 'background: #d97757')],
+  [false, true, true, true],
+  'a chevron turns at once, a title being renamed is outlined in the link colour and a group name in the active input border, and a high usage bar is Claude\'s orange');
+
   /* The hover box: Claude Code Plus's look, over the row. */
   eq([has('.cp-hover', 'padding: 8px'), has('.cp-hover', 'border-radius: 8px'), has('.cp-hover', 'font-size: .9em'),
     has('.cp-hover', 'background: var(--vscode-menu-background, var(--vscode-editorWidget-background))'),
@@ -135,5 +144,19 @@ module.exports = async ({ eq, root }) => {
     has('.cp-hover', 'color: var(--vscode-foreground)'), has('.cp-hover', 'max-width: 260px'), has('.cp-hover', 'white-space: pre-line'),
     has('.cp-hover', 'line-height: 1.35')], [true, true, true, true, true, true, true, true, true],
   'the hover box is Claude Code Plus\'s: the menu background, the input border, 8 px corners and padding, 0.9em, at most 260 px, wrapping');
+
+  /* The drag image: Claude Code's pill with the row's title, or how many rows are dragged. */
+  {
+    const r2 = p.$(`.cp-row[data-id="${ID(2)}"]`);
+    let image = null;
+    r2.bubble('dragstart', { dataTransfer: { setData() {}, setDragImage: (e, x, y) => { image = { text: e.textContent, cls: e.className, x, y }; } } });
+    eq(image, { text: 'Conversation 2', cls: 'cp-drag', x: -12, y: -12 }, 'dragging a row shows its title in a pill beside the pointer, as Claude Code does');
+    eq([has('.cp-drag', 'background: var(--vscode-list-activeSelectionBackground)'), has('.cp-drag', 'border-radius: 6px'), has('.cp-drag', 'padding: 2px 8px'),
+      has('.cp-drag', 'max-width: 240px')], [true, true, true, true], 'drawn in the selection colour, 6 px corners, 2 by 8 px, at most 240 px');
+    p.page.bubble('dragend');
+    eq(p.page.querySelectorAll('.cp-drag').length + (p.dom.document.body.querySelectorAll ? p.dom.document.body.querySelectorAll('.cp-drag').length : 0), 0,
+      'and the pill goes when the drag ends');
+  }
+
 
 };
