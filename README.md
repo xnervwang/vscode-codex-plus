@@ -17,6 +17,8 @@
 | Thread ID and group on hover; find by title or four hex characters of the ID | Codex sessions view | — |
 | How long since it was last used and the first and last day it was, as `11d · 09/05→09/16`, how long written `now`, `5m`, `3h`, `2d`, `1mo` or `1y` and a date of another year with its year, as Claude Code's list writes them; title colours; conversations started by `codex exec` left out | Codex sessions view | `codexPlus.hideBackgroundSessions` |
 | Delete archived conversations, one or several selected together | Codex sessions view, right-click | — |
+| Rename, Archive (buttons on a row when hovered, and in its right-click menu), Unarchive, Move to Section (Codex's own sections; Claude Code calls it Add to Group) and Mark as Unread, several rows at once where that makes sense. All but the last are sent to this window's Codex app-server on Codex's own connection, or before the patch is in effect to a short-lived one; Mark as Unread is this extension's own read record | Codex sessions view | — |
+| Rename, Mark as Unread and Move to Section in a Codex conversation tab's own right-click menu, as Claude Code has its three | Codex conversation tab | — |
 | The row of the conversation in front is selected and scrolled to, as Claude Code's list follows it, while the list is visible; the focus stays where it was | Codex sessions view | — |
 | Codex button on the tab bar, and New in tab: a new Codex conversation in a tab, in a group already holding only Codex tabs, else one holding any, else the first group (the main editor area); it never opens a new split. Codex's own button beside it opens its sidebar | Editor title bar; Codex sessions view | — |
 | Tabs VS Code did not restore after a reconnect are opened again | Editor tabs | — |

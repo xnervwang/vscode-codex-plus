@@ -39,9 +39,10 @@
  *                         which need a tab to be open on the conversation; and when a turn starts and ends, which the
  *                         dot, the chime and the Conversations state follow at once rather than on the next read of
  *                         the rollout, and during which the context meter's click does not compact
- *   the app-server        a compaction asked for from the context meter in the page, sent on Codex's own connection
- *   connection            to its app-server under a provider name of this extension's own, so the answer comes back
- *                         here and Codex's pages never see it (compactThread)
+ *   the app-server        a compaction asked for from the context meter in the page, and a rename, archive, unarchive or
+ *   connection            move to a section asked for from the session list or a conversation tab's menu, sent on
+ *                         Codex's own connection to its app-server under a provider name of this extension's own, so
+ *                         the answer comes back here and Codex's pages never see it (hostRequest)
  */
 const fs = require('fs');
 const path = require('path');
@@ -554,50 +555,61 @@ async function turnRunning(thread) {
 }
 
 /*
- * A compaction of one conversation, as Codex's own /compact asks for it when its page holds the conversation:
- * thread/compact/start on this window's app-server, which answers at once and then runs the compaction as a turn that
- * every page showing the conversation draws. It is sent on Codex's connection under a provider name of this
- * extension's own (registerProvider, the way Codex's own parts each get their answers back), so the answer is routed
- * here and no page of Codex's is handed an answer to a request it never made. Nothing in the message box is touched,
- * which is why this and not the /compact command: that one is offered only on an empty box.
+ * A request of this extension's own to this window's app-server, sent on Codex's connection under a provider name of
+ * this extension's own (registerProvider, the way Codex's own parts each get their answers back), so the answer is
+ * routed here and no page of Codex's is handed an answer to a request it never made. Codex's pages hear what changed
+ * through the notifications that follow, as they do for a change made by any client. Resolves to { outcome } with
+ * 'done' and the result, 'failed' and the reason, 'sent' when no answer came within `waitMs`, or 'unavailable' when
+ * the connection has not been handed over (no patch in effect yet).
  */
-const COMPACT_PROVIDER = 'CodexPlusCompact';
-const COMPACT_WAIT_MS = 6000;
-let compactLink = null, compactSeq = 0;
-const compacting = new Map();
-function compactChannel(conn) {
-  if (compactLink && compactLink.conn === conn) return compactLink;
+const HOST_PROVIDER = 'CodexPlus';
+const HOST_WAIT_MS = 6000;
+let hostLink = null, hostSeq = 0;
+const hostAsking = new Map();
+function hostChannel(conn) {
+  if (hostLink && hostLink.conn === conn) return hostLink;
   for (let i = 0; i < 4; i++) {
-    const name = i ? `${COMPACT_PROVIDER}${i}` : COMPACT_PROVIDER;
+    const name = i ? `${HOST_PROVIDER}${i}` : HOST_PROVIDER;
     try {
-      const sub = conn.registerProvider(name, { onResult: (r) => { const done = compacting.get(String(r && r.id)); if (done) done(r); } });
-      compactLink = { conn, name, sub };
-      return compactLink;
+      const sub = conn.registerProvider(name, { onResult: (r) => { const done = hostAsking.get(String(r && r.id)); if (done) done(r); } });
+      hostLink = { conn, name, sub };
+      return hostLink;
     } catch (_) { /* the name is taken, by an earlier copy of this extension in the same host */ }
   }
   return null;
 }
-function compactThread(thread, { waitMs = COMPACT_WAIT_MS } = {}) {
+function hostRequest(method, params, { waitMs = HOST_WAIT_MS } = {}) {
   const conn = state.provider && state.provider.codexMcpConnection;
   if (!conn || typeof conn.registerProvider !== 'function' || typeof conn.sendRequest !== 'function') {
     return Promise.resolve({ outcome: 'unavailable', reason: 'this Codex does not hand over its app-server connection' });
   }
-  const link = compactChannel(conn);
+  const link = hostChannel(conn);
   if (!link) return Promise.resolve({ outcome: 'unavailable', reason: 'no channel on Codex\'s app-server connection was free' });
-  const id = `c${++compactSeq}`;
+  const id = `c${++hostSeq}`;
   return new Promise((resolve) => {
-    const timer = setTimeout(() => { compacting.delete(id); resolve({ outcome: 'sent' }); }, waitMs);
-    compacting.set(id, (r) => {
+    const timer = setTimeout(() => { hostAsking.delete(id); resolve({ outcome: 'sent' }); }, waitMs);
+    hostAsking.set(id, (r) => {
       clearTimeout(timer);
-      compacting.delete(id);
-      resolve(r && r.error ? { outcome: 'failed', reason: String(r.error.message || 'the app-server refused').slice(0, 200) } : { outcome: 'started' });
+      hostAsking.delete(id);
+      resolve(r && r.error ? { outcome: 'failed', reason: String(r.error.message || 'the app-server refused').slice(0, 200) }
+        : { outcome: 'done', result: r && r.result });
     });
-    try { conn.sendRequest(link.name, id, 'thread/compact/start', { threadId: thread }); } catch (e) {
+    try { conn.sendRequest(link.name, id, method, params); } catch (e) {
       clearTimeout(timer);
-      compacting.delete(id);
+      hostAsking.delete(id);
       resolve({ outcome: 'failed', reason: String((e && e.message) || e).slice(0, 200) });
     }
   });
+}
+
+/*
+ * A compaction of one conversation, as Codex's own /compact asks for it when its page holds the conversation:
+ * thread/compact/start, which the app-server answers at once and then runs as a turn that every page showing the
+ * conversation draws. Nothing in the message box is touched, which is why this and not the /compact command: that one
+ * is offered only on an empty box.
+ */
+function compactThread(thread, opts) {
+  return hostRequest('thread/compact/start', { threadId: thread }, opts).then((r) => (r.outcome === 'done' ? { outcome: 'started' } : r));
 }
 
 /*
@@ -1074,8 +1086,8 @@ function activate(context, opts) {
     commands.clear();
     turnsRunning.clear();
     turnsEnded.clear();
-    if (compactLink && compactLink.sub && typeof compactLink.sub.dispose === 'function') { try { compactLink.sub.dispose(); } catch (_) { /* gone */ } }
-    compactLink = null;
+    if (hostLink && hostLink.sub && typeof hostLink.sub.dispose === 'function') { try { hostLink.sub.dispose(); } catch (_) { /* gone */ } }
+    hostLink = null;
   } });
   /* Straight after activation rather than after a pause: Codex starts on the same event as this extension, in no set
      order, and every moment waited is one more in which it reads the copy of its files that is about to be replaced. */
@@ -1085,6 +1097,6 @@ function activate(context, opts) {
 
 module.exports = { activate, ensurePatched, statusLines, openInSidebar, canType, canDeliver, deliver, sidebarThread, panelThreads, shownIn,
   nowShowing, revealPanel, removePatch,
-  figuresOf, usageOf, compactThread, safeColor, viewOf, selfCheckPage, selfCheckLines, installHooks, refreshPanels, approvalsOf,
+  figuresOf, usageOf, compactThread, hostRequest, safeColor, viewOf, selfCheckPage, selfCheckLines, installHooks, refreshPanels, approvalsOf,
   onApprovalsChanged, offerReloadIfStale, sidebarShowing, onSidebarChanged, runningCommands, turnEndChime, turnHeard, _state: () => state, _registry: registry, _approvals: approvals,
   TAB_DOTS, ASK_MS, PATCH_REMOVED_KEY };

@@ -123,6 +123,28 @@
         "icon": "$(search)"
       },
       {
+        "command": "codexPlus.renameThread",
+        "title": "Codex Plus: Rename...",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "codexPlus.archiveThread",
+        "title": "Codex Plus: Archive",
+        "icon": "$(archive)"
+      },
+      {
+        "command": "codexPlus.unarchiveThread",
+        "title": "Codex Plus: Unarchive"
+      },
+      {
+        "command": "codexPlus.moveThreadToSection",
+        "title": "Codex Plus: Move to Section..."
+      },
+      {
+        "command": "codexPlus.markThreadUnread",
+        "title": "Codex Plus: Mark as Unread"
+      },
+      {
         "command": "codexPlus.deleteArchivedThread",
         "title": "Codex Plus: Delete Conversation..."
       },
@@ -186,6 +208,16 @@
       ],
       "view/item/context": [
         {
+          "command": "codexPlus.renameThread",
+          "when": "view == codexPlus.sessions && viewItem =~ /^codexPlusThread/",
+          "group": "inline@1"
+        },
+        {
+          "command": "codexPlus.archiveThread",
+          "when": "view == codexPlus.sessions && viewItem =~ /^codexPlusThread(Open)?$/",
+          "group": "inline@2"
+        },
+        {
           "command": "codexPlus.openThreadInTab",
           "when": "view == codexPlus.sessions && viewItem =~ /^codexPlusThread/",
           "group": "1_open@1"
@@ -199,6 +231,31 @@
           "command": "codexPlus.sessionInfo",
           "when": "view == codexPlus.sessions && viewItem =~ /^codexPlusThread/",
           "group": "2_info@2"
+        },
+        {
+          "command": "codexPlus.renameThread",
+          "when": "view == codexPlus.sessions && viewItem =~ /^codexPlusThread/",
+          "group": "2_edit@1"
+        },
+        {
+          "command": "codexPlus.archiveThread",
+          "when": "view == codexPlus.sessions && viewItem =~ /^codexPlusThread(Open)?$/",
+          "group": "2_edit@2"
+        },
+        {
+          "command": "codexPlus.unarchiveThread",
+          "when": "view == codexPlus.sessions && viewItem == codexPlusThreadArchived",
+          "group": "2_edit@2"
+        },
+        {
+          "command": "codexPlus.moveThreadToSection",
+          "when": "view == codexPlus.sessions && viewItem =~ /^codexPlusThread(Open)?$/",
+          "group": "2_edit@3"
+        },
+        {
+          "command": "codexPlus.markThreadUnread",
+          "when": "view == codexPlus.sessions && viewItem =~ /^codexPlusThread/",
+          "group": "2_edit@4"
         },
         {
           "command": "codexPlus.setTitleColor",
@@ -227,12 +284,49 @@
         {
           "command": "codexPlus.deleteArchivedThread",
           "when": "false"
+        },
+        {
+          "command": "codexPlus.renameThread",
+          "when": "false"
+        },
+        {
+          "command": "codexPlus.archiveThread",
+          "when": "false"
+        },
+        {
+          "command": "codexPlus.unarchiveThread",
+          "when": "false"
+        },
+        {
+          "command": "codexPlus.moveThreadToSection",
+          "when": "false"
+        },
+        {
+          "command": "codexPlus.markThreadUnread",
+          "when": "false"
         }
       ],
       "editor/title": [
         {
           "command": "codexPlus.openCodex",
           "group": "navigation"
+        }
+      ],
+      "webview/context": [
+        {
+          "command": "codexPlus.markThreadUnread",
+          "when": "webviewId == 'chatgpt.conversationEditor'",
+          "group": "codexPlus@1"
+        },
+        {
+          "command": "codexPlus.renameThread",
+          "when": "webviewId == 'chatgpt.conversationEditor'",
+          "group": "codexPlus@2"
+        },
+        {
+          "command": "codexPlus.moveThreadToSection",
+          "when": "webviewId == 'chatgpt.conversationEditor'",
+          "group": "codexPlus@3"
         }
       ]
     },

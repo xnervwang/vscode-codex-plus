@@ -51,7 +51,7 @@ function create() {
   const extChanged = new EventEmitter();
   const groups = [{ viewColumn: 1, tabs: [], activeTab: null, isActive: true }];
   const state = { commands: [], context: {}, extensions: new Map(), clipboard: '', views: [], status: [], log: [], registered: [],
-    said: [], answers: [], handlers: {}, external: [], externalAnswer: true, picks: [], quickPicks: [], treeViews: {} };
+    said: [], answers: [], handlers: {}, external: [], externalAnswer: true, picks: [], quickPicks: [], treeViews: {}, inputs: [] };
   /* A notification is answered with the button the test set for text it contains (control.answer), else dismissed. */
   const answer = async (message, ...rest) => {
     const buttons = rest.filter((b) => typeof b === 'string');
@@ -89,7 +89,9 @@ function create() {
       showWarningMessage: answer,
       showErrorMessage: answer,
       setStatusBarMessage: () => ({ dispose() {} }),
-      showQuickPick: async (items) => { state.picks.push(items); return undefined; },
+      /* Answered by state.pickAnswer(items) when a test sets one, else dismissed; likewise state.inputAnswer. */
+      showQuickPick: async (items) => { const list = await items; state.picks.push(list); return state.pickAnswer ? state.pickAnswer(list) : undefined; },
+      showInputBox: async (opts) => { state.inputs.push(opts); return typeof state.inputAnswer === 'function' ? state.inputAnswer(opts) : state.inputAnswer; },
       createQuickPick: () => { const qp = { items: [], selectedItems: [], onDidChangeValue() {}, onDidAccept() {}, show() { state.quickPicks.push(qp); }, hide() {} }; return qp; },
     },
     commands: {

@@ -237,12 +237,18 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
     try { return patching.turnHeard(id); } catch (_) { return null; }
   };
   const endedOf = (id) => turnOf(reader.state(id), heardOf(id), Date.now(), 0).endedMs;
-  /* Marks what is in front as seen now; true when that took away an unread state, so the views redraw at once. */
+  /* Marks what is in front as seen now; true when that took away an unread state, so the views redraw at once. What
+     was in front last time and is not now is told as left, which is what a conversation marked unread in front waits for. */
+  let wasFront = [];
   function markFront() {
     let cleared = false;
-    for (const id of frontThreads()) {
-      if (seen.unread(id, endedOf(id))) cleared = true;
+    const front = frontThreads();
+    for (const id of wasFront) if (!front.includes(id) && typeof seen.left === 'function') seen.left(id);
+    wasFront = front;
+    for (const id of front) {
+      const was = seen.unread(id, endedOf(id));
       seen.mark(id);
+      if (was && !seen.unread(id, endedOf(id))) cleared = true;
     }
     return cleared;
   }
@@ -401,6 +407,13 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
        moved, which reads no rollout when no file has changed since the last pass, and the views redraw either way. */
     _heard(sessionId) {
       if (sessionId) poll({ tell: true });
+    },
+    /* Mark a conversation as unread, as Claude Code's Mark as Unread does; it stays so until the user looks at it
+       again, which for the one in front means leaving it and coming back. */
+    markUnread(sessionId) {
+      if (!sessionId || typeof seen.markUnread !== 'function') return;
+      seen.markUnread(sessionId, frontThreads().includes(sessionId));
+      changed.fire();
     },
     _poll: poll,
     wantState,

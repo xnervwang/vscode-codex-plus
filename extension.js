@@ -473,10 +473,65 @@ function registerCommands(context, { source, memory, sessionsProvider, say, link
   /* The rows a command from the list applies to: every row selected when the one right-clicked is among them, else that
      one alone, as a file explorer does it. */
   const chosen = (arg, selected) => {
+    if (!threadArg(arg)) return [inFront()].filter(Boolean);
     const ids = Array.isArray(selected) && selected.length && selected.some((s) => threadArg(s) === threadArg(arg))
       ? selected.map(threadArg) : [threadArg(arg)];
     return [...new Set(ids.filter(Boolean))];
   };
+  /* A conversation tab's own right-click menu names no conversation: it is the one in the tab in front. */
+  const inFront = () => {
+    const tab = (vscode.window.tabGroups.activeTabGroup || {}).activeTab;
+    const id = tab ? source.sessionForTab(tab) : null;
+    return typeof id === 'string' ? id : '';
+  };
+  /*
+   * A change to a conversation, asked of this window's app-server on Codex's own connection (src/patching.js
+   * hostRequest), or, before the patch has handed that over, of a short-lived app-server of this extension's own. The
+   * list reads Codex's files again afterwards. False when Codex refused, which the user is told.
+   */
+  const changeThread = async (doing, method, params) => {
+    let r = await patching.hostRequest(method, params);
+    if (r.outcome === 'unavailable') {
+      const binary = codexProgram();
+      if (!binary) r = { outcome: 'failed', reason: 'the codex program of the Codex extension was not found' };
+      else {
+        try { await require('./src/appserver').withAppServer(binary, files.codexHome(), (s) => s.request(method, params)); r = { outcome: 'done' }; }
+        catch (e) { r = { outcome: 'failed', reason: e.message }; }
+      }
+    }
+    if (r.outcome === 'failed') { vscode.window.showErrorMessage(`Codex could not ${doing}: ${r.reason}`); return false; }
+    source._poll();
+    return true;
+  };
+  reg('renameThread', async (arg) => {
+    if (restricted()) return;
+    const id = chosen(arg)[0];
+    if (!id) return;
+    const was = (reader.thread(id) || {}).title || '';
+    const name = await vscode.window.showInputBox({ prompt: 'A new title for this Codex conversation', value: was, valueSelection: [0, was.length] });
+    if (name === undefined || !name.trim() || name.trim() === was) return;
+    await changeThread('rename it', 'thread/name/set', { threadId: id, name: name.trim() });
+  });
+  reg('archiveThread', async (arg, selected) => {
+    if (restricted()) return;
+    for (const id of chosen(arg, selected)) if (!(reader.thread(id) || {}).archived && !await changeThread('archive it', 'thread/archive', { threadId: id })) return;
+  });
+  reg('unarchiveThread', async (arg, selected) => {
+    if (restricted()) return;
+    for (const id of chosen(arg, selected)) if ((reader.thread(id) || {}).archived && !await changeThread('unarchive it', 'thread/unarchive', { threadId: id })) return;
+  });
+  /* Codex's sections are its own groups, the ones its sidebar draws; Claude Code's list calls the same act Add to Group. */
+  reg('moveThreadToSection', async (arg, selected) => {
+    if (restricted()) return;
+    const ids = chosen(arg, selected);
+    if (!ids.length) return;
+    const items = [...reader.sections()].map(([sectionId, name]) => ({ label: name || 'Section', sectionId }))
+      .concat([{ label: 'No section', description: 'listed under Ungrouped', sectionId: null }]);
+    const pick = await vscode.window.showQuickPick(items, { placeHolder: 'Move to which of Codex\'s sections?' });
+    if (!pick) return;
+    for (const id of ids) if (!await changeThread('move it', 'thread/section/move', { threadId: id, sectionId: pick.sectionId })) return;
+  });
+  reg('markThreadUnread', (arg, selected) => { for (const id of chosen(arg, selected)) source.markUnread(id); });
   reg('deleteArchivedThread', async (arg, selected) => {
     if (restricted()) return;
     const doomed = chosen(arg, selected).map((id) => reader.thread(id)).filter((t) => t && t.archived);

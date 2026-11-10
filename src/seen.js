@@ -20,6 +20,7 @@
    to keep it bounded. */
 const SINCE_KEY = 'codexPlus.seenSince';
 const SEEN_KEY = 'codexPlus.seen';
+const UNREAD_KEY = 'codexPlus.markedUnread';
 /* Enough for every conversation anyone keeps open or comes back to. The entries dropped are the ones looked at
    longest ago, and the start time is raised to the newest of them, so dropping one can only make a reply count as read,
    never bring back as unread one the user had already looked at. */
@@ -58,17 +59,40 @@ function createSeen(state = memoryState(), { now = () => Date.now(), setTimer = 
     state.update(SEEN_KEY, Object.fromEntries(sorted.slice(0, KEEP)));
   }
 
+  /*
+   * Conversations the user marked as unread, which stay so until they look at it again. Kept with the rest, so every
+   * window sees it. One marked while it was in front in this window would be looked at again on the very next pass, so
+   * it is held here until the user has left it once (left()).
+   */
+  const flagged = () => { const v = state.get(UNREAD_KEY, null); return v && typeof v === 'object' ? v : {}; };
+  const held = new Set();
+  const setFlag = (id, on) => {
+    const all = { ...flagged() };
+    if (on) all[id] = true; else delete all[id];
+    state.update(UNREAD_KEY, all);
+  };
+
   return {
     /* The user has `id` in front of them now. */
     mark(id) {
       if (!id) return;
+      if (flagged()[id] && !held.has(id)) setFlag(id, false);
       pending.set(id, now());
       if (!timer) timer = setTimer(write, WRITE_MS);
     },
-    /* Whether a turn that ended at `endedMs` ended after the user last looked at `id`. */
+    /* Whether a turn that ended at `endedMs` ended after the user last looked at `id`, or the user marked it unread. */
     unread(id, endedMs) {
+      if (id && flagged()[id]) return true;
       return !!(id && endedMs && endedMs > at(id));
     },
+    /* Mark `id` as unread; `inFront` when the user has it in front now. */
+    markUnread(id, inFront) {
+      if (!id) return;
+      if (inFront) held.add(id); else held.delete(id);
+      setFlag(id, true);
+    },
+    /* `id` is no longer in front. */
+    left(id) { held.delete(id); },
     flush() {
       if (timer) { clearTimer(timer); timer = null; }
       write();
@@ -77,4 +101,4 @@ function createSeen(state = memoryState(), { now = () => Date.now(), setTimer = 
   };
 }
 
-module.exports = { createSeen, SINCE_KEY, SEEN_KEY, KEEP };
+module.exports = { createSeen, SINCE_KEY, SEEN_KEY, UNREAD_KEY, KEEP };
