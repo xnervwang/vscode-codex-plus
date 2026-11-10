@@ -250,8 +250,7 @@ async function activate(context) {
   later(() => reopenDropped(memory, say), 8000);
 }
 
-/* Reopen the Codex tabs VS Code did not restore, and show in the status bar for ten seconds how many there were.
-   Claude Code Plus does the same. */
+/* Reopen the Codex tabs VS Code did not restore, and show in the status bar for ten seconds how many there were. */
 async function reopenDropped(memory, say) {
   const reopened = await memory.reopenDropped({ enabled: settings().reopenDroppedTabs });
   if (!reopened.length) return reopened;
@@ -332,8 +331,8 @@ function registerCommands(context, { source, memory, sessionsProvider, say, link
    * The master switch. One command covers all the additions, so nobody has to find six settings, and like Claude Code
    * Plus's it shows no message.
    *
-   * It writes only the setting the others are read through (settings()), so each of those keeps the value the user chose
-   * and has it again when the switch comes back on. Turning it off leaves the patch in Codex's files, unused; only
+   * It writes only codexPlus.enabled, which settings() applies on top of the other settings, so each of those keeps the
+   * value the user chose and has it again when the switch comes back on. Turning it off leaves the patch in Codex's files, unused; only
    * `Codex Plus: Remove the Patch from Codex` restores those files. Turning it on after a Remove applies the patch again,
    * which is also how Claude Code Plus undoes its Remove.
    */
@@ -347,8 +346,8 @@ function registerCommands(context, { source, memory, sessionsProvider, say, link
     if (settings().enabled !== on) await vscode.workspace.getConfiguration(CONFIG).update('enabled', on, vscode.ConfigurationTarget.Global);
     sessionsProvider.refresh();
     patching.refreshPanels().catch((e) => say(`redrawing the Codex pages: ${e.message}`));
-    /* Only the patching itself: activation already wired the hooks and the listeners, and wiring them again would
-       redraw every panel once more on each change for every time this has run. */
+    /* Only the patch is applied again here. Activation already added the hooks and listeners; adding them on every
+       Turn On would stack up copies, and each copy redraws every panel on each change. */
     if (unremoving) patching.ensurePatched(vscode, context, say, 'on').catch((e) => say(`patch: ${e.message}`));
   };
   reg('turnOn', () => setEnabled(true));
@@ -445,8 +444,8 @@ function registerCommands(context, { source, memory, sessionsProvider, say, link
     qp.onDidAccept(async () => { const it = qp.selectedItems[0]; qp.hide(); if (it) await tabs.openInTab(vscode, it.id); });
     qp.show();
   });
-  /* The rows a command from the list applies to: every row selected when the one right-clicked is among them, else that
-     one alone, as a file explorer does it. */
+  /* Which rows a list command acts on: all the selected rows if the right-clicked row is one of them, otherwise only
+     the right-clicked row, as in a file explorer. */
   const chosen = (arg, selected) => {
     if (!threadArg(arg)) return [inFront()].filter(Boolean);
     const ids = Array.isArray(selected) && selected.length && selected.some((s) => threadArg(s) === threadArg(arg))
@@ -584,9 +583,8 @@ async function downloadPython(context, say) {
 
 /*
  * The row above the work plan (Agent Plus's planNotice), modelled on Claude Code Plus's: the plugin could not be
- * installed, there is no Python for its hooks, or Codex has not been told to trust them. Each is set where the problem
- * is detected and cleared where it is found fixed. When several apply, the first in that order is shown, since it has
- * to be fixed first.
+ * installed, there is no Python for its hooks, or Codex has not been told to trust them. Each is set and cleared by
+ * the check that finds it. When several apply, the first in that order is shown, since it has to be fixed first.
  */
 let planSource = null;
 const problems = { install: null, python: null, trust: null };
@@ -707,7 +705,7 @@ function deactivate() {
 }
 
 /* `_settings` is for the tests: the master switch only works if every part reads its settings from settings(), with the
-   switch already applied, and the tests check that table directly instead of guessing it from what the extension did.
+   switch already applied, and the tests check that table directly.
    `_ensurePlugin` (the start-up install of the plugin) and `_reopenDropped` (reopening dropped tabs) run after a delay
    during activation, so the tests call them directly. */
 module.exports = { activate, deactivate, _settings: settings, _ensurePlugin: ensurePlugin, _reopenDropped: reopenDropped };

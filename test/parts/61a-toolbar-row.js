@@ -4,8 +4,7 @@
 
 'use strict';
 /*
- * The information and chime buttons in the row of Codex's own message-box toolbar, after its permissions button. The
- * toolbar is built as Codex 26.1021 renders it (test/render measured it): a grid holding a group on the left with the
+ * The information and chime buttons, placed after the permissions button in Codex's message-box toolbar. The toolbar is built as Codex 26.1021 renders it (test/render measured it): a grid holding a group on the left with the
  * add-context and permissions buttons, and one on the right with the model picker, each group a flex row and each
  * button known by its data-composer-navigation-target or data-codex-intelligence-trigger. The left column is as wide
  * as its content and the right group is pushed to the right, so a node added after the permissions button moves none
@@ -44,8 +43,8 @@ function toolbar(dom, { rightAt = 799, meter = false, squeeze = false } = {}) {
     kids: [el('div', { kids: [el('div', { attrs: { 'data-composer-input': '' }, kids: [editor] })] }),
       el('div', { kids: [left] }), el('div', { kids: [el('div', { computed: FLEX, kids: [el('div', { computed: FLEX, kids: [right] }), el('div', { kids: [send] })] })] })] });
   const root = el('div', { attrs: { 'data-codex-composer-root': '' }, rect: { top: 602, left: 8, width: 1084, height: 142 }, kids: [grid] });
-  /* The box holding the right group narrower than the group: how a row out of room looks while the gap between the
-     groups still measures wide enough. */
+  /* The right group wider than the box that holds it: how a row out of room looks while the gap between the groups
+     still measures wide enough. */
   if (squeeze) { right.parentElement.clientWidth = 200; right.parentElement.scrollWidth = 260; }
   return { root, add, perm, left, right, modelSlot, trigger, ide, send, editor, codexMeter };
 }

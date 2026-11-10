@@ -356,9 +356,9 @@ function selfchecked(r, where, { turns, users, rows, replies = turns }) {
       await s.b.hover(10, 10);
     }
     await floating(s, 'conversation');
-    /* The yellow "!" of a page the script cannot read: none on this page, whose messages are all recognised; then, with
-       the attributes it finds messages by renamed as a Codex release would rename them, one after three passes and five
-       seconds, at the top right of the conversation and over none of Codex's buttons. */
+    /* The yellow "!" of a page the script cannot read. There is none on this page, whose messages are all recognised.
+       With the attributes it finds messages by renamed, as a Codex release might rename them, one appears after three
+       passes and five seconds, at the top right of the conversation and over none of Codex's buttons. */
     {
       const warnAt = () => s.b.evaluate(`(() => { const w = document.querySelector('[data-codex-extras="warn"]'); if (!w) return null;
         const a = w.getBoundingClientRect(); const over = [...document.querySelectorAll('button')].filter((b) => !b.closest('[data-codex-extras]')).filter((b) => {
@@ -483,9 +483,8 @@ function selfchecked(r, where, { turns, users, rows, replies = turns }) {
 
   /*
    * ── compacting from the meter, through Codex's real app-server ──
-   * The host's side is src/patching.js itself, handed a provider whose app-server connection is this run's app-server,
-   * as Codex's own connection is in a window. The app-server has no network here, so the compaction it starts cannot
-   * finish; the checks are that it starts, Codex's page draws it, and the draft in the box is left alone.
+   * The host's side is src/patching.js itself, with this run's app-server standing in for the one Codex connects to in
+   * a window. The app-server has no network here, so the compaction it starts cannot finish.
    */
   if (want('compact')) {
     const asked = [];

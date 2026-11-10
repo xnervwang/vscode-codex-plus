@@ -236,7 +236,7 @@
    * The row below the message box, which holds the buttons on the left when the toolbar has no room for them, and the
    * figures on the right. It starts ROW_GAP below the box's frame, and is as tall as one of Codex's own toolbar icons,
    * which is also the size the glyphs are drawn at there. Codex leaves less room than that under the box, so while the
-   * row is drawn the box is given ROW_ROOM more at its foot (the stylesheet), which takes that much height from the
+   * row is drawn the stylesheet gives the box ROW_ROOM more bottom margin, which takes that much height from the
    * conversation above it.
    */
   var ROW_GAP = 2, ROW_ROOM = 4, ICON_PX = 16;
@@ -318,10 +318,10 @@
     return false;
   }
   /*
-   * Whether this script's controls stay in Codex's row. They do while at least ROW_KEEP is left between the groups and
-   * nothing of Codex's right group has moved or overflowed. Out of the row, they go back in only once the room is what
+   * This script's controls stay in Codex's row while at least ROW_KEEP is left between the groups and nothing of
+   * Codex's right group has moved or overflowed. Out of the row, they go back in only once the room is what
    * they took last time plus ROW_KEEP plus ROW_AGAIN, so a window resized near the edge does not move them back and
-   * forth. Their width is measured rather than computed: the gap before they went in minus the gap after, and at least
+   * forth. Their width is the gap before they went in minus the gap after, and at least
    * the gap that was there when they did not fit, so a failed attempt is not repeated until the row is wider. The
    * measurement is discarded whenever the set of controls drawn changes.
    */
@@ -416,7 +416,7 @@
     return b;
   }
   /*
-   * How the controls are styled in each place. In Codex's toolbar row each copies the classes of a Codex button, read
+   * In Codex's toolbar row each control copies the classes of a Codex button, read
    * from the page rather than hard-coded, so it gets that button's size, colour and hover in any build: the add-context
    * button's for the two icons, the permissions pill's for the meter. In the row below the box they are as small as
    * that row, with no background.
@@ -751,8 +751,8 @@
 
   /*
    * Compacting from the meter. The host refuses while a turn runs or an approval waits, as Codex refuses its own /compact
-   * then, and that is said in Codex's own words for it. One request at a time: a click while one is unanswered asks
-   * nothing more, and an answer that never comes frees the button after COMPACT_WAIT_MS.
+   * then, and the page shows the message Codex itself shows in that case. Only one request is out at a time: a click
+   * while one is unanswered does nothing, and if no answer comes the button is freed after COMPACT_WAIT_MS.
    */
   var COMPACT_WAIT_MS = 8000, compactAsk = '';
   var COMPACT_SAID = { started: 'Compaction started', busy: 'Compact is disabled while a chat is in progress',
@@ -1108,7 +1108,7 @@
      messages in the turn, r: times of its replies, d: its duration once it has ended }. */
   var hostTurnTimes = {};
   var FIG_ATTR = 'data-codex-extras-figures';
-  /* One time per user message of this conversation, in the order the rollout has them, as the host read them there.
+  /* One time per user message of this conversation, in the order the rollout has them.
      Used only when there are exactly as many as the page shows - see stampAll. */
   var hostWhen = null;
   /* Where Codex compacted this conversation's context: { after, at }, `after` being how many of the user's messages
@@ -1424,9 +1424,8 @@
     return Math.floor(mi / 60) + 'h' + (mi % 60) + 'm';
   }
   /*
-   * Whether Codex shows its own "Worked for" in a turn. Codex draws it only when the turn did something before its last
-   * reply, as a button that expands that activity, inside the turn but outside its messages, and the button has no
-   * attribute of its own. So any button with aria-expanded in that position is taken to be it.
+   * Codex draws its own "Worked for" in a turn only when the turn did something before its last reply, as a button
+   * that expands that activity, inside the turn but outside its messages, and the button has no attribute of its own. So any button with aria-expanded in that position is taken to be it.
    */
   var WORKED_SEL = 'button[aria-expanded]';
   function codexShowsWorked(turn) {
@@ -1628,8 +1627,8 @@
   /*
    * The box shown beside the list for the row under the pointer, like Claude Code Plus's: the row's time and its first
    * TIP_CHARS characters, shown at once rather than after a native title's delay. It is created on hover and removed on
-   * leave or click. It goes to the left of the list, level with the row, or, in a page too narrow for that such as
-   * Codex's sidebar, over the list just below the row.
+   * leave or click. It goes to the left of the list, level with the row. In a page too narrow for that, such as Codex's
+   * sidebar, it goes over the list just below the row.
    */
   var TIP_CHARS = 220, TIP_W = 360, TIP_ROOM = 160, tipBox = null;
   function hideTip() { tipBox = gone(tipBox); }
@@ -2021,8 +2020,7 @@
   }
 
   /*
-   * The same miss shown on the page, as in Claude Code Plus: a 16 px yellow "!" at the top right whose hover label
-   * explains it. It sits just inside the top of the conversation's scroller, below Codex's header and its buttons, and
+   * A 16 px yellow "!" at the top right, like Claude Code Plus's, whose hover label explains the miss. It sits just inside the top of the conversation's scroller, below Codex's header and its buttons, and
    * is removed once the messages are recognised again or every addition is turned off.
    */
   var warn = null;

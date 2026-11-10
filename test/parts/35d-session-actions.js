@@ -6,9 +6,9 @@
 /*
  * The actions the session list and the conversation page offer, as Claude Code's list and page do: rename, archive or
  * unarchive, move to one of Codex's sections, and mark as unread. The first four are sent to Codex's app-server on
- * Codex's own connection, under a provider name registered for this extension so the answer comes back to it; the
- * method names and parameters are the ones an offline app-server of Codex 26.1021.22027 accepted. Mark as unread
- * changes this extension's own read record, which is what decides "unread".
+ * Codex's own connection (src/patching.js hostRequest); the method names and parameters are the ones an offline
+ * app-server of Codex 26.1021.22027 accepted. Mark as unread is kept in this extension's own read record
+ * (src/seen.js), not in Codex.
  */
 const fs = require('fs');
 const path = require('path');

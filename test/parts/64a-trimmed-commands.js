@@ -4,11 +4,10 @@
 
 'use strict';
 /*
- * The command set matches Claude Code Plus's, with nothing extra: no Session Information (the information button in
- * the message box shows the same), no list of commands Codex is still running (Show Status has it), no command to
- * remove the work plan plugin (uninstalling the extension does that), and no Patch Codex, because Turn On and Toggle
- * reapply the patch after Remove, as in Claude Code Plus. Turning the additions on or off shows no message, also as in
- * Claude Code Plus.
+ * The commands are the same as Claude Code Plus's: no Session Information (the information button in the message box
+ * shows the same), no list of commands Codex is still running (Show Status has it), no command to remove the work plan
+ * plugin (uninstalling the extension does that), and no Patch Codex, because Turn On and Toggle reapply the patch after
+ * Remove. Turning the additions on or off shows no message.
  */
 const fs = require('fs');
 const path = require('path');

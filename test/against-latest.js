@@ -7,7 +7,7 @@
  * Fetches the Codex build the marketplace is shipping now and checks every edit of the patch against it, before the
  * update reaches anyone. It then compares what that build can make a conversation wait on with the lists in
  * src/protocol-known.js: every request its app-server can send to its client, as its own codex program lists them, and
- * every question tool name in its page. Only those files are unpacked, into a temporary folder; nothing is installed.
+ * every question tool name in its page. It unpacks those files into a temporary folder and installs nothing.
  *
  *   node test/against-latest.js            the newest release
  *   CODEX_EXTRAS_PRERELEASE=1 node ...     the newest version, pre-releases included

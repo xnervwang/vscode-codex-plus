@@ -481,8 +481,7 @@ function safeColor(value) {
   return '';
 }
 
-/* The message that tells a page which settings to draw with. The page has the same defaults built in, so a page that
-   has not heard from the host yet already draws what the settings say. */
+/* The page script has the same defaults built in, for the time before this message reaches it. */
 function viewOf(s = {}) {
   return { type: 'codex-extras-view', timestamps: s.timestamps !== false, navigation: s.conversationNavigation !== false,
     userColor: safeColor(s.userMessageColor), userEdge: s.userMessageEdge !== false, lowContext: s.lowContextOutline !== false,
@@ -491,9 +490,9 @@ function viewOf(s = {}) {
 }
 
 /*
- * The data for the context meter in a page. Its share is the newest token count in the conversation's rollout (the
- * last model call's input against the window Codex reports), the same figure the session information and the line
- * beside each reply use. It also carries the tokens the conversation has used in total, the model and effort, and the
+ * The context meter's share is the newest token count in the conversation's rollout (the last model call's input
+ * against the window Codex reports), the same figure the session information and the line beside each reply use. The
+ * message also carries the tokens the conversation has used in total, the model and effort, and the
  * compaction line, computed the way the work plan plugin computes it
  * (codex-plugin/agent-work-plan/hooks/refresh-work-plan.py compaction_line): Codex compacts once a call would pass 90%
  * of the model's full window, and the window it reports is 95% of that, so the line is at 0.9 / 0.95 of the reported
@@ -557,8 +556,7 @@ async function turnRunning(thread) {
 
 /*
  * Sends a request to this window's app-server over Codex's own connection. It goes under a provider name registered
- * for this extension (registerProvider, which is how each part of Codex gets its own answers back), so the answer comes
- * back here instead of to one of Codex's pages, which did not send it. Codex's pages learn what changed from the
+ * for this extension (registerProvider), so the answer comes back here. Codex's pages learn what changed from the
  * notifications that follow, as for a change made by any client. Resolves to { outcome }: 'done' with the result,
  * 'failed' with the reason, 'sent' if no answer came within `waitMs`, or 'unavailable' if the connection has not been
  * handed over yet (the patch is not in effect).
@@ -717,8 +715,7 @@ async function refreshPanels() {
   if (approvals.prune((t) => { const c = now.get(t); return !!(c && c.working); }).length) approvalsChanged();
   const side = sidebarShowing();
   /* A chime plays in this window's pages that show the conversation: its tabs, or, if there are none, Codex's sidebar
-     while it shows the conversation, so a conversation shown in both plays once. Only a page can make the sound, so a
-     conversation shown in neither stays silent (the README says so). */
+     while it shows the conversation. Only a page can make the sound, so a conversation shown in neither stays silent. */
   const ring = (thread, kind) => {
     const msg = { type: 'codex-extras-chime', kind };
     const set = panels.get(thread) || [];

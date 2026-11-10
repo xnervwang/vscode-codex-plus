@@ -5,7 +5,7 @@
 'use strict';
 /*
  * When Codex tabs that VS Code did not restore are reopened at start-up, the status bar shows how many for ten
- * seconds, as Claude Code Plus does. Nothing is shown when there were none.
+ * seconds, if there were any, as Claude Code Plus does.
  */
 const path = require('path');
 const fake = require('../fake-vscode');

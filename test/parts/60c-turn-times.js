@@ -6,7 +6,7 @@
 /*
  * Per-turn times, keyed by turn id: when each user message in the turn was sent, when each reply was written, and how
  * long the turn took. The host reads them from the rollout (src/user-times.js) and the page matches them by the turn
- * id Codex puts on the turn, so stamps get seconds even in long conversations and across days, where matching all of
+ * id Codex puts on the turn, so stamps show seconds in long conversations and on earlier days too, where matching all of
  * the conversation's messages by count fails. A turn's duration is added to its reply line only when Codex shows no
  * "Worked for" of its own.
  */

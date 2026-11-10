@@ -4,7 +4,7 @@
 
 'use strict';
 /*
- * The context meter in Codex's toolbar row, left of the model picker: a ring and the share of the window in use, the
+ * The context meter in Codex's toolbar row, left of the model picker: a ring and the percentage of the window in use, the
  * host's own figures behind it on hover, and a click that compacts the conversation through Codex's app-server.
  *
  *   the page   drawn from the host's usage message; Codex's meter, which Codex draws only with its setting on, is
@@ -65,8 +65,8 @@ const THREAD = '019a6a10-0000-7000-8000-0000000000c1';
  * What the click relies on in each Codex build installed here, read from its untouched host bundle: the provider the
  * patch hands over keeps Codex's app-server connection as codexMcpConnection, the connection accepts an extra provider
  * name (registerProvider) and requests sent under it (sendRequest), and each answer goes to the provider named before
- * the first colon of its id. None of it is a patch edit; a build that renames any of it makes the click
- * say compacting is not available, and this says which part is gone.
+ * the first colon of its id. None of these are patch edits. If a build renames one of them, the click says compacting
+ * is not available, and this test names the missing part.
  */
 function connectionParts(text) {
   const at = text.indexOf('editorPanels=new Map');

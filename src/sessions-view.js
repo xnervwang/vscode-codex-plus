@@ -57,8 +57,8 @@ const STATE_LOOK = {
 /*
  * Picks the dot for a conversation from what the source reported. `here` is whether this window shows it, in a tab or
  * in Codex's sidebar. A conversation that is running or waiting, but that this window neither shows nor runs, is in
- * another window. Approvals counted here (decide, soon) and turns reported by this window's app-server (runningHere)
- * always belong to this window.
+ * another window. A conversation with an approval counted in this window, or with a turn running on this window's
+ * app-server, is always this window's.
  */
 function lookOf(conv, here) {
   const state = (conv && conv.state) || 'idle';

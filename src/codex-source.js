@@ -51,9 +51,8 @@ function logoOf(vscode, exists = require('fs').existsSync) {
 }
 
 /*
- * Whether a turn is running, and when the last one ended (0 while one runs). The rollout is read only every POLL_MS,
- * while this window's app-server notifies a turn start or end as it happens (`heard`, src/patching.js turnHeard), so the
- * notifications correct the rollout: after a turn/started the conversation is running, and after a turn/completed the
+ * The rollout is read only every POLL_MS, while this window's app-server notifies a turn start or end as it happens
+ * (`heard`, src/patching.js turnHeard), so the notifications correct the rollout: after a turn/started the conversation is running, and after a turn/completed the
  * rollout's running turn counts as ended, unless the rollout shows a turn that started later.
  */
 function turnOf(st, heard, now, last) {
@@ -98,8 +97,8 @@ function conversationOf(thread, { unread, openHere, now = Date.now(), state = nu
     /* The rollout's own answer, which `state` no longer carries once `prompt` wins it: what decides whether a request
        stopped on the user is still live (src/approvals.js prune) has to not be derived from those requests. */
     working,
-    /* Whether this window's app-server is running the turn. The session list uses it to tell a conversation running
-       here without a tab from one running in another window. */
+    /* Set while this window's app-server runs the turn. The session list uses it to tell a conversation running here
+       without a tab from one running in another window. */
     runningHere: !!(heard && heard.running),
     failed: !working && !!(st && st.error),
     decide,
@@ -416,8 +415,7 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
       focused.fire({ sessionId });
       if (markFront()) changed.fire();
     },
-    /* Called by the patch when the app-server reports that a turn of `sessionId` started or ended. It runs one
-       ordinary poll, which reads no rollout if no file changed, and redraws the views either way. */
+    /* Called by the patch when the app-server reports that a turn of `sessionId` started or ended. */
     _heard(sessionId) {
       if (sessionId) poll({ tell: true });
     },
