@@ -4,7 +4,7 @@
 
 'use strict';
 /*
- * ACCOUNT & USAGE: the requests and their answers are in the shapes `codex app-server generate-json-schema` of Codex
+ * ACCOUNT & USAGE: requests and answers use the shapes that `codex app-server generate-json-schema` of Codex
  * 26.1021.22027 gives for account/read, account/rateLimits/read, account/usage/read and the two notifications. An
  * Amazon Bedrock account, whose rate limits Codex cannot read (its /status says "Rate limit: Unavailable"), shows the
  * Account line alone; no amount of money is ever shown.

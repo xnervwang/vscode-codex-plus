@@ -35,8 +35,8 @@ function ordered(sections, order = []) {
 const cleanName = (name) => [...String(name || '').replace(/\s+/g, ' ').trim()].slice(0, NAME_MAX).join('');
 
 /*
- * `ask(method, params)` resolves to { outcome: 'done', result } or { outcome: 'failed', reason }, as extension.js
- * sends a request; `sections()` is the snapshot's id -> name; `memento` holds the order.
+ * `ask(method, params)` resolves to { outcome: 'done', result } or { outcome: 'failed', reason }, like extension.js
+ * askAppServer; `sections()` is the snapshot's id -> name; `memento` holds the order.
  */
 function createGroups({ ask, sections, memento }) {
   let supported = null;

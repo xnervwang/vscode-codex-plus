@@ -9,7 +9,7 @@
  *
  *   ACCOUNT & USAGE       the sign-in, and usage when Codex reports it (src/account-usage.js)
  *   RECENTLY CLOSED       tabs closed in this workspace, newest first (collapsed)
- *   OPEN SESSIONS         this window's Codex tabs and the conversation in Codex's sidebar, most recently in front first
+ *   OPEN SESSIONS         this window's Codex tabs and the conversation in Codex's sidebar, by when each was last in front
  *   SESSION MANAGER       New in tab and New in sidebar, the filter row, then the groups (Codex's sections,
  *                         src/session-groups.js) and Ungrouped
  *
@@ -124,7 +124,7 @@ function placeOf(t, sections) {
 }
 
 /*
- * The list as plain values, for the page. `groups()` is the order of the drawn groups the view holds now.
+ * Builds the plain-value model the page draws (model()). `groups` holds the groups as group() returned them.
  */
 class SessionsModel {
   constructor(vscode, { memory, memento, settings, stateOf, reader, wantState = () => {}, sidebarShowing = () => '', sections = null,
@@ -238,7 +238,7 @@ class SessionsModel {
 
 /*
  * The webview view. Without retainContextWhenHidden VS Code drops the page while the view is hidden; a page that comes
- * back sends `ready` and is posted the model in memory. `receive(msg)` gets every message the page sends.
+ * back sends `ready`, and the view posts it the current model. `receive(msg)` gets every message the page sends.
  */
 const PAGE_FILES = ['sessions-page.js', 'sessions-page.css'];
 class SessionsView {

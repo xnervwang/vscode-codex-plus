@@ -6,7 +6,7 @@
 /*
  * Which groups the session list draws, compared with Claude Code's list and Claude Code Plus. There is no Pinned group:
  * Codex keeps no pin flag the list could show and deletes nothing old that a pin would protect. There is no Background
- * group. There is no Archived sessions: Codex never archives or deletes on its own, and VS Code's Codex has no page that
+ * group. There is no Archived sessions group: Codex never archives or deletes on its own, and VS Code's Codex has no page that
  * lists archived conversations, so the list cannot archive either. Rows carry the two hover lines, Open sessions is
  * hidden while empty, and a group the user made is drawn even when empty.
  */

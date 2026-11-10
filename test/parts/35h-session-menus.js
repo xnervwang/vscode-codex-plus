@@ -5,8 +5,8 @@
 'use strict';
 /*
  * The rest of Claude Code's menus on the session list: Mark as Read on an unread conversation in place of Mark as
- * Unread, a group header's four (Start New Session in This Group, New Group, Rename Group, Delete Group), and the words
- * the list shows when there is nothing in it. Every item's title starts "Codex Plus: ", which is how the user tells
+ * Unread, a group header's four (Start New Session in This Group, New Group, Rename Group, Delete Group), and the
+ * empty-list text. Every item's title starts "Codex Plus: ", which is how the user tells
  * this extension's items from Codex's own.
  */
 const fs = require('fs');

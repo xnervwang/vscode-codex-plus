@@ -639,8 +639,8 @@ function registerCommands(context, { source, memory, sessionsModel, sessionsView
   });
   reg('markThreadUnread', (arg, selected) => { for (const id of chosen(arg, selected)) source.markUnread(id); });
   /*
-   * Messages from the session list's page: a row clicked, New in tab, New in sidebar, New group, an inline rename of a
-   * title or a group, and rows dropped on a group. Each one does what the matching command does.
+   * Messages from the session list's page, each handled like the matching command: a row clicked, New in tab, New in
+   * sidebar, New group, an inline rename of a title or a group, and rows dropped on a group.
    */
   sessionsView.receive = async (msg) => {
     const id = typeof msg.id === 'string' ? msg.id : '';

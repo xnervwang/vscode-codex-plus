@@ -8,9 +8,8 @@
  * RECENTLY CLOSED above the session manager.
  *
  * Elements are kept per key (row id, group key) and reused, and a field is written only when its value differs, so a
- * model in which one row changed touches that row alone. Filters and search run over the model already in the page and
- * toggle only rows whose visibility changes. Messages to the host carry user actions only. The hover delay is the
- * page's only timer.
+ * one-row change rewrites one row. Filters and search run over the model already in the page and toggle only rows
+ * whose visibility changes. The hover delay is the page's only timer.
  *
  * Collapsed sections and groups, the status filter, Active and the search text are saved with setState, so they survive
  * VS Code dropping the page while the view is hidden.

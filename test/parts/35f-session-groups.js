@@ -4,7 +4,7 @@
 
 'use strict';
 /*
- * The groups of the session list, which are Codex's sections: New Group, New Group from Conversation, Rename Group,
+ * Session list groups (Codex sections): New Group, New Group from Conversation, Rename Group,
  * Delete Group, Add to Group and Remove from Group, each sent to Codex's app-server with the method and parameters an
  * offline app-server of Codex 26.1021.22027 accepted (threadSection/create, /update, /delete, /list and
  * thread/section/move). Codex keeps no order for its sections, so the list's order is this extension's own; Codex's
