@@ -5,8 +5,8 @@
 'use strict';
 /*
  * Ctrl/Cmd+Shift+T reopens the Codex conversation closed last, as Claude Code's own shortcut reopens its last closed
- * session, and only while the tab closed last was a Codex tab: the key is VS Code's Reopen Closed Editor otherwise. The
- * key is bound behind a context key the tab events keep.
+ * session, and only while the tab closed last was a Codex tab; otherwise the shortcut stays VS Code's Reopen Closed
+ * Editor. Its when clause tests a context key that the tab events update.
  */
 const fs = require('fs');
 const path = require('path');
