@@ -144,11 +144,10 @@ on one line; anything longer belongs in `detail`.
 waiting on the user with one question. The user can then answer each by its number. A question with more than one
 question mark is refused.
 
-These are fields rather than words in `note` because the Codex Extras Conversations tab lists, for each conversation
-of the workspace, what waits on the user, and it builds that list from these two fields only. Nothing reads `note` for it: a guess from free
-text would get the list wrong. So a row with no
-`waitingOn` is shown as waiting on someone unknown and is not listed, and one with `user` but no answerable question
-gives the user nothing to act on.
+These are fields rather than words in `note` because the editor's Conversations view lists, for each conversation of
+the workspace, what waits on the user, and it builds that list from these two fields only. Nothing reads `note` for it:
+a guess from free text would get the list wrong. So a row with no `waitingOn` is shown as waiting on someone unknown
+and is not listed, and one with `user` but no answerable question gives the user nothing to act on.
 
 The user can answer a question from that tab. The answer arrives as their own message, naming the row number and
 repeating the question, and settles the row like any other answer: move it on.

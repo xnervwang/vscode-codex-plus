@@ -4,19 +4,18 @@
 
 'use strict';
 /*
- * A conversation row's icon in the Conversations view: its agent's logo with a dot in its state's colour on the corner
- * (the work plan host protocol in claude-code-extras' docs/work-plan-host.md, "The active conversation"). The logo is
- * read from the agent's own installed extension and the composite written into this extension's global storage, so no
- * copy of anyone's logo ships here.
+ * A Codex tab's icon: Codex's logo with a dot in the colour of its conversation's state on the corner (TAB_DOTS in
+ * patching.js). The logo is read from Codex's own installed extension and the composite written into this extension's
+ * global storage, so no copy of anyone's logo ships here.
  *
  * The logo is drawn inside a 24-unit box with a circle masked out round the dot, so the dot reads against any theme. A
- * logo that is not one SVG element with a viewBox is not composited, and the row keeps its plain state icon.
+ * logo that is not one SVG element with a viewBox is not composited, and the tab keeps Codex's own logo.
  */
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 
-/* The Conversations view's state colours, as SVG fills. */
+/* State colours as SVG fills, used when a caller passes no palette of its own. */
 const DOT = { prompt: '#f59e0b', needs: '#f59e0b', working: '#3b82f6', unread: '#22c55e', idle: '#8b8b8b' };
 const BOX = 24;
 const R = 4.2;
