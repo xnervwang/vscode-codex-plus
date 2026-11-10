@@ -124,8 +124,7 @@ function writeHookSettings(context) {
       tellTimeZone: c.get('tellCodexYourTimeZone', true),
       compactTokenLimit: codexConfig.compactLimit(files.codexHome()),
     }, { marker: context.globalStorageUri && context.globalStorageUri.fsPath });
-    const zone = context.globalState.get('codexPlus.clientTimeZone');
-    if (zone) fs.writeFileSync(path.join(install.planDir(files.codexHome()), 'client-time-zone.json'), JSON.stringify({ timeZone: zone }) + '\n');
+    install.writeClientZone(files.codexHome(), context.globalState.get('codexPlus.clientTimeZone'));
   } catch (e) { log.appendLine(`could not write the hooks' settings: ${e.message}`); }
 }
 

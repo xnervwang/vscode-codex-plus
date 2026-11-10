@@ -308,6 +308,29 @@ function writeHookSettings(home, values, { marker = '' } = {}) {
 }
 
 /*
+ * The reader's time zone, for the time-zone hook (tell-time-zone.py), which runs beside Codex with no page to ask. A
+ * hook that reads the file half-written tells the model no zone that turn, so it is replaced by a rename, and left alone
+ * when it already says this zone. Returns whether it was written.
+ */
+function writeClientZone(home, zone) {
+  if (!zone) return false;
+  const dir = planDir(home);
+  const file = path.join(dir, 'client-time-zone.json');
+  const next = JSON.stringify({ timeZone: zone }) + '\n';
+  try { if (fs.readFileSync(file, 'utf8') === next) return false; } catch (_) { /* not there yet */ }
+  fs.mkdirSync(dir, { recursive: true });
+  const tmp = `${file}.${process.pid}.tmp`;
+  try {
+    fs.writeFileSync(tmp, next);
+    fs.renameSync(tmp, file);
+  } catch (e) {
+    try { fs.unlinkSync(tmp); } catch (_) { /* never written */ }
+    throw e;
+  }
+  return true;
+}
+
+/*
  * Install or upgrade the plugin into `home`. Resolves to { version, marketplace, python, loaded }.
  *
  * `load` says what becomes of whether Codex loads it: true has Codex load it (the install command, which is also the way
@@ -474,5 +497,5 @@ function sameHooks(a, b) {
 module.exports = {
   MARKETPLACE, PLUGIN, PLUGIN_ID, DATA_DIR, DIGEST_FILE, SOURCE, SHIPPED, SHIPPED_PYTHON, planDir, cacheDir, installedVersions,
   pluginVersion, sourceDigest, installedDigest, installedFit, fitOf, installState, stageMarketplace, fitHooks, pluginLoadState, setPluginEnabled, pluginEnabledEdits,
-  writeHookSettings, install, uninstall, leftAfterRemoval, savePlans, hookStatus, trustHooks, sameHooks, hookKeys,
+  writeHookSettings, writeClientZone, install, uninstall, leftAfterRemoval, savePlans, hookStatus, trustHooks, sameHooks, hookKeys,
 };
