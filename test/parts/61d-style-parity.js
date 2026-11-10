@@ -4,19 +4,19 @@
 
 'use strict';
 /*
- * What this extension draws in Codex's conversation page, held to what Claude Code Plus draws for the same thing: the
- * hover labels, the time stamps, the two toolbar glyphs, the session information box, the strip's tool clock, the
- * button labels, the fonts, the Agent map's dots and its dialog's focus border, the context box, the rail's list, and
- * Codex's own time beside a message of yours while the stamps are on. Also the command titles shared with Claude Code
- * Plus's. The render check measures the same things in Codex's real page.
+ * Checks the parts of Codex's conversation page that this extension draws against Claude Code Plus's versions of the
+ * same parts: the hover labels, the time stamps, the two toolbar glyphs, the session information box, the strip's tool
+ * clock, the button labels, the fonts, the dots in the Agent map and the border of its dialog when focused, the context
+ * box, the rail's list, and hiding Codex's own time next to your messages while timestamps are shown. It also checks
+ * the command titles the two extensions share.
  */
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 const { createDom } = require('../fake-dom');
 
-/* The conversation of test/parts/63-release-polish.js: two turns of the user's, the message box, an optional meter.
-   `own` puts a clock in the first message's row of buttons, where Codex renders its own time. */
+/* The conversation from test/parts/63-release-polish.js: two user turns, the message box and an optional meter.
+   `own` adds a clock to the first message's button row, where Codex shows its own time. */
 function page(root, { own = '' } = {}) {
   const dom = createDom();
   const turn = (n) => dom.el('div', { attrs: { 'data-turn-key': `t${n}` }, kids: [dom.el('div', { attrs: { 'data-local-conversation-user-anchor': '' },

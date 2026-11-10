@@ -4,8 +4,8 @@
 
 /* Styles for the Codex session list (src/page/sessions-page.js). Sizes match Claude Code's list: 28 px rows with 6 px
    corners and an 8 px gap, 8 px dots, 26 px headers, 0.85em capitals for section labels, 0.9em for group names. Colours
-   come from VS Code theme variables; the status dots use Claude Code Plus's fixed colours. The font is the chat font,
-   as in Claude Code's page, which the page sets from the host's model. */
+   come from VS Code theme variables; the status dots use Claude Code Plus's fixed colours. Text is in the chat font, as
+   in Claude Code's list; the host sends it with the model. */
 html, body { margin: 0; padding: 0; height: 100%; }
 body { background: var(--vscode-sideBar-background); color: var(--vscode-foreground); overflow: hidden; }
 .cp-root {
@@ -40,8 +40,8 @@ svg.cp-icon.cp-solid { fill: currentColor; stroke: none; }
 .cp-open > .cp-section-body { display: block; margin-bottom: 10px; }
 .cp-list { display: flex; flex-direction: column; gap: 2px; padding: 0 6px 4px; }
 
-/* ACCOUNT & USAGE: ACCOUNT and its rows as Claude Code draws them, 8 px from the heading to the first row and 4 px
-   between rows of 4 px padding; the usage bars 12 px apart, as Claude Code's are. */
+/* ACCOUNT & USAGE: 8 px from the ACCOUNT heading to the first row, rows 4 px apart with 4 px padding, and 12 px
+   between usage bars. */
 .cp-account { padding: 10px 12px; flex-direction: column; gap: 4px; }
 /* Flex only while open: a display on .cp-account alone would override .cp-section-body's none. */
 .cp-open > .cp-section-body.cp-account { display: flex; }
@@ -80,8 +80,7 @@ svg.cp-icon.cp-solid { fill: currentColor; stroke: none; }
   color: var(--vscode-foreground); opacity: .7; text-transform: uppercase; letter-spacing: .5px; font-size: calc(var(--vscode-chat-font-size, 13px) - 1px);
   font-weight: 600; margin-bottom: 4px;
 }
-/* The search box is Claude Code's: no border, 4 px corners and margin, 8 px padding with room for the magnifier, and
-   for the clear button once there is text. */
+/* Search box: no border, 4 px corners and margin, and 8 px padding with room for the magnifier. */
 .cp-search { position: relative; display: flex; flex: 1 1 100%; min-width: 0; }
 .cp-search svg { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); width: 14px; height: 14px; opacity: .5; pointer-events: none; }
 .cp-search input {
@@ -132,8 +131,7 @@ svg.cp-icon.cp-solid { fill: currentColor; stroke: none; }
   outline: 1px solid var(--vscode-list-activeSelectionBackground); outline-offset: -1px;
 }
 .cp-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; box-sizing: border-box; }
-/* Claude Code Plus's colours, the same in every theme and the same as the dots on this extension's tabs; a failed turn
-   in the theme's error colour, as Claude Code draws it. A row with no dot keeps no room for one. */
+/* Fixed colours from Claude Code Plus. A failed turn uses the theme's error colour, as in Claude Code. */
 .cp-dot.d-working { background: #22c55e; }
 .cp-dot.d-workingElsewhere { border: 2px solid #22c55e; }
 .cp-dot.d-prompt { background: #3b82f6; }
@@ -183,8 +181,8 @@ svg.cp-icon.cp-solid { fill: currentColor; stroke: none; }
 
 /* The right-click menus, and the status filter's menu (.cp-menu), take their values from Claude Code's own context menu
    (the __ozcbg rules of its webview's index.css). Claude Code's --app-menu-* variables are set to the theme's
-   --vscode-menu-* ones, used here directly. One value differs: an item may be 280 px wide rather than 260, room for
-   the longest, "Codex Plus: Start New Session in This Group", which still fits a 300 px sidebar. */
+   --vscode-menu-* ones, used here directly. Items may be 280 px wide, not 260, so that "Codex Plus: Start New Session
+   in This Group" fits. */
 .cp-ctx, .cp-menu {
   position: fixed; z-index: 1000; min-width: 140px; max-height: calc(100vh - 16px); padding: 2px 0; overflow-x: hidden; overflow-y: auto;
   background: var(--vscode-menu-background); border: 1px solid var(--vscode-menu-border); border-radius: 6px;

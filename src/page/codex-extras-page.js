@@ -135,8 +135,8 @@
    * it from its own copy, so no text leaves the page. The meter draws the usage the host sends (codex-extras-usage),
    * and a click on it asks the host to compact the conversation, sending nothing but an id.
    */
-  /* The font of a box of this script's: the size it needs, in the family of Codex's page around it, as Claude Code
-     Plus's boxes take Claude Code's. The shorthand would also name a family, so its other parts are written out. */
+  /* Font declarations for the boxes this script draws: a fixed size, and the font family inherited from Codex's page.
+     The `font` shorthand would set a family too, so each property is written separately. */
   function pageFont(px, weight) {
     return 'font-style:normal;font-weight:' + (weight || 'normal') + ';font-size:' + px + 'px;line-height:normal;font-family:inherit;';
   }
@@ -319,9 +319,8 @@
   }
 
   /* A hover label drawn by this script, because a native title is not reliably shown in Codex's page
-     (agentPlusKit.labels). It is Claude Code Plus's label, in the page's own font: the theme values behind the --app-*
-     variables its box uses, which Codex's page does not define. A message shown after a click (flash) removes itself
-     after FLASH_MS. */
+     (agentPlusKit.labels), in Claude Code Plus's look. A message shown after a click (flash) removes itself after
+     FLASH_MS. */
   var FLASH_MS = 3000;
   var tips = kit.labels({ mark: [MARK, 'label'], css: 'z-index:' + Z_BELOW_CODEX_BOX + ';padding:8px;'
     + 'background:var(--vscode-menu-background,var(--vscode-editorWidget-background,#252526));'
@@ -1448,7 +1447,7 @@
    * span in the row of buttons beside the message, with no stable name to select it by. So it is found by reading
    * instead, as the one text in the message that reads as a clock and is not the message's own words. Only a clock
    * counts, not an epoch count or a date string, because this is looking for something Codex has already rendered for
-   * display. With two candidates there is no telling which is the time, so none is returned. What is returned carries
+   * display. With two candidates there is no telling which is the time, so none is returned. The result also carries
    * the element that shows the clock (`el`), so that it can be hidden while this script's stamp is on the message.
    */
   function userWhenInPage(anchor, dayMs) {
@@ -1725,8 +1724,8 @@
     if (sheet) { try { sheet.remove(); } catch (e) { /* gone */ } }
     sheet = null; sheetText = '';
   }
-  /* One stylesheet of this script's own for everything it shows. A stamp is in Claude Code Plus's look: the editor's
-     monospace font at 0.8em, in the colour of the message it is on at 60%. */
+  /* One stylesheet of this script's own for everything it shows. Stamps copy Claude Code Plus's: the editor's
+     monospace font, 0.8em, and the message's text colour at 60% opacity. */
   function restyle() {
     var css = '.codex-extras-stamp{font-family:var(--vscode-editor-font-family,monospace);font-size:.8em;font-weight:normal;'
       + 'font-style:normal;opacity:.6;line-height:1.4;user-select:none;pointer-events:none;}'
@@ -2148,8 +2147,8 @@
   }
 
   /* A compaction point, as a rule across the list. Clicking it goes to the first message after it, or to the end of the
-     conversation when there is none yet. Its label is drawn as a row's is, since a native title is not reliably shown
-     in Codex's page. */
+     conversation when there is none yet. Hovering it shows its label in the same box as a row's, because Codex's page
+     does not reliably show native titles. */
   function addRule(rule) {
     var label = 'Context compacted' + (rule.at ? ' ' + clockOf({ ms: rule.at, secs: false }) : '');
     var d = document.createElement('div');

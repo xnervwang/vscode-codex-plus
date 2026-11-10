@@ -228,8 +228,7 @@
   let lastExpanded = '';
   const closedRows = new Map(), openRows = new Map();
 
-  /* The chat font the host sent, under the names Claude Code's page gives it; the stylesheet falls back to the
-     interface font without them. */
+  /* Sets the chat font from the model as the two CSS variables Claude Code's page uses. */
   function useFont(f) {
     if (!f) return;
     const set = (k, v) => { if (root.style.getPropertyValue(k) !== v) root.style.setProperty(k, v); };
@@ -389,8 +388,6 @@
   }
 
   /* ── the status filter's menu ── */
-  /* Claude Code's own menu with its headings, as the right-click menus below copy it: each choice has the place for a
-     check and reads "Needs input · 3". */
   const MENU = [['Status'], ['needs_input', 'Needs input'], ['working', 'Working'], ['completed', 'Completed'], ['-'], ['Tabs'], ['open', 'Open'], ['closed', 'Closed']];
   function drawMenu(rows) {
     const counts = { needs_input: 0, working: 0, completed: 0, open: 0, closed: 0 };
@@ -775,8 +772,7 @@
       const under = r._row.child ? `\nSub-agent${r._row.nickname ? ` ${r._row.nickname}` : ''} of: ${r._row.parentTitle}` : '';
       hoverBox.textContent = `Group: ${r._row.group}\nSession ID: ${r._row.id}${under}${r._row.goalText ? `\n${r._row.goalText}` : ''}`;
       hoverBox.classList.remove('cp-hidden');
-      /* Placed as agentPlusKit.labels places Claude Code Plus's: centred on the row, 8 px above it when that fits in
-         the window and 8 px below it otherwise, and kept 8 px inside the window's sides. */
+      /* The same placement as agentPlusKit.labels. */
       const b = r.getBoundingClientRect();
       const w = hoverBox.offsetWidth, h = hoverBox.offsetHeight;
       const left = b.left + b.width / 2 - w / 2;

@@ -281,10 +281,7 @@ async function meterHover(s, where, file) {
   await sleep(500);
   return box;
 }
-/*
- * What is drawn the way Claude Code Plus draws it, measured in the drawn page. A probe element resolves a CSS value the
- * way the page would.
- */
+/* Measurements of the parts that should match Claude Code Plus, taken in the rendered page. */
 const PARITY = `(() => {
   const st = (e) => getComputedStyle(e);
   const probe = (prop, value) => { const p = document.createElement('span'); p.style[prop] = value; document.body.appendChild(p); const v = st(p)[prop]; p.remove(); return v; };
@@ -393,8 +390,6 @@ function selfchecked(r, where, { turns, users, rows, replies = turns }) {
     await parity(s, 'conversation');
     await s.b.evaluate(`(() => { const a = [...document.querySelectorAll('[data-local-conversation-user-anchor]')].pop(); const b = a && a.querySelector('button'); if (b) b.focus(); })()`);
     await shot(s, 'user-message-focused', { x: 600, y: 380, width: 500, height: 140 });
-    /* Codex's own clock beside your message, shown while the message has the focus, is hidden while this script's stamp is
-       there, as Claude Code Plus hides Claude Code's: the only time left on screen is the stamp. */
     {
       const own = await s.b.evaluate(`(() => { const a = [...document.querySelectorAll('[data-local-conversation-user-anchor]')].pop(); if (!a) return null;
         const body = a.querySelector('[data-user-message-bubble]'), out = [];

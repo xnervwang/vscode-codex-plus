@@ -127,8 +127,7 @@ function goalText(g) {
   return `Goal (${GOAL_WORD[g.status] || g.status}, ${used}): ${g.objective.slice(0, 300)}`;
 }
 
-/* The chat font as Claude Code's host reads it for its own page: chat.fontFamily, with its own system font stack for
-   "default", and chat.fontSize, 13 when unset. `get` reads a key of the chat section. */
+/* The chat font, with Claude Code's defaults for an unset size and for "default". */
 const CHAT_FAMILY = "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif";
 function chatFont(get) {
   const family = String(get('fontFamily') || 'default').slice(0, 300);

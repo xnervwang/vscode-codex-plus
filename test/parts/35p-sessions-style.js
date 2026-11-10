@@ -4,10 +4,10 @@
 
 'use strict';
 /*
- * The session list's look held to Claude Code Plus's, where both extensions have the same thing: the status dots, the
- * hover box, the search box and its highlight, the status filter's menu, the icons, ACCOUNT, the rename button, the
- * section lines, the chat font, the editing outlines and the drag image. Each value is the one Claude Code's own
- * stylesheet or Claude Code Plus's page script uses; the render check's sessions scene checks the same in a browser.
+ * Checks that the session list looks like Claude Code Plus's: the status dots, the hover box, the search box and its
+ * highlight, the status filter's menu, the icons, ACCOUNT, the rename button, the section lines, the chat font, the
+ * editing outlines and the drag image. Each expected value comes from Claude Code's stylesheet or Claude Code Plus's
+ * page script; test/render/lib/sessions-scene.js checks the same values in a browser.
  */
 const fs = require('fs');
 const path = require('path');
