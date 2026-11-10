@@ -156,14 +156,14 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
   pi.stageMarketplace(asShipped, pi.SOURCE, pi.SHIPPED_PYTHON);
   const shipped = commands(asShipped);
   eq([shipped.length, shipped.every((c) => c.startsWith('python3 ')), fs.existsSync(launcherFile(asShipped)),
-    mcpOf(asShipped).command], [9, true, false, 'python3'],
+    mcpOf(asShipped).command], [11, true, false, 'python3'],
   'with python3 the staged copy is left exactly as it ships, and no launcher file is written');
 
   const fitted = tmp('stage-py3-launcher');
   const r1 = pi.fitHooks(pi.stageMarketplace(fitted, pi.SOURCE, pi.SHIPPED_PYTHON) && fitted,
     { launcher: ['py', '-3'], executable: 'C:/Python312/python.exe', version: '3.12' });
   eq([r1.state, r1.hooks, commands(fitted).every((c) => c.startsWith('py -3 "$PLUGIN_ROOT/hooks/'))],
-    ['fitted', 9, true], 'a launcher with arguments goes in front of every hook command, leaving the rest of the line alone');
+    ['fitted', 11, true], 'a launcher with arguments goes in front of every hook command, leaving the rest of the line alone');
   eq([mcpOf(fitted).command, mcpOf(fitted).args], ['C:/Python312/python.exe', ['./hooks/plan-mcp.py']],
     "the MCP server gets the interpreter's own path, since it is not started from the user's shell, and none of the "
       + "launcher's arguments, which are the launcher's and not the interpreter's");

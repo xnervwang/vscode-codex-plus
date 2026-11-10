@@ -14,6 +14,9 @@ It speaks MCP over standard input and output, one JSON-RPC message per line, and
 arguments as the row command. Every call is handed to plan-row.py's run(), so the rules for what a row may say live in
 one place. A path it is given must be a plan file in this plugin's data directory of the Codex home the server was started
 for, named by a thread id: the tools write only there.
+
+A third tool, skill_search, only reads: it searches every installed skill with the words the model gives it
+(skill_route.py), which reaches the skills Codex's own list shortens or leaves out.
 """
 import importlib.util
 import json
@@ -25,6 +28,7 @@ sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from plan_path import PLAN_NAME, PLUGIN_DIR_NAME, STATES, WAITING_ON, codex_home  # noqa: E402
+import skill_route  # noqa: E402
 
 
 def load_row_command():
@@ -71,6 +75,20 @@ TOOLS = [
                          "title": {"type": "string"},
                          "under": {"type": "string", "description": "The row to add it under, such as 2."},
                      }, **COMMON)}},
+    {"name": "skill_search", "description": "Search every skill installed for Codex by what you want to do, including "
+     "skills that the skills list leaves out or cuts short. Write the query in your own words: rephrase the request, try "
+     "synonyms, and turn a request made in another language into English keywords; when nothing fits, search again "
+     "with other words. Returns each match's name, full description and SKILL.md path. Read a SKILL.md only if it fits "
+     "the task.",
+     "annotations": {"title": "Search the installed skills", "readOnlyHint": True, "destructiveHint": False,
+                     "idempotentHint": True, "openWorldHint": False},
+     "inputSchema": {"type": "object", "required": ["query"], "additionalProperties": False, "properties": {
+         "query": {"type": "string", "description": "What you are looking for, in words."},
+         "count": {"type": "integer", "minimum": 1, "maximum": skill_route.SEARCH_COUNT_MAX,
+                   "description": "How many skills to return; 5 when left out."},
+         "cwd": {"type": "string", "description": "The working directory, so that the repository's own skills are "
+                 "searched too."},
+     }}},
 ]
 
 
@@ -103,9 +121,22 @@ def plan_path(value):
     return path
 
 
+def search(args):
+    query = args.get("query")
+    if not isinstance(query, str) or not query.strip():
+        raise Refused("query is the words to search for, and it is empty.")
+    count = args.get("count", 5)
+    if isinstance(count, bool) or not isinstance(count, int) or count < 1:
+        raise Refused("count is a whole number of 1 or more, not %r." % (count,))
+    cwd = args.get("cwd") if isinstance(args.get("cwd"), str) else ""
+    return skill_route.search_text(PLAN_DIR, query, min(count, skill_route.SEARCH_COUNT_MAX), cwd)
+
+
 def call(name, args):
     if not isinstance(args, dict):
         raise Refused("The arguments are not an object.")
+    if name == "skill_search":
+        return search(args)
     ns = types.SimpleNamespace(plan=plan_path(args.get("plan")), note=args.get("note"),
                                waiting_on=args.get("waiting_on"), question=args.get("question"))
     if name == "set_row":
@@ -133,8 +164,9 @@ def respond(msg):
         return {"protocolVersion": (msg.get("params") or {}).get("protocolVersion") or PROTOCOL,
                 "capabilities": {"tools": {}},
                 "serverInfo": {"name": "work_plan", "version": "1.0.0"},
-                "instructions": "Changes rows of this conversation's work plan. The plan file's path is in the work "
-                                "plan block at the start of each turn."}
+                "instructions": "Changes rows of this conversation's work plan; the plan file's path is in the work "
+                                "plan block at the start of each turn. skill_search searches every installed skill, "
+                                "including the ones the skills list leaves out or cuts short."}
     if method == "tools/list":
         return {"tools": TOOLS}
     if method == "tools/call":

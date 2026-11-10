@@ -112,6 +112,21 @@ DEFAULTS = {
     # Codex compacts at the lower of it and 90% of the full window, so the marks before a compaction are measured
     # against the lower one too (refresh-work-plan.py).
     "compactTokenLimit": 0,
+    # Whether each turn is given the installed skills that best fit the user's message (route-skills.py), found by
+    # keywords in the local index. Separate from `enabled`, as it has nothing to do with the plan.
+    "skillRoute": True,
+    # Whether that search is by meaning instead, through Amazon Bedrock. Off unless the user turns it on, and even then
+    # used only when Codex's model provider is Bedrock; it sends the user's message to the same account and region Codex
+    # already sends the conversation to.
+    "skillRouteVector": False,
+    # How many skills a turn is given.
+    "skillRouteCount": 5,
+    # Folders of skills Codex does not read itself, searched as well. ~/.claude/skills is where a person who also uses
+    # Claude Code keeps their own; a folder that does not exist is passed over.
+    "skillRouteExtraDirs": ["~/.claude/skills"],
+    # Plugins installed for Claude Code but not for Codex whose skills are searched too ("*" for all of them). None by
+    # default: a skill only Claude Code can run tends to lead Codex astray.
+    "skillRouteClaudePlugins": [],
 }
 
 
@@ -142,6 +157,7 @@ def settings(directory=None):
     if extension_gone(given):
         out["enabled"] = False
         out["tellTimeZone"] = False
+        out["skillRoute"] = False
         return out
     for key, fallback in DEFAULTS.items():
         value = given.get(key) if isinstance(given, dict) else None
@@ -154,6 +170,10 @@ def settings(directory=None):
         if isinstance(fallback, str):
             if isinstance(value, str):
                 out[key] = value
+            continue
+        if isinstance(fallback, list):
+            if isinstance(value, list) and all(isinstance(v, str) for v in value):
+                out[key] = list(value)
             continue
         if isinstance(value, bool) or not isinstance(value, (int, float)):
             continue
