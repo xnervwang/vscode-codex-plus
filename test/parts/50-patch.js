@@ -260,7 +260,7 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
   };
   win.globalThis = win;
   const sandbox = vm.createContext({ globalThis: win, document, Intl, Date, Math, Object, String, setInterval: () => 1, clearInterval() {} });
-  vm.runInContext(fs.readFileSync(path.join(root, 'src', 'page', page.PAGE_FILE), 'utf8'), sandbox);
+  vm.runInContext(page.pageScript(), sandbox);
   const first = win.acquireVsCodeApi(), second = win.acquireVsCodeApi();
   eq([first === second, handles], [true, 1], 'the page script and Codex share one API handle');
   eq(posted[0] && [posted[0].type, posted[0].kind, typeof posted[0].timeZone], ['codex-extras', 'tz', 'string'], 'it reports the page\'s time zone');

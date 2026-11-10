@@ -38,7 +38,7 @@ function page(root, { state = 'suspended', resumes = 'resolve', chimeOn = true }
   const listeners = {};
   const win = { acquireVsCodeApi: () => ({ postMessage: (m) => posted.push(m) }), addEventListener: (t, fn) => { listeners[t] = fn; },
     location: { pathname: '/index.html', hash: '' }, innerHeight: 760, AudioContext };
-  vm.runInContext(fs.readFileSync(path.join(root, 'src', 'page', 'codex-extras-page.js'), 'utf8'), vm.createContext(Object.assign({ globalThis: win }, dom.sandbox)));
+  vm.runInContext(require(path.join(root, 'src', 'webview-inject.js')).pageScript(), vm.createContext(Object.assign({ globalThis: win }, dom.sandbox)));
   const send = (m) => listeners.message({ data: m });
   const view = (chime) => send({ type: 'codex-extras-view', timestamps: true, navigation: true, userColor: '', userEdge: true, chime });
   view(chimeOn);

@@ -101,7 +101,7 @@ function pageUnder(root) {
   };
   win.globalThis = win;
   const sandbox = vm.createContext({ globalThis: win, document, Intl, Date, Math, Object, String, setInterval: () => 1, clearInterval() {} });
-  vm.runInContext(fs.readFileSync(path.join(root, 'src', 'page', 'codex-extras-page.js'), 'utf8'), sandbox);
+  vm.runInContext(require(path.join(root, 'src', 'webview-inject.js')).pageScript(), sandbox);
   let n = 0;
   return (body) => {
     document.body = body;

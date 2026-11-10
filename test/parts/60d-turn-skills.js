@@ -74,7 +74,7 @@ module.exports = async ({ eq, tmp, root }) => {
   const listeners = {};
   const win = { acquireVsCodeApi: () => ({ postMessage: () => {} }), addEventListener: (t, fn) => { listeners[t] = fn; },
     location: { pathname: '/index.html', hash: '' } };
-  vm.runInContext(fs.readFileSync(path.join(root, 'src', 'page', 'codex-extras-page.js'), 'utf8'), vm.createContext(Object.assign({ globalThis: win }, dom.sandbox)));
+  vm.runInContext(require(path.join(root, 'src', 'webview-inject.js')).pageScript(), vm.createContext(Object.assign({ globalThis: win }, dom.sandbox)));
   listeners.message({ data: { type: 'codex-extras-view', timestamps: true, navigation: true } });
   const long = `ctx 9% · gpt-x low · skills ${Array.from({ length: 10 }, (_, i) => `a-rather-long-skill-name-number-${i}`).join(', ')}`;
   listeners.message({ data: { type: 'codex-extras-user-times', times: null, compactions: [], turns: { [T4]: long }, turnTimes: {} } });

@@ -50,7 +50,7 @@ function page(root, opts) {
   const listeners = {};
   const win = { acquireVsCodeApi: () => ({ postMessage: (m) => posted.push(m) }), addEventListener: (t, fn) => { listeners[t] = fn; },
     location: { pathname: '/index.html', hash: '' }, innerHeight: 760, innerWidth: 1100 };
-  vm.runInContext(fs.readFileSync(path.join(root, 'src', 'page', 'codex-extras-page.js'), 'utf8'), vm.createContext(Object.assign({ globalThis: win }, dom.sandbox)));
+  vm.runInContext(require(path.join(root, 'src', 'webview-inject.js')).pageScript(), vm.createContext(Object.assign({ globalThis: win }, dom.sandbox)));
   const q = (sel) => dom.document.root.querySelectorAll(sel);
   const sheet = () => (q('[data-codex-extras="style"]')[0] || dom.document.head.querySelectorAll('[data-codex-extras="style"]')[0] || { textContent: '' }).textContent;
   return { dom, box, posted, q, sheet, send(m) { listeners.message({ data: m }); },

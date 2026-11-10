@@ -39,7 +39,7 @@ function pageUnder(root, dom) {
     location: { pathname: '/index.html', hash: '' },
   };
   const ctx = vm.createContext(Object.assign({ globalThis: win }, dom.sandbox));
-  vm.runInContext(fs.readFileSync(path.join(root, 'src', 'page', 'codex-extras-page.js'), 'utf8'), ctx);
+  vm.runInContext(require(path.join(root, 'src', 'webview-inject.js')).pageScript(), ctx);
   return { posted, flags: () => posted.filter((m) => m.kind === 'approval').map((m) => m.on) };
 }
 

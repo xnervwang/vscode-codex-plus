@@ -1,5 +1,5 @@
 {
-  "core": "88a886070be913c893d71055885b6352c2733f88",
+  "core": "556204a45566a1a817a16e6176e6a89666f7295f",
   "files": [
     {
       "path": "build/sync-shared.js",
@@ -60,6 +60,11 @@
       "path": "src/folders.js",
       "from": "src/folders.js",
       "sha256": "8f98f10c6ced4271c3b506f1f352d9de86cad392cd0c99e25e009b62b7e24e77"
+    },
+    {
+      "path": "src/page/kit.js",
+      "from": "shared/page/kit.js",
+      "sha256": "681e3d319bbeb69f5e3bf12a33cc2ef60121adb14532f15bc509c2db74a82068"
     }
   ]
 }

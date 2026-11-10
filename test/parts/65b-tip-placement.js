@@ -30,7 +30,7 @@ module.exports = async ({ eq, root }) => {
   const listeners = {};
   const win = { acquireVsCodeApi: () => ({ postMessage() {} }), addEventListener: (t, fn) => { listeners[t] = fn; },
     location: { pathname: '/index.html', hash: '' }, innerWidth: W, innerHeight: H };
-  vm.runInContext(fs.readFileSync(path.join(root, 'src', 'page', 'codex-extras-page.js'), 'utf8'), vm.createContext(Object.assign({ globalThis: win }, dom.sandbox)));
+  vm.runInContext(require(path.join(root, 'src', 'webview-inject.js')).pageScript(), vm.createContext(Object.assign({ globalThis: win }, dom.sandbox)));
   listeners.message({ data: { type: 'codex-extras-view', timestamps: true, navigation: true, userEdge: true } });
   const q = (sel) => dom.document.root.querySelectorAll(sel);
   const px = (v) => (v === undefined ? null : parseFloat(v));

@@ -38,41 +38,21 @@
   try { post({ kind: 'tz', timeZone: String(Intl.DateTimeFormat().resolvedOptions().timeZone || '') }); } catch (e) { /* none */ }
 
   var MARK = 'data-codex-extras';
+  /* agentPlusKit comes from Agent Plus's shared page code, put in front of this script (src/webview-inject.js). */
+  var kit = agentPlusKit;
 
   /* This script's own version. A page runs the copy it was built with, so a page left on an older patch answers a
      self-check with an older version here, which is the one case the host cannot tell from reading its own files.
      test/parts/62-selfcheck.js holds it to package.json, since a page cannot read that file. */
   var SCRIPT_VERSION = '1.0.1';
 
-  var audio = null;
   /* Set by the Chimes button until the setting it asked for comes back. */
   var chimeAsked = false;
-  /* The three sounds of Claude Code Extras, note for note and at its volume, so someone using both hears the same thing
-     for the same event: rising for a finished turn, three equal notes for a permission, falling for a question. Each
-     step is [frequency in Hz, start in s, length in s]. */
-  var TONES = {
-    done: [[880, 0, 0.09], [1174, 0.09, 0.16]],
-    approval: [[880, 0, 0.07], [880, 0.13, 0.07], [880, 0.26, 0.11]],
-    question: [[1174, 0, 0.09], [880, 0.10, 0.16]],
-  };
-  var CHIME_GAIN = 0.05;
-  /* A context made before anyone has clicked or typed in the page starts suspended under the browser's autoplay rule
-     and plays nothing. Each chime resumes it first, and so does the first click or key in the page. A refused resume()
-     never settles, so the chime is dropped after RESUME_WAIT_MS rather than sounding at some later click. */
-  var RESUME_WAIT_MS = 300;
-  function audioCtx() {
-    var Ctor = globalThis.AudioContext || globalThis.webkitAudioContext;
-    if (!Ctor) return null;
-    if (!audio || audio.state === 'closed') { try { audio = new Ctor(); } catch (e) { audio = null; } }
-    return audio;
-  }
-  function unlockAudio() {
-    var ac = audioCtx();
-    if (ac && ac.state === 'suspended' && typeof ac.resume === 'function') { try { ac.resume(); } catch (e) { /* refused */ } }
-  }
+  /* The three sounds Claude Code Plus plays, note for note and at its volume, so someone using both hears the same thing
+     for the same event (agentPlusKit.chime). The first click or key in the page unlocks audio for them. */
   try {
-    document.addEventListener('pointerdown', unlockAudio, true);
-    document.addEventListener('keydown', unlockAudio, true);
+    document.addEventListener('pointerdown', kit.unlockAudio, true);
+    document.addEventListener('keydown', kit.unlockAudio, true);
   } catch (e) { /* no document events */ }
   /* The host writes a line for the page's first chime and for each one that was not heard. */
   var toldChime = false;
@@ -81,36 +61,8 @@
     toldChime = true;
     post({ kind: 'chime', sound: String(kind), state: String(state) });
   }
-  function chime(kind) {
-    var ac = audioCtx();
-    if (!ac) { tellChime(kind, 'unavailable'); return; }
-    var play = function () {
-      try {
-        var steps = TONES[kind] || TONES.done, t0 = ac.currentTime;
-        steps.forEach(function (step) {
-          var at = t0 + step[1], dur = step[2];
-          var o = ac.createOscillator(), g = ac.createGain();
-          o.type = 'sine';
-          o.frequency.setValueAtTime(step[0], at);
-          g.gain.setValueAtTime(0.0001, at);
-          g.gain.exponentialRampToValueAtTime(CHIME_GAIN, at + 0.012);
-          g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
-          o.connect(g); g.connect(ac.destination);
-          o.start(at); o.stop(at + dur + 0.02);
-        });
-      } catch (e) { /* no audio here */ }
-      tellChime(kind, ac.state);
-    };
-    if (ac.state !== 'suspended' || typeof ac.resume !== 'function') { play(); return; }
-    var settled = false;
-    var go = function () {
-      if (settled) return;
-      settled = true;
-      if (ac.state === 'running') play(); else tellChime(kind, ac.state);
-    };
-    try { Promise.resolve(ac.resume()).then(go, go); } catch (e) { go(); }
-    setTimeout(go, RESUME_WAIT_MS);
-  }
+  function chime(kind) { kit.chime(kind, tellChime); }
+
 
   /*
    * Whether an approval card is on this page, told to the host as a flag and nothing else.
@@ -355,45 +307,20 @@
     return false;
   }
 
-  /* A hover label drawn by this script, because a native title is not reliably shown in Codex's page. It is created on
-     hover and removed on leave or click; a message shown after a click (flash) removes itself after FLASH_MS. Pushed
-     down by the top of the page it would sit on the control itself, so with no room above it goes below instead. */
-  var labelBox = null, FLASH_MS = 3000;
-  function hideLabel() { if (labelBox) { try { labelBox.remove(); } catch (e) { /* gone */ } labelBox = null; } }
-  function showLabel(el, said) {
-    var text = said || (el && el.getAttribute('aria-label'));
-    if (!text || !document.body) return;
-    hideLabel();
-    var box = document.createElement('div');
-    box.setAttribute(MARK, 'label');
-    box.style.cssText = 'position:fixed;z-index:' + Z_BELOW_CODEX_BOX + ';pointer-events:none;max-width:260px;padding:6px 8px;'
-      + 'background:var(--vscode-editorHoverWidget-background,#252526);color:var(--vscode-editorHoverWidget-foreground,#ccc);'
-      + 'border:1px solid var(--vscode-editorHoverWidget-border,#454545);border-radius:4px;'
-      + 'font:11px var(--vscode-font-family,sans-serif);line-height:1.35;white-space:pre-line;overflow-wrap:anywhere;';
-    box.textContent = text;
-    document.body.appendChild(box);
-    var r = rectOf(el), b = rectOf(box);
-    if (r && b) {
-      var vw = +globalThis.innerWidth || 0, w = b.width || 0, above = (r.top || 0) - (b.height || 0) - 8;
-      var left = (r.left || 0) + (r.width || 0) / 2 - w / 2;
-      box.style.left = Math.round(Math.max(8, vw ? Math.min(vw - w - 8, left) : left)) + 'px';
-      box.style.top = Math.round(above >= 8 ? above : bottomOf(r) + 8) + 'px';
-    }
-    labelBox = box;
-  }
+  /* A hover label drawn by this script, because a native title is not reliably shown in Codex's page
+     (agentPlusKit.labels). A message shown after a click (flash) removes itself after FLASH_MS. */
+  var FLASH_MS = 3000;
+  var tips = kit.labels({ mark: [MARK, 'label'], css: 'z-index:' + Z_BELOW_CODEX_BOX + ';padding:6px 8px;'
+    + 'background:var(--vscode-editorHoverWidget-background,#252526);color:var(--vscode-editorHoverWidget-foreground,#ccc);'
+    + 'border:1px solid var(--vscode-editorHoverWidget-border,#454545);border-radius:4px;'
+    + 'font:11px var(--vscode-font-family,sans-serif);' });
+  var hideLabel = tips.hide, showLabel = tips.show;
   function flash(el, text) {
     showLabel(el, text);
-    var box = labelBox;
-    setTimeout(function () { if (labelBox === box) hideLabel(); }, FLASH_MS);
+    var box = tips.current();
+    setTimeout(function () { if (tips.current() === box) hideLabel(); }, FLASH_MS);
   }
-  function labelled(el, text) {
-    if (el.getAttribute('aria-label') !== text) el.setAttribute('aria-label', text);
-    if (el.getAttribute(MARK + '-labelled') !== null) return;
-    el.setAttribute(MARK + '-labelled', '');
-    el.addEventListener('mouseenter', function () { showLabel(el); });
-    el.addEventListener('mouseleave', hideLabel);
-    el.addEventListener('click', hideLabel);
-  }
+  function labelled(el, text) { tips.wire(el, text, MARK + '-labelled'); }
   var composerRoot = function () { return one(document, '[data-codex-composer-root]') || one(document, '[data-codex-composer]'); };
   var infoOpen = function () { return !!(infoBox && infoBox.isConnected && infoBox.style.display === 'block'); };
   function closeInfo() { if (infoBox) infoBox.style.display = 'none'; }
@@ -633,13 +560,7 @@
    */
   var ctxBox = null, ctxOpenAt = 0, ctxShutAt = 0, ctxOverMeter = false, ctxOverBox = false;
   var CTX_OPEN_MS = 300, CTX_SHUT_MS = 200;
-  var kfmt = function (n) {
-    if (typeof n !== 'number' || !isFinite(n)) return '-';
-    if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
-    if (n >= 1000) return (n / 1000).toFixed(1) + 'k';
-    return String(Math.round(n));
-  };
-  var pctOf = function (n, of) { if (!(of > 0)) return ''; var v = 100 * n / of; return v < 0.1 && v > 0 ? '<0.1%' : v.toFixed(1) + '%'; };
+  var kfmt = kit.kfmt, pctOf = kit.pct;
   function ctxRow(name, value, share, dim) {
     var row = document.createElement('div');
     row.style.cssText = 'display:flex;align-items:center;padding:1px 0;' + (dim ? 'opacity:.65;' : '');
@@ -1208,18 +1129,10 @@
   }
 
   var sameMinute = function (a, b) { return Math.floor(a / 60000) === Math.floor(b / 60000); };
-  var p2 = function (n) { return (n < 10 ? '0' : '') + n; };
+  var p2 = kit.p2;
   /* HH:MM:SS in the user's own zone, or HH:MM when the source had no seconds, rather than showing :00 seconds that
-     nobody recorded. A day other than today is prefixed as MM/DD, with the year for another year, the date format
-     Claude Code Plus and the session list use. */
-  function clockOf(when) {
-    if (!when) return '';
-    var d = new Date(when.ms), now = new Date();
-    var t = p2(d.getHours()) + ':' + p2(d.getMinutes()) + (when.secs ? ':' + p2(d.getSeconds()) : '');
-    if (d.toDateString() === now.toDateString()) return t;
-    var md = p2(d.getMonth() + 1) + '/' + p2(d.getDate());
-    return (d.getFullYear() === now.getFullYear() ? md : d.getFullYear() + '/' + md) + ' ' + t;
-  }
+     nobody recorded; another day goes in front as MM/DD (agentPlusKit.stamp). */
+  function clockOf(when) { return when ? kit.stamp(when.ms, !!when.secs) : ''; }
 
   /* A sent time in none of those forms. Told once per form, and as a form rather than a value. */
   var toldShapes = Object.create(null);

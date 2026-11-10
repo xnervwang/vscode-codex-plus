@@ -59,7 +59,7 @@ function page(root, build) {
   const listeners = {};
   const win = { acquireVsCodeApi: () => ({ postMessage: (m) => posted.push(m) }), addEventListener: (t, fn) => { listeners[t] = fn; },
     location: { pathname: '/index.html', hash: '' }, innerHeight: 760, innerWidth: 1100 };
-  vm.runInContext(fs.readFileSync(path.join(root, 'src', 'page', 'codex-extras-page.js'), 'utf8'), vm.createContext(Object.assign({ globalThis: win }, dom.sandbox)));
+  vm.runInContext(require(path.join(root, 'src', 'webview-inject.js')).pageScript(), vm.createContext(Object.assign({ globalThis: win }, dom.sandbox)));
   const q = (sel) => dom.document.root.querySelectorAll(sel);
   /* One pass of the watcher over the message box, as after Codex redraws something in it. */
   const pass = () => { dom.fire([{ type: 'childList', target: box.root }]); dom.runTimers(); };

@@ -34,6 +34,7 @@
  */
 const { folderTest } = require('./folders');
 const { PINNED_SECTION } = require('./session-groups');
+const kit = require('./page/kit.js');
 
 /* The colours a title can be given: the eight Claude Code's /color offers, as theme colours. */
 const COLORS = {
@@ -71,25 +72,11 @@ function lookKey(conv, here) {
 }
 const lookOf = (conv, here) => STATE_LOOK[lookKey(conv, here)];
 
-const pad = (n) => String(n).padStart(2, '0');
-/* How long ago, as Claude Code's own list writes it: now, then whole minutes, hours, days, months of 30 days, years. */
-function ago(ms, now = Date.now()) {
-  const s = Math.max(0, Math.floor((now - ms) / 1000)), m = Math.floor(s / 60), h = Math.floor(m / 60), d = Math.floor(h / 24);
-  const mo = Math.floor(d / 30), y = Math.floor(d / 365);
-  return y > 0 ? `${y}y` : mo > 0 ? `${mo}mo` : d > 0 ? `${d}d` : h > 0 ? `${h}h` : m > 0 ? `${m}m` : 'now';
-}
-/* `2d · 11/05→11/09`: how long ago it was last active, then the dates it spans, or one date if both are the same day.
-   Month comes before day, as elsewhere in the panel, and a year other than the current one goes in front, once for a
-   span within that year: `2025/11/05→11/09`, `2025/12/30→01/02`. */
+/* How long ago, as Claude Code's own list writes it, and the days a conversation spans, from the page code Agent Plus
+   shares with both extensions (src/page/kit.js): `2d · 11/05→11/09`. */
+const ago = kit.age;
 function dateSpan(createdMs, updatedMs, now = Date.now()) {
-  if (!updatedMs) return '';
-  const year = new Date(now).getFullYear();
-  const ymd = (ms) => { const t = new Date(ms); return { y: t.getFullYear(), md: `${pad(t.getMonth() + 1)}/${pad(t.getDate())}` }; };
-  const one = (v) => (v.y === year ? v.md : `${v.y}/${v.md}`);
-  const e = ymd(updatedMs), s = createdMs ? ymd(createdMs) : null;
-  let body = one(e);
-  if (s && (s.y !== e.y || s.md !== e.md)) body = s.y === e.y && s.y !== year ? `${s.y}/${s.md}→${e.md}` : `${one(s)}→${one(e)}`;
-  return `${ago(updatedMs, now)} · ${body}`;
+  return updatedMs ? `${ago(updatedMs, now)} · ${kit.span(createdMs, updatedMs, now)}` : '';
 }
 
 /* How a goal's state is written on its row, and the words for its hover. */

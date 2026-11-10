@@ -73,4 +73,4 @@ function pageHtml(dir, { route, pre, version, sessionId = '00000000-0000-4000-80
   return html.replace(ours, `${tags}\n    ${ours}`);
 }
 
-module.exports = { ROOT, PAGE_SCRIPT, codexInstalls, capnwebAsset, pageHtml };
+module.exports = { ROOT, PAGE_SCRIPT, pageScript: () => inject.pageScript(), codexInstalls, capnwebAsset, pageHtml };

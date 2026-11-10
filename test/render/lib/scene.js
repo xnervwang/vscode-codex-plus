@@ -41,7 +41,7 @@ async function open(env, { name, width = 1100, height = 760, turns, days, settin
       pre: [{ src: '/harness/config.js' }, { src: '/harness/vscode-stub.js' }, { src: '/harness/services.js' },
         { src: '/harness/codex-host.js', module: true }] }) }),
     '/harness/config.js': () => ({ type: 'text/javascript; charset=utf-8', body: `window.__renderConfig = ${JSON.stringify(config)};\n` }),
-    '/codex-webview/codex-extras-page.js': () => ({ type: 'text/javascript; charset=utf-8', body: fs.readFileSync(page.PAGE_SCRIPT, 'utf8') }),
+    '/codex-webview/codex-extras-page.js': () => ({ type: 'text/javascript; charset=utf-8', body: page.pageScript() }),
   });
   const userDataDir = path.join(dir, 'chrome-profile');
   const b = await launch({ chrome: env.chrome, width, height, userDataDir });

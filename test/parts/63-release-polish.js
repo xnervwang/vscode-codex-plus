@@ -33,7 +33,7 @@ function page(root, { meter = '', composerTop = 600 } = {}) {
   const listeners = {};
   const win = { acquireVsCodeApi: () => ({ postMessage() {} }), addEventListener: (t, fn) => { listeners[t] = fn; },
     location: { pathname: '/index.html', hash: '' }, innerHeight: 760, AudioContext };
-  vm.runInContext(fs.readFileSync(path.join(root, 'src', 'page', 'codex-extras-page.js'), 'utf8'), vm.createContext(Object.assign({ globalThis: win }, dom.sandbox)));
+  vm.runInContext(require(path.join(root, 'src', 'webview-inject.js')).pageScript(), vm.createContext(Object.assign({ globalThis: win }, dom.sandbox)));
   const send = (m) => listeners.message({ data: m });
   send({ type: 'codex-extras-view', timestamps: true, navigation: true, userColor: '', userEdge: true });
   return { dom, tones, send, q: (sel) => dom.document.root.querySelectorAll(sel) };
