@@ -356,7 +356,8 @@
   }
 
   /* A hover label drawn by this script, because a native title is not reliably shown in Codex's page. It is created on
-     hover and removed on leave or click; a message shown after a click (flash) removes itself after FLASH_MS. */
+     hover and removed on leave or click; a message shown after a click (flash) removes itself after FLASH_MS. It is
+     centred on its control, above it, or below it when there is no room above, so it never covers the control. */
   var labelBox = null, FLASH_MS = 3000;
   function hideLabel() { if (labelBox) { try { labelBox.remove(); } catch (e) { /* gone */ } labelBox = null; } }
   function showLabel(el, said) {
@@ -373,9 +374,10 @@
     document.body.appendChild(box);
     var r = rectOf(el), b = rectOf(box);
     if (r && b) {
-      var vw = +globalThis.innerWidth || 0;
-      box.style.left = Math.max(8, vw ? Math.min(vw - (b.width || 0) - 8, r.left) : r.left) + 'px';
-      box.style.top = Math.max(8, r.top - (b.height || 0) - 6) + 'px';
+      var vw = +globalThis.innerWidth || 0, w = b.width || 0, above = (r.top || 0) - (b.height || 0) - 8;
+      var left = (r.left || 0) + (r.width || 0) / 2 - w / 2;
+      box.style.left = Math.round(Math.max(8, vw ? Math.min(vw - w - 8, left) : left)) + 'px';
+      box.style.top = Math.round(above >= 8 ? above : bottomOf(r) + 8) + 'px';
     }
     labelBox = box;
   }
@@ -1627,7 +1629,7 @@
    * The box shown beside the list for the row under the pointer, like Claude Code Plus's: the row's time and its first
    * TIP_CHARS characters, shown at once rather than after a native title's delay. It is created on hover and removed on
    * leave or click. It goes to the left of the list, level with the row. In a page too narrow for that, such as Codex's
-   * sidebar, it goes over the list just below the row.
+   * sidebar, it goes over the list just below the row, or just above it when below would run off the page.
    */
   var TIP_CHARS = 220, TIP_W = 360, TIP_ROOM = 160, tipBox = null;
   function hideTip() { tipBox = gone(tipBox); }
@@ -1652,7 +1654,9 @@
     } else if (r) {
       box.style.left = Math.round((p ? p.left : r.left) || 0) + 'px';
       box.style.width = Math.round((p ? p.width : r.width) || 0) + 'px';
-      box.style.top = Math.round(bottomOf(r) + 2) + 'px';
+      h = (rectOf(box) || {}).height || h;
+      var below = bottomOf(r) + 2, over = (r.top || 0) - h - 2;
+      box.style.top = Math.round(vh && below + h > vh - 8 && over >= 8 ? over : below) + 'px';
     }
     tipBox = box;
   }
