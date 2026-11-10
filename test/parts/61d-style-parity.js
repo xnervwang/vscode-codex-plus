@@ -59,6 +59,14 @@ module.exports = async ({ eq, root }) => {
     /(^|;)color:/.test(stamp), /font:/.test(stamp)], [true, true, true, false, false],
   'a stamp is in the editor\'s monospace font at 0.8em, in the colour of the text around it at 60%, as Claude Code Plus\'s');
 
+  /* ── the two glyphs: ℹ and ♪, the note struck straight through at 40% while chimes are off ── */
+  const parts = (b) => b.querySelectorAll('svg')[0].childNodes;
+  eq(parts(info).some((n) => n.getAttribute('fill') === 'none'), false, 'the information button is the letter ℹ, not a ringed i');
+  const strike = parts(mute).find((n) => n.getAttribute('data-codex-extras-mute') !== null);
+  eq(!!strike && /^M[\d.]+ ([\d.]+)h[\d.]+$/.test(strike.getAttribute('d')), true, 'the note\'s strike is a horizontal line through it, as text-decoration draws one');
+  p.view({ chime: false });
+  eq(p.q('[data-codex-extras="bar-button"]')[1].style.opacity, '0.4', 'and while chimes are off the note is at 40%, as Claude Code Plus\'s is');
+
   /* ── the Agent map's dots ── */
   eq(/DOT_TONE = \{ working: '#22c55e', prompt: '#3b82f6',\s*unread: '#ef4444', failed: 'var\(--vscode-errorForeground,#f85149\)'/.test(source), true,
     'a sub-agent\'s dot has the session list\'s colours');

@@ -60,7 +60,8 @@ module.exports = async ({ eq, root }) => {
     'and its dot follows the agents, as Claude Code\'s does');
   p.send({ type: 'codex-extras-usage', usage: { used: 1000, window: 400000, line: 378947, lineFrom: 'default', model: 'm', effort: 'low', total: null } });
   const meter = p.q('[data-codex-extras="meter"]')[0];
-  eq([!!meter, pill().nextElementSibling === meter], [true, true], 'with the context meter drawn too, the pill stands just left of it');
+  eq([!!meter, meter && meter.nextElementSibling === pill(), pill().nextElementSibling === p.modelSlot], [true, true, true],
+    'with the context meter drawn too, the pill stands just right of it and before the model picker, as Claude Code\'s pill follows its meter');
 
   const waiting = p.dom.waiting();
   click(pill());

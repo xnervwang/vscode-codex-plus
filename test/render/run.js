@@ -505,14 +505,16 @@ function selfchecked(r, where, { turns, users, rows, replies = turns }) {
         const meter = document.querySelector('[data-codex-extras="meter"]'), info = document.querySelector('[data-codex-extras="tools"]');
         const st = getComputedStyle(p);
         return { text: p.textContent, rect: b(p), meter: b(meter), tools: b(info), inBar: !!p.closest('[data-codex-extras="bar"]'),
+          model: b(document.querySelector('[data-codex-composer-root] [data-codex-intelligence-trigger]')),
           radius: st.borderRadius, bg: st.backgroundColor, dot: (() => { const d = p.querySelector('[data-codex-extras-dot]'); return d ? [b(d).x1 - b(d).x0, d.getAttribute('data-codex-extras-dot')] : null; })() };
       })()`);
       results.scenes[name].measures.pill = pill;
       await shot(s, `${name}-pill`, { x: 0, y: Math.max(0, height - 120), width, height: 120, scale: 2 });
       check(!!pill && pill.text === '2 agents · 1 timer · goal' && pill.dot && pill.dot[0] === 6 && pill.dot[1] === 'working' && pill.radius === '9999px',
         `${name}: the Agent map pill reads as Claude Code Plus labels it, with a 6 px dot for its agents, and is rounded as Claude Code's`, pill);
-      check(!!pill && !!pill.meter && Math.abs(pill.rect.mid - pill.meter.mid) <= 1 && (pill.inBar ? pill.rect.x0 >= pill.meter.x1 : pill.rect.x1 <= pill.meter.x0),
-        `${name}: it sits on the line of the context meter, ${pill && pill.inBar ? 'after it in the row below the box' : 'just left of it in Codex\'s toolbar row'}`, pill);
+      check(!!pill && !!pill.meter && Math.abs(pill.rect.mid - pill.meter.mid) <= 1 && pill.rect.x0 >= pill.meter.x1
+        && (pill.inBar || (!!pill.model && pill.rect.x1 <= pill.model.x0)),
+      `${name}: it sits on the line of the context meter and just after it, as Claude Code's pill follows its meter, ${pill && pill.inBar ? 'in the row below the box' : 'before Codex\'s model picker'}`, pill);
       const at = await centre(s, '[data-codex-extras="agents"]');
       if (!at) { check(false, `${name}: the Agent map pill is in the page to be clicked`); continue; }
       const t0 = await s.b.evaluate('performance.now()');

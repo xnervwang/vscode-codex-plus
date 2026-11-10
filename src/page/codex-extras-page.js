@@ -138,9 +138,10 @@
   var bar = null, tools = null, infoBtn = null, muteBtn = null, meterBtn = null, infoBox = null, infoAsk = '', barWired = false;
   var usage = null;
   /*
-   * The two glyphs, drawn rather than taken from a font: a font's information sign and note are of different sizes
-   * from each other and from one machine to the next, and Codex's own icons are drawn. Both are line drawings in a
-   * 16-unit box, inked about as tall as Codex's toolbar icons; the note is struck through while chimes are off.
+   * The two glyphs Claude Code Plus uses, ℹ and ♪, drawn rather than taken from a font: a font's information sign and
+   * note are of different sizes from each other and from one machine to the next, and Codex's own icons are drawn.
+   * Both are solid shapes in a 16-unit box, inked about as tall as Codex's toolbar icons. While chimes are off a line
+   * runs straight across the note, where a strike-through would cross Claude Code Plus's.
    */
   var SVG_NS = 'http://www.w3.org/2000/svg';
   function svgOf(box, size, parts) {
@@ -160,15 +161,16 @@
   var icon = function (parts) { return svgOf(16, ICON_PX, parts); };
   var LINE = { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.3', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' };
   var mix = function (a, b) { var o = {}, k; for (k in a) o[k] = a[k]; for (k in b) o[k] = b[k]; return o; };
+  var SOLID = { fill: 'currentColor' };
   var infoIcon = function () {
-    return icon([{ tag: 'circle', attrs: mix(LINE, { cx: '8', cy: '8', r: '6.35' }) },
-      { tag: 'path', attrs: mix(LINE, { d: 'M8 7.3v3.9' }) },
-      { tag: 'circle', attrs: { cx: '8', cy: '4.95', r: '0.85', fill: 'currentColor' } }]);
+    return icon([{ tag: 'circle', attrs: mix(SOLID, { cx: '8.3', cy: '3.3', r: '1.5' }) },
+      { tag: 'path', attrs: mix(SOLID, { d: 'M5.9 6.1h3.5v6.4h1.5V14H5.5v-1.5h1.6V7.6H5.9z' }) }]);
   };
   var noteIcon = function () {
-    return icon([{ tag: 'path', attrs: mix(LINE, { d: 'M9.6 11.4V1.9c.4 1.6 1.9 2.4 3.1 3.1' }) },
-      { tag: 'ellipse', attrs: { cx: '7.3', cy: '11.9', rx: '2.5', ry: '1.9', transform: 'rotate(-20 7.3 11.9)', fill: 'currentColor' } },
-      { tag: 'path', attrs: mix(LINE, { d: 'M2.6 2.6l10.8 10.8', 'data-codex-extras-mute': '' }) }]);
+    return icon([{ tag: 'ellipse', attrs: mix(SOLID, { cx: '6.2', cy: '12.1', rx: '2.5', ry: '1.85', transform: 'rotate(-20 6.2 12.1)' }) },
+      { tag: 'path', attrs: mix(SOLID, { d: 'M7.9 1.8h1.4v10.4H7.9z' }) },
+      { tag: 'path', attrs: mix(SOLID, { d: 'M9.3 1.8c.3 1.5 1.3 2.3 2.4 3.1 1.1.8 1.6 2 1.1 3.5-.2-1.3-.8-2.1-1.7-2.7-.6-.4-1.2-.8-1.8-1.3z' }) },
+      { tag: 'path', attrs: mix(LINE, { d: 'M1.5 8.5h13', 'data-codex-extras-mute': '' }) }]);
   };
   /* The ring as Codex draws its own meter: a faint track and the share in use as an arc from the top, in a 12-unit box. */
   var ringIcon = function () {
@@ -282,9 +284,10 @@
   function intoRow(s) {
     dress('row');
     if (tools && !(tools.parentElement === s.left && tools.previousElementSibling === s.slotL)) s.left.insertBefore(tools, s.slotL.nextSibling);
-    if (meterBtn && !(meterBtn.parentElement === s.right && meterBtn.nextElementSibling === s.slotR)) s.right.insertBefore(meterBtn, s.slotR);
-    var next = meterBtn || s.slotR;
-    if (agentsBtn && !(agentsBtn.parentElement === s.right && agentsBtn.nextElementSibling === next)) s.right.insertBefore(agentsBtn, next);
+    /* The meter, then the Agent map pill, then Codex's model picker: Claude Code's pill follows its meter. */
+    if (agentsBtn && !(agentsBtn.parentElement === s.right && agentsBtn.nextElementSibling === s.slotR)) s.right.insertBefore(agentsBtn, s.slotR);
+    var next = agentsBtn || s.slotR;
+    if (meterBtn && !(meterBtn.parentElement === s.right && meterBtn.nextElementSibling === next)) s.right.insertBefore(meterBtn, next);
   }
   function rowFits(s, at) {
     var sig = (infoBtn ? 'i' : '') + (muteBtn ? 'm' : '') + (meterBtn ? 'c' : '') + (codexMeterHidden ? 'h' : '')
@@ -473,7 +476,7 @@
       var slash = one(muteBtn, '[data-codex-extras-mute]');
       if (slash) { var vis = muted ? 'visible' : 'hidden'; if (slash.getAttribute('visibility') !== vis) slash.setAttribute('visibility', vis); }
       if (muteBtn.getAttribute(MARK + '-muted') !== (muted ? 'true' : 'false')) muteBtn.setAttribute(MARK + '-muted', muted ? 'true' : 'false');
-      var dim = muted ? '0.45' : rowMode === 'row' ? '' : '0.75';
+      var dim = muted ? '0.4' : rowMode === 'row' ? '' : '0.75';
       if (muteBtn.style.opacity !== dim) muteBtn.style.opacity = dim;
       labelled(muteBtn, muted ? 'Chimes are off: click to turn them on (codexPlus.chime)' : 'Chimes are on: click to turn them off (codexPlus.chime)');
     }
