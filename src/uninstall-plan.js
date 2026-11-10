@@ -102,9 +102,8 @@ function replacedSince(extensionPath, loadedStamp) {
 }
 
 /*
- * 'replaced' means the window runs a build that is no longer the installed one: the same version was installed again
- * over it (replacedSince), or another version was installed beside it, which marks this folder for deletion and leaves
- * the new one unmarked.
+ * 'replaced' means the window runs a build that is no longer the installed one. Besides replacedSince, that is the case
+ * when another version was installed beside it, which marks this folder for deletion and leaves the new one unmarked.
  */
 function standing(extensionPath, id = [ID, ...FORMER_IDS], loadedStamp = 0) {
   if (!extensionPath) return '';
