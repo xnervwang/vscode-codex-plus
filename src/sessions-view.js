@@ -30,7 +30,7 @@
  *
  * Threads Codex started by itself - sub-agents, the reviews of approval requests - and `codex exec` runs are left out
  * unless codexPlus.hideBackgroundSessions is off, when they are listed with the rest. A sub-agent whose parent is listed
- * is then drawn straight after its parent, indented, wherever the parent is drawn.
+ * is then drawn indented straight after its parent, in every group that shows the parent.
  */
 const { folderTest } = require('./folders');
 const { PINNED_SECTION } = require('./session-groups');

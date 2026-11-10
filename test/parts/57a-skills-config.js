@@ -7,9 +7,9 @@
  * Two settings that change how Codex lists skills, written into Codex's own config.toml through its app-server
  * (src/skills-config.js): codexPlus.skillsListBudget is skills.max_context_tokens, the tokens Codex may spend on its list
  * of skills each turn, and codexPlus.disabledSkills is a [[skills.config]] entry turning a skill off. Both are left
- * alone by default, and only this extension's own entries are ever removed: a value the user put in config.toml by hand
- * is never touched. An offline app-server of Codex 26.1021.22027 accepted these requests: a null value written with
- * mergeStrategy replace removes the key, and enabled: true removes the entry enabled: false had added.
+ * alone by default, and a value the user put in config.toml by hand is never touched. An offline app-server of Codex
+ * 26.1021.22027 accepted these requests: a null value written with mergeStrategy replace removes the key, and
+ * enabled: true removes the entry enabled: false had added.
  */
 const fs = require('fs');
 const path = require('path');

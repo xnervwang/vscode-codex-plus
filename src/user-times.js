@@ -115,7 +115,8 @@ function timesIn(lines, into = [], compactions = [], turns = { byId: new Map(), 
 
 /*
  * Records the skill names of a routing block on the turn named in the message's metadata, else on the current turn.
- * Only the lines straight under the block's first line count, so another hook's text in the same message adds nothing.
+ * Only the lines that directly follow the block's first line count, so another hook's text in the same message adds
+ * nothing.
  */
 function noteSkills(row, turns) {
   const p = row.type === 'response_item' && row.payload;

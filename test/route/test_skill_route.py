@@ -14,8 +14,6 @@ here reads the machine's own configuration or credentials. A local HTTP server s
 AWS_ENDPOINT_URL_BEDROCK_RUNTIME, and the credential command is a script that prints made-up keys. Network
 access, programs started and credential files opened are watched by guard/sitecustomize.py where a case says it never
 touches them.
-
-The skills and requests (corpus.py) are made up for these tests.
 """
 import array
 import contextlib
