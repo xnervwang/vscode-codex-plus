@@ -7,7 +7,7 @@
  * Sub-agents under the conversation that started them. A sub-agent is a thread of its own whose source names its parent
  * (src/codex-files.js sourceKind). With background threads listed (codexPlus.hideBackgroundSessions off), a sub-agent is
  * drawn indented straight after its parent, in every group that shows the parent, instead of among the other
- * conversations. A sub-agent whose parent is not listed is drawn as before.
+ * conversations.
  */
 const fs = require('fs');
 const path = require('path');
