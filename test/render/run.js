@@ -11,6 +11,8 @@
  *   node test/render/run.js [--out <dir>] [--codex <Codex extension dir>]
  *
  * It asserts what can only be seen in a drawn page - that nothing of this extension's covers Codex's own controls, that
+ * what it adds to Codex's toolbar row moves none of Codex's buttons and leaves typing, pasting, dropping and keys in the
+ * message box as they were, that the context meter compacts through the real app-server and leaves the draft alone, that
  * the page script finds what it looks for, that an approval card is reported - and saves a screenshot of each state in
  * <out>/shots (by default a new directory under the system's temporary directory). On a machine without what it needs
  * (lib/env.js) it says what is missing and exits 0. It exits 1 when an assertion fails.
@@ -37,7 +39,7 @@ if (found.missing.length) {
   for (const m of found.missing) console.log(`  - ${m}`);
   process.exit(0);
 }
-/* --only <name>[,<name>] runs those scenes alone: conversation, narrow, wide, approval, background, long. */
+/* --only <name>[,<name>] runs those scenes alone: conversation, narrow, wide, approval, background, compact, long. */
 const ONLY = arg('--only') ? arg('--only').split(',') : null;
 const want = (name) => !ONLY || ONLY.includes(name);
 const OUT = path.resolve(arg('--out') || fs.mkdtempSync(path.join(os.tmpdir(), 'codex-plus-render-')));
@@ -53,7 +55,10 @@ const check = (ok, what, detail) => {
 const sleep = scene.sleep;
 
 const VIEW = { type: 'codex-extras-view', timestamps: true, navigation: true, userColor: '', userEdge: true, lowContext: true,
-  replyFigures: true, buttons: true, chime: true };
+  replyFigures: true, buttons: true, chime: true, infoButton: true, chimeButton: true, contextMeter: true };
+/* The usage this extension's host would send for the made-up conversation: its newest token count and what it spent. */
+const USAGE = patching.usageOf({ context: { used: 251000, window: 400000 }, model: 'gpt-6.1-sol', effort: 'medium',
+  tokens: { total: 1245000, input: 1200000, output: 45000, cached: 980000, reasoning: 12000 } }, 0);
 
 /* Open a scene, tell the page what this extension's host would, and wait for it to draw. */
 async function opened(name, opts = {}) {
@@ -62,6 +67,7 @@ async function opened(name, opts = {}) {
   await s.toPage(VIEW);
   await s.toPage({ type: 'codex-extras-user-times', times: s.data.times, compactions: [], turns: s.data.figures });
   await s.toPage(patching.figuresOf({ state: 'idle' }, 0));
+  await s.toPage(USAGE);
   await sleep(1200);
   results.scenes[name] = { measures: {} };
   return s;
@@ -122,6 +128,22 @@ async function floating(s, name) {
 function geometry(m, where, { strip = false } = {}) {
   check(!m.overlaps.length, `${where}: nothing of ours overlaps Codex's bubbles, buttons, message box, approval card, meter or tool rows`,
     m.overlaps.map((o) => `${o.ours} on ${o.codex}, ${o.area} px²`));
+  const t = m.toolbar;
+  if (t && (t.toolsInRow || t.meterInRow)) {
+    /* All of it in the row or none of it: the two buttons and the meter never split between the row and the one below. */
+    check(!m.bar && (!t.tools || t.toolsInRow) && (!t.meter || t.meterInRow), `${where}: the controls are all in Codex's toolbar row, none below the box`, { bar: m.bar, t });
+    const mid = (r) => (r.y0 + r.y1) / 2, line = t.add ? mid(t.add) : null;
+    const ours = [t.tools, t.meter].filter(Boolean);
+    check(line !== null && ours.every((r) => Math.abs(mid(r) - line) <= 1), `${where}: they sit on the line of Codex's own toolbar buttons`, { line, ours });
+    if (t.tools) check(t.perm && t.tools.x0 >= t.perm.x1 && t.tools.x1 <= (t.meter || t.model).x0, `${where}: the two buttons come after Codex's permissions button`, { perm: t.perm, tools: t.tools });
+    if (t.meter) check(t.model && t.meter.x1 <= t.model.x0 && t.model.x0 - t.meter.x1 <= 8, `${where}: the meter stands just left of Codex's model picker`, { meter: t.meter, model: t.model });
+    check(t.toolTones.every((d) => d <= 1), `${where}: in the row they show no background of their own, as Codex's buttons do not`, t.toolTones);
+    const icons = m.ink.codex.filter((h) => h >= 6);
+    if (icons.length >= 3) {
+      const lo = Math.min(...icons), hi = Math.max(...icons);
+      check(m.ink.ours.length && m.ink.ours.every((h) => h >= lo && h <= hi), `${where}: the two glyphs are inked within the heights of Codex's own toolbar icons (${lo} to ${hi} px)`, m.ink);
+    }
+  }
   if (m.rail) {
     check(!m.railColumn.length, `${where}: nothing Codex draws in the conversation, and no stamp of ours, is in the rail's column`,
       m.railColumn.map((c) => `${c.what}, ${c.coveredPx} px`));
@@ -149,6 +171,91 @@ function geometry(m, where, { strip = false } = {}) {
   }
   check(m.replyTimes.shown === 0, `${where}: a reply carrying our time does not show Codex's own sent time as well`, m.replyTimes);
 }
+/* Codex's toolbar buttons with this script's three controls on and then off: none of them moves or changes size. With the
+   controls below the box, the box is raised by the room that row takes, so there only left edges and sizes are held. */
+async function unmoved(s, where) {
+  const read = async () => { await sleep(700); return s.b.evaluate(MEASURE); };
+  const on = await read();
+  await s.toPage({ ...VIEW, infoButton: false, chimeButton: false, contextMeter: false });
+  const off = await read();
+  await s.toPage(VIEW);
+  await read();
+  const inRow = !!(on.toolbar && (on.toolbar.toolsInRow || on.toolbar.meterInRow));
+  const key = (b) => (inRow ? [b.name, b.rect.x0, b.rect.y0, b.rect.x1, b.rect.y1] : [b.name, b.rect.x0, b.rect.x1 - b.rect.x0, b.rect.y1 - b.rect.y0]);
+  const a = ((on.toolbar && on.toolbar.buttons) || []).map(key), b = ((off.toolbar && off.toolbar.buttons) || []).map(key);
+  check(a.length >= 3 && JSON.stringify(a) === JSON.stringify(b),
+    `${where}: none of Codex's ${a.length} toolbar buttons moves or changes size when this script's controls are ${inRow ? 'in its row' : 'below the box'}`, { on: a, off: b });
+  return inRow;
+}
+/*
+ * Typing, a key Codex's box handles, pasting and dropping text, done once with this script's controls off and once with
+ * them on: the message box ends with the same text both times. Then a click on the information button leaves the
+ * caret in the box and opens nothing of Codex's.
+ */
+async function inputUnchanged(s, where) {
+  const editor = '[data-codex-composer-root] [contenteditable="true"]';
+  const text = () => s.b.evaluate(`(document.querySelector('${editor}') || {}).innerText || ''`);
+  const key = async (k, code, vk, modifiers = 0) => {
+    await s.b.send('Input.dispatchKeyEvent', { type: 'keyDown', key: k, code, windowsVirtualKeyCode: vk, modifiers });
+    await s.b.send('Input.dispatchKeyEvent', { type: 'keyUp', key: k, code, windowsVirtualKeyCode: vk, modifiers });
+  };
+  const run = async () => {
+    const at = await centre(s, editor);
+    await s.b.click(at[0], at[1]);
+    await sleep(200);
+    await key('a', 'KeyA', 65, 2);
+    await key('Backspace', 'Backspace', 8);
+    await s.b.send('Input.insertText', { text: 'typed words' });
+    for (let i = 0; i < 5; i++) await key('ArrowLeft', 'ArrowLeft', 37);
+    await s.b.send('Input.insertText', { text: '[here]' });
+    await s.b.evaluate(`(() => { const e = document.querySelector('${editor}'); const d = new DataTransfer(); d.setData('text/plain', ' pasted');
+      e.dispatchEvent(new ClipboardEvent('paste', { clipboardData: d, bubbles: true, cancelable: true })); })()`);
+    await sleep(200);
+    const r = await s.b.evaluate(`(() => { const b = document.querySelector('${editor}').getBoundingClientRect(); return [b.left + 40, b.top + 8]; })()`);
+    const data = { items: [{ mimeType: 'text/plain', data: ' dropped' }], dragOperationsMask: 1 };
+    for (const type of ['dragEnter', 'dragOver', 'drop']) await s.b.send('Input.dispatchDragEvent', { type, x: r[0], y: r[1], data });
+    await sleep(400);
+    return text();
+  };
+  await s.toPage({ ...VIEW, infoButton: false, chimeButton: false, contextMeter: false });
+  await sleep(600);
+  const off = await run();
+  await s.toPage(VIEW);
+  await sleep(700);
+  const on = await run();
+  results.scenes[where.split(',')[0]].input = { off, on };
+  check(['typed', '[', 'here]', 'words', 'pasted'].every((w) => on.includes(w)) && on === off,
+    `${where}: select-all and delete, typing, the arrow keys, pasting and dropping leave the same text with the controls in the row as without them`, { off, on });
+  const info = await centre(s, '[data-codex-extras="bar-button"]');
+  const floatsBefore = await s.b.evaluate(`document.querySelectorAll('[role="menu"],[role="listbox"],[role="dialog"],[data-radix-popper-content-wrapper]').length`);
+  await s.b.click(info[0], info[1]);
+  await sleep(600);
+  const after = await s.b.evaluate(`(() => ({ focused: !!(document.activeElement && document.activeElement.closest('[data-codex-composer-root] [contenteditable="true"]')),
+    box: !!(document.querySelector('[data-codex-extras="info"]') && document.querySelector('[data-codex-extras="info"]').style.display === 'block'),
+    floats: document.querySelectorAll('[role="menu"],[role="listbox"],[role="dialog"],[data-radix-popper-content-wrapper]').length }))()`);
+  check(after.focused && after.floats === floatsBefore, `${where}: a click on the information button keeps the caret in the message box and opens nothing of Codex's`, after);
+  await s.b.click(10, 10);
+  await sleep(300);
+}
+/* The figures behind the meter, opened by resting the pointer on it. */
+async function meterHover(s, where, file) {
+  const at = await centre(s, '[data-codex-extras="meter"]');
+  if (!at) { check(false, `${where}: the meter is drawn`); return null; }
+  await s.b.hover(at[0], at[1]);
+  await sleep(800);
+  const box = await s.b.evaluate(`(() => { const b = document.querySelector('[data-codex-extras="context"]'), m = document.querySelector('[data-codex-extras="meter"]');
+    if (!b || b.style.display !== 'block') return null; const r = b.getBoundingClientRect(), t = m.getBoundingClientRect();
+    return { rect: [r.left, r.top, r.right, r.bottom].map(Math.round), meterTop: Math.round(t.top), text: b.innerText }; })()`);
+  await shot(s, file);
+  check(!!box && box.rect[0] >= 0 && box.rect[1] >= 0 && box.rect[2] <= innerW(s) && box.rect[3] <= box.meterTop
+    && ['In context', 'Free', 'Auto-compact at', 'This conversation', 'Cached input', 'Reasoning', 'Click to compact now'].every((w) => box.text.includes(w)),
+  `${where}: resting on the meter opens its figures above it, inside the page`, box);
+  await s.b.hover(10, 10);
+  await sleep(500);
+  return box;
+}
+const innerW = (s) => s.width || 1100;
+
 function selfchecked(r, where, { turns, users, rows, replies = turns }) {
   const c = (r && r.codex) || {}, t = (r && r.times) || {}, nav = (r && r.navigation) || {};
   check(!!(c.scroller && c.scroller.found), `${where}: the page script found the conversation's scroller`);
@@ -192,7 +299,14 @@ function selfchecked(r, where, { turns, users, rows, replies = turns }) {
     await shot(s, 'conversation-bottom');
     geometry(await measured(s, 'conversation', 'bottom'), 'conversation, bottom');
     await shot(s, 'composer-row', { x: 0, y: 560, width: 1100, height: 200 });
-    await shot(s, 'composer-row-zoom', { x: 0, y: 720, width: 1100, height: 40, scale: 2 });
+    {
+      const t = (results.scenes.conversation.measures.bottom || {}).toolbar || {};
+      const y = t.add ? t.add.y0 - 8 : 700;
+      await shot(s, 'toolbar-row', { x: 0, y, width: 1100, height: 44, scale: 2 });
+    }
+    check(await unmoved(s, 'conversation'), 'conversation: at 1100 px the two buttons and the meter fit in Codex\'s toolbar row');
+    await meterHover(s, 'conversation', 'meter-hover');
+    await inputUnchanged(s, 'conversation');
     await s.b.evaluate(`(() => { const a = [...document.querySelectorAll('[data-local-conversation-user-anchor]')].pop(); const b = a && a.querySelector('button'); if (b) b.focus(); })()`);
     await shot(s, 'user-message-focused', { x: 600, y: 380, width: 500, height: 140 });
     await s.b.evaluate('document.activeElement && document.activeElement.blur()');
@@ -218,10 +332,24 @@ function selfchecked(r, where, { turns, users, rows, replies = turns }) {
   /* ── the same at the width of Codex's sidebar, and at a wide window ── */
   for (const [name, width, height] of [['narrow', 400, 760], ['wide', 1600, 900]].filter(([n]) => want(n))) {
     s = await opened(name, { width, height });
+    s.width = width;
     try {
       await scrollTo(s, 'bottom');
       await shot(s, `${name}-bottom`);
       geometry(await measured(s, name, 'bottom'), `${name}, bottom`);
+      const inRow = await unmoved(s, name);
+      results.scenes[name].inToolbar = inRow;
+      console.log(`  note  ${name}: at ${width} px the controls are ${inRow ? 'in Codex\'s toolbar row' : 'in the row below the message box, the toolbar having no room for them'}`);
+      if (name === 'narrow') {
+        /* Without the meter the two buttons alone fit at this width. */
+        await s.toPage({ ...VIEW, contextMeter: false });
+        const m2 = await measured(s, name, 'buttons only');
+        geometry(m2, `${name}, two buttons only`);
+        check(!!(m2.toolbar && m2.toolbar.toolsInRow), `${name}: the two buttons alone fit in the toolbar row at ${width} px`, m2.toolbar);
+        await shot(s, `${name}-buttons-only`, { x: 0, y: 680, width, height: 80, scale: 2 });
+        await s.toPage(VIEW);
+        await sleep(700);
+      }
       await scrollTo(s, 'top');
       geometry(await measured(s, name, 'top'), `${name}, top`);
       const handle = await centre(s, '.codex-extras-rail-handle');
@@ -282,16 +410,89 @@ function selfchecked(r, where, { turns, users, rows, replies = turns }) {
     await shot(s, 'background-composer', { x: 0, y: 480, width: 1100, height: 280 });
     await shot(s, 'background-composer-zoom', { x: 500, y: 680, width: 600, height: 80, scale: 2 });
     const m = await measured(s, 'background', 'bottom');
-    const meter = m.codex.filter((c) => c.label === 'context meter').length;
-    results.scenes.background.meter = meter;
+    const meters = (m.toolbar && m.toolbar.meters) || [];
+    results.scenes.background.meters = meters;
     results.scenes.background.figures = fig;
     check(running === 1, 'background: the host counts one command still running from the app-server\'s item/started', running);
-    check(meter > 0, 'background: Codex\'s own context meter is drawn', meter);
+    check(meters.length === 1 && !meters[0].drawn && !!(m.toolbar && m.toolbar.meter),
+      'background: with Codex\'s own meter on, it is hidden while this script\'s is drawn, so the row shows one', { meters, ours: m.toolbar && m.toolbar.meter });
+    await s.toPage({ ...VIEW, contextMeter: false });
+    const m2 = await measured(s, 'background', 'meter off');
+    check(((m2.toolbar && m2.toolbar.meters) || []).some((x) => x.drawn) && !(m2.toolbar && m2.toolbar.meter),
+      'background: with codexPlus.contextMeter off, Codex\'s own meter is back and this script draws none', m2.toolbar && m2.toolbar.meters);
+    await shot(s, 'background-composer-codex-meter', { x: 500, y: 680, width: 600, height: 80, scale: 2 });
+    await s.toPage(VIEW);
+    await sleep(700);
     geometry(m, 'background, bottom', { strip: true });
     check(/1 command running/.test(m.stripText) && !/running for/.test(m.stripText),
       'background: the strip says one command is running, and not the tool call Codex already shows', m.stripText);
     results.blocked.push(...s.b.blocked);
   } finally { await s.close(); }
+
+  /*
+   * ── compacting from the meter, through Codex's real app-server ──
+   * The host's side is src/patching.js itself, handed a provider whose app-server connection is this run's app-server,
+   * as Codex's own connection is in a window. The app-server has no network here, so the compaction it starts cannot
+   * finish; what is checked is that it starts, that Codex's page draws it, and that the draft in the box is untouched.
+   */
+  if (want('compact')) {
+    const asked = [];
+    s = await opened('compact', { onAppServer: (kind, m) => { if (kind === 'notification' && globalThis.__codexExtrasAppServer) globalThis.__codexExtrasAppServer('notification', m); } });
+    try {
+      patching.installHooks();
+      /* What an earlier scene of this run left: its live turn on the same made-up conversation, never ended there. */
+      globalThis.__codexExtrasAppServer('notification', { method: 'turn/completed', params: { threadId: fake.THREAD, turn: { id: 'earlier' } } });
+      patching._approvals.clear();
+      let handler = null;
+      const conn = {
+        registerProvider(name, h) { handler = h; return { dispose() { handler = null; } }; },
+        sendRequest(name, id, method, params) {
+          asked.push({ method, params });
+          s.as.request(method, params).then((r) => { if (handler) handler.onResult({ ...r, id }); });
+        },
+      };
+      const webview = {};
+      const provider = { postMessageToWebview: (w, msg) => { s.toPage(msg); }, sendMessageToPanel() {}, codexMcpConnection: conn };
+      globalThis.__codexExtrasPanel({ webview, reveal() {}, onDidDispose() {}, iconPath: null }, fake.THREAD, provider);
+      let handled = 0;
+      const relay = async () => {
+        const list = await s.b.evaluate("(window.__posted || []).filter((m) => m.kind === 'compact')");
+        for (const msg of list.slice(handled)) globalThis.__codexExtrasMessage(webview, msg, provider);
+        handled = list.length;
+      };
+      const editor = '[data-codex-composer-root] [contenteditable="true"]';
+      const at = await centre(s, editor);
+      await s.b.click(at[0], at[1]);
+      await s.b.send('Input.insertText', { text: 'a draft to keep' });
+      const meter = await centre(s, '[data-codex-extras="meter"]');
+      await s.b.click(meter[0], meter[1]);
+      await sleep(300);
+      await relay();
+      await sleep(2500);
+      const after = await s.b.evaluate(`(() => ({ draft: (document.querySelector('${editor}') || {}).innerText || '',
+        focused: !!(document.activeElement && document.activeElement.closest('${editor}')),
+        said: (document.querySelector('[data-codex-extras="label"]') || {}).textContent || '',
+        drawn: /Compacting context|Context compacted/.test((document.querySelector('[data-app-action-timeline-scroll]') || {}).innerText || ''),
+        posted: (window.__posted || []).filter((m) => m.kind === 'compact').map((m) => Object.keys(m).sort().join(',')) }))()`);
+      results.scenes.compact.first = { after, asked };
+      await shot(s, 'compact-started');
+      check(asked.length === 1 && asked[0].method === 'thread/compact/start' && asked[0].params.threadId === fake.THREAD,
+        'compact: a click on the meter sends thread/compact/start for this conversation to the app-server, once', asked);
+      check(after.posted.every((k) => k === 'id,kind,type'), 'compact: the page sends nothing but an id with it', after.posted);
+      check(after.drawn && after.said === 'Compaction started', 'compact: Codex\'s page draws the compaction, and the meter says it started', after);
+      check(after.draft === 'a draft to keep' && after.focused, 'compact: the draft in the message box is left as it was, with the caret in it', after);
+      await s.b.click(meter[0], meter[1]);
+      await sleep(300);
+      await relay();
+      await sleep(600);
+      const busy = await s.b.evaluate("(document.querySelector('[data-codex-extras=\"label\"]') || {}).textContent || ''");
+      results.scenes.compact.second = { busy, asked: asked.length };
+      await shot(s, 'compact-busy', { x: 500, y: 600, width: 600, height: 160, scale: 2 });
+      check(asked.length === 1 && busy === 'Compact is disabled while a chat is in progress',
+        'compact: a second click while that compaction runs sends nothing and says so in Codex\'s own words', { busy, asked: asked.length });
+      results.blocked.push(...s.b.blocked);
+    } finally { await s.close(); }
+  }
 
   /* ── a long conversation over two days: ten turns yesterday and fifteen today ── */
   if (want('long')) s = await opened('long', { turns: fake.manyTurns(25), days: [[1, 10], [0, 15]] });

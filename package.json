@@ -242,7 +242,7 @@
         "codexPlus.enabled": {
           "type": "boolean",
           "default": true,
-          "markdownDescription": "The master switch over the additions this extension makes to Codex: the time on each message, the list of your own messages, their colouring, the chimes, the figures strip and the dot on a tab's logo, and whether Codex is patched at all. Off leaves each of their own settings as you had it, and turns them back on as they were.\n\nIt does **not** take an applied patch out of Codex's files. The patch stays where it is and nothing is drawn through it; `Codex Plus: Remove the Patch from Codex` is what puts Codex's own files back.\n\nThe work plan and the Codex session list are not covered by it, and have their own settings."
+          "markdownDescription": "The master switch over the additions this extension makes to Codex: the time on each message, the list of your own messages, their colouring, the chimes, the buttons and the context meter in the message box's toolbar, the figures strip and the dot on a tab's logo, and whether Codex is patched at all. Off leaves each of their own settings as you had it, and turns them back on as they were.\n\nIt does **not** take an applied patch out of Codex's files. The patch stays where it is and nothing is drawn through it; `Codex Plus: Remove the Patch from Codex` is what puts Codex's own files back.\n\nThe work plan and the Codex session list are not covered by it, and have their own settings."
         },
         "codexPlus.workPlan": {
           "scope": "application",
@@ -303,6 +303,16 @@
           "default": true,
           "markdownDescription": "With the patch: a short sound in a Codex tab when a turn there finishes, or when it stops for your permission or for an answer to a question it asked. Three notes is the permission one. A conversation with no tab open in this window cannot make a sound, since the sound is made in the tab's page."
         },
+        "codexPlus.chimeButton": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "With the patch: the note button in the message box's toolbar, after Codex's permissions button, that turns the chimes on and off. It is struck through while they are off. Off hides the button and leaves `codexPlus.chime` as it is."
+        },
+        "codexPlus.infoButton": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "With the patch: the information button in the message box's toolbar, after Codex's permissions button, which opens this conversation's session information. Click a value there to copy it."
+        },
         "codexPlus.turnFigures": {
           "type": "boolean",
           "default": true,
@@ -331,7 +341,12 @@
         "codexPlus.lowContextOutline": {
           "type": "boolean",
           "default": true,
-          "markdownDescription": "With the patch: an outline round Codex's own context meter in the message box once 80% or more of the context window is used, which is 15 points before where Codex compacts it. Codex shows that meter only with its own setting on: in Codex's settings, General, Composer, **Show context window usage**."
+          "markdownDescription": "With the patch: an outline round the context meter in the message box once 80% or more of the context window is used, which is 15 points before where Codex compacts it. It is this extension's meter while that is drawn (`codexPlus.contextMeter`), and Codex's own otherwise, which Codex shows only with its own setting on: in Codex's settings, General, Composer, **Show context window usage**."
+        },
+        "codexPlus.contextMeter": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "With the patch: a ring and the share of the context window in use, in the message box's toolbar left of the model picker. Hover it for the tokens in use, where Codex compacts, and what the conversation has spent; click it to compact the conversation now, which Codex refuses while a turn is running. While it is drawn, Codex's own meter is hidden."
         }
       }
     }

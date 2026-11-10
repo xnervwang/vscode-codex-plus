@@ -36,7 +36,11 @@
  *                         self-check of what the page script found and drew
  *   app-server traffic    which conversations are stopped waiting for the user, and how many of those owe an answer
  *                         (src/approvals.js): the tab dot, the state the Conversations view shows and a chime, none of
- *                         which need a tab to be open on the conversation
+ *                         which need a tab to be open on the conversation; and which have a turn running, which is when
+ *                         the context meter's click does not compact
+ *   the app-server        a compaction asked for from the context meter in the page, sent on Codex's own connection
+ *   connection            to its app-server under a provider name of this extension's own, so the answer comes back
+ *                         here and Codex's pages never see it (compactThread)
  */
 const fs = require('fs');
 const path = require('path');
@@ -251,8 +255,9 @@ function postToSidebar(msg) {
   if (!p || typeof p.postMessageToSidebar !== 'function') return;
   try { p.postMessageToSidebar(msg); } catch (_) { /* the view is gone */ }
 }
-/* What clears a page's figures strip. */
+/* What clears a page's figures strip, and its context meter. */
 const NO_FIGURES = { type: 'codex-extras-figures', text: '' };
+const NO_USAGE = { type: 'codex-extras-usage', usage: null };
 
 /* Put `text` into the conversation's message box as a draft. Codex's composer takes a draft from the route state it is
    navigated with, and leaves a box that already has text alone, and nothing reports back which of the two happened.
@@ -450,8 +455,12 @@ function selfCheckLines(answer) {
   const rf = r.replyFigures || {};
   lines.push(`  Line under each reply: ${rf.setting === false ? 'turned off' : `drawn on ${count(rf.drawn || 0, 'reply', 'replies')}`}; `
     + `${rf.matched || 0} of the ${count(rf.turnsKeyed || 0, 'turn')} with an id on the page matched the host's, which sent ${rf.fromHost || 0}`);
+  const bt = r.buttons || {};
+  lines.push(`  Message box controls: ${bt.setting === false ? 'turned off' : !bt.composerFound ? 'no message box found' : !bt.drawn ? 'none drawn'
+    : `${bt.inToolbar ? 'in Codex\'s toolbar row' : 'in the row below the message box'}; information button ${yesNo(bt.info)}, chime button ${yesNo(bt.chime)}`}`);
   const cx = r.context || {};
-  lines.push(`  Codex's context meter: ${cx.meterFound ? `found, ${cx.percentUsed}% used` : 'not found (Codex shows it only with its own setting on)'}`
+  lines.push(`  Codex's context meter: ${cx.meterFound ? `found, ${cx.percentUsed}% used${cx.codexMeterHidden ? ', hidden while this extension\'s is drawn' : ''}`
+    : 'not found (Codex shows it only with its own setting on)'}; this extension's: ${cx.ours ? `drawn, ${cx.oursPercent}% used` : 'not drawn'}`
     + `; outlined at ${cx.outlineAt || 80}% or more: ${cx.outlineSetting === false ? 'turned off' : yesNo(cx.outlined)}`);
   lines.push(`  Figures strip: ${fig.present ? 'in the page' : 'not in the page'}, `
     + `${fig.showing ? 'showing' : 'hidden'}, ${fig.hasText ? 'with text' : 'with no text'}, `
@@ -470,12 +479,108 @@ function safeColor(value) {
   return '';
 }
 
-/* The three settings the page draws from, as the message that carries them. The page has the same defaults, so a page
-   the host has not spoken to yet shows what the settings say rather than nothing. */
+/* The settings the page draws from, as the message that carries them. The page has the same defaults, so a page the host
+   has not spoken to yet shows what the settings say rather than nothing. */
 function viewOf(s = {}) {
   return { type: 'codex-extras-view', timestamps: s.timestamps !== false, navigation: s.conversationNavigation !== false,
     userColor: safeColor(s.userMessageColor), userEdge: s.userMessageEdge !== false, lowContext: s.lowContextOutline !== false,
-    replyFigures: s.figures !== false, buttons: s.enabled !== false, chime: s.chime !== false };
+    replyFigures: s.figures !== false, buttons: s.enabled !== false, chime: s.chime !== false, infoButton: s.infoButton !== false,
+    chimeButton: s.chimeButton !== false, contextMeter: s.contextMeter !== false };
+}
+
+/*
+ * What the context meter in a page draws: the newest token count of the conversation's rollout, which is what Session
+ * Information and the line beside each reply read too - the last model call's input against the window Codex reports -
+ * with what the whole conversation has spent, its model and effort, and where Codex compacts it. That line is drawn as
+ * the work plan plugin draws it (codex-plugin/agent-work-plan/hooks/refresh-work-plan.py compaction_line): Codex
+ * compacts once a call would pass 90% of the model's full window, and the window it reports has 5% held back, so the
+ * line is 0.9 / 0.95 of the reported window, or model_auto_compact_token_limit when that is lower.
+ */
+const COMPACT_SHARE = 0.9 / 0.95;
+function usageOf(c, limit = 0) {
+  const ctx = c && c.context;
+  if (!ctx || !(+ctx.window > 0) || !(+ctx.used >= 0)) return NO_USAGE;
+  const own = Math.floor(ctx.window * COMPACT_SHARE);
+  const set = Number.isInteger(limit) && limit > 0 && limit < own;
+  const t = c.tokens;
+  return { type: 'codex-extras-usage', usage: { used: +ctx.used, window: +ctx.window, line: set ? limit : own, lineFrom: set ? 'config' : 'default',
+    model: String(c.model || ''), effort: String(c.effort || ''),
+    total: t ? { input: +t.input || 0, cached: +t.cached || 0, output: +t.output || 0, reasoning: +t.reasoning || 0, total: +t.total || 0 } : null } };
+}
+
+/*
+ * Conversations of this window with a turn running, as the app-server says it: turn/started and turn/completed, by when
+ * the turn started. A window reloaded while one runs has not seen its start, so the rollout's own answer is asked as
+ * well (turnRunning). A start whose end was never heard - the app-server restarted under it - stops counting after
+ * TURN_HEARD_MS unless the rollout still says a turn is running, so the meter's click is not refused for good.
+ */
+const TURNS_KEPT = 200;
+const TURN_HEARD_MS = 10 * 60 * 1000;
+const turnsRunning = new Map();
+function noteTurn(msg) {
+  const method = msg && msg.method, thread = String(((msg && msg.params) || {}).threadId || '');
+  if (!thread || (method !== 'turn/started' && method !== 'turn/completed')) return false;
+  if (method === 'turn/completed') return turnsRunning.delete(thread);
+  turnsRunning.set(thread, Date.now());
+  while (turnsRunning.size > TURNS_KEPT) turnsRunning.delete(turnsRunning.keys().next().value);
+  return true;
+}
+async function turnRunning(thread) {
+  if (approvals.of(thread).decide > 0) return true;
+  const heard = turnsRunning.get(thread);
+  if (heard && Date.now() - heard < TURN_HEARD_MS) return true;
+  if (!deps || !deps.source || typeof deps.source.listConversations !== 'function') return false;
+  let list = [];
+  try { list = await deps.source.listConversations(); } catch (_) { return false; }
+  const c = list.find((x) => x.sessionId === thread);
+  return !!(c && c.working);
+}
+
+/*
+ * A compaction of one conversation, as Codex's own /compact asks for it when its page holds the conversation:
+ * thread/compact/start on this window's app-server, which answers at once and then runs the compaction as a turn that
+ * every page showing the conversation draws. It is sent on Codex's connection under a provider name of this
+ * extension's own (registerProvider, the way Codex's own parts each get their answers back), so the answer is routed
+ * here and no page of Codex's is handed an answer to a request it never made. Nothing in the message box is touched,
+ * which is why this and not the /compact command: that one is offered only on an empty box.
+ */
+const COMPACT_PROVIDER = 'CodexPlusCompact';
+const COMPACT_WAIT_MS = 6000;
+let compactLink = null, compactSeq = 0;
+const compacting = new Map();
+function compactChannel(conn) {
+  if (compactLink && compactLink.conn === conn) return compactLink;
+  for (let i = 0; i < 4; i++) {
+    const name = i ? `${COMPACT_PROVIDER}${i}` : COMPACT_PROVIDER;
+    try {
+      const sub = conn.registerProvider(name, { onResult: (r) => { const done = compacting.get(String(r && r.id)); if (done) done(r); } });
+      compactLink = { conn, name, sub };
+      return compactLink;
+    } catch (_) { /* the name is taken, by an earlier copy of this extension in the same host */ }
+  }
+  return null;
+}
+function compactThread(thread, { waitMs = COMPACT_WAIT_MS } = {}) {
+  const conn = state.provider && state.provider.codexMcpConnection;
+  if (!conn || typeof conn.registerProvider !== 'function' || typeof conn.sendRequest !== 'function') {
+    return Promise.resolve({ outcome: 'unavailable', reason: 'this Codex does not hand over its app-server connection' });
+  }
+  const link = compactChannel(conn);
+  if (!link) return Promise.resolve({ outcome: 'unavailable', reason: 'no channel on Codex\'s app-server connection was free' });
+  const id = `c${++compactSeq}`;
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => { compacting.delete(id); resolve({ outcome: 'sent' }); }, waitMs);
+    compacting.set(id, (r) => {
+      clearTimeout(timer);
+      compacting.delete(id);
+      resolve(r && r.error ? { outcome: 'failed', reason: String(r.error.message || 'the app-server refused').slice(0, 200) } : { outcome: 'started' });
+    });
+    try { conn.sendRequest(link.name, id, 'thread/compact/start', { threadId: thread }); } catch (e) {
+      clearTimeout(timer);
+      compacting.delete(id);
+      resolve({ outcome: 'failed', reason: String((e && e.message) || e).slice(0, 200) });
+    }
+  });
 }
 
 /*
@@ -598,6 +703,9 @@ async function refreshPanels() {
   for (const thread of approvals.threads()) owed.set(thread, { decide: approvals.of(thread).decide, asking: approvals.asking(thread) });
   const view = viewOf(deps.settings());
   const figuresOn = !!deps.settings().figures;
+  const meterOn = deps.settings().enabled !== false && deps.settings().contextMeter !== false;
+  let limit = 0;
+  if (meterOn && typeof deps.compactLimit === 'function') { try { limit = deps.compactLimit() || 0; } catch (_) { limit = 0; } }
   /* The sidebar's page draws from the same settings; the times and figures of its conversation are worth reading only
      while it is showing. */
   postToSidebar(view);
@@ -640,6 +748,7 @@ async function refreshPanels() {
          `state` reads `prompt` for it, which would otherwise ring the finished-turn chime. */
       if (deps.settings().chime && was && was.working && c && !c.working) postTo(panel, { type: 'codex-extras-chime', kind: turnEndChime(c) });
       postTo(panel, (figuresOn && figuresOf(c, runningCommands(thread).length)) || NO_FIGURES);
+      postTo(panel, meterOn ? usageOf(c, limit) : NO_USAGE);
       postTo(panel, view);
       if (whens.has(thread)) postTo(panel, { type: 'codex-extras-user-times', ...whens.get(thread) });
     }
@@ -647,6 +756,7 @@ async function refreshPanels() {
   }
   if (side) {
     postToSidebar((figuresOn && figuresOf(now.get(side), runningCommands(side).length)) || NO_FIGURES);
+    postToSidebar(meterOn ? usageOf(now.get(side), limit) : NO_USAGE);
     if (whens.has(side)) postToSidebar({ type: 'codex-extras-user-times', ...whens.get(side) });
   }
 }
@@ -744,6 +854,24 @@ function installHooks() {
       if (row) deps.copy(row.value, row.label);
     }
     if (msg && msg.kind === 'toggleChime' && deps && typeof deps.toggleChime === 'function') deps.toggleChime();
+    /* The context meter's click: compact the conversation this page shows, unless a turn is running there. A compaction
+       is itself a turn, so one just asked for counts as running until the app-server says that turn ended. */
+    if (msg && msg.kind === 'compact' && typeof msg.id === 'string') {
+      const rec = recordOfWebview(webview);
+      const thread = rec ? rec.thread : sidebar;
+      const reply = (r) => postToWebview(webview, { type: 'codex-extras-compacted', id: msg.id, outcome: r.outcome, reason: r.reason || '' });
+      if (!thread) reply({ outcome: 'none' });
+      else {
+        turnRunning(thread).then((busy) => {
+          if (busy) return reply({ outcome: 'busy' });
+          turnsRunning.set(thread, Date.now());
+          return compactThread(thread).then((r) => {
+            if (r.outcome !== 'started' && r.outcome !== 'sent') turnsRunning.delete(thread);
+            reply(r);
+          });
+        }).catch(() => reply({ outcome: 'failed', reason: 'this extension could not ask' }));
+      }
+    }
     /* A page's first chime, and each one that could not be heard. Only words of this table reach the log. */
     if (msg && msg.kind === 'chime' && deps && deps.log) {
       const sound = ['done', 'approval', 'question'].includes(msg.sound) ? msg.sound : 'other';
@@ -792,6 +920,8 @@ function installHooks() {
     else if (kind === 'answer') moved = !!approvals.resolve(msg && msg.id);
     else if (kind === 'notification' && msg && msg.method === 'serverRequest/resolved') {
       moved = !!approvals.resolve(msg.params && msg.params.requestId);
+    } else if (kind === 'notification' && noteTurn(msg)) {
+      return;
     } else if (kind === 'notification' && noteCommand(msg)) {
       refreshPanels().catch(() => { /* the next poll draws it */ });
       return;
@@ -912,6 +1042,9 @@ function activate(context, opts) {
     approvals.clear();
     onApprovals.clear();
     commands.clear();
+    turnsRunning.clear();
+    if (compactLink && compactLink.sub && typeof compactLink.sub.dispose === 'function') { try { compactLink.sub.dispose(); } catch (_) { /* gone */ } }
+    compactLink = null;
   } });
   /* Straight after activation rather than after a pause: Codex starts on the same event as this extension, in no set
      order, and every moment waited is one more in which it reads the copy of its files that is about to be replaced. */
@@ -921,6 +1054,6 @@ function activate(context, opts) {
 
 module.exports = { activate, ensurePatched, statusLines, openInSidebar, canType, canDeliver, deliver, sidebarThread, panelThreads, shownIn,
   nowShowing, revealPanel, removePatch,
-  figuresOf, safeColor, viewOf, selfCheckPage, selfCheckLines, installHooks, refreshPanels, approvalsOf,
+  figuresOf, usageOf, compactThread, safeColor, viewOf, selfCheckPage, selfCheckLines, installHooks, refreshPanels, approvalsOf,
   onApprovalsChanged, offerReloadIfStale, sidebarShowing, onSidebarChanged, runningCommands, turnEndChime, _state: () => state, _registry: registry, _approvals: approvals,
   TAB_DOTS, ASK_MS, PATCH_REMOVED_KEY };

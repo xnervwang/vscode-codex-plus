@@ -6,8 +6,8 @@
 /*
  * A stand-in page for the script src/webview-inject.js copies into Codex's webview folder, so that the real file can be
  * run and what it does to a page can be read back. Enough DOM for that script and no more: elements with attributes, a
- * class list, a style object, children, a tiny selector engine, events, and the three measurements it takes
- * (getBoundingClientRect, scrollIntoView, scrollTo).
+ * class list, a style object, children and siblings, a tiny selector engine, events, the three measurements it takes
+ * (getBoundingClientRect, scrollIntoView, scrollTo), and getComputedStyle answering what a test set on an element.
  *
  * The timers and the mutation observer are driven by the test instead of by the clock, since that is where this kind
  * of script goes wrong: the timers so a debounce can be stepped through, the observer so the records it is handed can
@@ -142,6 +142,10 @@ class El {
   get children() { return this.childNodes.filter((n) => n.nodeType === 1); }
   get firstChild() { return this.childNodes[0] || null; }
   get parentElement() { return this.parentNode && this.parentNode.nodeType === 1 ? this.parentNode : null; }
+  get nextSibling() { return this.parentNode ? this.parentNode.childNodes[this.parentNode.childNodes.indexOf(this) + 1] || null : null; }
+  get previousSibling() { return this.parentNode ? this.parentNode.childNodes[this.parentNode.childNodes.indexOf(this) - 1] || null : null; }
+  get nextElementSibling() { const k = this.parentNode ? this.parentNode.children : []; return k[k.indexOf(this) + 1] || null; }
+  get previousElementSibling() { const k = this.parentNode ? this.parentNode.children : []; return k[k.indexOf(this) - 1] || null; }
 
   get isConnected() {
     for (let n = this; n; n = n.parentNode) if (n === (this.ownerDocument || {}).root) return true;
@@ -239,6 +243,7 @@ function createDom() {
     for (const [name, value] of Object.entries(opts.attrs || {})) e.setAttribute(name, value);
     if (opts.class) e.setAttribute('class', opts.class);
     if (opts.rect) e.rect = Object.assign({ top: 0, left: 0, width: 0, height: 0 }, opts.rect);
+    if (opts.computed) e.computed = Object.assign({}, opts.computed);
     if (opts.scrollHeight !== undefined) e.scrollHeight = opts.scrollHeight;
     if (opts.clientHeight !== undefined) e.clientHeight = opts.clientHeight;
     if (opts.clientWidth !== undefined) e.clientWidth = opts.clientWidth;
@@ -273,6 +278,8 @@ function createDom() {
     isFinite,
     isNaN,
     KeyboardEvent: class KeyboardEvent { constructor(type, init = {}) { Object.assign(this, init, { type }); } },
+    /* What a test said an element computes to (opts.computed), over its inline style, over a block box. */
+    getComputedStyle: (node) => Object.assign({ display: 'block', flexDirection: 'row' }, (node && node.style) || {}, (node && node.computed) || {}),
     setTimeout: (fn, ms) => { timers.push({ fn, ms, id: timers.length + 1 }); return timers.length; },
     clearTimeout: (id) => { const t = timers.find((x) => x.id === id); if (t) t.dead = true; },
     setInterval: () => 1,

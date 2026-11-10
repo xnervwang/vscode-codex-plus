@@ -389,10 +389,10 @@ module.exports = async ({ ok, bad, eq, note, tmp, root }) => {
   ['#90EE90', 'lightgreen', 'rgb(144,238,144)', '', ''], 'only a plain CSS colour is passed on to the page');
   eq(patching.viewOf({ timestamps: false, conversationNavigation: true, userMessageColor: ' #abc ', userMessageEdge: false }),
     { type: 'codex-extras-view', timestamps: false, navigation: true, userColor: '#abc', userEdge: false, lowContext: true, replyFigures: true,
-      buttons: true, chime: true },
+      buttons: true, chime: true, infoButton: true, chimeButton: true, contextMeter: true },
     'the settings reach the page as one message, with the colour trimmed');
   eq(patching.viewOf({}), { type: 'codex-extras-view', timestamps: true, navigation: true, userColor: '', userEdge: true, lowContext: true, replyFigures: true,
-    buttons: true, chime: true },
+    buttons: true, chime: true, infoButton: true, chimeButton: true, contextMeter: true },
     'and a setting nobody has touched reads as on, the same way the page itself defaults');
 
   const posted = [];

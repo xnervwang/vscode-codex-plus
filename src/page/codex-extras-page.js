@@ -147,8 +147,8 @@
   }
 
   /*
-   * An outline round Codex's own context meter, the donut in the message box, once LOW_AT percent or more of the window
-   * is used; Codex's own only fades its label past half. Codex compacts at 90% of the model's full window and the meter
+   * An outline round the context meter in the message box - this script's own while it is drawn, Codex's donut otherwise
+   * - once LOW_AT percent or more of the window is used; Codex's own only fades its label past half. Codex compacts at 90% of the model's full window and the meter
    * counts against the window Codex reports, 95% of the full one, so on the meter compaction falls at 0.9 / 0.95, about
    * 94.7%; LOW_AT is 15 points before that, which is when Claude Code Extras outlines its own meter. Codex draws it only while its own setting is on. It is the
    * image in the composer whose accessible label carries a percentage; the label is localised, so only the number is
@@ -157,44 +157,45 @@
    */
   var LOW_CLASS = 'codex-extras-ctx-low', LOW_AT = 80;
   var COMPOSER_SEL = '[data-codex-composer-root],[data-codex-composer]', METER_SEL = 'span[role="img"][aria-label]';
-  var meter = { found: false, percent: null, low: false };
+  var meter = { found: false, percent: null, low: false, ours: false, oursPercent: null };
   function markLowContext() {
-    var found = null, pct = null, boxes = all(document, COMPOSER_SEL);
-    for (var b = 0; b < boxes.length && !found; b++) {
-      var spans = all(boxes[b], METER_SEL);
-      for (var i = 0; i < spans.length; i++) {
-        var m = /(\d+(?:[.,]\d+)?)\s*%/.exec(String(spans[i].getAttribute('aria-label') || ''));
-        if (m) { found = spans[i]; pct = parseFloat(m[1].replace(',', '.')); break; }
-      }
-    }
-    var low = !!(found && view.lowContext !== false && pct >= LOW_AT);
+    var found = codexMeter(), ours = meterBtn && meterBtn.isConnected && usage ? meterBtn : null;
+    var target = ours || (found && !codexMeterHidden ? found.el : null);
+    var pct = ours ? shareOf(usage) : found ? found.pct : null;
+    var low = !!(target && view.lowContext !== false && pct >= LOW_AT);
     var flagged = all(document, '.' + LOW_CLASS);
-    for (var k = 0; k < flagged.length; k++) if (flagged[k] !== found || !low) flag(flagged[k], LOW_CLASS, false);
-    if (found && low) { flag(found, LOW_CLASS, true); if (!sheet || !sheet.isConnected) restyle(); }
-    meter = { found: !!found, percent: found ? pct : null, low: low };
+    for (var k = 0; k < flagged.length; k++) if (flagged[k] !== target || !low) flag(flagged[k], LOW_CLASS, false);
+    if (target && low) { flag(target, LOW_CLASS, true); if (!sheet || !sheet.isConnected) restyle(); }
+    meter = { found: !!found, percent: found ? found.pct : null, low: low, ours: !!ours, oursPercent: ours ? Math.round(shareOf(usage)) : null };
   }
 
   /*
-   * Two buttons in the row below Codex's message box, outside the box: this conversation's session information, and the
-   * chime on or off. The row is a node of this script's own on <body>, placed by measuring the box
-   * (data-codex-composer-root) on each pass of either observer and on a resize; the row takes no pointer events, only
-   * its two buttons do. With the master switch off, or with no box recognised, nothing is drawn.
+   * The information button, the chime button and the context meter. They go into the row of Codex's own message-box
+   * toolbar: the two buttons straight after its permissions button, the meter just left of its model picker, where
+   * Codex draws its own meter. That row is a grid whose left column is as wide as what it holds and whose right group
+   * is pushed to the right edge, so what is added inside the two groups moves none of Codex's buttons while the room
+   * between the groups holds it (rowFits). When it does not, all three go to a row of this script's own on <body>,
+   * just below the box's frame, placed by measuring the box; that row takes no pointer events, only its buttons do.
+   * Codex's redraws can drop or move what was added, and each pass of either observer puts it back. With the master
+   * switch off, or with no box recognised, nothing is drawn.
    *
    * The information comes from the host. Clicking a value sends back only its position in the list, and the host copies
-   * it from its own copy, so no text leaves the page.
+   * it from its own copy, so no text leaves the page. The meter draws the usage the host sends (codex-extras-usage),
+   * and a click on it asks the host to compact the conversation, sending nothing but an id.
    */
-  var bar = null, infoBtn = null, muteBtn = null, infoBox = null, infoAsk = '', barWired = false;
+  var bar = null, tools = null, infoBtn = null, muteBtn = null, meterBtn = null, infoBox = null, infoAsk = '', barWired = false;
+  var usage = null;
   /*
    * The two glyphs, drawn rather than taken from a font: a font's information sign and note are of different sizes
    * from each other and from one machine to the next, and Codex's own icons are drawn. Both are line drawings in a
    * 16-unit box, inked about as tall as Codex's toolbar icons; the note is struck through while chimes are off.
    */
   var SVG_NS = 'http://www.w3.org/2000/svg';
-  function icon(parts) {
+  function svgOf(box, size, parts) {
     var svg = document.createElementNS(SVG_NS, 'svg');
-    svg.setAttribute('viewBox', '0 0 16 16');
-    svg.setAttribute('width', String(ICON_PX));
-    svg.setAttribute('height', String(ICON_PX));
+    svg.setAttribute('viewBox', '0 0 ' + box + ' ' + box);
+    svg.setAttribute('width', String(size));
+    svg.setAttribute('height', String(size));
     svg.setAttribute('aria-hidden', 'true');
     svg.style.display = 'block';
     for (var i = 0; i < parts.length; i++) {
@@ -204,6 +205,7 @@
     }
     return svg;
   }
+  var icon = function (parts) { return svgOf(16, ICON_PX, parts); };
   var LINE = { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.3', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' };
   var mix = function (a, b) { var o = {}, k; for (k in a) o[k] = a[k]; for (k in b) o[k] = b[k]; return o; };
   var infoIcon = function () {
@@ -216,6 +218,13 @@
       { tag: 'ellipse', attrs: { cx: '7.3', cy: '11.9', rx: '2.5', ry: '1.9', transform: 'rotate(-20 7.3 11.9)', fill: 'currentColor' } },
       { tag: 'path', attrs: mix(LINE, { d: 'M2.6 2.6l10.8 10.8', 'data-codex-extras-mute': '' }) }]);
   };
+  /* The ring as Codex draws its own meter: a faint track and the share in use as an arc from the top, in a 12-unit box. */
+  var ringIcon = function () {
+    var ring = { cx: '6', cy: '6', r: '5', stroke: 'currentColor', 'stroke-width': '2', fill: 'none' };
+    return svgOf(12, 12, [{ tag: 'circle', attrs: mix(ring, { opacity: '0.16' }) },
+      { tag: 'circle', attrs: mix(ring, { 'stroke-linecap': 'round', pathLength: '100', 'stroke-dasharray': '100', 'stroke-dashoffset': '100',
+        transform: 'rotate(-90 6 6)' }) }]);
+  };
   /*
    * Above Codex's content and below every overlay it draws. Codex puts its content at z-index 0 to 20; the lowest layer
    * it gives a popover portalled to <body> is z-30 (zIndexClassName "z-30"), its menus and dialogs use z-50 or the menu
@@ -224,10 +233,11 @@
    */
   var Z_BELOW_CODEX = 25, Z_BELOW_CODEX_BOX = 27;
   /*
-   * The row below the message box, which holds the two buttons on the left and the figures on the right. It starts
-   * ROW_GAP below the box's frame, and is as tall as one of Codex's own toolbar icons, which is also the size the two
-   * glyphs are drawn at. Codex leaves less room than that under the box, so while the row is drawn the box is given
-   * ROW_ROOM more at its foot (the stylesheet), which takes that much height from the conversation above it.
+   * The row below the message box, which holds the buttons on the left when the toolbar has no room for them, and the
+   * figures on the right. It starts ROW_GAP below the box's frame, and is as tall as one of Codex's own toolbar icons,
+   * which is also the size the glyphs are drawn at there. Codex leaves less room than that under the box, so while the
+   * row is drawn the box is given ROW_ROOM more at its foot (the stylesheet), which takes that much height from the
+   * conversation above it.
    */
   var ROW_GAP = 2, ROW_ROOM = 4, ICON_PX = 16;
   var iconPx = function (root) {
@@ -235,24 +245,122 @@
     try { h = svg ? Math.round(svg.getBoundingClientRect().height) : 0; } catch (e) { h = 0; }
     return h >= 10 && h <= 24 ? h : ICON_PX;
   };
-  /* Where the row goes: { top, left, right, size } in the page, or null with no message box recognised. */
+  var rectOf = function (el) { try { return el ? el.getBoundingClientRect() : null; } catch (e) { return null; } };
+  var bottomOf = function (r) { return typeof r.bottom === 'number' ? r.bottom : (r.top || 0) + (r.height || 0); };
+  var rightOf = function (r) { return typeof r.right === 'number' ? r.right : (r.left || 0) + (r.width || 0); };
+  /* Where the row below the box goes: { top, left, right, size } in the page, or null with no message box recognised. */
   function rowPlace() {
-    var root = document.body ? composerRoot() : null, r = null;
-    try { r = root ? root.getBoundingClientRect() : null; } catch (e) { r = null; }
+    var root = document.body ? composerRoot() : null, r = rectOf(root);
     if (!r || !(r.width > 0)) return null;
     var size = iconPx(root), vh = +globalThis.innerHeight || 0, vw = +globalThis.innerWidth || 0;
-    var bottom = typeof r.bottom === 'number' ? r.bottom : (r.top || 0) + (r.height || 0);
-    var top = bottom + ROW_GAP;
+    var top = bottomOf(r) + ROW_GAP;
     if (vh && top > vh - size) top = vh - size;
     return { top: Math.round(top), left: Math.round(r.left || 0), right: vw ? Math.max(0, Math.round(vw - (r.left || 0) - (r.width || 0))) : 8, size: size };
   }
 
+  /*
+   * Codex's toolbar row. Its buttons are found by the attributes Codex gives them for its own keyboard navigation and
+   * for its model menu, never by class: the permissions button (the add-context one when that is missing) on the left,
+   * the model picker on the right. Each is held by a flex row of Codex's, the left group and the right one; a wrapper
+   * of its own around one (a tooltip trigger, display: contents) is the thing to stand next to, so `slotOf` climbs to
+   * the node whose parent lays out the row.
+   */
+  var PERMS_SEL = '[data-composer-navigation-target="permissions"]', ADD_SEL = '[data-composer-navigation-target="add-context"]',
+    MODEL_SEL = '[data-codex-intelligence-trigger]';
+  var styleOf = function (el) { try { return typeof getComputedStyle === 'function' ? getComputedStyle(el) : null; } catch (e) { return null; } };
+  function slotOf(el, root) {
+    for (var n = el, i = 0; n && i < 5; n = n.parentElement, i++) {
+      var p = n.parentElement;
+      if (!p || p === root) return null;
+      var s = styleOf(p), d = s ? String(s.display || '') : '';
+      if ((d === 'flex' || d === 'inline-flex') && String(s.flexDirection || 'row').indexOf('column') !== 0) return n;
+    }
+    return null;
+  }
+  /* The two places in the row, or null when either is missing or they are not on one line. */
+  function rowSlots(root) {
+    var anchor = one(root, PERMS_SEL) || one(root, ADD_SEL), trigger = one(root, MODEL_SEL);
+    var slotL = anchor ? slotOf(anchor, root) : null, slotR = trigger ? slotOf(trigger, root) : null;
+    if (!slotL || !slotR || slotL.parentElement === slotR.parentElement) return null;
+    var a = rectOf(slotL), b = rectOf(slotR);
+    if (!a || !b || !(a.height > 0) || !(b.height > 0) || (a.top || 0) >= bottomOf(b) || (b.top || 0) >= bottomOf(a)) return null;
+    return { left: slotL.parentElement, slotL: slotL, right: slotR.parentElement, slotR: slotR };
+  }
+  /* How far an element reaches, its children's reach when it has no box of its own (display: contents). */
+  function reach(el) {
+    var r = rectOf(el);
+    if (r && r.width > 0) return { l: r.left || 0, r: rightOf(r) };
+    var out = null, kids = el.children || [];
+    for (var i = 0; i < kids.length; i++) {
+      var k = rectOf(kids[i]);
+      if (k && k.width > 0) out = out ? { l: Math.min(out.l, k.left || 0), r: Math.max(out.r, rightOf(k)) } : { l: k.left || 0, r: rightOf(k) };
+    }
+    return out;
+  }
+  /* The room between the two groups: from where the left one's content ends to where the right one's begins. */
+  function rowRoom(s) {
+    var end = -Infinity, start = Infinity, k, x;
+    for (k = 0; k < s.left.children.length; k++) { x = reach(s.left.children[k]); if (x) end = Math.max(end, x.r); }
+    for (k = 0; k < s.right.children.length; k++) { x = reach(s.right.children[k]); if (x) start = Math.min(start, x.l); }
+    return isFinite(end) && isFinite(start) ? start - end : -1;
+  }
+  /*
+   * Whether Codex's right group is being squeezed: once the row is out of room, the boxes holding that group shrink
+   * below what it needs and it overflows them to the right, over Codex's send button, while the room measured between
+   * the groups still looks fine. So an overflow in any box from the group up to the toolbar's grid counts as no room.
+   */
+  function squeezed(s) {
+    for (var n = s.right, i = 0; n && i < 6 && n !== document.body; n = n.parentElement, i++) {
+      var cw = +n.clientWidth || 0, sw = +n.scrollWidth || 0;
+      if (cw > 0 && sw > cw + 1) return true;
+      if (n.hasAttribute && n.hasAttribute('data-composer-footer-responsive')) break;
+    }
+    return false;
+  }
+  /*
+   * Whether this script's controls stay in Codex's row. They do while at least ROW_KEEP is left between the groups and
+   * nothing of Codex's right group has moved or overflowed. Out of the row, they go back in only once the room is what
+   * they took last time plus ROW_KEEP plus ROW_AGAIN, so a window resized near the edge does not move them back and
+   * forth. What they take is measured, not worked out: the room before they went in less the room after, and never
+   * less than the room there was when they did not fit, so a try that failed is not made again until the row is wider.
+   * It is forgotten whenever what is drawn changes.
+   */
+  var ROW_KEEP = 8, ROW_AGAIN = 16;
+  var rowMode = '', rowNeed = -1, rowSig = '';
+  function intoRow(s) {
+    dress('row');
+    if (tools && !(tools.parentElement === s.left && tools.previousElementSibling === s.slotL)) s.left.insertBefore(tools, s.slotL.nextSibling);
+    if (meterBtn && !(meterBtn.parentElement === s.right && meterBtn.nextElementSibling === s.slotR)) s.right.insertBefore(meterBtn, s.slotR);
+  }
+  function rowFits(s, at) {
+    var sig = (infoBtn ? 'i' : '') + (muteBtn ? 'm' : '') + (meterBtn ? 'c' : '') + (codexMeterHidden ? 'h' : '');
+    if (sig !== rowSig) { rowSig = sig; rowNeed = -1; }
+    if (rowMode === 'row') {
+      intoRow(s);
+      var left = rowRoom(s);
+      if (left >= ROW_KEEP && !squeezed(s)) return true;
+      toBar(at);
+      var out = rowRoom(s);
+      rowNeed = Math.max(0, out - left, out - ROW_KEEP + 1);
+      return false;
+    }
+    var free = rowRoom(s), was = rectOf(s.slotR), wasLeft = was ? was.left || 0 : 0;
+    if (rowNeed >= 0 && free < rowNeed + ROW_KEEP + ROW_AGAIN) return false;
+    intoRow(s);
+    var after = rowRoom(s), now = rectOf(s.slotR);
+    var moved = !!(was && now && Math.abs((now.left || 0) - wasLeft) > 0.5);
+    if (after >= ROW_KEEP && !moved && !squeezed(s)) { rowNeed = Math.max(0, free - after); return true; }
+    toBar(at);
+    rowNeed = Math.max(0, free - after, free - ROW_KEEP + 1);
+    return false;
+  }
+
   /* A hover label of this script's own, since a native title is not reliably shown in Codex's page. Created on hover
-     and removed on leave or click, so nothing stays in the page. */
-  var labelBox = null;
+     and removed on leave or click, so nothing stays in the page; a note said after a click goes by itself. */
+  var labelBox = null, FLASH_MS = 3000;
   function hideLabel() { if (labelBox) { try { labelBox.remove(); } catch (e) { /* gone */ } labelBox = null; } }
-  function showLabel(el) {
-    var text = el && el.getAttribute('aria-label');
+  function showLabel(el, said) {
+    var text = said || (el && el.getAttribute('aria-label'));
     if (!text || !document.body) return;
     hideLabel();
     var box = document.createElement('div');
@@ -263,14 +371,18 @@
       + 'font:11px var(--vscode-font-family,sans-serif);line-height:1.35;white-space:pre-line;overflow-wrap:anywhere;';
     box.textContent = text;
     document.body.appendChild(box);
-    var r = null, b = null;
-    try { r = el.getBoundingClientRect(); b = box.getBoundingClientRect(); } catch (e) { r = null; }
+    var r = rectOf(el), b = rectOf(box);
     if (r && b) {
       var vw = +globalThis.innerWidth || 0;
       box.style.left = Math.max(8, vw ? Math.min(vw - (b.width || 0) - 8, r.left) : r.left) + 'px';
       box.style.top = Math.max(8, r.top - (b.height || 0) - 6) + 'px';
     }
     labelBox = box;
+  }
+  function flash(el, text) {
+    showLabel(el, text);
+    var box = labelBox;
+    setTimeout(function () { if (labelBox === box) hideLabel(); }, FLASH_MS);
   }
   function labelled(el, text) {
     if (el.getAttribute('aria-label') !== text) el.setAttribute('aria-label', text);
@@ -283,72 +395,154 @@
   var composerRoot = function () { return one(document, '[data-codex-composer-root]') || one(document, '[data-codex-composer]'); };
   var infoOpen = function () { return !!(infoBox && infoBox.isConnected && infoBox.style.display === 'block'); };
   function closeInfo() { if (infoBox) infoBox.style.display = 'none'; }
+  var gone = function (el) { if (el) { try { el.remove(); } catch (e) { /* gone */ } } return null; };
   function dropBar() {
     hideLabel();
-    if (bar) { try { bar.remove(); } catch (e) { /* gone */ } }
-    if (infoBox) { try { infoBox.remove(); } catch (e) { /* gone */ } }
-    bar = infoBtn = muteBtn = infoBox = null;
+    ctxHideNow();
+    bar = gone(bar); tools = gone(tools); meterBtn = gone(meterBtn); infoBox = gone(infoBox); ctxBox = gone(ctxBox);
+    infoBtn = muteBtn = null;
+    rowMode = '';
   }
-  function barButton(label, onClick) {
-    var b = document.createElement('div');
-    b.setAttribute(MARK, 'bar-button');
-    b.setAttribute('role', 'button');
-    labelled(b, label);
-    b.style.cssText = 'pointer-events:auto;cursor:pointer;user-select:none;padding:0 4px;border-radius:3px;opacity:.75;';
+  /* A press keeps the caret where it is in Codex's message box, and a click goes no further than the button. */
+  function barButton(mark, label, onClick) {
+    var b = document.createElement('button');
+    b.setAttribute(MARK, mark);
+    b.setAttribute('type', 'button');
+    b.setAttribute('tabindex', '-1');
+    if (label) labelled(b, label);
+    b.addEventListener('mousedown', function (ev) { try { ev.preventDefault(); } catch (e) { /* none */ } });
     b.addEventListener('click', function (ev) { try { ev.stopPropagation(); } catch (e) { /* none */ } onClick(); });
     return b;
   }
-  function placeBar() {
-    var at = view.buttons !== false ? rowPlace() : null;
-    placeStrip();
-    if (!at) { dropBar(); return; }
+  /*
+   * The look of the controls in each place. In Codex's row each takes the classes of the Codex button it stands for,
+   * read off the page rather than named here, so it has that button's size, colour and hover whatever this build calls
+   * them: the add-context button for the two icons, the permissions pill for the meter. Below the box they are as
+   * small as the row there, with no background of their own.
+   */
+  var BAR_BUTTON_CSS = 'pointer-events:auto;cursor:pointer;user-select:none;padding:0 4px;border-radius:3px;border:0;margin:0;'
+    + 'background:none;color:inherit;font:inherit;display:flex;align-items:center;';
+  var ROW_BUTTON_CSS = 'pointer-events:auto;flex-shrink:0;';
+  var ROW_FALLBACK_CSS = 'pointer-events:auto;flex-shrink:0;cursor:pointer;min-width:28px;padding:0 6px;border:0;margin:0;'
+    + 'border-radius:9999px;background:none;color:var(--vscode-descriptionForeground,#9d9d9d);display:flex;align-items:center;'
+    + 'justify-content:center;gap:4px;font:12px var(--vscode-font-family,sans-serif);';
+  function dressOne(el, cls, css, key, height) {
+    if (!el || el.getAttribute(MARK + '-dress') === key) return;
+    el.setAttribute(MARK + '-dress', key);
+    if (cls) el.setAttribute('class', cls); else el.removeAttribute('class');
+    el.style.cssText = css;
+    el.style.height = height || '';
+  }
+  function dress(mode) {
+    var root = composerRoot(), size = mode === 'row' ? ICON_PX : iconPx(root);
+    var iconCls = mode === 'row' && root ? String((one(root, ADD_SEL) || { getAttribute: function () { return ''; } }).getAttribute('class') || '') : '';
+    var pillCls = mode === 'row' && root ? String((one(root, PERMS_SEL) || { getAttribute: function () { return ''; } }).getAttribute('class') || '') : '';
+    var key = mode + size + iconCls.length + ':' + pillCls.length;
+    [infoBtn, muteBtn].forEach(function (b) {
+      if (!b) return;
+      if (mode === 'row') dressOne(b, iconCls, iconCls ? ROW_BUTTON_CSS : ROW_FALLBACK_CSS + 'padding:0;', key, iconCls ? '' : '28px');
+      else dressOne(b, '', BAR_BUTTON_CSS, key, size + 'px');
+      var svg = one(b, 'svg'), px = String(size);
+      if (svg && svg.getAttribute('width') !== px) { svg.setAttribute('width', px); svg.setAttribute('height', px); }
+    });
+    if (tools) dressOne(tools, '', mode === 'row' ? 'display:flex;align-items:center;gap:5px;flex-shrink:0;pointer-events:none;'
+      : 'display:flex;gap:2px;pointer-events:none;', key);
+    if (meterBtn) {
+      if (mode === 'row') dressOne(meterBtn, pillCls, pillCls ? ROW_BUTTON_CSS : ROW_FALLBACK_CSS, key, pillCls ? '' : '28px');
+      else dressOne(meterBtn, '', BAR_BUTTON_CSS + 'gap:3px;font:11px var(--vscode-font-family,sans-serif);', key, size + 'px');
+    }
+  }
+  /* Everything into the row below the box. */
+  function toBar(at) {
+    dress('bar');
     if (!bar || !bar.isConnected) {
-      dropBar();
+      bar = gone(bar);
       bar = document.createElement('div');
       bar.setAttribute(MARK, 'bar');
-      bar.style.cssText = 'position:fixed;z-index:' + Z_BELOW_CODEX + ';pointer-events:none;display:flex;gap:2px;'
+      bar.style.cssText = 'position:fixed;z-index:' + Z_BELOW_CODEX + ';pointer-events:none;display:flex;align-items:center;gap:2px;'
         + 'font:11px var(--vscode-font-family,sans-serif);color:var(--vscode-descriptionForeground,#888);';
-      infoBtn = barButton('About this conversation: its thread id, the process of Codex\'s server, the folder it '
-        + 'started in, its rollout and size, the context in use and the tokens it used. Click a value to copy it.', toggleInfo);
-      infoBtn.appendChild(infoIcon());
-      muteBtn = barButton('Chimes', function () { chimeAsked = true; post({ kind: 'toggleChime' }); });
-      muteBtn.appendChild(noteIcon());
-      bar.appendChild(infoBtn);
-      bar.appendChild(muteBtn);
       document.body.appendChild(bar);
-      if (!barWired) {
-        barWired = true;
-        try { globalThis.addEventListener('resize', function () { placeBar(); }); } catch (e) { /* no window events */ }
-        document.addEventListener('click', function (ev) {
-          if (!infoOpen()) return;
-          var t = ev && ev.target;
-          if (t && ((infoBox && infoBox.contains && infoBox.contains(t)) || (infoBtn && infoBtn.contains && infoBtn.contains(t)))) return;
-          closeInfo();
-        });
-      }
     }
-    bar.style.left = at.left + 'px';
-    bar.style.top = at.top + 'px';
-    var px = String(at.size);
-    for (var k = 0; k < bar.children.length; k++) {
-      var s = bar.children[k].style, svg = one(bar.children[k], 'svg');
-      if (s.height !== px + 'px') { s.height = px + 'px'; s.display = 'flex'; s.alignItems = 'center'; }
-      if (svg && svg.getAttribute('width') !== px) { svg.setAttribute('width', px); svg.setAttribute('height', px); }
-    }
-    var muted = view.chime === false;
-    var slash = one(muteBtn, '[data-codex-extras-mute]');
-    if (slash) { var vis = muted ? 'visible' : 'hidden'; if (slash.getAttribute('visibility') !== vis) slash.setAttribute('visibility', vis); }
-    if (muteBtn.getAttribute(MARK + '-muted') !== (muted ? 'true' : 'false')) muteBtn.setAttribute(MARK + '-muted', muted ? 'true' : 'false');
-    if (muteBtn.style.opacity !== (muted ? '0.45' : '0.75')) muteBtn.style.opacity = muted ? '0.45' : '0.75';
-    labelled(muteBtn, muted ? 'Chimes are off: click to turn them on (codexPlus.chime)' : 'Chimes are on: click to turn them off (codexPlus.chime)');
+    if (tools && (tools.parentElement !== bar || tools.previousElementSibling)) bar.insertBefore(tools, bar.firstChild);
+    if (meterBtn && (meterBtn.parentElement !== bar || meterBtn.previousElementSibling !== tools)) bar.insertBefore(meterBtn, tools ? tools.nextSibling : bar.firstChild);
+    if (at) { bar.style.left = at.left + 'px'; bar.style.top = at.top + 'px'; }
   }
+  /* The controls asked for, made once and kept while they are wanted. */
+  function build(wantInfo, wantMute, wantMeter) {
+    if (wantInfo || wantMute) {
+      if (!tools) { tools = document.createElement('div'); tools.setAttribute(MARK, 'tools'); }
+      if (wantInfo && !infoBtn) {
+        infoBtn = barButton('bar-button', 'About this conversation: its thread id, the process of Codex\'s server, the folder it '
+          + 'started in, its rollout and size, the context in use and the tokens it used. Click a value to copy it.', toggleInfo);
+        infoBtn.appendChild(infoIcon());
+        tools.insertBefore(infoBtn, tools.firstChild);
+      }
+      if (!wantInfo && infoBtn) { infoBtn = gone(infoBtn); closeInfo(); }
+      if (wantMute && !muteBtn) {
+        muteBtn = barButton('bar-button', 'Chimes', function () { chimeAsked = true; post({ kind: 'toggleChime' }); });
+        muteBtn.appendChild(noteIcon());
+        tools.appendChild(muteBtn);
+      }
+      if (!wantMute && muteBtn) muteBtn = gone(muteBtn);
+    } else { tools = gone(tools); infoBtn = muteBtn = null; closeInfo(); }
+    if (wantMeter && !meterBtn) {
+      meterBtn = barButton('meter', '', askCompact);
+      var ringBox = document.createElement('span');
+      ringBox.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;flex-shrink:0;';
+      ringBox.appendChild(ringIcon());
+      var pct = document.createElement('span');
+      pct.setAttribute(MARK + '-pct', '');
+      meterBtn.appendChild(ringBox);
+      meterBtn.appendChild(pct);
+      meterBtn.addEventListener('mouseenter', function () { ctxEnter(true); });
+      meterBtn.addEventListener('mouseleave', function () { ctxEnter(false); });
+    }
+    if (!wantMeter && meterBtn) { meterBtn = gone(meterBtn); ctxHideNow(); }
+  }
+  function placeBar() {
+    placeStrip();
+    var on = view.buttons !== false;
+    var wantInfo = on && view.infoButton !== false, wantMute = on && view.chimeButton !== false;
+    var wantMeter = on && view.contextMeter !== false && !!usage;
+    var root = document.body && (wantInfo || wantMute || wantMeter) ? composerRoot() : null;
+    var at = root ? rowPlace() : null;
+    if (!at) { dropBar(); hideCodexMeter(false); markLowContext(); restyleIfOn(); return; }
+    build(wantInfo, wantMute, wantMeter);
+    hideCodexMeter(!!meterBtn);
+    var s = rowSlots(root);
+    if (s && rowFits(s, at)) { rowMode = 'row'; bar = gone(bar); } else { rowMode = 'bar'; toBar(at); }
+    if (!barWired) {
+      barWired = true;
+      try { globalThis.addEventListener('resize', function () { placeBar(); }); } catch (e) { /* no window events */ }
+      document.addEventListener('click', function (ev) {
+        if (!infoOpen()) return;
+        var t = ev && ev.target;
+        if (t && ((infoBox && infoBox.contains && infoBox.contains(t)) || (infoBtn && infoBtn.contains && infoBtn.contains(t)))) return;
+        closeInfo();
+      });
+    }
+    if (muteBtn) {
+      var muted = view.chime === false;
+      var slash = one(muteBtn, '[data-codex-extras-mute]');
+      if (slash) { var vis = muted ? 'visible' : 'hidden'; if (slash.getAttribute('visibility') !== vis) slash.setAttribute('visibility', vis); }
+      if (muteBtn.getAttribute(MARK + '-muted') !== (muted ? 'true' : 'false')) muteBtn.setAttribute(MARK + '-muted', muted ? 'true' : 'false');
+      var dim = muted ? '0.45' : rowMode === 'row' ? '' : '0.75';
+      if (muteBtn.style.opacity !== dim) muteBtn.style.opacity = dim;
+      labelled(muteBtn, muted ? 'Chimes are off: click to turn them on (codexPlus.chime)' : 'Chimes are on: click to turn them off (codexPlus.chime)');
+    }
+    if (infoBtn && rowMode !== 'row' && infoBtn.style.opacity !== '0.75') infoBtn.style.opacity = '0.75';
+    drawMeter();
+    markLowContext();
+    restyleIfOn();
+  }
+  function restyleIfOn() { if (anythingOn() || view.buttons !== false) restyle(); }
   function toggleInfo() {
     if (infoOpen()) { closeInfo(); return; }
     infoAsk = 'info-' + Date.now() + '-' + Math.floor(Math.random() * 1e6);
     post({ kind: 'infoAsk', id: infoAsk });
   }
   function showInfo(m) {
-    if (!bar || m.id !== infoAsk || !Array.isArray(m.rows)) return;
+    if (!infoBtn || !infoBtn.isConnected || m.id !== infoAsk || !Array.isArray(m.rows)) return;
     if (!infoBox || !infoBox.isConnected) {
       infoBox = document.createElement('div');
       infoBox.setAttribute(MARK, 'info');
@@ -382,12 +576,210 @@
       line.appendChild(k); line.appendChild(v);
       infoBox.appendChild(line);
     });
-    var r = null;
-    try { r = bar.getBoundingClientRect(); } catch (e) { r = null; }
-    var vh = +globalThis.innerHeight || 0;
-    infoBox.style.left = Math.round(r ? r.left : 8) + 'px';
-    infoBox.style.bottom = Math.round(vh && r ? Math.max(4, vh - r.top + 4) : 28) + 'px';
+    var r = rectOf(infoBtn), vh = +globalThis.innerHeight || 0, vw = +globalThis.innerWidth || 0;
+    infoBox.style.left = Math.round(r ? Math.max(8, vw ? Math.min(r.left || 0, vw - 436) : r.left || 0) : 8) + 'px';
+    infoBox.style.bottom = Math.round(vh && r ? Math.max(4, vh - (r.top || 0) + 4) : 28) + 'px';
     infoBox.style.display = 'block';
+  }
+
+  /*
+   * Codex's own context meter, drawn only while its own setting (Show context window usage) is on. While this script's
+   * meter is drawn, Codex's is hidden, so the row never shows two readings of one thing worked out two ways: Codex
+   * divides the last model call's input and output by the window, this script the input alone, as the work plan
+   * plugin's compaction marks and the line beside each reply do. Only a class goes on Codex's node, the one holding the
+   * meter in its row, and it comes off as soon as this script's meter is not drawn.
+   */
+  var HIDE_CLASS = 'codex-extras-ctx-hidden', codexMeterHidden = false;
+  function codexMeter() {
+    var boxes = all(document, COMPOSER_SEL);
+    for (var b = 0; b < boxes.length; b++) {
+      var spans = all(boxes[b], METER_SEL);
+      for (var i = 0; i < spans.length; i++) {
+        if (spans[i].closest && spans[i].closest('[' + MARK + ']')) continue;
+        var m = /(\d+(?:[.,]\d+)?)\s*%/.exec(String(spans[i].getAttribute('aria-label') || ''));
+        if (m) return { el: spans[i], pct: parseFloat(m[1].replace(',', '.')), root: boxes[b] };
+      }
+    }
+    return null;
+  }
+  function hideCodexMeter(hide) {
+    var found = hide ? codexMeter() : null, slot = found ? slotOf(found.el, found.root) || found.el : null;
+    var flagged = all(document, '.' + HIDE_CLASS);
+    for (var k = 0; k < flagged.length; k++) if (flagged[k] !== slot) flag(flagged[k], HIDE_CLASS, false);
+    if (slot) flag(slot, HIDE_CLASS, true);
+    codexMeterHidden = !!slot;
+  }
+
+  /* The meter's ring, its number, and its accessible label, from the host's usage. */
+  var shareOf = function (u) { return u && u.window > 0 ? Math.max(0, Math.min(100, 100 * u.used / u.window)) : 0; };
+  function drawMeter() {
+    if (!meterBtn || !usage) return;
+    var share = shareOf(usage), text = Math.round(share) + '%';
+    var arc = meterBtn.querySelectorAll('circle')[1], off = (100 - share).toFixed(2);
+    if (arc && arc.getAttribute('stroke-dashoffset') !== off) arc.setAttribute('stroke-dashoffset', off);
+    var pct = one(meterBtn, '[' + MARK + '-pct]');
+    if (pct && pct.textContent !== text) pct.textContent = text;
+    var label = 'Context: ' + text + ' of the window in use. Click to compact this conversation now.';
+    if (meterBtn.getAttribute('aria-label') !== label) meterBtn.setAttribute('aria-label', label);
+  }
+
+  /*
+   * The figures behind the meter, on hover, laid out as Claude Code Plus lays out its context breakdown: the model and
+   * the share in use at the head, one bar across the window, a row per figure. Everything in it is what the host already
+   * sent, so it opens after a short rest rather than after a request, and a pointer passing over on its way elsewhere
+   * opens nothing.
+   */
+  var ctxBox = null, ctxOpenAt = 0, ctxShutAt = 0, ctxOverMeter = false, ctxOverBox = false;
+  var CTX_OPEN_MS = 300, CTX_SHUT_MS = 200;
+  var kfmt = function (n) {
+    if (typeof n !== 'number' || !isFinite(n)) return '-';
+    if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
+    if (n >= 1000) return (n / 1000).toFixed(1) + 'k';
+    return String(Math.round(n));
+  };
+  var pctOf = function (n, of) { if (!(of > 0)) return ''; var v = 100 * n / of; return v < 0.1 && v > 0 ? '<0.1%' : v.toFixed(1) + '%'; };
+  function ctxRow(name, value, share, dim) {
+    var row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;padding:1px 0;' + (dim ? 'opacity:.65;' : '');
+    var a = document.createElement('span'), b = document.createElement('span'), c = document.createElement('span');
+    a.textContent = name;
+    a.style.cssText = 'flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+    b.textContent = value;
+    b.style.cssText = 'flex:0 0 auto;width:62px;text-align:right;font-variant-numeric:tabular-nums;';
+    c.textContent = share || '';
+    c.style.cssText = 'flex:0 0 auto;width:48px;text-align:right;opacity:.75;font-variant-numeric:tabular-nums;';
+    row.appendChild(a); row.appendChild(b); row.appendChild(c);
+    return row;
+  }
+  function ctxNote(text) {
+    var d = document.createElement('div');
+    d.textContent = text;
+    d.style.cssText = 'opacity:.55;padding:1px 0 3px 0;';
+    return d;
+  }
+  function ctxHead(title) {
+    var d = document.createElement('div');
+    d.textContent = title;
+    d.style.cssText = 'font-weight:600;margin-top:8px;padding-top:5px;border-top:1px solid var(--vscode-widget-border,rgba(255,255,255,.12));';
+    return d;
+  }
+  function ctxRender() {
+    var u = usage;
+    ctxBox.textContent = '';
+    var head = document.createElement('div');
+    head.style.cssText = 'display:flex;justify-content:space-between;gap:10px;font-weight:600;margin-bottom:6px;';
+    var model = document.createElement('span');
+    model.textContent = [u.model, u.effort].filter(Boolean).join(' ');
+    model.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+    var figs = document.createElement('span');
+    figs.textContent = kfmt(u.used) + ' / ' + kfmt(u.window) + ' tokens (' + Math.round(shareOf(u)) + '%)';
+    figs.style.cssText = 'flex:0 0 auto;font-variant-numeric:tabular-nums;';
+    head.appendChild(model); head.appendChild(figs);
+    ctxBox.appendChild(head);
+    /* The window as one bar: what is in use, and a mark where Codex compacts. */
+    var track = document.createElement('div');
+    track.style.cssText = 'position:relative;height:6px;border-radius:3px;overflow:hidden;margin-bottom:8px;'
+      + 'background:var(--vscode-widget-border,rgba(255,255,255,.10));';
+    var seg = document.createElement('div');
+    seg.style.cssText = 'height:100%;width:' + shareOf(u).toFixed(2) + '%;background:var(--vscode-charts-blue,#3794ff);';
+    track.appendChild(seg);
+    if (u.line > 0) {
+      var mark = document.createElement('div');
+      mark.style.cssText = 'position:absolute;top:0;bottom:0;width:2px;left:calc(' + Math.min(100, 100 * u.line / u.window).toFixed(2) + '% - 1px);'
+        + 'background:var(--vscode-editorWarning-foreground,#cca700);';
+      track.appendChild(mark);
+    }
+    ctxBox.appendChild(track);
+    ctxBox.appendChild(ctxRow('In context', kfmt(u.used), pctOf(u.used, u.window)));
+    ctxBox.appendChild(ctxRow('Free', kfmt(Math.max(0, u.window - u.used)), pctOf(Math.max(0, u.window - u.used), u.window), true));
+    if (u.line > 0) {
+      ctxBox.appendChild(ctxRow('Auto-compact at', kfmt(u.line), pctOf(u.line, u.window)));
+      ctxBox.appendChild(ctxNote((u.used < u.line ? kfmt(u.line - u.used) + ' to go' : 'reached') + ' · '
+        + (u.lineFrom === 'config' ? 'model_auto_compact_token_limit in config.toml' : '90% of the model\'s full window')));
+    }
+    var t = u.total;
+    if (t) {
+      ctxBox.appendChild(ctxHead('This conversation'));
+      ctxBox.appendChild(ctxRow('Input', kfmt(t.input)));
+      ctxBox.appendChild(ctxRow('Cached input', kfmt(t.cached), '', true));
+      ctxBox.appendChild(ctxRow('Output', kfmt(t.output)));
+      ctxBox.appendChild(ctxRow('Reasoning', kfmt(t.reasoning), '', true));
+      ctxBox.appendChild(ctxRow('Total', kfmt(t.total)));
+    }
+    var foot = ctxNote('Click to compact now.');
+    foot.style.marginTop = '6px';
+    ctxBox.appendChild(foot);
+  }
+  function ctxShow() {
+    if (!meterBtn || !meterBtn.isConnected || !usage || !document.body) return;
+    if (!ctxBox || !ctxBox.isConnected) {
+      ctxBox = document.createElement('div');
+      ctxBox.setAttribute(MARK, 'context');
+      ctxBox.style.cssText = 'position:fixed;z-index:' + Z_BELOW_CODEX_BOX + ';display:none;width:300px;max-width:calc(100vw - 16px);'
+        + 'box-sizing:border-box;padding:8px 10px;border-radius:5px;font:11px var(--vscode-font-family,sans-serif);line-height:1.5;'
+        + 'background:var(--vscode-editorHoverWidget-background,rgba(30,30,30,.99));color:var(--vscode-editorHoverWidget-foreground,#ddd);'
+        + 'border:1px solid var(--vscode-editorHoverWidget-border,rgba(255,255,255,.18));box-shadow:0 4px 14px rgba(0,0,0,.5);';
+      ctxBox.addEventListener('mouseenter', function () { ctxOverBox = true; if (ctxShutAt) { clearTimeout(ctxShutAt); ctxShutAt = 0; } });
+      ctxBox.addEventListener('mouseleave', function () { ctxOverBox = false; ctxLater(); });
+      document.body.appendChild(ctxBox);
+    }
+    hideLabel();
+    ctxRender();
+    var r = rectOf(meterBtn), vh = +globalThis.innerHeight || 0, vw = +globalThis.innerWidth || 0;
+    ctxBox.style.bottom = Math.round(vh && r ? Math.max(8, vh - (r.top || 0) + 6) : 40) + 'px';
+    ctxBox.style.right = Math.round(vw && r ? Math.max(8, vw - rightOf(r)) : 8) + 'px';
+    ctxBox.style.display = 'block';
+  }
+  function ctxHideNow() {
+    if (ctxOpenAt) { clearTimeout(ctxOpenAt); ctxOpenAt = 0; }
+    if (ctxShutAt) { clearTimeout(ctxShutAt); ctxShutAt = 0; }
+    if (ctxBox) ctxBox.style.display = 'none';
+  }
+  function ctxLater() {
+    if (ctxShutAt) clearTimeout(ctxShutAt);
+    ctxShutAt = setTimeout(function () { ctxShutAt = 0; if (!ctxOverMeter && !ctxOverBox && ctxBox) ctxBox.style.display = 'none'; }, CTX_SHUT_MS);
+  }
+  function ctxEnter(over) {
+    ctxOverMeter = over;
+    if (!over) { if (ctxOpenAt) { clearTimeout(ctxOpenAt); ctxOpenAt = 0; } ctxLater(); return; }
+    if (ctxShutAt) { clearTimeout(ctxShutAt); ctxShutAt = 0; }
+    if (ctxBox && ctxBox.style.display === 'block') { ctxShow(); return; }
+    if (ctxOpenAt) clearTimeout(ctxOpenAt);
+    ctxOpenAt = setTimeout(function () { ctxOpenAt = 0; if (ctxOverMeter) ctxShow(); }, CTX_OPEN_MS);
+  }
+
+  /*
+   * Compacting from the meter. The host refuses while a turn runs or an approval waits, as Codex refuses its own /compact
+   * then, and that is said in Codex's own words for it. One request at a time: a click while one is unanswered asks
+   * nothing more, and an answer that never comes frees the button after COMPACT_WAIT_MS.
+   */
+  var COMPACT_WAIT_MS = 8000, compactAsk = '';
+  var COMPACT_SAID = { started: 'Compaction started', busy: 'Compact is disabled while a chat is in progress',
+    none: 'No conversation in this page yet', sent: 'Asked Codex to compact this conversation; it has not answered yet' };
+  function askCompact() {
+    if (compactAsk) return;
+    ctxHideNow();
+    var id = 'compact-' + Date.now() + '-' + Math.floor(Math.random() * 1e6);
+    compactAsk = id;
+    post({ kind: 'compact', id: id });
+    setTimeout(function () { if (compactAsk === id) compactAsk = ''; }, COMPACT_WAIT_MS);
+  }
+  function compacted(m) {
+    if (!compactAsk || m.id !== compactAsk) return;
+    compactAsk = '';
+    var reason = typeof m.reason === 'string' ? m.reason.slice(0, 200) : '';
+    var text = COMPACT_SAID[m.outcome] || (m.outcome === 'failed' ? 'Could not compact: ' + (reason || 'Codex refused')
+      : 'Compacting is not available here' + (reason ? ': ' + reason : ''));
+    if (meterBtn && meterBtn.isConnected) flash(meterBtn, text);
+  }
+  /* What the host sent, kept only in the shape the meter reads. */
+  function usageFrom(u) {
+    var n = function (x) { return typeof x === 'number' && isFinite(x) && x >= 0 ? x : null; };
+    if (!u || typeof u !== 'object' || n(u.used) === null || !(n(u.window) > 0)) return null;
+    var t = u.total && typeof u.total === 'object' ? u.total : null;
+    return { used: u.used, window: u.window, line: n(u.line) || 0, lineFrom: u.lineFrom === 'config' ? 'config' : 'default',
+      model: typeof u.model === 'string' ? u.model.slice(0, 80) : '', effort: typeof u.effort === 'string' ? u.effort.slice(0, 20) : '',
+      total: t ? { input: n(t.input) || 0, cached: n(t.cached) || 0, output: n(t.output) || 0, reasoning: n(t.reasoning) || 0, total: n(t.total) || 0 } : null };
   }
 
   function watchApproval() {
@@ -399,7 +791,7 @@
     if (approvalObserver) { try { approvalObserver.disconnect(); } catch (e) { /* gone */ } }
     approvalObserver = new MutationObserver(function () {
       if (approvalDue) return;
-      approvalDue = setTimeout(function () { approvalDue = 0; watchApproval(); tellApproval(); markLowContext(); placeBar(); }, APPROVAL_DEBOUNCE_MS);
+      approvalDue = setTimeout(function () { approvalDue = 0; watchApproval(); tellApproval(); placeBar(); }, APPROVAL_DEBOUNCE_MS);
     });
     approvalObserved = target;
     try { approvalObserver.observe(target, { childList: true, subtree: true }); }
@@ -707,7 +1099,7 @@
   /* What the host last said to show. The defaults are the settings' own defaults, so a page the host has not spoken to
      yet shows what those settings say rather than nothing at all. */
   var view = { timestamps: true, navigation: true, userColor: '', userEdge: true, lowContext: true, replyFigures: true,
-    buttons: true, chime: true };
+    buttons: true, chime: true, infoButton: true, chimeButton: true, contextMeter: true };
   /* Each turn's model, effort and context as the host read them from the rollout, by turn id: { turnId: text }. They
      are placed by the turn id Codex puts on each turn (data-content-search-turn-key), never by position. */
   var hostTurns = {};
@@ -1102,9 +1494,10 @@
     /* The rail stands in the conversation's right edge, so while it is drawn the conversation keeps clear of its
        column: a transparent border, which leaves Codex's own padding as it is. */
     if (view.navigation && nav && nav.isConnected) css += SEL.scroller + '{border-inline-end:' + (RAIL_W + 2) + 'px solid transparent !important;}';
-    if (view.buttons !== false || (strip && strip.style.display !== 'none')) {
+    if ((bar && bar.isConnected) || (strip && strip.style.display !== 'none')) {
       css += '[data-codex-composer-root]{margin-bottom:' + ROW_ROOM + 'px !important;}';
     }
+    if (codexMeterHidden) css += '.' + HIDE_CLASS + '{display:none !important;}';
     css += NAV_CSS;
     if (!sheet || !sheet.isConnected) {
       sheet = document.createElement('style');
@@ -1503,7 +1896,6 @@
       colourAll(users);
       if (view.navigation) buildNav(users); else dropNav();
       if (anythingOn() || view.buttons !== false) restyle(); else dropSheet();
-      markLowContext();
       placeBar();
     } catch (e) { /* this is Codex's page: a fault here leaves everything of its own as it was */ }
     finally { refreshing = false; }
@@ -1608,10 +2000,13 @@
       replyFigures: { setting: view.replyFigures !== false, fromHost: Object.keys(hostTurns).length,
         turnsKeyed: lastPass.turnsKeyed, matched: lastPass.turnsMatched, drawn: lastPass.figuresDrawn },
       /* The two buttons below the message box, and the box they are placed by. */
-      buttons: { setting: view.buttons !== false, composerFound: !!composerRoot(), drawn: !!(bar && bar.isConnected) },
+      buttons: { setting: view.buttons !== false, composerFound: !!composerRoot(),
+        drawn: !!((tools && tools.isConnected) || (meterBtn && meterBtn.isConnected)), inToolbar: rowMode === 'row',
+        info: !!(infoBtn && infoBtn.isConnected), chime: !!(muteBtn && muteBtn.isConnected) },
       /* Codex's own context meter, and whether this script outlined it. The percentage is the number Codex shows. */
       context: { meterFound: meter.found, percentUsed: meter.percent, outlined: meter.low,
-        outlineSetting: view.lowContext !== false, outlineAt: LOW_AT },
+        outlineSetting: view.lowContext !== false, outlineAt: LOW_AT, ours: meter.ours, oursPercent: meter.oursPercent,
+        codexMeterHidden: codexMeterHidden },
       /* The strip in the corner. Its text is the host's figures for this conversation, so only whether there is any. */
       figures: { present: !!(strip && strip.isConnected), showing: !!(strip && strip.style.display !== 'none'),
         hasText: !!(figures && figures.text), toolRunning: !!(figures && figures.tool) },
@@ -1645,6 +2040,8 @@
     if (m.type === 'codex-extras-chime') chime(m.kind);
     else if (m.type === 'codex-extras-answer' && typeof m.text === 'string' && m.id) takeAnswer(m);
     else if (m.type === 'codex-extras-info') showInfo(m);
+    else if (m.type === 'codex-extras-usage') { usage = usageFrom(m.usage); if (document.body) placeBar(); }
+    else if (m.type === 'codex-extras-compacted') compacted(m);
     else if (m.type === 'codex-extras-sample') {
       var reply = { kind: 'sample', id: m.id };
       try {
@@ -1670,7 +2067,8 @@
       view = { timestamps: m.timestamps !== false, navigation: m.navigation !== false,
         userColor: typeof m.userColor === 'string' ? m.userColor : '', userEdge: m.userEdge !== false,
         lowContext: m.lowContext !== false, replyFigures: m.replyFigures !== false, buttons: m.buttons !== false,
-        chime: m.chime !== false };
+        chime: m.chime !== false, infoButton: m.infoButton !== false, chimeButton: m.chimeButton !== false,
+        contextMeter: m.contextMeter !== false };
       /* Turned on from this page's own button: one chime, so the user hears at once whether sound comes out. */
       if (chimeAsked) { chimeAsked = false; if (!wasOn && view.chime) chime('done'); }
       ready();

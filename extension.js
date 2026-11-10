@@ -79,7 +79,21 @@ function settings() {
     userMessageColor: on ? c.get('userMessageColor', '') : '',
     userMessageEdge: on && c.get('userMessageEdge', true),
     lowContextOutline: on && c.get('lowContextOutline', true),
+    infoButton: on && c.get('infoButton', true),
+    chimeButton: on && c.get('chimeButton', true),
+    contextMeter: on && c.get('contextMeter', true),
   };
+}
+
+/* The compaction limit the user set in config.toml, read again only when that file has changed: the context meter asks
+   for it on every redraw of the pages. */
+let limitSeen = { key: '', value: 0 };
+function compactLimitNow() {
+  const file = path.join(files.codexHome(), 'config.toml');
+  let key = 'none';
+  try { const st = fs.statSync(file); key = `${st.mtimeMs}:${st.size}`; } catch (_) { key = 'none'; }
+  if (key !== limitSeen.key) limitSeen = { key, value: key === 'none' ? 0 : codexConfig.compactLimit(files.codexHome()) };
+  return limitSeen.value;
 }
 const trusted = () => vscode.workspace.isTrusted !== false;
 
@@ -212,7 +226,7 @@ async function activate(context) {
     }, 60000);
     try {
       patching.activate(context, { vscode, log: say, codexProgram, source, context, settings, onTimeZone: reportTimeZone,
-        userTimes, sessionInfo: (id) => sessionInfoRows(id),
+        userTimes, sessionInfo: (id) => sessionInfoRows(id), compactLimit: compactLimitNow,
         copy: async (value, label) => { await vscode.env.clipboard.writeText(value); vscode.window.setStatusBarMessage(`Copied ${label}`, 3000); },
         toggleChime: () => cfg().update('chime', !cfg().get('chime', true), vscode.ConfigurationTarget.Global) });
     } catch (e) { say(`patching: ${e.message}`); }

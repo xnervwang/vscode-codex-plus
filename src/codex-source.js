@@ -86,6 +86,7 @@ function conversationOf(thread, { unread, openHere, now = Date.now(), state = nu
     model: (st && st.model) || thread.model,
     effort: (st && st.effort) || thread.effort,
     context: st && st.context,
+    tokens: st && st.tokens,
     lastTool: st && st.lastTool,
     lastTurnMs: st && st.durationMs,
     turnStartedMs: st && st.startedMs,

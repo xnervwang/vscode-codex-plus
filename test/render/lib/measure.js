@@ -27,7 +27,7 @@ function measure() {
   };
   const ours = [...document.querySelectorAll('[data-codex-extras]')].filter((e) => e.tagName !== 'STYLE' && shown(e))
     .map((e) => ({ mark: e.getAttribute('data-codex-extras'), cls: String(e.getAttribute('class') || '').split(' ').filter((c) => c.startsWith('codex-extras')).join(' '),
-      rect: clip(R(e), e), el: e }))
+      rect: clip(R(e), e), el: e, inFrame: !!e.closest('[data-codex-composer-root]') }))
     .filter((o) => vis(o.rect));
   const pick = (sel, label) => [...document.querySelectorAll(sel)].filter((e) => !ourMark(e) && shown(e)).map((e) => ({ label, rect: clip(R(e), e) }));
   const codex = [].concat(pick('[data-user-message-bubble]', 'user bubble'), pick('[data-codex-composer-root]', 'composer frame'),
@@ -36,12 +36,15 @@ function measure() {
     pick('[data-codex-composer-root] span[role="img"][aria-label]', 'context meter'),
     pick('[data-local-conversation-item-target-ids]', 'tool call row')).filter((c) => vis(c.rect));
   /* The list, when open, is a box over the conversation on purpose, as Claude Code Plus's is; the rail is measured
-     against the column it stands in, below; stamps sit inside Codex's own elements, above their content. */
+     against the column it stands in, below; stamps sit inside Codex's own elements, above their content. What this
+     script puts into the message box's toolbar row is inside the box's frame on purpose, and is held to every one of
+     Codex's buttons and its meter there instead. */
   const overlaps = [];
   for (const o of ours) {
     if (o.mark === 'nav' || o.mark === 'nav-list' || o.mark === 'nav-row' || o.mark === 'nav-filter' || o.mark === 'label') continue;
     for (const c of codex) {
       if (o.mark === 'stamp' && (c.label === 'user bubble' || c.label === 'tool call row')) continue;
+      if (o.inFrame && c.label === 'composer frame') continue;
       const a = inter(o.rect, c.rect);
       if (a > 0) overlaps.push({ ours: o.mark + (o.cls ? ' ' + o.cls : ''), codex: c.label, area: a, ourRect: o.rect, codexRect: c.rect });
     }
@@ -112,8 +115,26 @@ function measure() {
   const stamped = [...document.querySelectorAll('.codex-extras-stamp-assistant')].map((s) => s.parentElement);
   const replyTimes = stamped.map((b) => b.querySelector('[data-assistant-message-sent-time]')).filter(Boolean);
   const replyTimesShown = replyTimes.filter((t) => getComputedStyle(t).display !== 'none').length;
+  /* Codex's toolbar row, and what of this script's stands in it. */
+  const toolbar = (() => {
+    if (!frame) return null;
+    const q = (sel) => frame.querySelector(sel);
+    const add = q('[data-composer-navigation-target="add-context"]'), perm = q('[data-composer-navigation-target="permissions"]');
+    const model = q('[data-codex-intelligence-trigger]');
+    const tools = document.querySelector('[data-codex-extras="tools"]'), meter = document.querySelector('[data-codex-extras="meter"]');
+    const buttons = [...frame.querySelectorAll('button')].filter((b) => !ourMark(b) && shown(b)).map((b) => ({
+      name: b.getAttribute('data-composer-navigation-target') || (b.hasAttribute('data-codex-intelligence-trigger') ? 'model' : '') || b.getAttribute('aria-label') || '',
+      rect: R(b) })).filter((x) => vis(x.rect));
+    const meters = [...frame.querySelectorAll('span[role="img"][aria-label]')].filter((e) => !ourMark(e))
+      .map((e) => ({ label: e.getAttribute('aria-label'), drawn: e.getBoundingClientRect().width > 0 }));
+    const rectIf = (e) => (e && shown(e) && e.getBoundingClientRect().width > 0 ? R(e) : null);
+    return { add: add && R(add), perm: perm && R(perm), model: model && R(model), buttons, meters,
+      tools: rectIf(tools), toolsInRow: !!(tools && frame.contains(tools)), meter: rectIf(meter), meterInRow: !!(meter && frame.contains(meter)),
+      meterText: meter ? meter.textContent : '', toolTones: [...document.querySelectorAll('[data-codex-extras="bar-button"],[data-codex-extras="meter"]')]
+        .filter((b) => frame.contains(b)).map((b) => tone(b).diff) };
+  })();
   return {
-    viewport: [innerWidth, innerHeight], scroller: sr, overlaps, rail: railRect, railColumn,
+    viewport: [innerWidth, innerHeight], scroller: sr, overlaps, rail: railRect, railColumn, toolbar,
     composer: fr, bar: barRect, strip: stripRect,
     gaps: { barBelowFrame: fr && barRect ? barRect.y0 - fr.y1 : null, stripBelowFrame: fr && stripRect ? stripRect.y0 - fr.y1 : null,
       barInView: barRect ? barRect.y1 <= innerHeight : null, stripInView: stripRect ? stripRect.y1 <= innerHeight : null },
