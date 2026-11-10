@@ -91,6 +91,16 @@ function dateSpan(createdMs, updatedMs, now = Date.now()) {
   return `${ago(updatedMs, now)} · ${body}`;
 }
 
+/* How a goal's state is written on its row, and the words for its hover. */
+const GOAL_WORD = { active: 'goal', paused: 'goal paused', blocked: 'goal blocked', usageLimited: 'goal: usage limit',
+  budgetLimited: 'goal: budget spent', complete: 'goal done' };
+function goalText(g) {
+  if (!g) return '';
+  const n = (x) => Number(x).toLocaleString('en-US');
+  const used = g.tokenBudget ? `${n(g.tokensUsed)} of ${n(g.tokenBudget)} tokens` : `${n(g.tokensUsed)} tokens, no budget`;
+  return `Goal (${GOAL_WORD[g.status] || g.status}, ${used}): ${g.objective.slice(0, 300)}`;
+}
+
 /** Group a list of threads for the list. Pure, so the test can hold it to the order above. */
 function group(threads, { open = [], closed = [], sections = new Map(), hideBackground = true, cwdFilter = null, frontAt = () => 0,
   sidebar = '' }) {
@@ -206,10 +216,11 @@ class SessionsModel {
          every old rollout just to colour dots costs too much. */
       const conv = this.stateOf(t.id);
       const dot = this.reader.state(t.id) ? lookKey(conv, here) : 'unknown';
+      const goal = typeof this.reader.goal === 'function' ? this.reader.goal(t.id) : null;
       return { id: t.id, title: t.title || '(untitled)', time: dateSpan(t.createdMs, t.updatedMs, now), dot,
         color: COLORS[colors[t.id]] || '', open: open.has(t.id), sidebar: where === 'open' && t.id === this.sidebarNow && !open.has(t.id),
         unread: !!(conv && conv.state === 'unread'), grouped: !!(t.section && this.sections.has(t.section)),
-        group: placeOf(t, this.sections), branch: t.branch || '' };
+        group: placeOf(t, this.sections), branch: t.branch || '', goal: (goal && goal.status) || '', goalText: goalText(goal) };
     };
     const keep = (key) => this.groups.find((g) => g.key === key);
     const rowsOf = (g) => (g ? g.threads.map((t) => row(t, g.key)) : []);
@@ -322,4 +333,5 @@ function pageHtml({ js, css, csp, nonce: n }) {
 /* Whether a search string is meant as part of a thread id: four or more characters of hex and hyphens. */
 const looksLikeId = (q) => /^[0-9a-f-]{4,}$/i.test(String(q || '').trim());
 
-module.exports = { SessionsModel, SessionsView, pageHtml, group, drawn, dateSpan, placeOf, looksLikeId, lookOf, lookKey, COLORS, COLOR_KEY, STATE_LOOK, PAGE_FILES };
+module.exports = { SessionsModel, SessionsView, pageHtml, group, drawn, dateSpan, placeOf, looksLikeId, lookOf, lookKey, goalText,
+  COLORS, COLOR_KEY, STATE_LOOK, GOAL_WORD, PAGE_FILES };

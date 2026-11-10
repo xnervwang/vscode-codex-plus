@@ -130,6 +130,7 @@
     r.draggable = true;
     const dot = el('span', 'cp-dot');
     const title = el('span', 'cp-title');
+    const goal = el('span', 'cp-goal cp-hidden');
     const meta = el('span', 'cp-meta');
     const time = el('span', 'cp-time');
     const acts = el('span', 'cp-actions');
@@ -137,17 +138,23 @@
     rename.dataset.act = 'rename';
     acts.appendChild(rename);
     meta.append(time, acts);
-    r.append(dot, title, meta);
-    r._p = { dot, title, time };
+    r.append(dot, title, goal, meta);
+    r._p = { dot, title, time, goal };
     r._sig = '';
     r._mark = '';
     return r;
   }
+  /* The same words as GOAL_WORD in src/sessions-view.js. */
+  const GOAL_WORD = { active: 'goal', paused: 'goal paused', blocked: 'goal blocked', usageLimited: 'goal: usage limit',
+    budgetLimited: 'goal: budget spent', complete: 'goal done' };
+  /* The states Resume Goal can set going again: the ones Codex stopped it in, and the user's own pause. */
+  const RESUMABLE = ['paused', 'blocked', 'usageLimited', 'budgetLimited'];
   const themeColor = (id) => (id ? `var(--vscode-${String(id).replace(/\./g, '-')})` : '');
   function fillRow(r, row, place) {
     r._row = row;
     r._place = place;
-    const sig = `${row.id}\u0001${row.title}\u0001${row.time}\u0001${row.dot}\u0001${row.color}\u0001${row.grouped}\u0001${row.unread}`;
+    const sig = `${row.id}\u0001${row.title}\u0001${row.time}\u0001${row.dot}\u0001${row.color}\u0001${row.grouped}\u0001${row.unread}`
+      + `\u0001${row.goal || ''}\u0001${row.goalText || ''}`;
     if (sig === r._sig) return;
     r._sig = sig;
     r.dataset.id = row.id;
@@ -155,7 +162,11 @@
     if (!r._editing) { r._mark = ''; markTitle(r); }
     r._p.title.style.color = themeColor(row.color);
     setText(r._p.time, row.time);
-    context(r, { webviewSection: 'thread', threadId: row.id, codexPlusGrouped: !!row.grouped, codexPlusUnread: !!row.unread });
+    setText(r._p.goal, GOAL_WORD[row.goal] || (row.goal ? 'goal' : ''));
+    r._p.goal.classList.toggle('cp-hidden', !row.goal);
+    r._p.goal.classList.toggle('cp-goal-active', row.goal === 'active');
+    context(r, { webviewSection: 'thread', threadId: row.id, codexPlusGrouped: !!row.grouped, codexPlusUnread: !!row.unread,
+      codexPlusGoal: row.goal || '', codexPlusGoalResumable: RESUMABLE.includes(row.goal) });
   }
   /* The title, with the part the search matched marked, written only when that changed. */
   function markTitle(r) {
@@ -499,7 +510,7 @@
     hoverTimer = setTimeout(() => {
       hoverTimer = 0;
       if (!r.isConnected || hoverRow !== r || !r._row) return;
-      hoverBox.textContent = `Group: ${r._row.group}\nSession ID: ${r._row.id}`;
+      hoverBox.textContent = `Group: ${r._row.group}\nSession ID: ${r._row.id}${r._row.goalText ? `\n${r._row.goalText}` : ''}`;
       hoverBox.classList.remove('cp-hidden');
       const b = r.getBoundingClientRect();
       const w = hoverBox.offsetWidth, h = hoverBox.offsetHeight;

@@ -68,7 +68,7 @@ module.exports = async ({ eq, root }) => {
     !!r3.querySelector('.cp-actions [data-act="rename"]')], ['cp-dot d-idle', 'Conversation 3', '3d · 11/03', true],
   'a row is its dot, its title, its time and, in the time\'s place on hover, the rename button');
   eq(JSON.parse(r3.getAttribute('data-vscode-context')), { preventDefaultContextMenuItems: true, webviewSection: 'thread', threadId: ID(3),
-    codexPlusGrouped: false, codexPlusUnread: true }, 'its right-click menu is VS Code\'s, chosen by what the row says of itself');
+    codexPlusGrouped: false, codexPlusUnread: true, codexPlusGoal: '', codexPlusGoalResumable: false }, 'its right-click menu is VS Code\'s, chosen by what the row says of itself');
   eq(JSON.parse($('.cp-group[data-key="section:a"] .cp-group-head').getAttribute('data-vscode-context')).codexPlusMade, true,
     'and a header says whether the user made the group');
   eq($$('.cp-row.cp-current').map((r) => r.dataset.id), [ID(1), ID(1)], 'the conversation in front is drawn as the current one wherever it is listed');

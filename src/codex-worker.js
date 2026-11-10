@@ -31,9 +31,9 @@ function at(h) {
    when the database cannot be read and whose threads name no rollout, and the size of every rollout touched in the
    last day. Only when that moves is the rest read again. */
 function stampOf(dir, threads) {
-  const db = files.stateDbPath(dir);
+  const db = files.stateDbPath(dir), goals = files.goalsDbPath(dir);
   const parts = [];
-  for (const f of [db, db && db + '-wal', path.join(dir, 'session_index.jsonl')]) {
+  for (const f of [db, db && db + '-wal', path.join(dir, 'session_index.jsonl'), goals, goals && goals + '-wal']) {
     try { const s = fs.statSync(f); parts.push(s.size, s.mtimeMs); } catch (_) { parts.push(0); }
   }
   try { const s = fs.statSync(install.planDir(dir)); parts.push(s.mtimeMs); } catch (_) { parts.push(0); }
@@ -69,7 +69,7 @@ const ops = {
     try { plans = fs.readdirSync(install.planDir(dir)).filter((n) => /\.json$/.test(n) && files.THREAD_ID.test(n.slice(0, -5))).map((n) => n.slice(0, -5)); } catch (_) { plans = []; }
     return {
       stamp, same: false, readable: !!threads, threads: threads || [],
-      unread: [...files.unreadThreads(dir)], sections: [...files.sections(dir)], states, plans,
+      unread: [...files.unreadThreads(dir)], sections: [...files.sections(dir)], goals: [...files.goals(dir)], states, plans,
     };
   },
   /* The rows of Session Information for one thread. A worker thread shares the extension host's process id, which is

@@ -51,8 +51,12 @@ module.exports = async ({ eq, root }) => {
   const unreadRow = rows.find((r) => r.id === ID(1)), readRow = rows.find((r) => r.id === ID(2));
   eq([offered(rowCtx(readRow)).filter((c) => /^markThread/.test(c)), offered(rowCtx(unreadRow)).filter((c) => /^markThread/.test(c))],
     [['markThreadUnread'], ['markThreadRead']], 'a read conversation offers Mark as Unread, an unread one Mark as Read');
-  eq(offered(rowCtx(readRow)), ['openThreadInTab', 'openThreadInSidebar', 'newGroupFromThreads', 'moveThreadToSection', 'markThreadUnread', 'renameThread', 'setTitleColor'],
-    'a row offers Resume, New Group from Conversation, Add to Group, Mark as Unread, Rename and Text Color; Remove from Group only in a group');
+  eq(offered(rowCtx(readRow)), ['openThreadInTab', 'openThreadInSidebar', 'newGroupFromThreads', 'moveThreadToSection', 'markThreadUnread', 'renameThread', 'setTitleColor', 'setGoal'],
+    'a row offers Resume, New Group from Conversation, Add to Group, Mark as Unread, Rename, Text Color and Set Goal; Remove from Group only in a group');
+  eq([offered({ ...rowCtx(readRow), codexPlusGoal: 'active' }).filter((c) => /Goal$/.test(c)),
+    offered({ ...rowCtx(readRow), codexPlusGoal: 'budgetLimited', codexPlusGoalResumable: true }).filter((c) => /Goal$/.test(c))],
+  [['setGoal', 'pauseGoal', 'clearGoal'], ['setGoal', 'resumeGoal', 'clearGoal']],
+  'a row with a running goal offers Pause and Clear Goal, one with a stopped goal Resume and Clear Goal');
   eq(offered({ ...rowCtx(readRow), codexPlusGrouped: true }).includes('removeFromGroup'), true, 'and a row in a group offers Remove from Group');
   eq(offered({ ...rowCtx(readRow), 'codexPlus.noGroups': true }).filter((c) => /Group|Section/.test(c)), [], 'with no groups in this Codex, none of the group items');
 

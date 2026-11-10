@@ -307,7 +307,11 @@ async function activate(context) {
      and a short-lived app-server would queue for a conversation nobody has open. */
   const wakes = wakeup.createWakeups({ dir: () => install.planDir(files.codexHome()), ask: (m, p) => patching.hostRequest(m, p),
     log: say, enabled: () => cfg().get('wakeUps', true) && trusted() && !standsDown() });
-  context.subscriptions.push(wakes.start(), patching.onAppServerNotification((m, p) => { wakes.heard(m, p).catch(() => { /* asked again next time */ }); }));
+  context.subscriptions.push(wakes.start(), patching.onAppServerNotification((m, p) => {
+    wakes.heard(m, p).catch(() => { /* asked again next time */ });
+    /* A goal changed, by a command here, by the model or by Codex itself: the list reads the goals database again. */
+    if (m.startsWith('thread/goal/')) source._poll();
+  }));
 
   /* Delayed start-up work is cancelled with the extension, so a window that closes within the delay starts none of it. */
   const later = (fn, ms) => {
@@ -657,6 +661,37 @@ function registerCommands(context, { source, memory, sessionsModel, sessionsView
     done('take it out of its group', await groups.move(ids, null));
   });
   reg('markThreadUnread', (arg, selected) => { for (const id of chosen(arg, selected)) source.markUnread(id); });
+  /*
+   * A conversation's goal, which Codex works toward on its own: each time the conversation goes idle it starts another
+   * turn, until the goal is done, blocked or has used its token budget. Each change is sent as the user's own (origin
+   * user), which the app-server takes as the user's say-so to start or stop that work.
+   */
+  const goalThread = (arg) => threadArg(arg) || inFront();
+  reg('setGoal', async (arg) => {
+    const id = goalThread(arg);
+    if (!id || restricted()) return;
+    const was = (reader.goal(id) || {}).objective || '';
+    const objective = await vscode.window.showInputBox({ prompt: 'The goal Codex keeps working toward in this conversation, turn after turn, until it is done',
+      value: was, valueSelection: [0, was.length] });
+    if (objective === undefined || !objective.trim()) return;
+    const budget = await vscode.window.showInputBox({ prompt: 'Token budget for the goal: Codex stops once the goal has used this many tokens. Leave it empty for no budget.',
+      value: String(cfg().get('goalTokenBudget', 1000000) || ''), validateInput: (v) => (!v.trim() || /^\d+$/.test(v.trim()) ? null : 'A whole number of tokens, or nothing') });
+    if (budget === undefined) return;
+    await changeThread('set the goal', 'thread/goal/set', { threadId: id, objective: objective.trim(), status: 'active',
+      tokenBudget: budget.trim() ? Number(budget.trim()) : null, origin: 'user' });
+  });
+  reg('pauseGoal', async (arg) => {
+    const id = goalThread(arg);
+    if (id && !restricted()) await changeThread('pause the goal', 'thread/goal/set', { threadId: id, status: 'paused', origin: 'user' });
+  });
+  reg('resumeGoal', async (arg) => {
+    const id = goalThread(arg);
+    if (id && !restricted()) await changeThread('resume the goal', 'thread/goal/set', { threadId: id, status: 'active', origin: 'user' });
+  });
+  reg('clearGoal', async (arg) => {
+    const id = goalThread(arg);
+    if (id && !restricted()) await changeThread('clear the goal', 'thread/goal/clear', { threadId: id, origin: 'user' });
+  });
   /*
    * Messages from the session list's page, each handled like the matching command: a row clicked, New in tab, New in
    * sidebar, New group, an inline rename of a title or a group, and rows dropped on a group.

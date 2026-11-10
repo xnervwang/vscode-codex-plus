@@ -40,12 +40,16 @@ function codexHome() {
  * The state database. Codex numbers it by schema generation (state_5.sqlite today), so the highest number present is
  * the one in use; an older one left behind by a migration is never newer than the live one.
  */
-function stateDbPath(home = codexHome()) {
+function stateDbPath(home = codexHome()) { return newestDb(home, 'state'); }
+/* The database of thread goals, numbered the same way (goals_1.sqlite today). */
+function goalsDbPath(home = codexHome()) { return newestDb(home, 'goals'); }
+function newestDb(home, stem) {
   let names;
   try { names = fs.readdirSync(home); } catch (_) { return ''; }
   let best = '', bestN = -1;
+  const re = new RegExp(`^${stem}_(\\d+)\\.sqlite$`);
   for (const n of names) {
-    const m = /^state_(\d+)\.sqlite$/.exec(n);
+    const m = re.exec(n);
     if (m && +m[1] > bestN) { bestN = +m[1]; best = n; }
   }
   return best ? path.join(home, best) : '';
@@ -73,8 +77,9 @@ function closeAll() {
  * Rows for one query, or null when the database cannot be read at all. `sql` takes no parameters: every value the
  * extension filters on is applied afterwards, so nothing from outside is ever spliced into the text.
  */
-function query(sql, home = codexHome()) {
-  const file = stateDbPath(home);
+function query(sql, home = codexHome()) { return queryFile(stateDbPath(home), sql); }
+
+function queryFile(file, sql) {
   if (!file) return null;
   const lib = nodeSqlite();
   if (lib && lib.DatabaseSync) {
@@ -198,6 +203,17 @@ function threadsFromIndex(home) {
 function sections(home = codexHome()) {
   const rows = query('select id, name from thread_sections', home) || [];
   return new Map(rows.map((r) => [String(r.id), String(r.name || '')]));
+}
+
+/*
+ * Each thread's goal: id -> { status, objective, tokenBudget, tokensUsed }. The database spells a status in snake case
+ * (budget_limited); it is given here as the app-server names it (budgetLimited), which is what the commands send back.
+ */
+function goals(home = codexHome()) {
+  const rows = queryFile(goalsDbPath(home), 'select thread_id, objective, status, token_budget, tokens_used from thread_goals') || [];
+  const camel = (s) => String(s || '').replace(/_([a-z])/g, (_, c) => c.toUpperCase());
+  return new Map(rows.map((r) => [String(r.thread_id), { status: camel(r.status), objective: String(r.objective || ''),
+    tokenBudget: Number.isFinite(+r.token_budget) && r.token_budget !== null ? +r.token_budget : null, tokensUsed: +r.tokens_used || 0 }]));
 }
 
 /** Threads with something the user has not read: thread id -> first unread turn id ('' for the whole thread). */
@@ -409,6 +425,6 @@ function rolloutExists(id, home = codexHome()) {
 }
 
 module.exports = {
-  existingRollout, THREAD_ID, THREAD_COLUMNS, COMPRESSED_MAX, DECOMPRESSED_MAX, codexHome, setCodexHome, stateDbPath, query, listThreads, sourceKind, sections, unreadThreads, tailLines,
+  existingRollout, THREAD_ID, THREAD_COLUMNS, COMPRESSED_MAX, DECOMPRESSED_MAX, codexHome, setCodexHome, stateDbPath, goalsDbPath, query, listThreads, sourceKind, sections, goals, unreadThreads, tailLines,
   sessionMeta, rolloutState, rolloutOf, rolloutExists, closeAll, ASYNC_QUESTION,
 };

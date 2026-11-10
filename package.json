@@ -165,6 +165,22 @@
         "title": "Codex Plus: Mark as Read"
       },
       {
+        "command": "codexPlus.setGoal",
+        "title": "Codex Plus: Set Goal..."
+      },
+      {
+        "command": "codexPlus.pauseGoal",
+        "title": "Codex Plus: Pause Goal"
+      },
+      {
+        "command": "codexPlus.resumeGoal",
+        "title": "Codex Plus: Resume Goal"
+      },
+      {
+        "command": "codexPlus.clearGoal",
+        "title": "Codex Plus: Clear Goal"
+      },
+      {
         "command": "codexPlus.removePatch",
         "title": "Codex Plus: Remove the Patch from Codex (restore original files)"
       },
@@ -304,6 +320,26 @@
           "group": "5_look@1"
         },
         {
+          "command": "codexPlus.setGoal",
+          "when": "webviewId == 'codexPlus.sessions' && webviewSection == 'thread'",
+          "group": "6_goal@1"
+        },
+        {
+          "command": "codexPlus.pauseGoal",
+          "when": "webviewId == 'codexPlus.sessions' && webviewSection == 'thread' && codexPlusGoal == 'active'",
+          "group": "6_goal@2"
+        },
+        {
+          "command": "codexPlus.resumeGoal",
+          "when": "webviewId == 'codexPlus.sessions' && webviewSection == 'thread' && codexPlusGoalResumable",
+          "group": "6_goal@3"
+        },
+        {
+          "command": "codexPlus.clearGoal",
+          "when": "webviewId == 'codexPlus.sessions' && webviewSection == 'thread' && codexPlusGoal",
+          "group": "6_goal@4"
+        },
+        {
           "command": "codexPlus.newThreadInGroup",
           "when": "webviewId == 'codexPlus.sessions' && webviewSection == 'group' && codexPlusMade && !codexPlus.noGroups",
           "group": "1_new@1"
@@ -440,6 +476,13 @@
           "type": "boolean",
           "default": true,
           "markdownDescription": "Send the wake-ups the model sets with the work plan's `set_wakeup` tool to the Codex conversations open in this window: when one is due, its prompt is put in that conversation's queue, and Codex sends it once the conversation is idle. A conversation you stopped is not woken until a turn starts in it again. A wake-up expires after seven days; `Codex Plus: Show Status` lists them. Needs the patch."
+        },
+        "codexPlus.goalTokenBudget": {
+          "scope": "application",
+          "type": "integer",
+          "default": 1000000,
+          "minimum": 0,
+          "markdownDescription": "The token budget `Codex Plus: Set Goal...` starts from. Codex keeps starting turns toward a goal while the conversation is idle, and stops once the goal has used this many tokens. 0 starts from no budget."
         },
         "codexPlus.workPlanOfferMinTurns": {
           "scope": "application",
