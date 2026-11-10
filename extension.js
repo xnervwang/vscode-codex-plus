@@ -247,10 +247,18 @@ async function activate(context) {
   if (!wrote && typeof vscode.workspace.onDidGrantWorkspaceTrust === 'function') {
     context.subscriptions.push(vscode.workspace.onDidGrantWorkspaceTrust(whenTrusted));
   }
-  later(async () => {
-    const reopened = await memory.reopenDropped({ enabled: settings().reopenDroppedTabs });
-    if (reopened.length) say(`reopened ${reopened.length} Codex tab(s) VS Code did not restore`);
-  }, 8000);
+  later(() => reopenDropped(memory, say), 8000);
+}
+
+/* The Codex tabs VS Code did not restore, opened again, and said in the status bar for ten seconds, as Claude Code
+   Plus says its own. */
+async function reopenDropped(memory, say) {
+  const reopened = await memory.reopenDropped({ enabled: settings().reopenDroppedTabs });
+  if (!reopened.length) return reopened;
+  const n = reopened.length;
+  say(`reopened ${n} Codex tab(s) VS Code did not restore`);
+  vscode.window.setStatusBarMessage(`Reopened ${n} Codex tab${n === 1 ? '' : 's'} VS Code did not restore`, 10000);
+  return reopened;
 }
 
 /*
@@ -699,5 +707,6 @@ function deactivate() {
 
 /* `_settings` is for the checks: the master switch is only real if what every part reads comes out of settings() with
    it already applied, and that is a table to be read rather than inferred from what the extension then did.
-   `_ensurePlugin` is the start-up install of the plugin, which activation only runs after a delay. */
-module.exports = { activate, deactivate, _settings: settings, _ensurePlugin: ensurePlugin };
+   `_ensurePlugin` is the start-up install of the plugin and `_reopenDropped` the reopening of dropped tabs, which
+   activation only runs after a delay. */
+module.exports = { activate, deactivate, _settings: settings, _ensurePlugin: ensurePlugin, _reopenDropped: reopenDropped };
