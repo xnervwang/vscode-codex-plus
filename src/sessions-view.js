@@ -6,8 +6,8 @@
 /*
  * The Codex session list: every conversation, grouped the way a person looks for one.
  *
- *   Open sessions         the Codex tabs of this window, the one last in front first, each with its status colour
  *   Recently closed       tabs closed in this workspace, newest first (collapsed)
+ *   Open sessions         the Codex tabs of this window, the one last in front first, each with its status colour
  *   Pinned, <sections>    Codex's own pins and sections, as its sidebar keeps them
  *   Ungrouped             the rest of this workspace's
  *   Archived sessions     Codex's archived threads of this workspace (collapsed)
@@ -100,10 +100,10 @@ function group(threads, { open = [], closed = [], sections = new Map(), hideBack
   const openRows = open.map((id) => byId.get(id) || { id, title: '', kind: 'user', updatedMs: 0, createdMs: 0 })
     .sort((a, b) => (frontAt(b.id) - frontAt(a.id)) || (b.updatedMs - a.updatedMs));
   const openSet = new Set(open);
-  const out = [{ key: 'open', label: 'Open sessions', expanded: true, threads: openRows }];
   const closedRows = closed.map((c) => byId.get(c.thread) || { id: c.thread, title: c.title, kind: 'user', updatedMs: c.at, createdMs: 0 })
     .filter((t) => !openSet.has(t.id));
-  out.push({ key: 'closed', label: 'Recently closed', expanded: false, threads: closedRows });
+  const out = [{ key: 'closed', label: 'Recently closed', expanded: false, threads: closedRows },
+    { key: 'open', label: 'Open sessions', expanded: true, threads: openRows }];
   const rest = here.filter((t) => t.kind === 'user' && !t.archived);
   const pinned = rest.filter((t) => t.pinned);
   if (pinned.length) out.push({ key: 'pinned', label: 'Pinned', expanded: true, threads: pinned });

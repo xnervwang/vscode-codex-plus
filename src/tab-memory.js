@@ -16,6 +16,12 @@
  *
  * A tab closed while the window could not reach the extension host is not recorded as closed, and comes back at the next
  * start; closing it again once connected is the remedy.
+ *
+ * A tab's URI names the conversation it was opened on, and nothing for a tab opened with a New button; a page that
+ * starts another conversation leaves the URI as it was. What the tab showed when it closed comes from the patch, which
+ * reports the conversation of each panel it disposes (panelClosed). VS Code reports the closed tab and disposes its panel
+ * in either order, so each side keeps what the other may still need. A panel disposed with no Codex tab closed within
+ * CLOSE_PAIR_MS, as when the window shuts down, is not a tab the user closed.
  */
 const tabs = require('./codex-tabs');
 
@@ -26,15 +32,22 @@ const LAST_KEY = 'codexPlus.lastInFront';
 const KEEP_CLOSED = 50;
 /* More than this many to reopen at once is more likely a record gone wrong than tabs a person had open. */
 const REOPEN_LIMIT = 20;
+const CLOSE_PAIR_MS = 2000;
 
 class TabMemory {
-  constructor(vscode, memento, { titleOf = () => '', exists = () => true, alsoOpen = () => [] } = {}) {
+  constructor(vscode, memento, { titleOf = () => '', exists = () => true, alsoOpen = () => [], nowShowing = (t) => t } = {}) {
     this.vscode = vscode;
     this.memento = memento;
     this.titleOf = titleOf;
     this.exists = exists;
     this.alsoOpen = alsoOpen;
+    this.nowShowing = nowShowing;
     this.lastFront = new Map();
+    /* The panels disposed with no Codex tab closed yet: { thread, at }. */
+    this.disposed = [];
+    /* The URI's conversation -> the one its panel showed when disposed, for the tab event that comes after: { thread, at }. */
+    this.replaced = new Map();
+    this.codexClosedAt = 0;
     this.emitter = new vscode.EventEmitter();
     this.onDidChange = this.emitter.event;
     this.startedWith = (memento.get(OPEN_KEY) || []).slice();
@@ -79,10 +92,41 @@ class TabMemory {
   onTabs(e) {
     this.noteFront();
     const closed = [];
+    const now = Date.now();
     for (const tab of e.closed || []) {
-      const t = tabs.threadOfTab(this.vscode, tab);
-      if (t) closed.push({ thread: t, title: this.titleOf(t) || tab.label || '', at: Date.now() });
+      if (!tabs.isCodexTab(this.vscode, tab)) continue;
+      this.codexClosedAt = now;
+      const named = tabs.threadOfTab(this.vscode, tab);
+      const swap = named && this.replaced.get(named);
+      if (swap) this.replaced.delete(named);
+      let t = swap && now - swap.at <= CLOSE_PAIR_MS ? swap.thread : '';
+      if (!t && named) { try { t = this.nowShowing(named) || named; } catch (_) { t = named; } }
+      if (t) closed.push({ thread: t, title: this.titleOf(t) || tab.label || '', at: now });
     }
+    if (this.codexClosedAt === now) {
+      for (const d of this.disposed.splice(0)) {
+        if (now - d.at <= CLOSE_PAIR_MS && !closed.some((c) => c.thread === d.thread)) closed.push({ thread: d.thread, title: this.titleOf(d.thread), at: now });
+      }
+    }
+    this.record(closed);
+  }
+
+  /*
+   * The patch disposed a panel that showed `thread`, opened on `opened`. Recorded at once when a Codex tab closed just
+   * before; otherwise kept for the tab event that should follow.
+   */
+  panelClosed(thread, opened) {
+    if (!thread) return;
+    const now = Date.now();
+    if (opened && opened !== thread) {
+      this.replaced.set(opened, { thread, at: now });
+      while (this.replaced.size > KEEP_CLOSED) this.replaced.delete(this.replaced.keys().next().value);
+    }
+    if (now - this.codexClosedAt <= CLOSE_PAIR_MS) { this.record([{ thread, title: this.titleOf(thread), at: now }]); return; }
+    this.disposed = this.disposed.filter((d) => now - d.at <= CLOSE_PAIR_MS && d.thread !== thread).concat({ thread, at: now });
+  }
+
+  record(closed) {
     const open = this.openThreads();
     // Until the start-up comparison has run, the record still holds what the last session had open, and overwriting it
     // with the half-restored set would lose the very tabs it is there to bring back.

@@ -178,8 +178,9 @@ async function activate(context) {
     exists: (id) => reader.present(id),
     // Tabs Codex opened with its own New button do not name their conversation in their URI; the patch does.
     alsoOpen: () => patching.panelThreads(),
+    nowShowing: (id) => patching.nowShowing(id),
   });
-  context.subscriptions.push(memory);
+  context.subscriptions.push(memory, patching.onPanelClosed((thread, opened) => memory.panelClosed(thread, opened)));
   let lastConversations = new Map();
   const sessionsProvider = new SessionsProvider(vscode, { memory, memento: context.globalState, settings, reader,
     stateOf: (id) => lastConversations.get(id), wantState: (ids) => source.wantState(ids),

@@ -153,7 +153,7 @@ module.exports = async ({ ok, bad, eq, tmp }) => {
   const inWs = (cwd) => cwd === inside;
   const shaped = group([thread(1, inside), thread(2, outsideA), thread(5, inside, { archived: true })],
     { open: [], closed: [], cwdFilter: inWs });
-  eq(shaped.map((g) => g.label), ['Open sessions', 'Recently closed', 'Ungrouped', 'Archived sessions'],
+  eq(shaped.map((g) => g.label), ['Recently closed', 'Open sessions', 'Ungrouped', 'Archived sessions'],
     'the group names are the ones Claude Code\'s session list uses, in its order');
   eq(shaped.filter((g) => !g.expanded).map((g) => g.label), ['Recently closed', 'Archived sessions'],
     'the two a reader opens only when looking for something start collapsed');
@@ -162,13 +162,13 @@ module.exports = async ({ ok, bad, eq, tmp }) => {
   const bare = new SessionsProvider(vscode, { memory: stubMemory(), memento: fake.memento(), reader: stubReader([thread(1, inside)]),
     stateOf: () => null, settings: () => ({ recentClosedSessions: 10, hideBackgroundSessions: true }) });
   bare.refresh();
-  const openRow = bare.getChildren()[0];
+  const openRow = bare.getChildren().find((r) => r.group.key === 'open');
   const openItem = bare.getTreeItem(openRow);
   const openKids = bare.getChildren(openRow);
   eq([openItem.label, openItem.description, openKids.map((k) => k.kind), bare.getTreeItem(openKids[0]).label],
     ['Open sessions', undefined, ['empty'], 'No conversation open in this window'],
     'with nothing open the group says so in a row of its own rather than showing a nought');
-  eq(bare.getTreeItem(bare.getChildren()[1]).description, '1', 'a group that holds something counts it after its name');
+  eq(bare.getTreeItem(bare.getChildren().find((r) => r.group.key === 'ungrouped')).description, '1', 'a group that holds something counts it after its name');
 
   /* ── a conversation the user has not read gets no dot, and asks for one when its group opens ── */
   const asked = [];
@@ -217,9 +217,10 @@ module.exports = async ({ ok, bad, eq, tmp }) => {
   {
     const inside = tmp('sidebar-ws');
     const t1 = thread(1, inside), t2 = thread(2, inside);
-    eq(group([t1, t2], { open: [], closed: [], sidebar: ID(2) })[0].threads.map((t) => t.id), [ID(2)],
+    const openOf = (groups) => groups.find((g) => g.key === 'open');
+    eq(openOf(group([t1, t2], { open: [], closed: [], sidebar: ID(2) })).threads.map((t) => t.id), [ID(2)],
       'a conversation the sidebar shows is in Open sessions');
-    eq(group([t1, t2], { open: [ID(2)], closed: [], sidebar: ID(2) })[0].threads.length, 1, 'and once only when a tab shows it too');
+    eq(openOf(group([t1, t2], { open: [ID(2)], closed: [], sidebar: ID(2) })).threads.length, 1, 'and once only when a tab shows it too');
     delete require.cache[require.resolve('../../src/patching')];
     const patching = require('../../src/patching');
     patching.installHooks();
@@ -243,7 +244,7 @@ module.exports = async ({ ok, bad, eq, tmp }) => {
       settings: () => ({ hideBackgroundSessions: true, recentClosedSessions: 10 }),
       stateOf: () => null, sidebarShowing: () => patching.sidebarShowing() });
     listing.refresh();
-    const open = listing.getChildren(listing.getChildren()[0]);
+    const open = listing.getChildren(listing.getChildren().find((r) => r.group.key === 'open'));
     const row = listing.getTreeItem(open[0]);
     eq([open.length, row.command.command, /in Codex's sidebar/.test(row.tooltip.value)], [1, 'codexPlus.openThreadInSidebar', true],
       'its row goes to the sidebar when clicked, and says that it is there');

@@ -281,8 +281,8 @@ module.exports = async ({ ok, bad, eq, tmp }) => {
     const groups = group(threads, { open: [working.id], closed: [{ thread: idle.id, title: 'Idle here', at: 1 }, { thread: working.id, at: 2 }],
       sections: new Map(), hideBackground: true });
     const names = groups.filter((g) => g.threads.length).map((g) => `${g.key}:${g.threads.map((t) => t.title).join('|')}`);
-    eq(names, ['open:Working here', 'closed:Idle here', 'ungrouped:Working here|Unread elsewhere|Idle here|Old', 'archived:Archived'],
-      'open first, then recently closed (without the open one), the rest newest first, archived last; no guardian review');
+    eq(names, ['closed:Idle here', 'open:Working here', 'ungrouped:Working here|Unread elsewhere|Idle here|Old', 'archived:Archived'],
+      'recently closed (without the open one), then open, the rest newest first, archived last; no guardian review');
     const withBg = group(threads, { hideBackground: false }).find((g) => g.key === 'background');
     eq(withBg && withBg.threads.map((t) => t.id), [guardian.id], 'turning the filter off lists the background threads');
     const day = 86400e3, t0 = new Date(2026, 8, 5, 12).getTime();

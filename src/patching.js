@@ -799,6 +799,16 @@ async function refreshPanels() {
   }
 }
 
+/*
+ * Told when a handed-over panel goes away, with the conversation it showed and the one its tab's URI named ('' for
+ * either that is not known): the only record of what a New tab held, since its URI names nothing.
+ */
+const onClosed = new Set();
+function onPanelClosed(fn) {
+  onClosed.add(fn);
+  return { dispose: () => onClosed.delete(fn) };
+}
+
 /* `thread` is the one the tab's URI names, null for any other panel; `route` is the route Codex opened it on. */
 function adoptPanel(panel, thread, provider, route) {
   if (provider) state.provider = provider;
@@ -814,6 +824,7 @@ function adoptPanel(panel, thread, provider, route) {
       if (!rec) return;
       registry.delete(panel);
       leave(rec.thread);
+      for (const fn of [...onClosed]) { try { fn(rec.thread, rec.opened); } catch (_) { /* the others still hear it */ } }
     });
   } catch (_) { registry.delete(panel); return; }
   setTimeout(refreshPanels, 500);
@@ -1094,5 +1105,5 @@ function activate(context, opts) {
 module.exports = { activate, ensurePatched, statusLines, openInSidebar, canType, canDeliver, deliver, sidebarThread, panelThreads, shownIn,
   nowShowing, revealPanel, removePatch,
   figuresOf, usageOf, compactThread, hostRequest, safeColor, viewOf, selfCheckPage, selfCheckLines, installHooks, refreshPanels, approvalsOf,
-  onApprovalsChanged, offerReloadIfStale, sidebarShowing, onSidebarChanged, runningCommands, turnEndChime, turnHeard, _state: () => state, _registry: registry, _approvals: approvals,
+  onApprovalsChanged, offerReloadIfStale, sidebarShowing, onSidebarChanged, onPanelClosed, runningCommands, turnEndChime, turnHeard, _state: () => state, _registry: registry, _approvals: approvals,
   TAB_DOTS, ASK_MS, PATCH_REMOVED_KEY };
