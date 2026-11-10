@@ -183,7 +183,8 @@ svg.cp-icon.cp-solid { fill: currentColor; stroke: none; }
 
 /* The right-click menus, and the status filter's menu (.cp-menu), take their values from Claude Code's own context menu
    (the __ozcbg rules of its webview's index.css). Claude Code's --app-menu-* variables are set to the theme's
-   --vscode-menu-* ones, used here directly. */
+   --vscode-menu-* ones, used here directly. One value differs: an item may be 280 px wide rather than 260, room for
+   the longest, "Codex Plus: Start New Session in This Group", which still fits a 300 px sidebar. */
 .cp-ctx, .cp-menu {
   position: fixed; z-index: 1000; min-width: 140px; max-height: calc(100vh - 16px); padding: 2px 0; overflow-x: hidden; overflow-y: auto;
   background: var(--vscode-menu-background); border: 1px solid var(--vscode-menu-border); border-radius: 6px;
@@ -191,7 +192,7 @@ svg.cp-icon.cp-solid { fill: currentColor; stroke: none; }
 }
 @keyframes cp-ctx-in { 0% { opacity: 0; transform: scale(.95); } to { opacity: 1; transform: scale(1); } }
 .cp-ctx-item, .cp-menu-item {
-  display: block; box-sizing: border-box; width: 100%; max-width: 260px; padding: 6px 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  display: block; box-sizing: border-box; width: 100%; max-width: 280px; padding: 6px 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   text-align: left; cursor: pointer; background: none; border: none; color: var(--vscode-menu-foreground);
   font-size: var(--vscode-chat-font-size, 13px); font-family: var(--vscode-chat-font-family);
 }

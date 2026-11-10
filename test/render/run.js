@@ -318,6 +318,8 @@ async function parity(s, where) {
     `${where}: a stamp is in the editor's monospace font at 0.8 of its message's size, in the text's own colour at 60%`, m.stamps);
   check(m.boxes.length >= 2 && m.boxes.every(([, same]) => same), `${where}: every box of this script's is in the page's own font`, m.boxes);
   check(m.panelLine === '15.4px', `${where}: the list's lines are 1.4 high, as Claude Code Plus's`, m.panelLine);
+  await s.b.click(10, 10);
+  await sleep(200);
 }
 /* A hover label of this script's, measured while it shows: Claude Code Plus's box, in the page's font at 0.9 of its size. */
 const LABEL_LOOK = `(() => { const b = document.querySelector('[data-codex-extras="label"]'); if (!b) return null; const a = getComputedStyle(b), d = getComputedStyle(document.body);

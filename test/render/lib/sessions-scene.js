@@ -341,7 +341,7 @@ async function run({ env, check, shots, out, results }) {
     const row = await b.evaluate(MEASURE_CTX);
     /* Claude Code's values, with --app-menu-* resolved through the Dark Modern colours of harness/vscode-stub.js. */
     const CC = { radius: '6px', border: '1px solid rgb(69, 69, 69)', padding: '2px 0px 2px 0px', minWidth: '140px', shadow: 'rgba(0, 0, 0, 0.15) 0px 2px 8px 0px',
-      bg: 'rgb(31, 31, 31)', zIndex: '1000', position: 'fixed', itemPadding: '6px 12px 6px 12px', fontSize: '13px', color: 'rgb(204, 204, 204)', maxWidth: '260px' };
+      bg: 'rgb(31, 31, 31)', zIndex: '1000', position: 'fixed', itemPadding: '6px 12px 6px 12px', fontSize: '13px', color: 'rgb(204, 204, 204)', maxWidth: '280px' };
     const looks = (m) => !!m && m.radius === CC.radius && m.border === CC.border && m.padding === CC.padding && m.minWidth === CC.minWidth
       && m.shadow === CC.shadow && m.bg === CC.bg && m.zIndex === CC.zIndex && m.position === CC.position && !!m.item && m.item.padding === CC.itemPadding
       && m.item.fontSize === CC.fontSize && m.item.color === CC.color && m.item.maxWidth === CC.maxWidth;
@@ -369,7 +369,7 @@ async function run({ env, check, shots, out, results }) {
       && row.main.chevron && row.main.chevron.text === '›' && row.main.chevron.float === 'right' && row.main.chevron.opacity === '0.7' && row.main.chevron.marginLeft === '12px'
       && row.focused === 'Codex Plus: Resume in Tab',
     'sessions: a grouped row\'s items, separators 1 px with 2 px above and below, Claude Code\'s › on the two with a submenu, the first item focused', row.main);
-    if (row.main && row.main.cut.length) console.log(`  note  sessions: cut short at Claude Code's 260 px: ${row.main.cut.join('; ')}`);
+    check(!!row.main && row.main.cut.length === 0, 'sessions: no item of a row\'s menu is cut short', row.main && row.main.cut);
 
     const centre = (label) => b.evaluate(`(() => { const i = [...document.querySelectorAll('.cp-ctx-item')].find((x) => x.childNodes[0] && x.childNodes[0].textContent === ${JSON.stringify(label)});
       if (!i) return null; const r = i.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; })()`);
@@ -421,7 +421,7 @@ async function run({ env, check, shots, out, results }) {
     r.measures.ctxGroup = { open: headOpen, ...gh };
     check(headOpen.prevented && looks(gh.main) && gh.main.labels.join('|') === 'Codex Plus: Start New Session in This Group|Codex Plus: New Group...|Codex Plus: Rename Group...|Codex Plus: Delete Group'
       && gh.main.seps === 'itemitem-item-item' && !gh.main.chevron, 'sessions: a group header\'s menu has its four items in the same look', gh.main);
-    if (gh.main && gh.main.cut.length) console.log(`  note  sessions: cut short at Claude Code's 260 px: ${gh.main.cut.join('; ')}`);
+    check(!!gh.main && gh.main.cut.length === 0, 'sessions: no item of a group header\'s menu is cut short, at 280 px', gh.main && gh.main.cut);
     await esc();
     await sleep(100);
     const gone = await b.evaluate('document.querySelectorAll(".cp-ctx").length');

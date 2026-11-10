@@ -127,11 +127,6 @@ module.exports = async ({ eq, root }) => {
   eq([/var\(--vscode-sideBarActivityBarTop-border, var\(--vscode-sideBarSectionHeader-border/.test(rule('.cp-section')),
     /var\(--vscode-sideBarActivityBarTop-border, var\(--vscode-sideBarSectionHeader-border/.test(rule('.cp-new-row'))], [true, true],
   'the section lines try Claude Code\'s sideBarActivityBarTop.border first');
-
-  /* Lines, chevrons, outlines, the high usage bar. */
-  eq([/var\(--vscode-sideBarActivityBarTop-border, var\(--vscode-sideBarSectionHeader-border/.test(rule('.cp-section')),
-    /var\(--vscode-sideBarActivityBarTop-border, var\(--vscode-sideBarSectionHeader-border/.test(rule('.cp-new-row'))], [true, true],
-  'the section lines try Claude Code\'s sideBarActivityBarTop.border first');
   eq([/transition/.test(rule('.cp-chevron')), has('.cp-title.cp-editing', 'outline: 1px solid var(--vscode-textLink-foreground)'),
     has('.cp-group-name.cp-editing', 'outline: 1px solid var(--vscode-inputOption-activeBorder)'), has('.cp-fill.cp-high', 'background: #d97757')],
   [false, true, true, true],
@@ -159,4 +154,6 @@ module.exports = async ({ eq, root }) => {
   }
 
 
+  /* The right-click menu's items are as wide as the longest one needs. */
+  eq(has('.cp-ctx-item', 'max-width: 280px'), true, 'a menu item may be 280 px wide, room for "Start New Session in This Group"');
 };
