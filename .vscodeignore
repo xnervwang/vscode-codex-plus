@@ -1,6 +1,8 @@
 build/**
 test/**
 CONTRIBUTING.md
+# Which files are copies of Agent Plus's shared code (build/sync-shared.js).
+shared.json
 **/__pycache__/**
 *.vsix
 .github/**
