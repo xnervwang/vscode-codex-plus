@@ -10,6 +10,10 @@
  * that is not to 127.0.0.1 is failed there and counted in `blocked`: Codex's page reports its errors to an outside
  * collector. Under that, the browser is given a proxy that does not exist and a resolver that resolves nothing, so a
  * request from a target the Fetch domain does not see (a worker of the page) fails too.
+ *
+ * The browser keeps its own autoplay rule, under which an audio context made before anyone has clicked or typed in the
+ * page stays suspended: that is the rule Codex's webview applies, and a check that turned it off could not see a chime
+ * that nobody hears.
  */
 const fs = require('fs');
 const os = require('os');
@@ -80,7 +84,7 @@ function started(proc) { children.add(proc); proc.on('exit', () => children.dele
 async function launch({ chrome, width = 1100, height = 760, userDataDir }) {
   const args = ['--no-sandbox', '--disable-gpu', '--hide-scrollbars', '--remote-debugging-address=127.0.0.1',
     '--remote-debugging-port=0', `--window-size=${width},${height}`, '--no-first-run', '--no-default-browser-check',
-    '--force-color-profile=srgb', '--font-render-hinting=none', '--autoplay-policy=no-user-gesture-required',
+    '--force-color-profile=srgb', '--font-render-hinting=none',
     '--proxy-server=http://127.0.0.1:9', '--proxy-bypass-list=127.0.0.1', '--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1',
     `--user-data-dir=${userDataDir}`, 'about:blank'];
   const proc = started(spawn(chrome, args, { stdio: ['ignore', 'ignore', 'pipe'] }));

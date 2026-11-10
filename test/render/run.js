@@ -39,7 +39,7 @@ if (found.missing.length) {
   for (const m of found.missing) console.log(`  - ${m}`);
   process.exit(0);
 }
-/* --only <name>[,<name>] runs those scenes alone: conversation, narrow, wide, approval, background, compact, long. */
+/* --only <name>[,<name>] runs those scenes alone: conversation, narrow, wide, approval, background, compact, chime, long. */
 const ONLY = arg('--only') ? arg('--only').split(',') : null;
 const want = (name) => !ONLY || ONLY.includes(name);
 const OUT = path.resolve(arg('--out') || fs.mkdtempSync(path.join(os.tmpdir(), 'codex-plus-render-')));
@@ -547,6 +547,40 @@ function selfchecked(r, where, { turns, users, rows, replies = turns }) {
   }
 
   /* ── a long conversation over two days: ten turns yesterday and fifteen today ── */
+  /*
+   * ── a chime before and after the page is clicked, under the browser's own autoplay rule ──
+   *
+   * Nobody has clicked or typed in a page that has just opened, so the audio context the first chime makes starts
+   * suspended and plays nothing; the page tells the host so. A click in the page (Input.dispatchMouseEvent, as a person
+   * would click) is what lets it run, and the next chime then starts its oscillators in a running context.
+   */
+  if (want('chime')) {
+    s = await opened('chime');
+    try {
+      await s.b.evaluate(`(() => { const C = window.AudioContext; window.__ctxs = []; window.__osc = 0;
+        window.AudioContext = class extends C { constructor(...a) { super(...a); window.__ctxs.push(this); } };
+        const make = C.prototype.createOscillator; C.prototype.createOscillator = function () { window.__osc++; return make.apply(this, arguments); }; })()`);
+      const heard = () => s.b.evaluate(`({ told: (window.__posted || []).filter((m) => m.kind === 'chime').map((m) => m.state),
+        state: window.__ctxs[0] ? window.__ctxs[0].state : 'none', osc: window.__osc })`);
+      await s.toPage({ type: 'codex-extras-chime', kind: 'done' });
+      await sleep(800);
+      const before = await heard();
+      results.scenes.chime.before = before;
+      check(before.told[0] === 'suspended' && before.state === 'suspended' && before.osc === 0,
+        'chime: in a page nobody has clicked, a chime finds its audio context suspended, plays nothing, and the page tells the host so', before);
+      const at = await centre(s, '[data-app-action-timeline-scroll]');
+      await s.b.click(at[0], at[1]);
+      await sleep(500);
+      await s.toPage({ type: 'codex-extras-chime', kind: 'done' });
+      await sleep(800);
+      const after = await heard();
+      results.scenes.chime.after = after;
+      check(after.state === 'running' && after.osc >= 2 && after.told.length === before.told.length,
+        'chime: after one click in the page the next chime runs in a running context and starts its oscillators, with nothing to report', after);
+      results.blocked.push(...s.b.blocked);
+    } finally { await s.close(); }
+  }
+
   if (want('long')) s = await opened('long', { turns: fake.manyTurns(25), days: [[1, 10], [0, 15]] });
   if (want('long')) try {
     await scrollTo(s, 'bottom');
