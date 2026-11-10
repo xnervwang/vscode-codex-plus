@@ -4,9 +4,9 @@
 
 'use strict';
 /*
- * The plugin's time-zone hook reads the reader's zone from client-time-zone.json beside the plans, and a hook that reads
- * it half-written tells the model no zone that turn. So the file is replaced whole, by a rename, rather than truncated
- * and written in place, and a write that would leave it as it is does not touch it at all.
+ * The plugin's time-zone hook reads the reader's zone from client-time-zone.json beside the plans, and leaves the zone
+ * out of a turn in which it reads that file half-written. So the file is replaced by a rename instead of being rewritten
+ * in place, and is not written at all when its content would stay the same.
  */
 const fs = require('fs');
 const path = require('path');

@@ -94,8 +94,7 @@ function installStamp(extensionPath) {
 /*
  * Whether the same version was installed again over this copy after it was loaded. A version number cannot tell two
  * builds of one version apart, and between releases it stays the same, but VS Code stamps every install into the
- * manifest (__metadata.installedTimestamp). With no stamp on either side there is nothing to compare, and the answer is
- * no.
+ * manifest (__metadata.installedTimestamp). False when either stamp is missing.
  */
 function replacedSince(extensionPath, loadedStamp) {
   if (!extensionPath || !loadedStamp) return false;
@@ -104,10 +103,10 @@ function replacedSince(extensionPath, loadedStamp) {
 }
 
 /*
- * Where the copy a window loaded stands: 'uninstalling', 'replaced', or '' for neither. Replaced is a window running a
- * build that is no longer the installed one: the same version installed again over it (replacedSince), or another
- * version installed beside it, which marks this folder for deletion and leaves the new one unmarked. Such a window
- * leaves every file the windows share to the ones running the installed build.
+ * 'uninstalling', 'replaced' or '' for the copy a window loaded. 'replaced' means the window runs a build that is no
+ * longer the installed one: the same version was installed again over it (replacedSince), or another version was
+ * installed beside it, which marks this folder for deletion and leaves the new one unmarked. A replaced window writes
+ * none of the files all windows share, and the windows running the installed build keep them up to date.
  */
 function standing(extensionPath, id = [ID, ...FORMER_IDS], loadedStamp = 0) {
   if (!extensionPath) return '';

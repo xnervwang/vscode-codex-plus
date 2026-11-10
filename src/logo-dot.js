@@ -15,7 +15,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 
-/* State colours as SVG fills, used when a caller passes no palette of its own. */
+/* The palette iconsFor uses when it is given none. */
 const DOT = { prompt: '#f59e0b', needs: '#f59e0b', working: '#3b82f6', unread: '#22c55e', idle: '#8b8b8b' };
 const BOX = 24;
 const R = 4.2;

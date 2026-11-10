@@ -4,8 +4,8 @@
 
 'use strict';
 /*
- * The folder the plans are copied to before the plugin is removed sits in the Codex home under a name nobody chose,
- * so it carries a note saying what it is and where the files go to be used again.
+ * Before the plugin is removed, the plans are copied to a timestamped folder in the Codex home. A note beside them says
+ * what they are and where to copy them back.
  */
 const fs = require('fs');
 const path = require('path');

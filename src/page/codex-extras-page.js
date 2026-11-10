@@ -357,7 +357,8 @@
 
   /* A hover label drawn by this script, because a native title is not reliably shown in Codex's page. It is created on
      hover and removed on leave or click; a message shown after a click (flash) removes itself after FLASH_MS. It is
-     centred on its control, above it, or below it when there is no room above, so it never covers the control. */
+     centred above its control. Pushed down by the top of the page it would sit on the control itself, so with no room
+     above it goes below instead. */
   var labelBox = null, FLASH_MS = 3000;
   function hideLabel() { if (labelBox) { try { labelBox.remove(); } catch (e) { /* gone */ } labelBox = null; } }
   function showLabel(el, said) {
@@ -1629,7 +1630,7 @@
    * The box shown beside the list for the row under the pointer, like Claude Code Plus's: the row's time and its first
    * TIP_CHARS characters, shown at once rather than after a native title's delay. It is created on hover and removed on
    * leave or click. It goes to the left of the list, level with the row. In a page too narrow for that, such as Codex's
-   * sidebar, it goes over the list just below the row, or just above it when below would run off the page.
+   * sidebar, it goes over the list just below the row, or above the row near the bottom of the page.
    */
   var TIP_CHARS = 220, TIP_W = 360, TIP_ROOM = 160, tipBox = null;
   function hideTip() { tipBox = gone(tipBox); }

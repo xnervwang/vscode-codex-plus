@@ -85,8 +85,8 @@ const STATES = ['discussing', 'todo', 'doing', 'waiting', 'parked', 'done', 'dro
 /* Who a held-up row waits on: the same list as WAITING_ON in plan_path.py, held together by test/check.js. */
 const WAITING_ON = ['user', 'build', 'someone', 'session', 'other'];
 const MAX_QUESTION_CHARS = 200;
-/* How long a row's description may be, in lines and in characters: the plugin refuses a longer one (MAX_DETAIL_LINES
-   and MAX_DETAIL_CHARS in plan_path.py) and Agent Plus cuts its view at the same length. */
+/* The longest description a row may have: the same numbers as MAX_DETAIL_LINES and MAX_DETAIL_CHARS in plan_path.py,
+   which refuses a longer one. Agent Plus cuts its view at the same length. */
 const MAX_DETAIL_LINES = 12;
 const MAX_DETAIL_CHARS = 900;
 

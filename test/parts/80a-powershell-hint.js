@@ -4,9 +4,9 @@
 
 'use strict';
 /*
- * The model is told the command line that changes a row, built from the launcher the plugin was fitted to. When that
- * launcher is a path the shell has to quote, as the Python this extension downloads on Windows is, PowerShell runs the
- * line only with `&` in front of it, so the model is told that too; with a plain command name it is not.
+ * The model is told the command line that changes a row, which starts with the Python launcher in launcher.json. When
+ * that launcher is a path the shell has to quote, as the Python this extension downloads on Windows is, PowerShell runs
+ * the line only with `&` in front of it, and the model is told so.
  */
 const cp = require('child_process');
 const fs = require('fs');

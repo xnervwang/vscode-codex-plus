@@ -38,7 +38,7 @@ const CONFIG = 'codexPlus';
 /* This copy's id and folder, kept for deactivate, which runs after the editor's API is gone. */
 const ID = (() => { try { const p = require('./package.json'); return `${p.publisher}.${p.name}`; } catch (_) { return uninstallPlan.ID; } })();
 let selfPath = '';
-/* The install stamp of the copy this window loaded (src/uninstall-plan.js standing). */
+/* The install stamp of the copy this window loaded. */
 let loadedStamp = 0;
 let log = null;
 let reader = null;
@@ -48,9 +48,9 @@ let memento = null;
 function cfg() { return vscode.workspace.getConfiguration(CONFIG); }
 
 /*
- * Whether this window runs a build that is no longer the installed one, or one being uninstalled
- * (src/uninstall-plan.js standing), as 'replaced' or 'uninstalling', or '' for neither. Such a window writes none of
- * the files every window shares: the hooks' settings, the plugin in Codex and the patch. Said once in the log.
+ * What src/uninstall-plan.js standing says of this window's copy: 'replaced', 'uninstalling' or ''. A window whose copy
+ * is replaced or being uninstalled writes none of the files every window shares: the hooks' settings, the plugin in
+ * Codex and the patch. The first time, it writes a line to the log saying so.
  */
 let toldStale = false;
 function standsDown() {
@@ -64,7 +64,7 @@ function standsDown() {
   return s;
 }
 
-/* Said by a command that a replaced window will not carry out. */
+/* Shown when a replaced window is asked to install the plugin or to put the patch back. */
 async function offerReloadForStale() {
   const reload = 'Reload Window';
   const pick = await vscode.window.showInformationMessage('This window is running an earlier build of Codex Plus than the one now installed. '
