@@ -356,8 +356,7 @@
   }
 
   /* A hover label drawn by this script, because a native title is not reliably shown in Codex's page. It is created on
-     hover and removed on leave or click, so nothing stays in the page; a message shown after a click (flash) removes
-     itself after FLASH_MS. */
+     hover and removed on leave or click; a message shown after a click (flash) removes itself after FLASH_MS. */
   var labelBox = null, FLASH_MS = 3000;
   function hideLabel() { if (labelBox) { try { labelBox.remove(); } catch (e) { /* gone */ } labelBox = null; } }
   function showLabel(el, said) {
@@ -2020,8 +2019,9 @@
   }
 
   /*
-   * A 16 px yellow "!" at the top right, like Claude Code Plus's, whose hover label explains the miss. It sits just inside the top of the conversation's scroller, below Codex's header and its buttons, and
-   * is removed once the messages are recognised again or every addition is turned off.
+   * A 16 px yellow "!" at the top right whose hover label explains the miss. It sits just inside the top of the
+   * conversation's scroller, below Codex's header and its buttons, and is removed once the messages are recognised again
+   * or every addition is turned off.
    */
   var warn = null;
   var WARN_SAID = 'Codex Plus: this Codex build no longer matches what the page script looks for, so the times, the list of '

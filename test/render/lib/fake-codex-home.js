@@ -107,8 +107,8 @@ function rollout(turns, sent) {
 }
 
 /*
- * Writes the home under `dir` and returns the data this extension's host would send the page for it: the user's message
- * times, and each turn's figures and times, keyed by turn id. The times come from the host's own reader
+ * Writes a fake Codex home under `dir` and returns the data this extension's host would send the page for it: the
+ * user's message times, and each turn's figures and times, keyed by turn id. The times come from the host's own reader
  * (src/user-times.js), run on the rollout just written.
  */
 function write(dir, { turns = FOUR, days = [[0, turns.length]], now = Date.now() } = {}) {

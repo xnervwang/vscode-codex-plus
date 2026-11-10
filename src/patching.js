@@ -493,7 +493,7 @@ function viewOf(s = {}) {
  * The context meter's share is the newest token count in the conversation's rollout (the last model call's input
  * against the window Codex reports), the same figure the session information and the line beside each reply use. The
  * message also carries the tokens the conversation has used in total, the model and effort, and the
- * compaction line, computed the way the work plan plugin computes it
+ * compaction line, as the work plan plugin computes it
  * (codex-plugin/agent-work-plan/hooks/refresh-work-plan.py compaction_line): Codex compacts once a call would pass 90%
  * of the model's full window, and the window it reports is 95% of that, so the line is at 0.9 / 0.95 of the reported
  * window, or at model_auto_compact_token_limit if that is lower.
@@ -715,7 +715,7 @@ async function refreshPanels() {
   if (approvals.prune((t) => { const c = now.get(t); return !!(c && c.working); }).length) approvalsChanged();
   const side = sidebarShowing();
   /* A chime plays in this window's pages that show the conversation: its tabs, or, if there are none, Codex's sidebar
-     while it shows the conversation. Only a page can make the sound, so a conversation shown in neither stays silent. */
+     while it shows the conversation. Only a page can make the sound. */
   const ring = (thread, kind) => {
     const msg = { type: 'codex-extras-chime', kind };
     const set = panels.get(thread) || [];
@@ -892,8 +892,7 @@ function installHooks() {
       if (row) deps.copy(row.value, row.label);
     }
     if (msg && msg.kind === 'toggleChime' && deps && typeof deps.toggleChime === 'function') deps.toggleChime();
-    /* The context meter's click: compact the conversation this page shows, unless a turn is running there. A compaction
-       is itself a turn, so one just asked for counts as running until the app-server says that turn ended. */
+    /* A click on the context meter compacts the conversation this page shows, unless a turn is running there. */
     if (msg && msg.kind === 'compact' && typeof msg.id === 'string') {
       const rec = recordOfWebview(webview);
       const thread = rec ? rec.thread : sidebar;

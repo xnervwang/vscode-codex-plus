@@ -4,8 +4,8 @@
 
 'use strict';
 /*
- * The context meter in Codex's toolbar row, left of the model picker: a ring and the percentage of the window in use, the
- * host's own figures behind it on hover, and a click that compacts the conversation through Codex's app-server.
+ * The context meter in Codex's toolbar row, left of the model picker: a ring and the percentage of the window in use,
+ * the host's own figures behind it on hover, and a click that compacts the conversation through Codex's app-server.
  *
  *   the page   drawn from the host's usage message; Codex's meter, which Codex draws only with its setting on, is
  *              hidden while this one is drawn, so the row never shows two; the click sends a request carrying only an

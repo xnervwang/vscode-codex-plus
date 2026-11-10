@@ -6,7 +6,7 @@
 /*
  * Chimes for the conversation shown in Codex's sidebar. The sidebar's page runs the same script as a tab and plays a
  * chime the same way, so a turn that finishes or stops for the user there is heard without a tab. A conversation that
- * is also open in a tab chimes only in the tab, so it is heard once.
+ * is also open in a tab chimes only in the tab.
  */
 const fake = require('../fake-vscode');
 

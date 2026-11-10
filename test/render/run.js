@@ -188,9 +188,9 @@ async function unmoved(s, where) {
   return inRow;
 }
 /*
- * Typing text, pressing a key that Codex's box handles, pasting and dropping text, done once with this script's controls
- * off and once with them on: the message box ends up with the same text both times. Then clicking the information
- * button leaves the caret in the box and opens nothing of Codex's.
+ * Typing text, pressing a key that Codex's box handles, pasting and dropping text, done once with this script's
+ * controls off and once with them on: the message box ends up with the same text both times. Then clicking the
+ * information button leaves the caret in the box and opens no Codex popup.
  */
 async function inputUnchanged(s, where) {
   const editor = '[data-codex-composer-root] [contenteditable="true"]';
@@ -357,8 +357,8 @@ function selfchecked(r, where, { turns, users, rows, replies = turns }) {
     }
     await floating(s, 'conversation');
     /* The yellow "!" of a page the script cannot read. There is none on this page, whose messages are all recognised.
-       With the attributes it finds messages by renamed, as a Codex release might rename them, one appears after three
-       passes and five seconds, at the top right of the conversation and over none of Codex's buttons. */
+       After the attributes it finds messages by are renamed, as a Codex release might rename them, one appears after
+       three passes and five seconds, at the top right of the conversation and over none of Codex's buttons. */
     {
       const warnAt = () => s.b.evaluate(`(() => { const w = document.querySelector('[data-codex-extras="warn"]'); if (!w) return null;
         const a = w.getBoundingClientRect(); const over = [...document.querySelectorAll('button')].filter((b) => !b.closest('[data-codex-extras]')).filter((b) => {

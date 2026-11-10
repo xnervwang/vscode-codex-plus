@@ -52,8 +52,8 @@ function logoOf(vscode, exists = require('fs').existsSync) {
 
 /*
  * The rollout is read only every POLL_MS, while this window's app-server notifies a turn start or end as it happens
- * (`heard`, src/patching.js turnHeard), so the notifications correct the rollout: after a turn/started the conversation is running, and after a turn/completed the
- * rollout's running turn counts as ended, unless the rollout shows a turn that started later.
+ * (`heard`, src/patching.js turnHeard). After a turn/started the conversation is running, and after a turn/completed
+ * the rollout's running turn counts as ended, unless the rollout shows a turn that started later.
  */
 function turnOf(st, heard, now, last) {
   if (heard && heard.running) return { working: true, endedMs: 0 };
@@ -242,8 +242,7 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
   };
   const endedOf = (id) => turnOf(reader.state(id), heardOf(id), Date.now(), 0).endedMs;
   /* Marks what is in front as seen now, and returns true when that cleared an unread state, so the views redraw at
-     once. Conversations that were in front on the previous call and are not now are reported to seen.left(): a
-     conversation marked unread while in front stays unread until then. */
+     once. Conversations that were in front on the previous call and are not now are reported to seen.left(). */
   let wasFront = [];
   function markFront() {
     let cleared = false;

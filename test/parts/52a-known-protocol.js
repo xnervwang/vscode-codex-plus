@@ -4,11 +4,11 @@
 
 'use strict';
 /*
- * The lists in src/protocol-known.js: every request Codex's app-server sends to
- * its client, and every question tool name in Codex's page, each marked as handled or deliberately left alone. This
- * checks that what is marked handled is recognised by the code it names, and, when a Codex is installed here, that its
- * codex program lists no request and its page no tool name missing from the lists. test/against-latest.js runs the
- * same comparison on the newest Codex in the marketplace.
+ * The lists in src/protocol-known.js: every request Codex's app-server sends to its client, and every question tool
+ * name in Codex's page, each marked as handled or deliberately left alone. This checks that what is marked handled is
+ * recognised by the code it names, and, when Codex is installed on this machine, that its codex program lists no
+ * request and its page no tool name missing from the lists. test/against-latest.js runs the same comparison on the
+ * newest Codex in the marketplace.
  */
 const fs = require('fs');
 const os = require('os');

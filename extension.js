@@ -328,13 +328,12 @@ function registerCommands(context, { source, memory, sessionsProvider, say, link
     log.show(true);
   });
   /*
-   * The master switch. One command covers all the additions, so nobody has to find six settings, and like Claude Code
-   * Plus's it shows no message.
+   * The master switch for all the additions. Like Claude Code Plus's, it shows no message.
    *
    * It writes only codexPlus.enabled, which settings() applies on top of the other settings, so each of those keeps the
-   * value the user chose and has it again when the switch comes back on. Turning it off leaves the patch in Codex's files, unused; only
-   * `Codex Plus: Remove the Patch from Codex` restores those files. Turning it on after a Remove applies the patch again,
-   * which is also how Claude Code Plus undoes its Remove.
+   * value the user chose and has it again when the switch comes back on. Turning it off leaves the patch in Codex's
+   * files, unused; only `Codex Plus: Remove the Patch from Codex` restores those files. Turning it on after a Remove
+   * applies the patch again.
    */
   const removed = () => context.globalState.get(patching.PATCH_REMOVED_KEY) === true;
   const setEnabled = async (on) => {

@@ -77,8 +77,8 @@ function ago(ms, now = Date.now()) {
   return y > 0 ? `${y}y` : mo > 0 ? `${mo}mo` : d > 0 ? `${d}d` : h > 0 ? `${h}h` : m > 0 ? `${m}m` : 'now';
 }
 /* `2d · 11/05→11/09`: how long ago it was last active, then the dates it spans, or one date if both are the same day.
-   Month comes before day, as elsewhere in the panel. A year is added only for a year other than the current one, and
-   only once when both dates fall in the same such year, which is Claude Code Plus's format. */
+   Month comes before day, as elsewhere in the panel, and a year other than the current one goes in front, once for a
+   span within that year: `2025/11/05→11/09`, `2025/12/30→01/02`. This is Claude Code Plus's format. */
 function dateSpan(createdMs, updatedMs, now = Date.now()) {
   if (!updatedMs) return '';
   const year = new Date(now).getFullYear();

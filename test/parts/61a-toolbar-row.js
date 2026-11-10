@@ -4,11 +4,12 @@
 
 'use strict';
 /*
- * The information and chime buttons, placed after the permissions button in Codex's message-box toolbar. The toolbar is built as Codex 26.1021 renders it (test/render measured it): a grid holding a group on the left with the
- * add-context and permissions buttons, and one on the right with the model picker, each group a flex row and each
- * button known by its data-composer-navigation-target or data-codex-intelligence-trigger. The left column is as wide
- * as its content and the right group is pushed to the right, so a node added after the permissions button moves none
- * of Codex's buttons while the gap between the groups holds it.
+ * The information and chime buttons, placed after the permissions button in Codex's message-box toolbar. The toolbar is
+ * built as Codex 26.1021 renders it (test/render measured it): a grid holding a group on the left with the add-context
+ * and permissions buttons, and one on the right with the model picker, each group a flex row and each button known by
+ * its data-composer-navigation-target or data-codex-intelligence-trigger. The left column is as wide as its content and
+ * the right group is pushed to the right, so a node added after the permissions button moves none of Codex's buttons
+ * while the gap between the groups holds it.
  */
 const fs = require('fs');
 const path = require('path');
