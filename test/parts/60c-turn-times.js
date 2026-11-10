@@ -4,11 +4,11 @@
 
 'use strict';
 /*
- * The times of each turn, by its turn id: when each message of the user's in it was sent, when each reply was written,
- * and how long the turn took. The host reads them from the rollout (src/user-times.js) and the page places them by the
- * turn id Codex puts on the turn, so a stamp carries seconds in a long conversation and across days, where lining up
- * the whole conversation's messages by count does not work. A turn's duration goes on its reply line only where Codex
- * does not show its own "Worked for".
+ * Per-turn times, keyed by turn id: when each user message in the turn was sent, when each reply was written, and how
+ * long the turn took. The host reads them from the rollout (src/user-times.js) and the page matches them by the turn
+ * id Codex puts on the turn, so stamps get seconds even in long conversations and across days, where matching all of
+ * the conversation's messages by count fails. A turn's duration is added to its reply line only when Codex shows no
+ * "Worked for" of its own.
  */
 const fs = require('fs');
 const path = require('path');

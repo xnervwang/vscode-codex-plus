@@ -4,8 +4,8 @@
 
 'use strict';
 /*
- * The time beside a row of the Codex session list, held to Claude Code's own list: how long ago as now, 5m, 3h, 2d,
- * 1mo or 1y, then the dates it spans, with the year when it is not this one.
+ * The time beside a row of the Codex session list, in Claude Code's format: how long ago (now, 5m, 3h, 2d, 1mo or
+ * 1y), then the dates the conversation spans, with the year for a date in another year.
  */
 module.exports = async ({ eq }) => {
   const { dateSpan } = require('../../src/sessions-view');

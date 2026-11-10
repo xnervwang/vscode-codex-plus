@@ -170,11 +170,11 @@
   }
 
   /*
-   * The information button, the chime button and the context meter. They go into the row of Codex's own message-box
-   * toolbar: the two buttons straight after its permissions button, the meter just left of its model picker, where
-   * Codex draws its own meter. That row is a grid whose left column is as wide as what it holds and whose right group
-   * is pushed to the right edge, so what is added inside the two groups moves none of Codex's buttons while the room
-   * between the groups holds it (rowFits). When it does not, all three go to a row of this script's own on <body>,
+   * This script adds three controls to Codex's message-box toolbar: an information button and a chime button straight
+   * after Codex's permissions button, and a context meter just left of the model picker, where Codex draws its own
+   * meter. The toolbar row is a grid whose left column is as wide as its content and whose right group is pushed to the
+   * right edge, so adding to either group leaves Codex's buttons where they are, as long as the gap between the groups
+   * is wide enough (rowFits). When it does not, all three go to a row of this script's own on <body>,
    * just below the box's frame, placed by measuring the box; that row takes no pointer events, only its buttons do.
    * Codex's redraws can drop or move what was added, and each pass of either observer puts it back. With the master
    * switch off, or with no box recognised, nothing is drawn.
@@ -261,9 +261,9 @@
   /*
    * Codex's toolbar row. Its buttons are found by the attributes Codex gives them for its own keyboard navigation and
    * for its model menu, never by class: the permissions button (the add-context one when that is missing) on the left,
-   * the model picker on the right. Each is held by a flex row of Codex's, the left group and the right one; a wrapper
-   * of its own around one (a tooltip trigger, display: contents) is the thing to stand next to, so `slotOf` climbs to
-   * the node whose parent lays out the row.
+   * the model picker on the right. Each sits in one of Codex's flex rows, the left group or the right one. When Codex
+   * wraps the button in an element of its own (a tooltip trigger with display: contents), the new control has to go
+   * next to that wrapper, so `slotOf` climbs to the node whose parent lays out the row.
    */
   var PERMS_SEL = '[data-composer-navigation-target="permissions"]', ADD_SEL = '[data-composer-navigation-target="add-context"]',
     MODEL_SEL = '[data-codex-intelligence-trigger]';
@@ -321,9 +321,9 @@
    * Whether this script's controls stay in Codex's row. They do while at least ROW_KEEP is left between the groups and
    * nothing of Codex's right group has moved or overflowed. Out of the row, they go back in only once the room is what
    * they took last time plus ROW_KEEP plus ROW_AGAIN, so a window resized near the edge does not move them back and
-   * forth. What they take is measured, not worked out: the room before they went in less the room after, and never
-   * less than the room there was when they did not fit, so a try that failed is not made again until the row is wider.
-   * It is forgotten whenever what is drawn changes.
+   * forth. Their width is measured rather than computed: the gap before they went in minus the gap after, and at least
+   * the gap that was there when they did not fit, so a failed attempt is not repeated until the row is wider. The
+   * measurement is discarded whenever the set of controls drawn changes.
    */
   var ROW_KEEP = 8, ROW_AGAIN = 16;
   var rowMode = '', rowNeed = -1, rowSig = '';
@@ -355,8 +355,9 @@
     return false;
   }
 
-  /* A hover label of this script's own, since a native title is not reliably shown in Codex's page. Created on hover
-     and removed on leave or click, so nothing stays in the page; a note said after a click goes by itself. */
+  /* A hover label drawn by this script, because a native title is not reliably shown in Codex's page. It is created on
+     hover and removed on leave or click, so nothing stays in the page; a message shown after a click (flash) removes
+     itself after FLASH_MS. */
   var labelBox = null, FLASH_MS = 3000;
   function hideLabel() { if (labelBox) { try { labelBox.remove(); } catch (e) { /* gone */ } labelBox = null; } }
   function showLabel(el, said) {
@@ -415,10 +416,10 @@
     return b;
   }
   /*
-   * The look of the controls in each place. In Codex's row each takes the classes of the Codex button it stands for,
-   * read off the page rather than named here, so it has that button's size, colour and hover whatever this build calls
-   * them: the add-context button for the two icons, the permissions pill for the meter. Below the box they are as
-   * small as the row there, with no background of their own.
+   * How the controls are styled in each place. In Codex's toolbar row each copies the classes of a Codex button, read
+   * from the page rather than hard-coded, so it gets that button's size, colour and hover in any build: the add-context
+   * button's for the two icons, the permissions pill's for the meter. In the row below the box they are as small as
+   * that row, with no background.
    */
   var BAR_BUTTON_CSS = 'pointer-events:auto;cursor:pointer;user-select:none;padding:0 4px;border-radius:3px;border:0;margin:0;'
     + 'background:none;color:inherit;font:inherit;display:flex;align-items:center;';
@@ -583,11 +584,11 @@
   }
 
   /*
-   * Codex's own context meter, drawn only while its own setting (Show context window usage) is on. While this script's
-   * meter is drawn, Codex's is hidden, so the row never shows two readings of one thing worked out two ways: Codex
-   * divides the last model call's input and output by the window, this script the input alone, as the work plan
-   * plugin's compaction marks and the line beside each reply do. Only a class goes on Codex's node, the one holding the
-   * meter in its row, and it comes off as soon as this script's meter is not drawn.
+   * Codex's own context meter, which it draws only while its setting Show context window usage is on. While this
+   * script's meter is drawn, Codex's is hidden, so the row never shows two different percentages: Codex divides the last
+   * model call's input and output by the window, while this script uses the input alone, as the work plan plugin's
+   * compaction marks and the line beside each reply do. Hiding it only adds a class to the node that holds Codex's
+   * meter in the row, and the class is removed as soon as this script's meter is not drawn.
    */
   var HIDE_CLASS = 'codex-extras-ctx-hidden', codexMeterHidden = false;
   function codexMeter() {
@@ -624,10 +625,10 @@
   }
 
   /*
-   * The figures behind the meter, on hover, laid out as Claude Code Plus lays out its context breakdown: the model and
-   * the share in use at the head, one bar across the window, a row per figure. Everything in it is what the host already
-   * sent, so it opens after a short rest rather than after a request, and a pointer passing over on its way elsewhere
-   * opens nothing.
+   * The figures behind the meter, shown on hover in the layout of Claude Code Plus's context breakdown: the model and
+   * the share in use at the top, one bar across the window, then a row per figure. Everything in it was already sent by
+   * the host, so nothing is requested; the box opens after the pointer has rested on the meter for CTX_OPEN_MS, so a
+   * pointer just passing over opens nothing.
    */
   var ctxBox = null, ctxOpenAt = 0, ctxShutAt = 0, ctxOverMeter = false, ctxOverBox = false;
   var CTX_OPEN_MS = 300, CTX_SHUT_MS = 200;
@@ -1103,8 +1104,8 @@
   /* Each turn's model, effort and context as the host read them from the rollout, by turn id: { turnId: text }. They
      are placed by the turn id Codex puts on each turn (data-content-search-turn-key), never by position. */
   var hostTurns = {};
-  /* Each turn's times as the host read them from the rollout, by the same turn id: { u: when each message of the
-     user's in it was sent, r: when each reply was written, d: how long it took, once it has ended }. */
+  /* Each turn's times as the host read them from the rollout, keyed by the same turn id: { u: send times of the user's
+     messages in the turn, r: times of its replies, d: its duration once it has ended }. */
   var hostTurnTimes = {};
   var FIG_ATTR = 'data-codex-extras-figures';
   /* One time per user message of this conversation, in the order the rollout has them, as the host read them there.
@@ -1207,9 +1208,9 @@
 
   var sameMinute = function (a, b) { return Math.floor(a / 60000) === Math.floor(b / 60000); };
   var p2 = function (n) { return (n < 10 ? '0' : '') + n; };
-  /* HH:MM:SS, in the user's own zone. HH:MM when the source carried no seconds: a zero there would be a time nobody
-     wrote, and the stamp is read as a fact about the message. A day other than today goes before it as MM/DD, with the
-     year as well for another year, which is how Claude Code Plus and the session list write a date. */
+  /* HH:MM:SS in the user's own zone, or HH:MM when the source had no seconds, rather than showing :00 seconds that
+     nobody recorded. A day other than today is prefixed as MM/DD, with the year for another year, the date format
+     Claude Code Plus and the session list use. */
   function clockOf(when) {
     if (!when) return '';
     var d = new Date(when.ms), now = new Date();
@@ -1406,8 +1407,8 @@
   }
 
   /*
-   * Whether a time from the rollout is the one Codex shows on a message: the same minute, or, where the page shows no
-   * day for the message (the turns of that day are not drawn), the same clock minute on whatever day the rollout says.
+   * Whether a rollout time matches the time Codex shows on a message: the same minute, or, when the page shows no date
+   * for the message (that day's divider is not drawn), the same hour and minute on whatever day the rollout gives.
    */
   function agrees(when, ms, dayKnown) {
     if (dayKnown) return sameMinute(when.ms, ms);
@@ -1423,9 +1424,9 @@
     return Math.floor(mi / 60) + 'h' + (mi % 60) + 'm';
   }
   /*
-   * Whether Codex shows its own "Worked for" in a turn. It is drawn only in a turn that did something before its last
-   * reply, as a button that expands that activity, inside the turn and outside its messages, and it carries no attribute
-   * of its own. So any expanding button there is taken for it: the activity it would expand has no other place to be.
+   * Whether Codex shows its own "Worked for" in a turn. Codex draws it only when the turn did something before its last
+   * reply, as a button that expands that activity, inside the turn but outside its messages, and the button has no
+   * attribute of its own. So any button with aria-expanded in that position is taken to be it.
    */
   var WORKED_SEL = 'button[aria-expanded]';
   function codexShowsWorked(turn) {
@@ -1461,9 +1462,9 @@
         var when = e.kind === 'assistant' ? assistantWhen(e.node, e.day) : userWhenInPage(e.node, e.day);
         if (e.kind === 'user') took = when ? 'clock' : '';
         /*
-         * The turn's own times first, matched within the turn: by position among its messages of the user's when it
-         * holds as many as the page shows there, and for a reply by being the one time of the turn's replies in the
-         * minute Codex shows on it. Each is still checked against the clock Codex rendered, where there is one.
+         * The turn's own times are tried first. A user message takes the time at its position in the turn, when the
+         * rollout has as many user messages in that turn as the page shows. A reply takes the one reply time of the
+         * turn that falls in the minute Codex shows on it. Either is still checked against Codex's own clock, if any.
          */
         if (e.kind === 'user' && tt && tt.u.length === inTurn[e.turn]) {
           var mine = { ms: tt.u[e.nth - 1], secs: true };
@@ -1625,10 +1626,10 @@
   var closeList = function () { if (panel) panel.style.display = 'none'; hideTip(); mirror(); };
 
   /*
-   * The box beside the list for the row under the pointer, as Claude Code Plus draws it: the row's time and its first
-   * TIP_CHARS characters, at once rather than after the delay of a native title. Made on hover and taken out on leave or
-   * click. It goes to the left of the list, level with the row; in a page too narrow for that, as Codex's sidebar can be,
-   * over the list just below the row.
+   * The box shown beside the list for the row under the pointer, like Claude Code Plus's: the row's time and its first
+   * TIP_CHARS characters, shown at once rather than after a native title's delay. It is created on hover and removed on
+   * leave or click. It goes to the left of the list, level with the row, or, in a page too narrow for that such as
+   * Codex's sidebar, over the list just below the row.
    */
   var TIP_CHARS = 220, TIP_W = 360, TIP_ROOM = 160, tipBox = null;
   function hideTip() { tipBox = gone(tipBox); }
@@ -1667,12 +1668,12 @@
     try { node.scrollIntoView(true); } catch (e) { /* gone */ }
   }
   /*
-   * A jump to a message, held there for about a second as Claude Code Plus holds its own: Codex's turn list mounts and
-   * measures turns while the view moves, which can push the message away from where the jump put it. Every SETTLE_MS
-   * the message's place in the scroller is compared with where the jump left it, and it is put back while it is more
-   * than LAND_TOL away, until it has stayed there twice or SETTLE_TRIES have passed. A wheel, a touch or a key is the
-   * user scrolling, and ends the hold at once; the key's listener is added on the next tick, since a jump made by the
-   * , or . key starts while that key's own event is still on its way up.
+   * Jumps to a message and keeps it there for about a second, as Claude Code Plus does: Codex's turn list mounts and
+   * measures turns while the view moves, which can push the message away from where the jump left it. Every SETTLE_MS
+   * the message's position in the scroller is compared with that first position, and the jump is repeated while it is
+   * more than LAND_TOL off, until it has stayed put twice or SETTLE_TRIES have passed. A wheel, touch or key event means
+   * the user is scrolling and ends the hold. The key listener is added on the next tick, because a jump made with , or
+   * . starts while that key's own event is still propagating.
    */
   var SETTLE_MS = 80, SETTLE_TRIES = 14, LAND_TOL = 6, holdStop = null;
   function topIn(node) {
@@ -2020,9 +2021,9 @@
   }
 
   /*
-   * The same miss said on the page, as Claude Code Plus says it: a 16 px yellow "!" at the top right that explains
-   * itself on hover. It sits just inside the top of the element the conversation scrolls in, below Codex's own header
-   * and its buttons, and goes as soon as the messages are recognised again or every addition is turned off.
+   * The same miss shown on the page, as in Claude Code Plus: a 16 px yellow "!" at the top right whose hover label
+   * explains it. It sits just inside the top of the conversation's scroller, below Codex's header and its buttons, and
+   * is removed once the messages are recognised again or every addition is turned off.
    */
   var warn = null;
   var WARN_SAID = 'Codex Plus: this Codex build no longer matches what the page script looks for, so the times, the list of '

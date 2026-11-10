@@ -51,10 +51,10 @@ function logoOf(vscode, exists = require('fs').existsSync) {
 }
 
 /*
- * Whether a turn runs, and when the last one ended (0 while one runs): the rollout's answer, set against what this
- * window's app-server said since (`heard`, src/patching.js turnHeard). Its notifications come as a turn starts and ends,
- * while the rollout is read every POLL_MS. A start it reported means running. An end it reported finishes the turn the
- * rollout shows, unless the rollout shows one that started after that end.
+ * Whether a turn is running, and when the last one ended (0 while one runs). The rollout is read only every POLL_MS,
+ * while this window's app-server notifies a turn start or end as it happens (`heard`, src/patching.js turnHeard), so the
+ * notifications correct the rollout: after a turn/started the conversation is running, and after a turn/completed the
+ * rollout's running turn counts as ended, unless the rollout shows a turn that started later.
  */
 function turnOf(st, heard, now, last) {
   if (heard && heard.running) return { working: true, endedMs: 0 };
@@ -98,8 +98,8 @@ function conversationOf(thread, { unread, openHere, now = Date.now(), state = nu
     /* The rollout's own answer, which `state` no longer carries once `prompt` wins it: what decides whether a request
        stopped on the user is still live (src/approvals.js prune) has to not be derived from those requests. */
     working,
-    /* This window's app-server is running the turn, which the session list needs to tell "here" from "in another
-       window" for a conversation no tab here shows. */
+    /* Whether this window's app-server is running the turn. The session list uses it to tell a conversation running
+       here without a tab from one running in another window. */
     runningHere: !!(heard && heard.running),
     failed: !working && !!(st && st.error),
     decide,
@@ -242,8 +242,9 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
     try { return patching.turnHeard(id); } catch (_) { return null; }
   };
   const endedOf = (id) => turnOf(reader.state(id), heardOf(id), Date.now(), 0).endedMs;
-  /* Marks what is in front as seen now; true when that took away an unread state, so the views redraw at once. What
-     was in front last time and is not now is told as left, which is what a conversation marked unread in front waits for. */
+  /* Marks what is in front as seen now, and returns true when that cleared an unread state, so the views redraw at
+     once. Conversations that were in front on the previous call and are not now are reported to seen.left(): a
+     conversation marked unread while in front stays unread until then. */
   let wasFront = [];
   function markFront() {
     let cleared = false;
@@ -415,13 +416,13 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
       focused.fire({ sessionId });
       if (markFront()) changed.fire();
     },
-    /* For the patch: the app-server said a turn of `sessionId` started or ended. One ordinary pass reads what else
-       moved, which reads no rollout when no file has changed since the last pass, and the views redraw either way. */
+    /* Called by the patch when the app-server reports that a turn of `sessionId` started or ended. It runs one
+       ordinary poll, which reads no rollout if no file changed, and redraws the views either way. */
     _heard(sessionId) {
       if (sessionId) poll({ tell: true });
     },
-    /* Mark a conversation as unread, as Claude Code's Mark as Unread does; it stays so until the user looks at it
-       again, which for the one in front means leaving it and coming back. */
+    /* Claude Code's Mark as Unread: the conversation stays unread until the user looks at it again. For the one in
+       front, that means switching away and coming back. */
     markUnread(sessionId) {
       if (!sessionId || typeof seen.markUnread !== 'function') return;
       seen.markUnread(sessionId, frontThreads().includes(sessionId));

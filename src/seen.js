@@ -60,9 +60,9 @@ function createSeen(state = memoryState(), { now = () => Date.now(), setTimer = 
   }
 
   /*
-   * Conversations the user marked as unread, which stay so until they look at it again. Kept with the rest, so every
-   * window sees it. One marked while it was in front in this window would be looked at again on the very next pass, so
-   * it is held here until the user has left it once (left()).
+   * Conversations the user marked as unread. They stay unread until the user looks at them again. The marks are stored
+   * with the rest, so every window sees them. A conversation marked while it is in front in this window would count as
+   * looked at on the very next pass, so it is held until the user has switched away from it once (left()).
    */
   const flagged = () => { const v = state.get(UNREAD_KEY, null); return v && typeof v === 'object' ? v : {}; };
   const held = new Set();

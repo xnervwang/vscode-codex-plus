@@ -172,7 +172,7 @@ function geometry(m, where, { strip = false } = {}) {
   check(m.replyTimes.shown === 0, `${where}: a reply carrying our time does not show Codex's own sent time as well`, m.replyTimes);
 }
 /* Codex's toolbar buttons with this script's three controls on and then off: none of them moves or changes size. With the
-   controls below the box, the box is raised by the room that row takes, so there only left edges and sizes are held. */
+   controls in the row below the box, the box is raised to make room for that row, so only left edges and sizes are compared. */
 async function unmoved(s, where) {
   const read = async () => { await sleep(700); return s.b.evaluate(MEASURE); };
   const on = await read();
@@ -188,9 +188,9 @@ async function unmoved(s, where) {
   return inRow;
 }
 /*
- * Typing, a key Codex's box handles, pasting and dropping text, done once with this script's controls off and once with
- * them on: the message box ends with the same text both times. Then a click on the information button leaves the
- * caret in the box and opens nothing of Codex's.
+ * Typing text, pressing a key that Codex's box handles, pasting and dropping text, done once with this script's controls
+ * off and once with them on: the message box ends up with the same text both times. Then clicking the information
+ * button leaves the caret in the box and opens nothing of Codex's.
  */
 async function inputUnchanged(s, where) {
   const editor = '[data-codex-composer-root] [contenteditable="true"]';
@@ -332,8 +332,8 @@ function selfchecked(r, where, { turns, users, rows, replies = turns }) {
       results.scenes.conversation.handleHover = hover;
       const opaque = /rgb\(/.test(hover.color) || (/rgba\([^)]*,\s*1\)/.test(hover.color));
       check(opaque, 'the rail handle is opaque while hovered', hover);
-      /* The handle explains itself in a box of this script's own, and a row of the list shows its time and opening
-         characters in a box beside the list, as Claude Code Plus draws them. */
+      /* The handle has a hover label drawn by the script, and a list row shows its time and opening characters in a box
+         beside the list, as in Claude Code Plus. */
       await s.b.hover(10, 10);
       await s.b.hover(handle[0], handle[1]);
       await sleep(200);
@@ -485,7 +485,7 @@ function selfchecked(r, where, { turns, users, rows, replies = turns }) {
    * ── compacting from the meter, through Codex's real app-server ──
    * The host's side is src/patching.js itself, handed a provider whose app-server connection is this run's app-server,
    * as Codex's own connection is in a window. The app-server has no network here, so the compaction it starts cannot
-   * finish; what is checked is that it starts, that Codex's page draws it, and that the draft in the box is untouched.
+   * finish; the checks are that it starts, Codex's page draws it, and the draft in the box is left alone.
    */
   if (want('compact')) {
     const asked = [];

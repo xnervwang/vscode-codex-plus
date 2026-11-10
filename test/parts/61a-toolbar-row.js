@@ -19,8 +19,8 @@ const { createDom } = require('../fake-dom');
 const FLEX = { display: 'flex' }, CONTENTS = { display: 'contents' };
 const ICON_CLASS = 'no-drag cursor-interaction rounded-full text-tertiary h-token-button-composer aspect-square';
 
-/* Codex's message box with its toolbar row; `rightAt` is where the right group starts, which is what the room between
-   the two groups comes to. */
+/* Codex's message box with its toolbar row; `rightAt` is where the right group starts, which sets the width of the gap
+   between the two groups. */
 function toolbar(dom, { rightAt = 799, meter = false, squeeze = false } = {}) {
   const { el } = dom;
   const add = el('button', { attrs: { type: 'button', 'aria-label': 'Add files and more', 'data-composer-navigation-target': 'add-context' },
@@ -128,8 +128,8 @@ module.exports = async ({ eq, root }) => {
       [true, true], 'and that row takes no clicks, only its buttons do');
   }
   {
-    /* The gap measures wide enough, but with the buttons in, Codex's right group overflows the box that holds it, which
-       pushes its buttons over the send button: that is no room either. */
+    /* The gap measures wide enough, but with the buttons added Codex's right group overflows the box that holds it and
+       its buttons end up over the send button, so this also counts as no room. */
     const p = page(root, (dom) => toolbar(dom, { squeeze: true }));
     p.view();
     const bar = p.q('[data-codex-extras="bar"]')[0];

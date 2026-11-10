@@ -4,14 +4,14 @@
 
 'use strict';
 /*
- * Every way Codex can make a conversation wait that this extension knows of, as two lists a new Codex is held to:
- * the requests its app-server makes of its client, and the names of the question tools its page knows. Each entry says
- * where it is handled, or why it is left alone. Both are of Codex 26.1021.22027.
+ * The ways Codex can make a conversation wait that this extension knows of, in two lists that each new Codex release
+ * is checked against: the requests its app-server sends to its client, and the question tool names its page knows.
+ * Each entry says where it is handled, or why it is left alone. Both lists are taken from Codex 26.1021.22027.
  *
- * test/against-latest.js reads the newest Codex in the marketplace and fails on a name in neither list. A new way of
- * waiting that nothing here handles would otherwise show only as a conversation that never says it is waiting, which
- * is how request_user_input_async went unnoticed: it is a tool and not an app-server request, so a check that knew only
- * the requests could not see it.
+ * test/against-latest.js downloads the newest Codex from the marketplace and fails on any request or tool name that is
+ * not in its list. Without that, a new kind of wait would only show up as a conversation that never says it is
+ * waiting. That is how request_user_input_async went unnoticed: it is a tool rather than an app-server request, so a
+ * check that only knew the requests could not see it.
  */
 const fs = require('fs');
 const path = require('path');

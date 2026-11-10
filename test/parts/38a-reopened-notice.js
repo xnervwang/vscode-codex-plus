@@ -4,8 +4,8 @@
 
 'use strict';
 /*
- * Codex tabs VS Code did not restore, opened again at start-up, are said in the status bar for ten seconds, as Claude
- * Code Plus says its own; nothing is said when there were none.
+ * When Codex tabs that VS Code did not restore are reopened at start-up, the status bar shows how many for ten
+ * seconds, as Claude Code Plus does. Nothing is shown when there were none.
  */
 const path = require('path');
 const fake = require('../fake-vscode');

@@ -7,9 +7,9 @@
  * The context meter in Codex's toolbar row, left of the model picker: a ring and the share of the window in use, the
  * host's own figures behind it on hover, and a click that compacts the conversation through Codex's app-server.
  *
- *   the page   drawn from the host's usage message; Codex's own meter, drawn only with Codex's own setting on, is hidden
- *              while this one is drawn, so the row never shows two; the click sends a request with nothing in it but
- *              its id, and what comes back is shown in words, Codex's own words when a turn is running
+ *   the page   drawn from the host's usage message; Codex's meter, which Codex draws only with its setting on, is
+ *              hidden while this one is drawn, so the row never shows two; the click sends a request carrying only an
+ *              id, and the answer is shown as a short message, in Codex's wording when a turn is running
  *   the host   the usage of the conversation each panel shows, from the rollout state it already reads; the compaction
  *              line as the work plan plugin draws it; the request sent on a channel of its own on Codex's app-server
  *              connection, refused while a turn runs or an approval waits, as Codex refuses its own /compact
@@ -63,9 +63,9 @@ const THREAD = '019a6a10-0000-7000-8000-0000000000c1';
 
 /*
  * What the click relies on in each Codex build installed here, read from its untouched host bundle: the provider the
- * patch hands over keeps Codex's app-server connection as codexMcpConnection, the connection takes a provider of
- * another name (registerProvider) and a request under that name (sendRequest), and an answer goes back to the provider
- * named before the first colon of its id. None of it is a patch edit; a build that renames any of it makes the click
+ * patch hands over keeps Codex's app-server connection as codexMcpConnection, the connection accepts an extra provider
+ * name (registerProvider) and requests sent under it (sendRequest), and each answer goes to the provider named before
+ * the first colon of its id. None of it is a patch edit; a build that renames any of it makes the click
  * say compacting is not available, and this says which part is gone.
  */
 function connectionParts(text) {
@@ -236,8 +236,8 @@ module.exports = async ({ eq, note, tmp, root }) => {
   await tick();
   eq([requests.length, answer().outcome], [2, 'busy'], 'and so is a turn the rollout says is running, which a window reloaded mid-turn learns only from there');
   list = [Object.assign({ sessionId: THREAD, state: 'idle', working: false }, st)];
-  /* A turn whose end was never heard, the app-server having restarted under it: past ten minutes, and with the rollout
-     saying no turn runs, it no longer stops a compaction. */
+  /* A turn whose turn/completed never arrived, as when the app-server restarts mid-turn: after ten minutes, and with the
+     rollout showing no turn running, it no longer blocks a compaction. */
   globalThis.__codexExtrasAppServer('notification', { method: 'turn/started', params: { threadId: THREAD, turn: { id: 't3' } } });
   const realNow = Date.now;
   Date.now = () => realNow() + 11 * 60 * 1000;

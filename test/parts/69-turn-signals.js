@@ -4,9 +4,9 @@
 
 'use strict';
 /*
- * A turn starting and ending as the app-server says it, ahead of the rollout: the Conversations state, the tab's dot and
- * the finished-turn chime follow turn/started and turn/completed at once, and do not wait for the next read of the
- * rollout. The reader here never changes its answer, so anything that moves moved on the notification alone.
+ * Turn starts and ends reported by the app-server, before the rollout shows them: the Conversations state, the tab's
+ * dot and the finished-turn chime follow turn/started and turn/completed at once instead of waiting for the next read
+ * of the rollout. The stand-in reader here never changes its answer, so any change comes from the notification alone.
  */
 const fake = require('../fake-vscode');
 

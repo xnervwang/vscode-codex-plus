@@ -153,8 +153,8 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
       [true, true, true], 'its command writes how long this window\'s Codex page took to open, and Show Status includes it');
   }
 
-  /* Session information on a tab Codex opened with its own New button, whose URI names no conversation: the patch has
-     tied its panel to the thread its own page started, and the information button in that page asks for that one. */
+  /* Session information for a tab opened with Codex's New button, whose URI names no conversation. The patch has tied
+     the panel to the thread its page started, and the information button in that page asks for that thread. */
   {
     const w = await run(root, tmp, { probe: async ({ vscode, control, home }) => {
       const id = /([0-9a-f-]{36})\.jsonl$/.exec(fs.readdirSync(path.join(home, 'sessions'), { recursive: true }).map(String).find((f) => f.endsWith('.jsonl')).replace(/\\/g, '/'))[1];

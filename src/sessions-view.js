@@ -40,8 +40,8 @@ const COLORS = {
 };
 const COLOR_KEY = 'codexPlus.titleColors';
 const SCHEME = 'codex-extras-thread';
-/* The dots of Claude Code's own list: running green, waiting for you blue, replied and unread red, a failed last turn
-   red, idle grey; one running or waiting in another window is a ring of its colour. */
+/* The same dots Claude Code's list uses: green running, blue waiting for you, red replied and unread or last turn
+   failed, grey idle. A conversation running or waiting in another window gets a ring in that colour. */
 const STATE_LOOK = {
   working: { icon: 'circle-filled', color: 'charts.green', word: 'working' },
   workingElsewhere: { icon: 'circle-outline', color: 'charts.green', word: 'working in another window' },
@@ -55,9 +55,10 @@ const STATE_LOOK = {
 };
 
 /*
- * The look of a conversation the source reported. `here` is whether this window shows it, in a tab or in Codex's
- * sidebar. A conversation running or waiting that this window neither shows nor runs is in another window: the
- * approvals this window counts (decide, soon) and the turns its app-server reported (runningHere) are its own.
+ * Picks the dot for a conversation from what the source reported. `here` is whether this window shows it, in a tab or
+ * in Codex's sidebar. A conversation that is running or waiting, but that this window neither shows nor runs, is in
+ * another window. Approvals counted here (decide, soon) and turns reported by this window's app-server (runningHere)
+ * always belong to this window.
  */
 function lookOf(conv, here) {
   const state = (conv && conv.state) || 'idle';
@@ -75,9 +76,9 @@ function ago(ms, now = Date.now()) {
   const mo = Math.floor(d / 30), y = Math.floor(d / 365);
   return y > 0 ? `${y}y` : mo > 0 ? `${mo}mo` : d > 0 ? `${d}d` : h > 0 ? `${h}h` : m > 0 ? `${m}m` : 'now';
 }
-/* `2d · 11/05→11/09`: how long ago it was last active, then the dates it spans. One date when it began and ended on
-   the same day. Month before day, as the rest of the panel writes them, and the year only when it is not this one,
-   written once for a span within one such year, as Claude Code Plus writes the span. */
+/* `2d · 11/05→11/09`: how long ago it was last active, then the dates it spans, or one date if both are the same day.
+   Month comes before day, as elsewhere in the panel. A year is added only for a year other than the current one, and
+   only once when both dates fall in the same such year, which is Claude Code Plus's format. */
 function dateSpan(createdMs, updatedMs, now = Date.now()) {
   if (!updatedMs) return '';
   const year = new Date(now).getFullYear();
@@ -266,10 +267,10 @@ class SessionsProvider {
 }
 
 /*
- * The list following the conversation in front, as Claude Code's does: that conversation's row in Open sessions is
- * selected and scrolled to, and the focus is left where it is. Only while the list is visible, since revealing a row of
- * a hidden view opens the view. Returns the function to call whenever the front may have moved; `frontOf` names the
- * conversation in front, or ''.
+ * Keeps the list on the conversation in front, like Claude Code's list: its row in Open sessions is selected and
+ * scrolled into view without taking the focus. Nothing happens while the list is hidden, because revealing a row of a
+ * hidden view opens the view. Returns a function to call whenever the front may have changed; `frontOf` returns the id
+ * of the conversation in front, or ''.
  */
 function createFollower(view, provider, frontOf) {
   let followed = '';

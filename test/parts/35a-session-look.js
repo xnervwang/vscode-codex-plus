@@ -4,9 +4,9 @@
 
 'use strict';
 /*
- * The status dot of a row of the Codex session list, held to Claude Code's own list: running green, waiting for you
- * blue, replied and unread red, idle grey, a failed last turn red, and a conversation running in another window as a
- * ring of its colour.
+ * The status dot on a row of the Codex session list, which should match Claude Code's list: green running, blue
+ * waiting for you, red replied and unread, grey idle, red for a failed last turn, and a ring in the same colour for a
+ * conversation running in another window.
  */
 const fake = require('../fake-vscode');
 

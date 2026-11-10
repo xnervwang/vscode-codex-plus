@@ -4,9 +4,9 @@
 
 'use strict';
 /*
- * The chimes of the conversation Codex's sidebar shows. Its page runs the same script as a tab's and plays a chime the
- * same way, so a turn finishing there, or stopping for the user, is heard without a tab. A conversation shown in a tab
- * as well rings in the tab alone, so it is heard once.
+ * Chimes for the conversation shown in Codex's sidebar. The sidebar's page runs the same script as a tab and plays a
+ * chime the same way, so a turn that finishes or stops for the user there is heard without a tab. A conversation that
+ * is also open in a tab chimes only in the tab, so it is heard once.
  */
 const fake = require('../fake-vscode');
 

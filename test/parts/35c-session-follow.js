@@ -4,10 +4,10 @@
 
 'use strict';
 /*
- * The Codex session list as a tree view of its own (createTreeView): it follows the conversation in front, as Claude
- * Code's list does, by selecting its row in Open sessions without taking the focus, and only while the list is visible,
- * since revealing a row of a hidden view opens the view; and rows can be selected several at once, so archived
- * conversations are deleted together.
+ * The Codex session list as a tree view created with createTreeView. Like Claude Code's list, it follows the
+ * conversation in front by selecting its row in Open sessions without taking the focus, but only while the list is
+ * visible, because revealing a row of a hidden view opens the view. Several rows can be selected at once, so archived
+ * conversations can be deleted together.
  */
 const path = require('path');
 const fake = require('../fake-vscode');

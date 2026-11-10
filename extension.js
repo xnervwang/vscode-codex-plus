@@ -250,8 +250,8 @@ async function activate(context) {
   later(() => reopenDropped(memory, say), 8000);
 }
 
-/* The Codex tabs VS Code did not restore, opened again, and said in the status bar for ten seconds, as Claude Code
-   Plus says its own. */
+/* Reopen the Codex tabs VS Code did not restore, and show in the status bar for ten seconds how many there were.
+   Claude Code Plus does the same. */
 async function reopenDropped(memory, say) {
   const reopened = await memory.reopenDropped({ enabled: settings().reopenDroppedTabs });
   if (!reopened.length) return reopened;
@@ -329,13 +329,13 @@ function registerCommands(context, { source, memory, sessionsProvider, say, link
     log.show(true);
   });
   /*
-   * The master switch, as Claude Code Plus's: one act for all the additions at once, rather than six settings to find,
-   * and it says nothing, as there.
+   * The master switch. One command covers all the additions, so nobody has to find six settings, and like Claude Code
+   * Plus's it shows no message.
    *
-   * It writes the one setting the others are read through (settings()), so the user's own choices among them survive
-   * being turned off and come back as they were. Off leaves the patch in Codex's files with nothing drawn through it;
-   * `Codex Plus: Remove the Patch from Codex` is what puts those files back. On after that Remove puts the patch back
-   * in, which is how Claude Code Plus comes back from its own Remove.
+   * It writes only the setting the others are read through (settings()), so each of those keeps the value the user chose
+   * and has it again when the switch comes back on. Turning it off leaves the patch in Codex's files, unused; only
+   * `Codex Plus: Remove the Patch from Codex` restores those files. Turning it on after a Remove applies the patch again,
+   * which is also how Claude Code Plus undoes its Remove.
    */
   const removed = () => context.globalState.get(patching.PATCH_REMOVED_KEY) === true;
   const setEnabled = async (on) => {
@@ -460,9 +460,9 @@ function registerCommands(context, { source, memory, sessionsProvider, say, link
     return typeof id === 'string' ? id : '';
   };
   /*
-   * A change to a conversation, asked of this window's app-server on Codex's own connection (src/patching.js
-   * hostRequest), or, before the patch has handed that over, of a short-lived app-server of this extension's own. The
-   * list reads Codex's files again afterwards. False when Codex refused, which the user is told.
+   * Change a conversation through this window's app-server, on Codex's own connection (src/patching.js hostRequest).
+   * Before the patch has handed that connection over, a short-lived app-server is started instead. The list re-reads
+   * Codex's files afterwards. Returns false if Codex refused, after showing the user why.
    */
   const changeThread = async (doing, method, params) => {
     let r = await patching.hostRequest(method, params);
@@ -583,9 +583,10 @@ async function downloadPython(context, say) {
 }
 
 /*
- * The row above the work plan (Agent Plus's planNotice), as Claude Code Plus draws its own: the plugin could not be
- * installed, there is no Python for its hooks, or Codex has not been told to trust them. Each is set where it is found
- * out and cleared where it is found fixed; of those holding, the first is shown, being the one to fix first.
+ * The row above the work plan (Agent Plus's planNotice), modelled on Claude Code Plus's: the plugin could not be
+ * installed, there is no Python for its hooks, or Codex has not been told to trust them. Each is set where the problem
+ * is detected and cleared where it is found fixed. When several apply, the first in that order is shown, since it has
+ * to be fixed first.
  */
 let planSource = null;
 const problems = { install: null, python: null, trust: null };
@@ -610,8 +611,8 @@ const NOT_TRUSTED = { title: 'Codex does not run the work plan hooks yet', descr
     + 'rows of a plan are not put in front of the model each turn and nothing reminds it at the end of one.',
   command: 'codexPlus.trustWorkPlanHooks', arguments: [] };
 
-/* With no Python, the row says so, and where python.org has a build for this machine the download is offered once per
-   version, as Claude Code Plus offers it; after "Not now" the row is the way to get it. */
+/* With no Python the row says so. Where python.org has a build for this machine, the download is also offered once per
+   version, as Claude Code Plus does; after "Not now" the row is the only way to get it. */
 const PYTHON_OFFER_KEY = 'codexPlus.pythonOffer';
 function notePython(context, say, python) {
   problem('python', python ? null : noPython(context));
@@ -705,8 +706,8 @@ function deactivate() {
   try { uninstallPlan.finishUninstall(selfPath, [ID, ...uninstallPlan.FORMER_IDS]); } catch (_) { /* VS Code runs the hook later */ }
 }
 
-/* `_settings` is for the checks: the master switch is only real if what every part reads comes out of settings() with
-   it already applied, and that is a table to be read rather than inferred from what the extension then did.
-   `_ensurePlugin` is the start-up install of the plugin and `_reopenDropped` the reopening of dropped tabs, which
-   activation only runs after a delay. */
+/* `_settings` is for the tests: the master switch only works if every part reads its settings from settings(), with the
+   switch already applied, and the tests check that table directly instead of guessing it from what the extension did.
+   `_ensurePlugin` (the start-up install of the plugin) and `_reopenDropped` (reopening dropped tabs) run after a delay
+   during activation, so the tests call them directly. */
 module.exports = { activate, deactivate, _settings: settings, _ensurePlugin: ensurePlugin, _reopenDropped: reopenDropped };

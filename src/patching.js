@@ -481,8 +481,8 @@ function safeColor(value) {
   return '';
 }
 
-/* The settings the page draws from, as the message that carries them. The page has the same defaults, so a page the host
-   has not spoken to yet shows what the settings say rather than nothing. */
+/* The message that tells a page which settings to draw with. The page has the same defaults built in, so a page that
+   has not heard from the host yet already draws what the settings say. */
 function viewOf(s = {}) {
   return { type: 'codex-extras-view', timestamps: s.timestamps !== false, navigation: s.conversationNavigation !== false,
     userColor: safeColor(s.userMessageColor), userEdge: s.userMessageEdge !== false, lowContext: s.lowContextOutline !== false,
@@ -491,12 +491,13 @@ function viewOf(s = {}) {
 }
 
 /*
- * What the context meter in a page draws: the newest token count of the conversation's rollout, which is what Session
- * Information and the line beside each reply read too - the last model call's input against the window Codex reports -
- * with what the whole conversation has spent, its model and effort, and where Codex compacts it. That line is drawn as
- * the work plan plugin draws it (codex-plugin/agent-work-plan/hooks/refresh-work-plan.py compaction_line): Codex
- * compacts once a call would pass 90% of the model's full window, and the window it reports has 5% held back, so the
- * line is 0.9 / 0.95 of the reported window, or model_auto_compact_token_limit when that is lower.
+ * The data for the context meter in a page. Its share is the newest token count in the conversation's rollout (the
+ * last model call's input against the window Codex reports), the same figure the session information and the line
+ * beside each reply use. It also carries the tokens the conversation has used in total, the model and effort, and the
+ * compaction line, computed the way the work plan plugin computes it
+ * (codex-plugin/agent-work-plan/hooks/refresh-work-plan.py compaction_line): Codex compacts once a call would pass 90%
+ * of the model's full window, and the window it reports is 95% of that, so the line is at 0.9 / 0.95 of the reported
+ * window, or at model_auto_compact_token_limit if that is lower.
  */
 const COMPACT_SHARE = 0.9 / 0.95;
 function usageOf(c, limit = 0) {
@@ -511,11 +512,11 @@ function usageOf(c, limit = 0) {
 }
 
 /*
- * Conversations of this window with a turn running, as the app-server says it: turn/started and turn/completed, with
- * when each was heard. A compaction asked for from the meter is put in as running before its turn starts (`heard`
- * false), so a second click is refused, and it does not show as working until the app-server says so. A window
- * reloaded while a turn runs has not seen its start, so the rollout's own answer is asked as well (turnRunning). A start
- * whose end was never heard - the app-server restarted under it - stops counting after TURN_HEARD_MS.
+ * The turns running in this window according to the app-server's turn/started and turn/completed notifications, with
+ * the time each notification arrived. A compaction requested from the meter is entered as running before its turn
+ * starts (`heard` false), so a second click is refused, but it does not show as working until turn/started arrives. A
+ * window reloaded mid-turn missed the start, so turnRunning also asks the rollout. A start with no matching
+ * turn/completed, as when the app-server restarted mid-turn, stops counting after TURN_HEARD_MS.
  */
 const TURNS_KEPT = 200;
 const TURN_HEARD_MS = 10 * 60 * 1000;
@@ -555,12 +556,12 @@ async function turnRunning(thread) {
 }
 
 /*
- * A request of this extension's own to this window's app-server, sent on Codex's connection under a provider name of
- * this extension's own (registerProvider, the way Codex's own parts each get their answers back), so the answer is
- * routed here and no page of Codex's is handed an answer to a request it never made. Codex's pages hear what changed
- * through the notifications that follow, as they do for a change made by any client. Resolves to { outcome } with
- * 'done' and the result, 'failed' and the reason, 'sent' when no answer came within `waitMs`, or 'unavailable' when
- * the connection has not been handed over (no patch in effect yet).
+ * Sends a request to this window's app-server over Codex's own connection. It goes under a provider name registered
+ * for this extension (registerProvider, which is how each part of Codex gets its own answers back), so the answer comes
+ * back here instead of to one of Codex's pages, which did not send it. Codex's pages learn what changed from the
+ * notifications that follow, as for a change made by any client. Resolves to { outcome }: 'done' with the result,
+ * 'failed' with the reason, 'sent' if no answer came within `waitMs`, or 'unavailable' if the connection has not been
+ * handed over yet (the patch is not in effect).
  */
 const HOST_PROVIDER = 'CodexPlus';
 const HOST_WAIT_MS = 6000;
@@ -603,10 +604,9 @@ function hostRequest(method, params, { waitMs = HOST_WAIT_MS } = {}) {
 }
 
 /*
- * A compaction of one conversation, as Codex's own /compact asks for it when its page holds the conversation:
- * thread/compact/start, which the app-server answers at once and then runs as a turn that every page showing the
- * conversation draws. Nothing in the message box is touched, which is why this and not the /compact command: that one
- * is offered only on an empty box.
+ * Compacts one conversation with the same request Codex's own /compact sends, thread/compact/start. The app-server
+ * answers at once and then runs the compaction as a turn, which every page showing the conversation draws. This leaves
+ * the message box alone, unlike typing /compact, which Codex offers only when the box is empty.
  */
 function compactThread(thread, opts) {
   return hostRequest('thread/compact/start', { threadId: thread }, opts).then((r) => (r.outcome === 'done' ? { outcome: 'started' } : r));
@@ -716,9 +716,9 @@ async function refreshPanels() {
      against `state`, which `prompt` has already won by the time it gets here. */
   if (approvals.prune((t) => { const c = now.get(t); return !!(c && c.working); }).length) approvalsChanged();
   const side = sidebarShowing();
-  /* A chime rings in the pages of this window that show the conversation: its tabs, or else Codex's sidebar while that
-     shows it, so a conversation in both is heard once. The sound can only be made in a page, so one shown in neither
-     goes unheard (README says so). */
+  /* A chime plays in this window's pages that show the conversation: its tabs, or, if there are none, Codex's sidebar
+     while it shows the conversation, so a conversation shown in both plays once. Only a page can make the sound, so a
+     conversation shown in neither stays silent (the README says so). */
   const ring = (thread, kind) => {
     const msg = { type: 'codex-extras-chime', kind };
     const set = panels.get(thread) || [];

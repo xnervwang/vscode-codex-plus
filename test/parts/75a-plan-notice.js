@@ -4,10 +4,10 @@
 
 'use strict';
 /*
- * The row above the work plan (Agent Plus's protocol, planNotice), as Claude Code Plus draws its own: the plugin that
- * writes plans could not be installed, there is no Python for its hooks, or Codex has not been told to trust them. Each
- * names the command that fixes it, and goes once it is fixed. Where python.org has a build for the machine (Windows),
- * the download is offered once per version at start-up, as Claude Code Plus offers it.
+ * The row above the work plan (planNotice in Agent Plus's protocol), modelled on Claude Code Plus's: the plugin that
+ * writes plans could not be installed, there is no Python for its hooks, or Codex has not been told to trust them.
+ * Each row carries the command that fixes the problem and disappears once it is fixed. Where python.org has a build
+ * for the machine (Windows), the download is also offered once per version at start-up, as in Claude Code Plus.
  */
 const fs = require('fs');
 const path = require('path');

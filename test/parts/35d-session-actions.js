@@ -4,11 +4,11 @@
 
 'use strict';
 /*
- * What the session list and the conversation page let you do to a conversation, as Claude Code's list and its own
- * page do: rename it, archive or unarchive it, move it to one of Codex's sections, and mark it as unread. The first four
- * go to Codex's app-server on Codex's own connection, under a provider name of this extension's own, so the answer
- * comes back here; the method names and parameters are the ones an offline app-server of Codex 26.1021.22027 took.
- * Marking as unread is this extension's own read record, which is where "unread" comes from.
+ * The actions the session list and the conversation page offer, as Claude Code's list and page do: rename, archive or
+ * unarchive, move to one of Codex's sections, and mark as unread. The first four are sent to Codex's app-server on
+ * Codex's own connection, under a provider name registered for this extension so the answer comes back to it; the
+ * method names and parameters are the ones an offline app-server of Codex 26.1021.22027 accepted. Mark as unread
+ * changes this extension's own read record, which is what decides "unread".
  */
 const fs = require('fs');
 const path = require('path');
@@ -63,8 +63,8 @@ module.exports = async ({ eq, tmp, root }) => {
   const row = (t, group = 'ungrouped') => ({ kind: 'thread', thread: { id: t.id }, group });
   const run = async (cmd, ...args) => { requests.length = 0; await control.state.handlers[`codexPlus.${cmd}`](...args); await tick(); return requests.map((r) => [r.method, r.params]); };
   try {
-    /* With no connection handed over yet, as before the patch is in effect: a short-lived app-server is the fallback,
-       and with no codex program found here that fails and says so. */
+    /* Before the patch hands over the connection, a short-lived app-server is used instead. No codex program is
+       found in this test, so that fails, and the user is told. */
     control.state.inputAnswer = 'No connection';
     control.state.said.length = 0;
     await control.state.handlers['codexPlus.renameThread'](row(made[0]));

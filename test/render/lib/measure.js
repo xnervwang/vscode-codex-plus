@@ -35,10 +35,10 @@ function measure() {
     pick('[data-codex-composer-root] button', 'composer button'), pick('[data-codex-approval-surface] button', 'approval button'),
     pick('[data-codex-composer-root] span[role="img"][aria-label]', 'context meter'),
     pick('[data-local-conversation-item-target-ids]', 'tool call row')).filter((c) => vis(c.rect));
-  /* The list, when open, is a box over the conversation on purpose, as Claude Code Plus's is; the rail is measured
-     against the column it stands in, below; stamps sit inside Codex's own elements, above their content. What this
-     script puts into the message box's toolbar row is inside the box's frame on purpose, and is held to every one of
-     Codex's buttons and its meter there instead. */
+  /* The open list is meant to cover the conversation, as Claude Code Plus's does; the rail is measured against its own
+     column, below; stamps sit inside Codex's elements, above their content. The controls this script adds to the
+     message box's toolbar row are meant to be inside the box's frame, so they are checked against each of Codex's
+     buttons and its meter there instead. */
   const overlaps = [];
   for (const o of ours) {
     if (o.mark === 'nav' || o.mark === 'nav-list' || o.mark === 'nav-row' || o.mark === 'nav-filter' || o.mark === 'label') continue;

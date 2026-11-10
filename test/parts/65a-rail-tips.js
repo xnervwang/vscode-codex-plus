@@ -4,10 +4,10 @@
 
 'use strict';
 /*
- * The rail on the right edge and the list it opens, held to Claude Code Plus's: every button and every row of the list
- * explains itself in a box this script draws, since a native title is not reliably shown in Codex's page; a row's box
- * is its time and its first 220 characters, beside the list on its left; the list is 280 wide with 44 characters a
- * row; and a click on a row keeps the view on that message for about a second while Codex's turns still move.
+ * The rail on the right edge and the list it opens, which should behave like Claude Code Plus's. Every rail button and
+ * every list row has a hover box drawn by the script, because a native title is not reliably shown in Codex's page. A
+ * row's box shows its time and first 220 characters, to the left of the list. The list is 280 wide with 44 characters
+ * per row, and clicking a row keeps the view on that message for about a second while Codex's turns are still moving.
  */
 const fs = require('fs');
 const path = require('path');

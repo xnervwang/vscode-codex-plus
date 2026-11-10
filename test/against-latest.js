@@ -5,17 +5,16 @@
 'use strict';
 /*
  * Fetches the Codex build the marketplace is shipping now and checks every edit of the patch against it, before the
- * update reaches anyone; then holds what that build can make a conversation wait on to the lists this extension keeps
- * (src/protocol-known.js): every request its app-server can make of its client, as its own codex program lists them,
- * and every question tool name in its page. Only those files are unpacked, into a temporary folder; nothing is
- * installed.
+ * update reaches anyone. It then compares what that build can make a conversation wait on with the lists in
+ * src/protocol-known.js: every request its app-server can send to its client, as its own codex program lists them, and
+ * every question tool name in its page. Only those files are unpacked, into a temporary folder; nothing is installed.
  *
  *   node test/against-latest.js            the newest release
  *   CODEX_EXTRAS_PRERELEASE=1 node ...     the newest version, pre-releases included
  *
- * Exits 1 when an edit does not match exactly once, the result does not parse, or a request or a question tool is in
- * neither list. The codex program is run only where it can run, the platform below being this machine's. What it
- * cannot see: anything the page script relies on at run time, which is only messages and so has nothing to match.
+ * Exits 1 when an edit does not match exactly once, the result does not parse, or a request or a question tool name is
+ * not in its list. The codex program is run only when PLATFORM below is this machine's own. It cannot check what the
+ * page script relies on at run time: that is messages, with no text in the files to match them against.
  */
 const fs = require('fs');
 const os = require('os');
