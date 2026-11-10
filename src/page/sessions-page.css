@@ -33,7 +33,8 @@ svg.cp-icon { width: 16px; height: 16px; flex-shrink: 0; fill: none; stroke: cur
   background: var(--vscode-badge-background); color: var(--vscode-badge-foreground);
 }
 .cp-section-body { display: none; }
-.cp-open > .cp-section-body { display: block; }
+/* 10 px under an expanded section's last row, as Claude Code leaves; collapsed headers stay together. */
+.cp-open > .cp-section-body { display: block; margin-bottom: 10px; }
 .cp-list { display: flex; flex-direction: column; gap: 2px; padding: 0 6px 4px; }
 
 /* ACCOUNT & USAGE */

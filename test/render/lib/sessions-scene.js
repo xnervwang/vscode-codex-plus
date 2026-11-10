@@ -149,6 +149,27 @@ async function run({ env, check, shots, out, results }) {
     check(m.headH === 26 && m.sectionH === 26, 'sessions: group and section headers are 26 px high', [m.headH, m.sectionH]);
     check(new Set(m.filterRow).size === 1, 'sessions: the filter row\'s controls sit on one line', m.filterRow);
 
+    /* An expanded section leaves 10 px under its last row before the next section; a collapsed one leaves none. */
+    const gapBelowOpen = () => b.evaluate(`(() => {
+      const s = document.querySelector('.cp-section[data-key="open"]');
+      const open = s.classList.contains('cp-open');
+      const below = s.querySelector(open ? '.cp-section-body' : '.cp-section-head').getBoundingClientRect().bottom;
+      return { open, gap: Math.round(s.nextElementSibling.getBoundingClientRect().top - below) };
+    })()`);
+    const toggleOpen = async () => {
+      await b.evaluate(`document.querySelector('.cp-section[data-key="open"] .cp-section-head').click()`);
+      await sleep(100);
+    };
+    const expanded = await gapBelowOpen();
+    await shot('sessions-section-gap-expanded', { x: 0, y: 0, width: 360, height: 360 });
+    await toggleOpen();
+    const collapsed = await gapBelowOpen();
+    await shot('sessions-section-gap-collapsed', { x: 0, y: 0, width: 360, height: 360 });
+    await toggleOpen();
+    r.measures.sectionGap = { expanded, collapsed };
+    check(expanded.open && expanded.gap === 10 && !collapsed.open && collapsed.gap === 0,
+      'sessions: an expanded section leaves 10 px under its last row, a collapsed one none', { expanded, collapsed });
+
     /* A ChatGPT account whose limits Codex can read: a bar for each window, as Claude Code draws its own. */
     const soon = Math.floor(Date.now() / 1000) + 2 * 3600, later = Math.floor(Date.now() / 1000) + 4 * 86400;
     await toPage({ type: 'model', model: Object.assign({}, small, { account: { account: [{ label: 'Email', value: 'demo.user@example.com' }, { label: 'Plan', value: 'Pro' }],
