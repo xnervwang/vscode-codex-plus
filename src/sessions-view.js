@@ -69,19 +69,24 @@ function lookOf(conv, here) {
 }
 
 const pad = (n) => String(n).padStart(2, '0');
+/* How long ago, as Claude Code's own list writes it: now, then whole minutes, hours, days, months of 30 days, years. */
 function ago(ms, now = Date.now()) {
-  const s = Math.max(0, Math.round((now - ms) / 1000));
-  if (s < 3600) return `${Math.max(1, Math.round(s / 60))}m`;
-  if (s < 48 * 3600) return `${Math.round(s / 3600)}h`;
-  return `${Math.round(s / 86400)}d`;
+  const s = Math.max(0, Math.floor((now - ms) / 1000)), m = Math.floor(s / 60), h = Math.floor(m / 60), d = Math.floor(h / 24);
+  const mo = Math.floor(d / 30), y = Math.floor(d / 365);
+  return y > 0 ? `${y}y` : mo > 0 ? `${mo}mo` : d > 0 ? `${d}d` : h > 0 ? `${h}h` : m > 0 ? `${m}m` : 'now';
 }
-/* `11d · 09/05→09/16`: how long ago it was last active, then the dates it spans. One date when it began and ended on
-   the same day. Month before day, as the rest of the panel writes them. */
+/* `2d · 11/05→11/09`: how long ago it was last active, then the dates it spans. One date when it began and ended on
+   the same day. Month before day, as the rest of the panel writes them, and the year only when it is not this one,
+   written once for a span within one such year, as Claude Code Plus writes the span. */
 function dateSpan(createdMs, updatedMs, now = Date.now()) {
   if (!updatedMs) return '';
-  const d = (ms) => { const t = new Date(ms); return `${pad(t.getMonth() + 1)}/${pad(t.getDate())}`; };
-  const a = createdMs ? d(createdMs) : '', b = d(updatedMs);
-  return `${ago(updatedMs, now)} · ${a && a !== b ? `${a}→${b}` : b}`;
+  const year = new Date(now).getFullYear();
+  const ymd = (ms) => { const t = new Date(ms); return { y: t.getFullYear(), md: `${pad(t.getMonth() + 1)}/${pad(t.getDate())}` }; };
+  const one = (v) => (v.y === year ? v.md : `${v.y}/${v.md}`);
+  const e = ymd(updatedMs), s = createdMs ? ymd(createdMs) : null;
+  let body = one(e);
+  if (s && (s.y !== e.y || s.md !== e.md)) body = s.y === e.y && s.y !== year ? `${s.y}/${s.md}→${e.md}` : `${one(s)}→${one(e)}`;
+  return `${ago(updatedMs, now)} · ${body}`;
 }
 
 /** Group a list of threads for the tree. Pure, so the test can hold it to the order above. */

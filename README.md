@@ -15,7 +15,7 @@
 | Open sessions also lists the conversation Codex's sidebar shows while the sidebar is visible; clicking it goes to the sidebar. It is the conversation the sidebar last went to, so on the sidebar's own new-conversation page the one before is still listed | Codex sessions view | Patch |
 | New in tab / New in sidebar; Resume in tab / Resume in sidebar | Codex sessions view | — (the sidebar ones open Codex's own link, `vscode://openai.chatgpt/local/<id>` in this editor's scheme) |
 | Thread ID and group on hover; find by title or four hex characters of the ID | Codex sessions view | — |
-| How long since it was last used and the first and last day it was, as `11d · 09/05→09/16`; title colours; conversations started by `codex exec` left out | Codex sessions view | `codexPlus.hideBackgroundSessions` |
+| How long since it was last used and the first and last day it was, as `11d · 09/05→09/16`, how long written `now`, `5m`, `3h`, `2d`, `1mo` or `1y` and a date of another year with its year, as Claude Code's list writes them; title colours; conversations started by `codex exec` left out | Codex sessions view | `codexPlus.hideBackgroundSessions` |
 | Delete an archived conversation | Codex sessions view, right-click | — |
 | Codex button on the tab bar, and New in tab: a new Codex conversation in a tab, in a group already holding only Codex tabs, else one holding any, else the first group (the main editor area); it never opens a new split. Codex's own button beside it opens its sidebar | Editor title bar; Codex sessions view | — |
 | Tabs VS Code did not restore after a reconnect are opened again | Editor tabs | — |
