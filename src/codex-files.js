@@ -410,5 +410,5 @@ function rolloutExists(id, home = codexHome()) {
 
 module.exports = {
   existingRollout, THREAD_ID, THREAD_COLUMNS, COMPRESSED_MAX, DECOMPRESSED_MAX, codexHome, setCodexHome, stateDbPath, query, listThreads, sourceKind, sections, unreadThreads, tailLines,
-  sessionMeta, rolloutState, rolloutOf, rolloutExists, closeAll,
+  sessionMeta, rolloutState, rolloutOf, rolloutExists, closeAll, ASYNC_QUESTION,
 };
