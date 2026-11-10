@@ -38,8 +38,8 @@ module.exports = async ({ eq, tmp, root }) => {
     row(6, 'turn_context', { turn_id: T3, model: 'gpt-x', effort: 'low' }),
     dev(7, T3, ['This conversation\'s work plan (1 doing).\n- a row that looks like a skill: but is not']),
     row(8, 'turn_context', { turn_id: T4, model: 'gpt-x', effort: 'low' }),
-    dev(9, 'some-other-turn', [route(['periodic-wakeup'])]),
-    dev(10, T4, [route(Array.from({ length: 10 }, (_, i) => `Plugin-all:a-rather-long-skill-name-number-${i}`))]),
+    dev(9, T4, [route(Array.from({ length: 10 }, (_, i) => `Plugin-all:a-rather-long-skill-name-number-${i}`))]),
+    dev(10, 'some-other-turn', [route(['periodic-wakeup'])]),
     '',
   ];
   const roll = path.join(tmp('turn-skills'), 'rollout.jsonl');
@@ -50,7 +50,8 @@ module.exports = async ({ eq, tmp, root }) => {
     'a turn given skills shows their names after its figures, without the plugin prefix');
   eq([turns[T2], turns[T3]], ['gpt-x low', 'gpt-x low'],
     'a block with the first words and no skill under them, and another hook\'s block with rows of its own, add nothing');
-  eq(turns['some-other-turn'], undefined, 'a block is credited to the turn its own id names, not to the turn last begun');
+  eq([turns['some-other-turn'], /periodic-wakeup/.test(turns[T4] || '')], [undefined, false],
+    'a block is credited to the turn its own id names, not to the turn last begun');
   eq(/^gpt-x low · skills a-rather-long-skill-name-number-0, .* a-rather-long-skill-name-number-9$/.test(turns[T4] || ''), true,
     'ten long names are all shown');
 

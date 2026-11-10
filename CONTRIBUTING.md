@@ -25,6 +25,8 @@
 ## Checks
 
 - `node test/check.js`: the whole suite, no dependencies; parts in `test/parts/`, run in name order.
+- `python3 test/route/test_skill_route.py [<class>]`: the skill search's cases, which `test/parts/20b-skill-route.js` runs inside the suite; a class name, or part of one (`Vector`), runs only those.
+- `python3 test/route/vector-quality.py <CODEX_HOME>`: the search by meaning against Amazon Bedrock on the made-up catalogue of `test/route/corpus.py`, beside the keyword search; needs a Codex home whose `config.toml` sets the Bedrock provider with credentials, and makes one request at a time.
 - `node test/e2e-codex.js <codex> <CODEX_HOME>`: the work plan against a real codex; needs model credentials.
 - `node test/against-latest.js`: the patch against the newest Codex on the marketplace (`CODEX_EXTRAS_PRERELEASE=1` for pre-releases), and that build's app-server requests and question tool names against `src/protocol-known.js`.
 - `node test/render/run.js [--out <dir>] [--only <scene>]`: Codex's real page with the page script in it, drawn in a headless Chromium against Codex's app-server offline, with what only a drawn page shows asserted; once per new Codex build. Needs a headless Chromium, `unshare -rn` and an installed Codex, and says which is missing otherwise (README, The render check).
