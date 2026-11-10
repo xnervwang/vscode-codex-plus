@@ -20,6 +20,13 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 module.exports = async ({ eq, note, tmp, root }) => {
   const core = process.env.AGENT_WORK_PLAN_DIR || path.join(root, '..', 'vscode-agent-plus');
   if (!fs.existsSync(path.join(core, 'src', 'host.js'))) { note(`no Agent Plus checkout at ${core}: the two were not run together`); return; }
+  /* test/parts/20-plugin.js holds the plugin's hooks to src/workplan.js; Agent Plus's reader is what draws the plans,
+     so it has to agree with that file on the states and the limits. */
+  {
+    const pick = (m) => [m.STATES, m.OPEN_STATES, m.WAITING_ON, m.MAX_DETAIL_LINES, m.MAX_DETAIL_CHARS, m.MAX_QUESTION_CHARS];
+    eq(pick(require(path.join(core, 'src', 'workplan.js'))), pick(require(path.join(root, 'src', 'workplan.js'))),
+      'Agent Plus and this extension agree on plan states, waiting parties and description limits');
+  }
   const fake = require(path.join(core, 'test', 'fake-vscode.js'));
   const { vscode, control } = fake.create();
   vscode.window.registerTreeDataProvider = (id, provider) => { control.state.views[id] = { id, provider }; return { dispose() {} }; };
