@@ -592,8 +592,8 @@ class C_Discovery(Case):
         self.assertEqual(got, {"dup": "from the Codex home", "p:copy-a": "The very same words."})
 
     def test_what_is_left_out(self):
-        """skills.config turns a skill off, so does allow_implicit_invocation: false, Claude-only plugins and extra
-        folders need their settings"""
+        """skills turned off in skills.config or by allow_implicit_invocation: false are left out; Claude-only
+        plugins and extra folders are searched only when their settings name them"""
         root = self.h.plugin("p", {"on": "widgets on", "off": "widgets off"})
         self.h.extra_config = '[[skills.config]]\nname = "p:off"\nenabled = false\n'
         self.h.write_config()

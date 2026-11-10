@@ -17,11 +17,12 @@
  * The same pass notes where Codex compacted the conversation's context, as the number of the user's messages that came
  * before each compaction, which places it in the page's list of those messages under the same condition.
  *
- * It also notes, per turn, the model and effort the turn ran with, how much of the context window its last model call
- * used, and which skills the work plan plugin's skill search gave it, for the line under each reply; when each message
- * the user typed in the turn was sent and each reply written; and how long the turn took once it ended. A token_count or a message carries no turn id, so it belongs to the turn whose
- * task_started or turn_context came last before it. The page places all of these by the turn id Codex puts on each turn,
- * not by position, which is what lets a stamp carry seconds where the conversation's counts do not line up.
+ * It also notes, per turn, for the line under each reply: the model and effort, how much of the context window the last
+ * model call used, and the skills the skill search injected. It notes when each of the user's messages in the turn was
+ * sent and each reply written, and how long the turn took once it ended. A token_count or a message carries no turn id,
+ * so it belongs to the turn whose task_started or turn_context came last before it. The page places all of these by the
+ * turn id Codex puts on each turn, not by position, which is what lets a stamp carry seconds where the conversation's
+ * counts do not line up.
  *
  * A rollout is append-only, so a conversation is read once and then only its new bytes: the cache keeps the size the
  * file had, the offset of the first incomplete line and the times found so far. A file that shrank, or one whose first
