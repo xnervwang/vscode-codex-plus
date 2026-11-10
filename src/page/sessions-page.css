@@ -38,7 +38,9 @@ svg.cp-icon { width: 16px; height: 16px; flex-shrink: 0; fill: none; stroke: cur
 .cp-list { display: flex; flex-direction: column; gap: 2px; padding: 0 6px 4px; }
 
 /* ACCOUNT & USAGE */
-.cp-account { padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+.cp-account { padding: 10px 12px; flex-direction: column; gap: 8px; }
+/* Flex only while open: a display on .cp-account alone would override .cp-section-body's none. */
+.cp-open > .cp-section-body.cp-account { display: flex; }
 .cp-kv { display: flex; flex-wrap: wrap; column-gap: 12px; justify-content: space-between; }
 .cp-kv > span:first-child { white-space: nowrap; flex-shrink: 0; color: var(--vscode-descriptionForeground); }
 .cp-kv > span:last-child { overflow-wrap: anywhere; min-width: 0; text-align: right; }

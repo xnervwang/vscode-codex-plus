@@ -169,6 +169,19 @@ async function run({ env, check, shots, out, results }) {
     r.measures.sectionGap = { expanded, collapsed };
     check(expanded.open && expanded.gap === 10 && !collapsed.open && collapsed.gap === 0,
       'sessions: an expanded section leaves 10 px under its last row, a collapsed one none', { expanded, collapsed });
+    const accountShown = () => b.evaluate(`(() => { const s = document.querySelector('.cp-section[data-key="account"]');
+      return { open: s.classList.contains('cp-open'), shown: getComputedStyle(s.querySelector('.cp-section-body')).display !== 'none' }; })()`);
+    const toggleAccount = async () => {
+      await b.evaluate(`document.querySelector('.cp-section[data-key="account"] .cp-section-head').click()`);
+      await sleep(100);
+    };
+    const accountOpen = await accountShown();
+    await toggleAccount();
+    const accountClosed = await accountShown();
+    await shot('sessions-account-collapsed', { x: 0, y: 0, width: 360, height: 160 });
+    await toggleAccount();
+    check(accountOpen.open && accountOpen.shown && !accountClosed.open && !accountClosed.shown,
+      'sessions: collapsing ACCOUNT & USAGE hides what is under it, as every other section does', { accountOpen, accountClosed });
 
     /* A ChatGPT account whose limits Codex can read: a bar for each window, as Claude Code draws its own. */
     const soon = Math.floor(Date.now() / 1000) + 2 * 3600, later = Math.floor(Date.now() / 1000) + 4 * 86400;
