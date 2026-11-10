@@ -213,6 +213,33 @@ async function run({ env, check, shots, out, results }) {
     await b.hover(5, 890);
     await sleep(200);
 
+    /* Rename on a group's row of a conversation that Open sessions lists too: the title is edited on the row that was
+       right-clicked. */
+    const rightClick = async (x, y) => {
+      await b.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y, button: 'none' });
+      await b.send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'right', clickCount: 1 });
+      await b.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'right', clickCount: 1 });
+    };
+    const rowAt = (sel) => b.evaluate(`(() => { const r = document.querySelector(${JSON.stringify(sel)}).getBoundingClientRect(); return [r.left + 60, r.top + r.height / 2]; })()`);
+    const twice = await rowAt(`.cp-group[data-key="section:a"] .cp-row[data-id="${ID(1)}"]`);
+    await b.evaluate('window.__posted.length = 0');
+    await rightClick(twice[0], twice[1]);
+    await sleep(100);
+    const rightClicked = await b.evaluate(`window.__posted.some((m) => m.kind === 'select' && m.ids.join() === ${JSON.stringify(ID(1))})`);
+    await toPage({ type: 'startRename', id: ID(1) });
+    await sleep(150);
+    await shot('sessions-rename-in-group', { x: 0, y: 0, width: 360, height: 560 });
+    const renamed = await b.evaluate(`(() => {
+      const t = [...document.querySelectorAll('.cp-title.cp-editing')];
+      return t.map((x) => { const row = x.closest('.cp-row'), a = row.getBoundingClientRect(), e = x.getBoundingClientRect();
+        return { where: (x.closest('.cp-group') || x.closest('.cp-section')).dataset.key, id: row.dataset.id, inside: e.top >= a.top && e.bottom <= a.bottom }; });
+    })()`);
+    r.measures.renameTwice = { rightClicked, renamed };
+    check(rightClicked && renamed.length === 1 && renamed[0].where === 'section:a' && renamed[0].id === ID(1) && renamed[0].inside,
+      'sessions: Rename on a group\'s row edits that row, not the same conversation\'s row in Open sessions', r.measures.renameTwice);
+    await b.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+    await sleep(100);
+
     /* The status filter's menu, and the search. */
     const fb = await b.evaluate(`(() => { const r = document.querySelector('[data-tool="filter"]').getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; })()`);
     await b.click(fb[0], fb[1]);

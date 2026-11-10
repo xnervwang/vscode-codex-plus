@@ -197,7 +197,7 @@
       if (at !== r) list.insertBefore(r, at || null);
       i++;
     }
-    for (const [id, r] of cache) if (!seen.has(id)) { if (r === hl) hl = null; r.remove(); cache.delete(id); }
+    for (const [id, r] of cache) if (!seen.has(id)) { if (r === hl) hl = null; if (r === ctxRow) ctxRow = null; r.remove(); cache.delete(id); }
   }
 
   /* ── groups of the session manager ── */
@@ -219,6 +219,9 @@
   /* ── the model ── */
   let model = null;
   let hl = null;
+  /* The row the last right-click menu was opened on. A conversation can be listed twice, in Open sessions and in a
+     group, and what that menu does is done on the row it was opened on. */
+  let ctxRow = null;
   let selection = new Set();
   let anchor = '';
   let shownFront = '';
@@ -405,8 +408,9 @@
   const closeMenu = () => menu.classList.add('cp-hidden');
 
   /* ── selection ── */
+  const onScreen = (r) => !r.closest('.cp-hidden, .cp-section:not(.cp-open), .cp-group:not(.cp-open)');
   function visibleRows() {
-    return [...root.querySelectorAll('.cp-row')].filter((r) => !r.closest('.cp-hidden, .cp-section:not(.cp-open), .cp-group:not(.cp-open)'));
+    return [...root.querySelectorAll('.cp-row')].filter(onScreen);
   }
   function paintSelection() {
     for (const r of root.querySelectorAll('.cp-row.cp-selected')) if (!selection.has(r.dataset.id)) r.classList.remove('cp-selected');
@@ -458,9 +462,15 @@
     span.addEventListener('keydown', onKey);
     span.addEventListener('blur', onBlur);
   }
-  function startRename(id) {
-    const r = openRows.get(id) || [...groupEls.values()].map((ge) => ge._p.rows.get(id)).find(Boolean) || closedRows.get(id);
+  /* The row of `id` that a command from the host acts on: the right-clicked one, or else the first one on screen. */
+  function rowFor(id) {
+    if (ctxRow && ctxRow.isConnected && ctxRow._row.id === id) return ctxRow;
+    const all = [openRows.get(id), ...[...groupEls.values()].map((ge) => ge._p.rows.get(id)), closedRows.get(id)].filter(Boolean);
+    return all.find(onScreen) || all[0] || null;
+  }
+  function startRename(r) {
     if (!r || r._editing) return;
+    const id = r._row.id;
     expand(r);
     r._editing = true;
     r.draggable = false;
@@ -527,7 +537,7 @@
     const t = e.target;
     if (!t.closest('.cp-menu') && !t.closest('[data-tool="filter"]')) closeMenu();
     const act = t.closest('.cp-act');
-    if (act) { e.stopPropagation(); const r = act.closest('.cp-row'); if (r && act.dataset.act === 'rename') startRename(r._row.id); return; }
+    if (act) { e.stopPropagation(); const r = act.closest('.cp-row'); if (r && act.dataset.act === 'rename') startRename(r); return; }
     const sendBtn = t.closest('[data-send]');
     if (sendBtn) { send({ kind: sendBtn.dataset.send }); return; }
     const tool = t.closest('[data-tool]');
@@ -572,6 +582,7 @@
     hideHover();
     closeMenu();
     const r = e.target.closest('.cp-row');
+    ctxRow = r || null;
     if (r && !selection.has(r._row.id)) { anchor = r._row.id; select([r._row.id]); }
     if (r) highlight(r);
   });
@@ -660,7 +671,7 @@
     const msg = e.data;
     if (!msg || typeof msg !== 'object') return;
     if (msg.type === 'model') apply(msg.model);
-    else if (msg.type === 'startRename' && typeof msg.id === 'string') startRename(msg.id);
+    else if (msg.type === 'startRename' && typeof msg.id === 'string') startRename(rowFor(msg.id));
     else if (msg.type === 'startRenameGroup' && typeof msg.key === 'string') renameGroup(msg.key);
   });
   window.addEventListener('blur', () => { hideHover(); closeMenu(); });

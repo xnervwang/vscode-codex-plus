@@ -162,6 +162,30 @@ module.exports = async ({ eq, root }) => {
   title.textContent = '  A better   title ';
   title.bubble('keydown', { key: 'Enter' });
   eq([posted, title.isContentEditable], [[{ kind: 'rename', id: ID(3), title: 'A better title' }], false], 'and Enter sends the new title');
+
+  /* Conversation 1 is listed twice, in Open sessions and in Ungrouped. */
+  const openRow1 = $(`.cp-section[data-key="open"] .cp-row[data-id="${ID(1)}"]`);
+  const groupRow1 = $(`.cp-group[data-key="ungrouped"] .cp-row[data-id="${ID(1)}"]`);
+  const editing = () => [openRow1, groupRow1].map((r) => r.querySelector('.cp-title').isContentEditable);
+  const stopEditing = () => { for (const r of [openRow1, groupRow1]) if (r.querySelector('.cp-title').isContentEditable) r.querySelector('.cp-title').bubble('keydown', { key: 'Escape' }); };
+  $(`.cp-group[data-key="ungrouped"] .cp-row[data-id="${ID(3)}"]`).bubble('click');
+  groupRow1.bubble('click', { ctrlKey: true });
+  groupRow1.bubble('contextmenu');
+  toPage({ type: 'startRename', id: ID(1) });
+  eq(editing(), [false, true], 'Rename from a right-click menu edits the row the menu was opened on, with other rows selected too, '
+    + 'and not the same conversation\'s row in Open sessions');
+  stopEditing();
+  groupRow1.querySelector('[data-act="rename"]').bubble('click');
+  eq(editing(), [false, true], 'and so does the rename button on a row');
+  stopEditing();
+  page.bubble('contextmenu');
+  $('.cp-section[data-key="open"] .cp-section-head').bubble('click');
+  toPage({ type: 'startRename', id: ID(1) });
+  eq([editing(), $('.cp-section[data-key="open"]').classList.contains('cp-open')], [[false, true], false],
+    'with no row right-clicked, the conversation\'s row on screen is edited, rather than opening a collapsed section for it');
+  stopEditing();
+  $('.cp-section[data-key="open"] .cp-section-head').bubble('click');
+  page.bubble('keydown', { key: 'Escape' });
   posted.length = 0;
   toPage({ type: 'startRenameGroup', key: 'section:new' });
   const withNew = JSON.parse(JSON.stringify(model));
