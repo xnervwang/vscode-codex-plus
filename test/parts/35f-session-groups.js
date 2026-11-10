@@ -132,6 +132,32 @@ module.exports = async ({ eq, tmp, root }) => {
     await tick();
     eq([requests.filter((r) => r.method === 'threadSection/create').map((r) => r.params.name), page.posted.filter((x) => x.type === 'startRenameGroup').map((x) => x.key)],
       [['New group'], [`section:sec-new-${made2}`]], 'New group in the list makes "New group" and has the page edit its name where it is drawn, as Claude Code\'s does');
+
+    /* Text Color and Add to Group from the list's own menu: the page opens the choice beside the row. */
+    const listRow = (t) => ({ webview: 'codexPlus.sessions', webviewSection: 'thread', threadId: t.id });
+    const both = [made[0].id, made[1].id];
+    await page.fromPage({ kind: 'select', ids: both });
+    page.posted.length = 0;
+    control.state.picks.length = 0;
+    await control.state.handlers['codexPlus.moveThreadToSection'](listRow(made[1]));
+    await control.state.handlers['codexPlus.setTitleColor'](listRow(made[1]));
+    eq([page.posted.filter((x) => x.type === 'pickGroup').map((x) => [x.ids, x.groups]), control.state.picks.length],
+      [[[both, [{ key: 'section:sec-1', label: 'Pinned' }]]], 0],
+      'Add to Group from a row\'s menu has the page list the groups beside the row, for every selected conversation, with no box at the top of the window');
+    eq(page.posted.filter((x) => x.type === 'pickColor').map((x) => [x.ids, x.current, x.colors.map((c) => c.name), x.colors[6].color]),
+      [[both, '', ['red', 'blue', 'green', 'yellow', 'purple', 'orange', 'pink', 'cyan'], 'terminal.ansiBrightMagenta']],
+      'and so does Text Color, with Claude Code Plus\'s colours in its order and none of them current');
+    page.posted.length = 0;
+    await page.fromPage({ kind: 'setColor', ids: both, color: 'green' });
+    const colourOf = () => new Map(page.posted.filter((x) => x.type === 'model').pop().model.groups.flatMap((gr) => gr.rows).map((r) => [r.id, r.color]));
+    eq([colourOf().get(made[0].id), colourOf().get(made[1].id)], ['charts.green', 'charts.green'], 'the colour picked there is given to each of them');
+    page.setVisible(false);
+    control.state.pickAnswer = (items) => items.find((i) => i.label === 'Purple');
+    await control.state.handlers['codexPlus.setTitleColor'](listRow(made[1]));
+    page.setVisible(true);
+    eq([(control.state.picks[0] || []).map((i) => i.label), colourOf().get(made[0].id)],
+      [['Default', 'Red', 'Blue', 'Green', 'Yellow', 'Purple', 'Orange', 'Pink', 'Cyan'], 'charts.purple'],
+      'with the list not on screen the colours are offered at the top of the window, in the same order');
   } finally {
     for (const d of subs) { try { d.dispose(); } catch (_) { /* gone */ } }
     ext.deactivate();

@@ -197,6 +197,52 @@ module.exports = async ({ eq, root }) => {
   name.bubble('keydown', { key: 'Escape' });
   eq([posted.filter((m) => m.kind === 'renameGroup'), name.textContent], [[], 'New group'], 'and Esc keeps the name it had');
 
+  /* ── Text Color and Add to Group: a list beside the row that was right-clicked ── */
+  const NAMES = ['red', 'blue', 'green', 'yellow', 'purple', 'orange', 'pink', 'cyan'];
+  const colors = NAMES.map((n) => ({ name: n, color: `charts.${n}` }));
+  const alphaRow = $('.cp-group[data-key="section:a"] .cp-row');
+  alphaRow.rect = { top: 300, left: 6, width: 388, height: 28, bottom: 328, right: 394 };
+  const pickEl = () => $('.cp-pick');
+  const pickItems = () => (pickEl() ? pickEl().querySelectorAll('.cp-menu-item') : []);
+  const timersBefore = dom.waiting();
+  alphaRow.bubble('contextmenu');
+  posted.length = 0;
+  toPage({ type: 'pickColor', ids: [ID(2), ID(4)], current: 'blue', colors });
+  eq([!!pickEl() && pickEl().classList.contains('cp-menu'), pickEl() && pickEl().style.top, pickEl() && pickEl().style.left],
+    [true, '330px', '14px'], 'Text Color opens a list just under the row that was right-clicked, drawn as the status filter\'s menu is');
+  eq([pickEl().children.map((c) => c.className.split(' ')[0]).slice(0, 4), pickEl().querySelector('.cp-menu-title').textContent],
+    [['cp-menu-title', 'cp-menu-item', 'cp-menu-sep', 'cp-menu-item'], 'Text color'], 'with Default above a separator, as in Claude Code Plus');
+  eq(pickItems().map((i) => [i.textContent, i.querySelector('.cp-swatch').classList.contains('cp-swatch-none') ? 'ring' : i.querySelector('.cp-swatch').style.background,
+    i.classList.contains('cp-checked')]),
+  [['Default', 'ring', false], ...NAMES.map((n) => [n[0].toUpperCase() + n.slice(1), `var(--vscode-charts-${n})`, n === 'blue'])],
+  'then Claude Code Plus\'s eight colours in its order, each with a swatch in its theme colour, and the current one checked');
+  eq([pickItems()[2].focused, dom.waiting() <= timersBefore], [true, true], 'the current colour has the focus, and opening the list started no timer');
+  pickItems()[1].bubble('click');
+  eq([posted, $$('.cp-pick').length], [[{ kind: 'setColor', ids: [ID(2), ID(4)], color: 'red' }], 0],
+    'a colour picked is sent for every conversation chosen, and the list is taken off the page');
+  toPage({ type: 'pickColor', ids: [ID(2)], current: null, colors });
+  pickItems()[0].bubble('click');
+  eq(posted.pop(), { kind: 'setColor', ids: [ID(2)], color: '' }, 'Default clears the colour');
+  toPage({ type: 'pickColor', ids: [ID(2)], current: null, colors });
+  pickItems()[3].bubble('keydown', { key: 'Escape' });
+  toPage({ type: 'pickColor', ids: [ID(2)], current: null, colors });
+  page.bubble('click');
+  eq([posted.length, $$('.cp-pick').length], [1, 0], 'Esc, or a click anywhere else, closes it with nothing picked');
+  page.bubble('contextmenu');
+  toPage({ type: 'pickGroup', ids: [ID(2)], groups: [{ key: 'section:a', label: 'Alpha' }, { key: 'section:e', label: 'Empty one' }] });
+  eq([pickEl() && pickEl().style.top, pickEl().querySelector('.cp-menu-title').textContent, pickItems().map((i) => i.textContent), pickItems()[0].focused],
+    ['330px', 'Add to group', ['Alpha', 'Empty one'], true],
+    'Add to Group lists the groups the host offers, by the conversation\'s row on screen when no row was right-clicked');
+  pickItems()[0].bubble('keydown', { key: 'ArrowDown' });
+  eq(pickItems()[1].focused, true, 'the arrow keys move between its items');
+  posted.length = 0;
+  pickItems()[1].bubble('keydown', { key: 'Enter' });
+  eq([posted, $$('.cp-pick').length], [[{ kind: 'move', ids: [ID(2)], key: 'section:e' }], 0], 'and Enter moves the conversations into the group');
+  $('[data-tool="filter"]').bubble('click');
+  $$('.cp-menu-item[data-status]')[0].bubble('keydown', { key: 'ArrowDown' });
+  eq($$('.cp-menu-item[data-status]')[1].focused, true, 'the status filter\'s menu takes the same keys');
+  $$('.cp-menu-item[data-status]')[1].bubble('keydown', { key: 'Escape' });
+
   /* ── nothing at all ── */
   toPage({ type: 'model', model: { account: null, closed: [], open: [], groups: [], front: '', noGroups: true } });
   eq([shown($('.cp-null')), $('.cp-null').textContent, $$('.cp-section').filter(shown).map((s) => s.dataset.key), shown($('[data-send="newGroup"]'))],

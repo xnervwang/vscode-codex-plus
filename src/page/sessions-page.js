@@ -406,6 +406,77 @@
     menu.style.top = `${b.bottom + 2}px`;
   }
   const closeMenu = () => menu.classList.add('cp-hidden');
+  const toggleStatus = (item) => { ui.status[item.dataset.status] = !ui.status[item.dataset.status]; keep(); filter(); };
+
+  /* ── the lists Text Color and Add to Group open beside the right-clicked row, in the status filter's look ── */
+  let pick = null;
+  let ctxX = null;
+  function closePick() {
+    if (!pick) return;
+    pick.box.remove();
+    pick = null;
+  }
+  /* Built when the host asks and removed when it closes. `made(value)` is the message an item sends when picked. */
+  function openPick(title, ids, items, made) {
+    closeMenu();
+    closePick();
+    hideHover();
+    const box = el('div', 'cp-menu cp-pick');
+    box.setAttribute('role', 'menu');
+    box.append(el('div', 'cp-menu-title', title));
+    items.forEach((it, i) => {
+      const item = el('div', `cp-menu-item${it.checked ? ' cp-checked' : ''}`);
+      item.tabIndex = 0;
+      item.setAttribute('role', 'menuitem');
+      item.dataset.pick = String(i);
+      if ('swatch' in it) {
+        const s = el('span', it.swatch ? 'cp-swatch' : 'cp-swatch cp-swatch-none');
+        if (it.swatch) s.style.background = it.swatch;
+        item.append(s);
+      }
+      item.append(el('span', '', it.label));
+      if (it.checked) item.append(icon('check', 'cp-icon cp-check'));
+      box.append(item);
+      if (it.sepAfter) box.append(el('div', 'cp-menu-sep'));
+    });
+    root.appendChild(box);
+    pick = { box, items, made };
+    const r = ctxRow && ctxRow.isConnected && ids.includes(ctxRow._row.id) ? ctxRow : ids.map(rowFor).find((x) => x && onScreen(x));
+    const w = box.offsetWidth, h = box.offsetHeight;
+    if (r) {
+      const b = r.getBoundingClientRect();
+      const x = r === ctxRow && ctxX !== null ? ctxX : b.left + 8;
+      box.style.left = `${Math.max(4, Math.min(x, window.innerWidth - w - 4))}px`;
+      box.style.top = `${b.bottom + 2 + h <= window.innerHeight ? b.bottom + 2 : Math.max(4, b.top - h - 2)}px`;
+    } else { box.style.left = '4px'; box.style.top = '4px'; }
+    const first = box.querySelector('.cp-menu-item.cp-checked') || box.querySelector('.cp-menu-item');
+    if (first) first.focus();
+  }
+  function choosePick(item) {
+    const it = pick && pick.items[Number(item.dataset.pick)];
+    const msg = it ? pick.made(it.value) : null;
+    closePick();
+    root.focus();
+    if (msg) send(msg);
+  }
+  /* Keys in an open menu: the arrows move between its items, Enter or Space picks one, Esc closes it. */
+  function menuKey(e, box) {
+    const items = [...box.querySelectorAll('.cp-menu-item')];
+    const item = e.target.closest('.cp-menu-item');
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      const at = items.indexOf(item), n = items.length, down = e.key === 'ArrowDown';
+      const next = items[at < 0 ? (down ? 0 : n - 1) : (at + (down ? 1 : n - 1)) % n];
+      if (next) next.focus();
+    } else if ((e.key === 'Enter' || e.key === ' ') && item) {
+      if (item.dataset.pick !== undefined) choosePick(item); else toggleStatus(item);
+    } else if (e.key === 'Escape') {
+      closeMenu();
+      closePick();
+      root.focus();
+    } else return false;
+    e.preventDefault();
+    return true;
+  }
 
   /* ── selection ── */
   const onScreen = (r) => !r.closest('.cp-hidden, .cp-section:not(.cp-open), .cp-group:not(.cp-open)');
@@ -536,6 +607,7 @@
   root.addEventListener('click', (e) => {
     const t = e.target;
     if (!t.closest('.cp-menu') && !t.closest('[data-tool="filter"]')) closeMenu();
+    if (pick && !t.closest('.cp-pick')) closePick();
     const act = t.closest('.cp-act');
     if (act) { e.stopPropagation(); const r = act.closest('.cp-row'); if (r && act.dataset.act === 'rename') startRename(r); return; }
     const sendBtn = t.closest('[data-send]');
@@ -550,7 +622,7 @@
       return;
     }
     const item = t.closest('.cp-menu-item');
-    if (item) { ui.status[item.dataset.status] = !ui.status[item.dataset.status]; keep(); filter(); return; }
+    if (item) { if (item.dataset.pick !== undefined) choosePick(item); else toggleStatus(item); return; }
     const sectionToggle = t.closest('[data-toggle]');
     if (sectionToggle) { toggle(sectionToggle.dataset.toggle); return; }
     const gh = t.closest('.cp-group-head');
@@ -581,8 +653,10 @@
   root.addEventListener('contextmenu', (e) => {
     hideHover();
     closeMenu();
+    closePick();
     const r = e.target.closest('.cp-row');
     ctxRow = r || null;
+    ctxX = r && typeof e.clientX === 'number' ? e.clientX : null;
     if (r && !selection.has(r._row.id)) { anchor = r._row.id; select([r._row.id]); }
     if (r) highlight(r);
   });
@@ -593,7 +667,7 @@
   });
   root.addEventListener('mouseleave', hideHover);
   root.addEventListener('mousedown', hideHover);
-  root.addEventListener('scroll', () => { hideHover(); closeMenu(); }, { passive: true });
+  root.addEventListener('scroll', () => { hideHover(); closeMenu(); closePick(); }, { passive: true });
 
   searchInput.addEventListener('input', () => { ui.search = searchInput.value; keep(); filter(); });
   searchInput.addEventListener('keydown', (e) => {
@@ -604,6 +678,8 @@
 
   root.addEventListener('keydown', (e) => {
     if (e.target === searchInput || e.target.isContentEditable) return;
+    const inMenu = e.target.closest && e.target.closest('.cp-menu');
+    if (inMenu && menuKey(e, inMenu)) return;
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault();
       const list = visibleRows();
@@ -616,6 +692,7 @@
     if (e.key === 'Escape') {
       e.preventDefault();
       closeMenu();
+      closePick();
       if (ui.search) { ui.search = ''; keep(); filter(); } else if (selection.size) select([]); else highlight(null);
       return;
     }
@@ -673,8 +750,17 @@
     if (msg.type === 'model') apply(msg.model);
     else if (msg.type === 'startRename' && typeof msg.id === 'string') startRename(rowFor(msg.id));
     else if (msg.type === 'startRenameGroup' && typeof msg.key === 'string') renameGroup(msg.key);
+    else if (msg.type === 'pickColor' && Array.isArray(msg.ids) && Array.isArray(msg.colors)) {
+      /* Claude Code Plus's Text color submenu: Default, then the colours, each with a swatch. */
+      const items = [{ label: 'Default', value: '', swatch: '', checked: msg.current === '', sepAfter: true },
+        ...msg.colors.map((c) => ({ label: c.name.charAt(0).toUpperCase() + c.name.slice(1), value: c.name, swatch: themeColor(c.color),
+          checked: msg.current === c.name }))];
+      openPick('Text color', msg.ids, items, (color) => ({ kind: 'setColor', ids: msg.ids, color }));
+    } else if (msg.type === 'pickGroup' && Array.isArray(msg.ids) && Array.isArray(msg.groups)) {
+      openPick('Add to group', msg.ids, msg.groups.map((g) => ({ label: g.label, value: g.key })), (key) => ({ kind: 'move', ids: msg.ids, key }));
+    }
   });
-  window.addEventListener('blur', () => { hideHover(); closeMenu(); });
+  window.addEventListener('blur', () => { hideHover(); closeMenu(); closePick(); });
   filter();
   send({ kind: 'ready' });
 }());

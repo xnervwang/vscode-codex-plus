@@ -25,7 +25,7 @@ const { createSeen } = require('./src/seen');
 const { CodexReader } = require('./src/codex-reader');
 const hostLink = require('./src/host-link');
 const { TabMemory } = require('./src/tab-memory');
-const { SessionsModel, SessionsView, COLORS, looksLikeId } = require('./src/sessions-view');
+const { SessionsModel, SessionsView, COLORS, COLOR_NAMES, looksLikeId } = require('./src/sessions-view');
 const { createGroups, createPlacer } = require('./src/session-groups');
 const accountUsage = require('./src/account-usage');
 const patching = require('./src/patching');
@@ -553,11 +553,18 @@ function registerCommands(context, { source, memory, sessionsModel, sessionsView
     vscode.window.showInformationMessage('Codex did not take the link that opens a conversation in its sidebar, so it was opened in a tab instead.');
     await tabs.openInTab(vscode, id);
   });
-  reg('setTitleColor', async (arg) => {
-    const id = threadArg(arg);
-    if (!id) return;
-    const pick = await vscode.window.showQuickPick([...Object.keys(COLORS), 'none'].map((label) => ({ label })), { placeHolder: 'Title colour' });
-    if (pick) await sessionsModel.setColor(id, pick.label === 'none' ? '' : pick.label);
+  /* From the list's own menu the page offers the choice beside the right-clicked row, as Claude Code Plus's submenus
+     are; with the list not on screen it is offered at the top of the window. */
+  const inList = (arg, msg) => fromList(arg) && sessionsView.visible && sessionsView.tell(msg);
+  reg('setTitleColor', async (arg, selected) => {
+    const ids = chosen(arg, selected);
+    if (!ids.length) return;
+    const had = sessionsModel.colors();
+    const current = ids.every((id) => (had[id] || '') === (had[ids[0]] || '')) ? had[ids[0]] || '' : null;
+    if (inList(arg, { type: 'pickColor', ids, current, colors: COLOR_NAMES.map((name) => ({ name, color: COLORS[name] })) })) return;
+    const pick = await vscode.window.showQuickPick(['', ...COLOR_NAMES].map((name) => ({ label: name ? name[0].toUpperCase() + name.slice(1) : 'Default', name })),
+      { placeHolder: 'Text color' });
+    if (pick) await sessionsModel.setColor(ids, pick.name);
   });
   reg('findThread', async () => {
     /* The same conversations the list holds: this workspace's, as the Codex sessions view filters them. */
@@ -669,6 +676,7 @@ function registerCommands(context, { source, memory, sessionsModel, sessionsView
     const items = groups.choices().filter(([sectionId]) => !ids.every((id) => (reader.thread(id) || {}).section === sectionId))
       .map(([sectionId, name]) => ({ label: name || 'Group', sectionId }));
     if (!items.length) { vscode.window.showInformationMessage('Codex Plus: there is no other group to add it to. New group, above the groups in the Codex sessions list, makes one.'); return; }
+    if (inList(arg, { type: 'pickGroup', ids, groups: items.map((i) => ({ key: `section:${i.sectionId}`, label: i.label })) })) return;
     const pick = await vscode.window.showQuickPick(items, { placeHolder: 'Add to which group?' });
     if (pick) done('move it', await groups.move(ids, pick.sectionId));
   });
@@ -731,6 +739,9 @@ function registerCommands(context, { source, memory, sessionsModel, sessionsView
       const sec = msg.key === 'ungrouped' ? null : sectionArg({ groupKey: msg.key });
       const ids = msg.ids.filter((x) => typeof x === 'string' && (reader.thread(x) || {}).section !== (sec || ''));
       if ((sec || msg.key === 'ungrouped') && ids.length && !restricted() && await groupsHere()) done('move it', await groups.move(ids, sec));
+    } else if (msg.kind === 'setColor' && Array.isArray(msg.ids) && typeof msg.color === 'string') {
+      const ids = msg.ids.filter((x) => typeof x === 'string').slice(0, 1000);
+      if (ids.length) await sessionsModel.setColor(ids, msg.color);
     }
   };
   reg('markThreadRead', (arg, selected) => { for (const id of chosen(arg, selected)) source.markRead(id); });

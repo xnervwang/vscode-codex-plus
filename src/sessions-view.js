@@ -36,11 +36,13 @@ const { folderTest } = require('./folders');
 const { PINNED_SECTION } = require('./session-groups');
 const kit = require('./page/kit.js');
 
-/* The colours a title can be given: the eight Claude Code's /color offers, as theme colours. */
+/* The colours a title can be given: the eight Claude Code's /color offers, as the theme colours Claude Code Plus gives
+   them, in the order its Text color menu lists them. */
 const COLORS = {
-  red: 'charts.red', orange: 'charts.orange', yellow: 'charts.yellow', green: 'charts.green',
-  cyan: 'terminal.ansiCyan', blue: 'charts.blue', purple: 'charts.purple', pink: 'terminal.ansiMagenta',
+  red: 'charts.red', blue: 'charts.blue', green: 'charts.green', yellow: 'charts.yellow',
+  purple: 'charts.purple', orange: 'charts.orange', pink: 'terminal.ansiBrightMagenta', cyan: 'terminal.ansiCyan',
 };
+const COLOR_NAMES = Object.keys(COLORS);
 const COLOR_KEY = 'codexPlus.titleColors';
 /* The same dots Claude Code's list uses: green running, blue waiting for you, red replied and unread or last turn
    failed, grey idle. A conversation running or waiting in another window gets a ring in that colour. */
@@ -170,9 +172,10 @@ class SessionsModel {
   }
 
   colors() { return this.memento.get(COLOR_KEY) || {}; }
-  async setColor(thread, name) {
+  /* `name` for every conversation in `threads` (one id or a list); a name that is not a colour clears it. */
+  async setColor(threads, name) {
     const all = { ...this.colors() };
-    if (name && COLORS[name]) all[thread] = name; else delete all[thread];
+    for (const thread of [].concat(threads)) { if (name && COLORS[name]) all[thread] = name; else delete all[thread]; }
     await this.memento.update(COLOR_KEY, all);
     this.refresh();
   }
@@ -342,4 +345,4 @@ function pageHtml({ js, css, csp, nonce: n }) {
 const looksLikeId = (q) => /^[0-9a-f-]{4,}$/i.test(String(q || '').trim());
 
 module.exports = { SessionsModel, SessionsView, pageHtml, group, drawn, dateSpan, placeOf, looksLikeId, lookOf, lookKey, goalText,
-  COLORS, COLOR_KEY, STATE_LOOK, GOAL_WORD, PAGE_FILES };
+  COLORS, COLOR_NAMES, COLOR_KEY, STATE_LOOK, GOAL_WORD, PAGE_FILES };

@@ -14,7 +14,7 @@
 const fs = require('fs');
 const path = require('path');
 const { serve, launch, sleep } = require('./cdp');
-const { pageHtml } = require('../../../src/sessions-view');
+const { pageHtml, COLORS, COLOR_NAMES } = require('../../../src/sessions-view');
 
 const ROOT = path.join(__dirname, '..', '..', '..');
 const HARNESS = path.join(__dirname, '..', 'harness');
@@ -239,6 +239,79 @@ async function run({ env, check, shots, out, results }) {
       'sessions: Rename on a group\'s row edits that row, not the same conversation\'s row in Open sessions', r.measures.renameTwice);
     await b.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
     await sleep(100);
+
+    /* Text Color and Add to Group: a list beside the right-clicked row, drawn as the status filter's menu is, made
+       when it opens and taken off the page when it closes. */
+    const esc = () => b.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+    /* The status filter's menu draws its items when it first opens, and the list is compared with them. */
+    const filterAt = await b.evaluate(`(() => { const r = document.querySelector('[data-tool="filter"]').getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; })()`);
+    await b.click(filterAt[0], filterAt[1]);
+    await sleep(100);
+    await esc();
+    const pickRow = `.cp-group[data-key="section:b"] .cp-row[data-id="${ID(2)}"]`;
+    const at = await rowAt(pickRow);
+    await rightClick(at[0], at[1]);
+    await sleep(100);
+    const colors = COLOR_NAMES.map((name) => ({ name, color: COLORS[name] }));
+    const openPick = (msg) => b.evaluate(`(() => { const t = performance.now(); window.__fromHost(${JSON.stringify(msg)});
+      void document.body.offsetHeight; return +(performance.now() - t).toFixed(2); })()`);
+    const pickMeasure = () => b.evaluate(`(() => {
+      const p = document.querySelector('.cp-pick'), f = document.querySelector('.cp-menu:not(.cp-pick)');
+      if (!p) return null;
+      const row = document.querySelector(${JSON.stringify(pickRow)}).getBoundingClientRect(), box = p.getBoundingClientRect();
+      const st = (e, keys) => { const s = getComputedStyle(e); return keys.map((k) => s[k]).join('|'); };
+      const LOOK = ['backgroundColor', 'borderRadius', 'borderTopColor', 'boxShadow', 'paddingTop', 'position'];
+      const ITEM = ['paddingTop', 'paddingLeft', 'borderRadius', 'fontSize'];
+      return { gapBelowRow: Math.round(box.top - row.bottom), left: Math.round(box.left), right: Math.round(box.right), width: innerWidth,
+        sameLook: st(p, LOOK) === st(f, LOOK), sameItems: st(p.querySelector('.cp-menu-item'), ITEM) === st(f.querySelector('.cp-menu-item'), ITEM),
+        items: [...p.querySelectorAll('.cp-menu-item')].map((i) => i.textContent),
+        swatches: [...p.querySelectorAll('.cp-swatch')].map((s) => { const r = s.getBoundingClientRect(), c = getComputedStyle(s);
+          return [r.width, r.height, c.backgroundColor, c.borderTopStyle]; }),
+        focused: document.activeElement && document.activeElement.textContent };
+    })()`);
+    const colorMs = await openPick({ type: 'pickColor', ids: [ID(2)], current: 'purple', colors });
+    await sleep(100);
+    await shot('sessions-pick-color', { x: 0, y: 0, width: 360, height: 900 });
+    const pc = await pickMeasure();
+    await esc();
+    await sleep(100);
+    const goneAfterEsc = await b.evaluate('document.querySelectorAll(".cp-pick").length === 0');
+    const HEX = { red: '241, 76, 76', blue: '55, 148, 255', green: '137, 209, 133', yellow: '204, 167, 0', purple: '177, 128, 215', orange: '209, 134, 22',
+      pink: '214, 112, 214', cyan: '17, 168, 205' };
+    r.measures.pickColor = { ms: colorMs, ...pc, goneAfterEsc };
+    check(pc && pc.gapBelowRow === 2 && Math.abs(pc.left - Math.round(at[0])) <= 1 && pc.right <= pc.width - 4,
+      'sessions: Text Color opens its list just under the right-clicked row, where the click was', r.measures.pickColor);
+    check(pc && pc.sameLook && pc.sameItems, 'sessions: the list is drawn as the status filter\'s menu is', r.measures.pickColor);
+    check(pc && pc.items.join() === 'Default,Red,Blue,Green,Yellow,Purple,Orange,Pink,Cyan' && pc.focused === 'Purple'
+      && pc.swatches.length === 9 && pc.swatches.every(([w, h]) => w === 10 && h === 10) && pc.swatches[0][3] === 'solid'
+      && COLOR_NAMES.every((n, i) => pc.swatches[i + 1][2] === `rgb(${HEX[n]})`),
+    'sessions: it offers Default and Claude Code Plus\'s eight colours in its order, each with a 10 px swatch in the theme\'s colour', r.measures.pickColor);
+    check(goneAfterEsc, 'sessions: Esc closes the list and takes it off the page', goneAfterEsc);
+
+    await rightClick(at[0], at[1]);
+    await sleep(100);
+    const groupMs = await openPick({ type: 'pickGroup', ids: [ID(2)], groups: [{ key: 'section:a', label: 'Release 1.2' }, { key: 'section:e', label: 'Later' }] });
+    await sleep(100);
+    await shot('sessions-pick-group', { x: 0, y: 0, width: 360, height: 900 });
+    const pg = await pickMeasure();
+    const laterAt = await b.evaluate(`(() => { const i = [...document.querySelectorAll('.cp-pick .cp-menu-item')].find((x) => x.textContent === 'Later');
+      const r = i.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; })()`);
+    await b.evaluate('window.__posted.length = 0');
+    await b.click(laterAt[0], laterAt[1]);
+    await sleep(100);
+    const moved = await b.evaluate('({ posted: window.__posted.filter((m) => m.kind === "move"), left: document.querySelectorAll(".cp-pick").length })');
+    const many = Array.from({ length: 100 }, (_, i) => ({ key: `section:g${i}`, label: `Group ${i + 1}` }));
+    await rightClick(at[0], at[1]);
+    const manyMs = await openPick({ type: 'pickGroup', ids: [ID(2)], groups: many });
+    const fits = await b.evaluate('(() => { const r = document.querySelector(".cp-pick").getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight; })()');
+    await esc();
+    r.measures.pickGroup = { ms: groupMs, manyMs, ...pg, moved, fits };
+    check(pg && pg.gapBelowRow === 2 && pg.sameLook && pg.items.join() === 'Release 1.2,Later' && pg.focused === 'Release 1.2',
+      'sessions: Add to Group opens the groups in the same kind of list under the row', r.measures.pickGroup);
+    check(moved.left === 0 && moved.posted.length === 1 && moved.posted[0].key === 'section:e' && moved.posted[0].ids.join() === ID(2),
+      'sessions: a group clicked there is sent to the host, and the list goes', moved);
+    check(colorMs < 100 && groupMs < 100 && manyMs < 100 && fits,
+      'sessions: either list is on screen within 100 ms of the host asking, 100 groups included, and fits in the view', r.measures.pickGroup);
 
     /* The status filter's menu, and the search. */
     const fb = await b.evaluate(`(() => { const r = document.querySelector('[data-tool="filter"]').getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; })()`);
