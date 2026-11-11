@@ -49,9 +49,11 @@ module.exports = async ({ eq, tmp, root }) => {
   for (const name of [`${ID(1)}.json`, `${ID(1)}.wakeup`, `${ID(1)}.woke`, `${ID(1)}.tz`, `${ID(2)}.json`, 'notes.txt']) fs.writeFileSync(path.join(sideDir, name), 'x');
   fs.mkdirSync(path.join(sideDir, `${ID(1)}.json.lock`));
   fs.mkdirSync(path.join(sideDir, `${ID(1)}.wakeup.lock`));
+  fs.mkdirSync(path.join(sideDir, 'closed'));
+  for (const name of [`${ID(1)}.json`, `${ID(2)}.json`]) fs.writeFileSync(path.join(sideDir, 'closed', name), 'x');
   const failedSide = typeof workplan.removeSideFiles === 'function' ? workplan.removeSideFiles(sideDir, [ID(1), 'not-an-id', '../x']) : null;
-  eq([failedSide, fs.readdirSync(sideDir).sort()], [[], [`${ID(2)}.json`, 'notes.txt']],
-    'removeSideFiles deletes a conversation\'s plan, wake-up and other side files and its two lock folders, and nothing named otherwise');
+  eq([failedSide, fs.readdirSync(sideDir).sort(), fs.readdirSync(path.join(sideDir, 'closed'))], [[], [`${ID(2)}.json`, 'closed', 'notes.txt'], [`${ID(2)}.json`]],
+    'removeSideFiles deletes a conversation\'s plan, its closed rows, wake-up and other side files and its two lock folders, and nothing named otherwise');
   const { TabMemory, CLOSED_KEY } = require(path.join(root, 'src', 'tab-memory.js'));
   const ws = fake.memento({ [CLOSED_KEY]: [{ thread: ID(1), title: 'a', at: 2 }, { thread: ID(2), title: 'b', at: 1 }] });
   const memory = new TabMemory(vscode, ws);

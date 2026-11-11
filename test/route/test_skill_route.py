@@ -503,13 +503,19 @@ class B_Output(Case):
             json.dump({"nodes": [{"title": "Fix the disk", "state": "doing"}]}, fh)
         payload = {"hook_event_name": "UserPromptSubmit", "session_id": THREAD, "turn_id": "t", "cwd": self.h.tmp,
                    "prompt": "the disk is full, clean it"}
+        with open(plan) as fh:
+            before = fh.read()
         a = self.h.run(payload, script=INJECT)[1]
         b = self.h.run(payload)[1]
         plan_ctx = json.loads(a)["hookSpecificOutput"]["additionalContext"]
         self.assertIn("Fix the disk", plan_ctx)
         self.assertNotIn(route.MARK, plan_ctx)
         self.assertIn("disk-cleanup", json.loads(b)["hookSpecificOutput"]["additionalContext"])
-        self.assertEqual(a, self.h.run(payload, script=INJECT)[1].replace("turn", "turn"))
+        with open(plan) as fh:
+            self.assertEqual(fh.read(), before)
+        # Without its record of what it last showed, the injection gives the same block again.
+        os.remove(plan[:-len(".json")] + ".injected")
+        self.assertEqual(a, self.h.run(payload, script=INJECT)[1])
 
 
 # ── C. finding skills and reading their frontmatter ──────────────────────────────────────────────────────────────────

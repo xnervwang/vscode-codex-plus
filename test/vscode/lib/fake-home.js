@@ -11,6 +11,9 @@
  *
  * Codex listens on <CODEX_HOME>/ipc/ipc.sock, and a Unix socket's path is limited to about 104 bytes, so the home has to
  * be under a short folder: run.js puts it in the system's temporary folder.
+ *
+ * The first conversation also has a work plan block (PLAN_BLOCK) after its first message, recorded the way Codex records
+ * the plugin's injection, so that the information box shows a Work plan line.
  */
 const fs = require('fs');
 const os = require('os');
@@ -24,6 +27,18 @@ const THREADS = [
 ];
 const PROVIDER = 'fake';
 const PLAN_DIR = path.join('plugins', 'data', 'agent-work-plan-codex-extras');
+const PLAN_BLOCK = "This conversation's work plan (1 doing). Only open rows are shown.\n\n> 1. Find the retry delay   [doing]";
+
+/* A developer message holding the work plan block, after the line of the conversation's first message. */
+function withPlan(text) {
+  const lines = text.split('\n');
+  const at = lines.findIndex((l) => l.includes('"id":"msg_u0"'));
+  if (at < 0) return text;
+  const stamp = JSON.parse(lines[at]).timestamp;
+  lines.splice(at + 1, 0, JSON.stringify({ timestamp: stamp, type: 'response_item', payload: { type: 'message', role: 'developer',
+    content: [{ type: 'input_text', text: PLAN_BLOCK }] } }));
+  return lines.join('\n');
+}
 
 function write(home, { folder, modelUrl }) {
   const cwd = JSON.stringify(folder).slice(1, -1);
@@ -40,7 +55,7 @@ function write(home, { folder, modelUrl }) {
           .split(render.FOUR[0].user).join(t.title);
         const to = path.join(home, 'sessions', path.dirname(rel), path.basename(rel).split(render.THREAD).join(t.id));
         fs.mkdirSync(path.dirname(to), { recursive: true });
-        fs.writeFileSync(to, text);
+        fs.writeFileSync(to, i === 0 ? withPlan(text) : text);
       }
     });
   } finally {
@@ -61,4 +76,4 @@ function wakeup(home, thread, { everyMinutes = 45, prompt = 'Check whether the n
   fs.writeFileSync(path.join(dir, `${thread}.wakeup`), JSON.stringify({ everyMinutes, prompt, setAt: now, expiresAt: now + 7 * 86400 }));
 }
 
-module.exports = { write, wakeup, THREADS };
+module.exports = { write, wakeup, THREADS, PLAN_BLOCK };

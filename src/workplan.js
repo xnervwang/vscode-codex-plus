@@ -71,11 +71,16 @@ function liveSessions(home = files.codexHome()) {
  *   .tz          what the time-zone hook last told it
  *   .wakeup      the conversation's wake-up, set by the MCP tool set_wakeup (src/wakeup.js)
  *   .woke        when this extension last queued that wake-up, and whether it is paused
- *   .compacted   when the context was last compacted, left by the compaction hook for the brief's summary
+ *   .compacted   when the context was last compacted, left by the compaction hook; the brief's summary is asked for
+ *                again after it, and the injection gives the whole plan again
  *   .briefed     what the Stop hook last asked about the brief, so it does not ask it again
+ *   .injected    what the plan looked like when the injection hook last showed it, so an unchanged plan is one line
+ *
+ * The row command also moves rows closed for a day to closed/<session id>.json (CLOSED_DIR), deleted with the rest.
  */
 const SIDE_SUFFIXES = ['.json', '.offered', '.nudged', '.settled', '.turn', '.watermark', '.tz', '.wakeup', '.woke', '.compacted',
-  '.briefed'];
+  '.briefed', '.injected'];
+const CLOSED_DIR = 'closed';
 const SIDE_FILE = new RegExp('^[0-9a-f][0-9a-f-]{7,}(?:' + SIDE_SUFFIXES.map((s) => s.replace('.', '\\.')).join('|') + ')$', 'i');
 const PLAN_FILE = /^[0-9a-f][0-9a-f-]{7,}\.json$/i;
 /* Plan lock directories (<plan>.lock), made with mkdir around a read-change-write. Writers give up on one older than
@@ -132,17 +137,19 @@ function sweepOrphans(opts = {}) {
   if (!live) return { deleted: 0, kept: 0, live: null, why: 'the rollouts could not all be read, so nothing was treated as abandoned' };
   if (!names) return { deleted: 0, kept: 0, live, why: '' };
   let deleted = 0, kept = 0;
-  for (const name of names) {
-    if (!SIDE_FILE.test(name)) continue;
+  let closed = [];
+  try { closed = fs.readdirSync(path.join(dir, CLOSED_DIR)).filter((n) => PLAN_FILE.test(n)).map((n) => path.join(CLOSED_DIR, n)); } catch (_) { /* none */ }
+  for (const name of names.concat(closed)) {
+    if (!SIDE_FILE.test(path.basename(name))) continue;
     // The session id is the name without its last extension, whichever of the side files it is.
-    if (live.has(name.replace(/\.[^.]+$/, ''))) { kept++; continue; }
+    if (live.has(path.basename(name).replace(/\.[^.]+$/, ''))) { kept++; continue; }
     const file = path.join(dir, name);
     let st;
     try { st = fs.statSync(file); } catch (_) { continue; }
     if (now - st.mtimeMs < SETTLED_MS) { kept++; continue; }
     /* The last word before a delete is the folders themselves: a rollout the database has lost track of, or one moved
        by archiving, still means the conversation can be resumed. */
-    if (files.rolloutExists(name.replace(/\.[^.]+$/, ''), opts.home || files.codexHome())) { kept++; continue; }
+    if (files.rolloutExists(path.basename(name).replace(/\.[^.]+$/, ''), opts.home || files.codexHome())) { kept++; continue; }
     // Already gone means another window got here first, which is the ordinary outcome of two of them starting on one
     // day rather than a fault: several extension hosts share this directory and nothing locks it.
     try { fs.unlinkSync(file); deleted++; }
@@ -159,8 +166,7 @@ function removeSideFiles(dir, ids) {
   const failed = [];
   for (const id of new Set(Array.isArray(ids) ? ids : [])) {
     if (!files.THREAD_ID.test(String(id))) continue;
-    for (const suffix of SIDE_SUFFIXES) {
-      const file = path.join(dir, id + suffix);
+    for (const file of SIDE_SUFFIXES.map((suffix) => path.join(dir, id + suffix)).concat([path.join(dir, CLOSED_DIR, id + '.json')])) {
       try { fs.unlinkSync(file); } catch (e) { if (e.code !== 'ENOENT') failed.push(`${file}: ${e.message}`); }
     }
     for (const lock of ['.json.lock', '.wakeup.lock']) {
@@ -176,6 +182,6 @@ const OPEN_STATES = ['discussing', 'todo', 'doing', 'waiting', 'parked'];
 
 module.exports = {
   planDir, liveSessions, sweepOrphans, removeSideFiles,
-  DATA_ROOT, PLAN_DIR, PLAN_FILE, SIDE_SUFFIXES, SETTLED_MS, LOCK_STALE_MS, OPEN_STATES,
+  DATA_ROOT, PLAN_DIR, PLAN_FILE, SIDE_SUFFIXES, CLOSED_DIR, SETTLED_MS, LOCK_STALE_MS, OPEN_STATES,
   STATES, MAX_DETAIL_LINES, MAX_DETAIL_CHARS, WAITING_ON, MAX_QUESTION_CHARS,
 };

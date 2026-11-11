@@ -151,6 +151,27 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
       + 'directory, and run without an approval');
   }
 
+  // A row moved to the archive is changed through the tools as any other: set_row puts it back.
+  {
+    const old = path.join(data, '01a1b8e8-f7e2-7251-95a9-a95b65992848.json');
+    const day = 86400e3;
+    const at = (ms) => new Date(Date.now() - ms).toISOString().replace(/\.\d+Z$/, '+00:00');
+    fs.writeFileSync(old, JSON.stringify({ nodes: [{ title: 'Closed long ago', state: 'done', closed: at(3 * day), note: 'kept' },
+      { title: 'Open', state: 'todo' }] }));
+    const call = (id, name, args) => ({ jsonrpc: '2.0', id, method: 'tools/call', params: { name, arguments: { plan: old, ...args } } });
+    const once = (m) => cp.spawnSync(py, [path.join(hooksDir, 'plan-mcp.py')], { input: [msgs[0], msgs[1], m].map((x) => JSON.stringify(x)).join('\n') + '\n',
+      encoding: 'utf8', env: { ...process.env, PYTHONDONTWRITEBYTECODE: '1', CODEX_HOME: mcpHome } });
+    once(call(2, 'set_row', { row: '2', note: 'touched' }));
+    const archived = JSON.parse(fs.readFileSync(old, 'utf8')).nodes[0];
+    const back = once(call(2, 'set_row', { row: '1', state: 'todo' }));
+    const row = JSON.parse(fs.readFileSync(old, 'utf8')).nodes[0];
+    eq([archived.archived, /row 1: done -> todo/.test(back.stdout), row.title, row.note, row.archived,
+      fs.existsSync(path.join(data, 'closed', path.basename(old)))],
+    [true, true, 'Closed long ago', 'kept', undefined, false],
+    'set_row moves a row closed days ago to the archive with the next write, and puts it back when it is reopened');
+    fs.unlinkSync(old);
+  }
+
   // The injection hook: a plan with an open row puts it in front of the model, with the tools to change it.
   const payload = { hook_event_name: 'UserPromptSubmit', session_id: path.basename(plan, '.json'), turn_id: 'turn-1',
     transcript_path: null, cwd: data, model: 'm', permission_mode: 'default', prompt: 'p' };

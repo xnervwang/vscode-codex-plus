@@ -17,7 +17,8 @@
  *                cancelled and then accepted, and the rollout gone from the Codex home
  *   a tab        a conversation resumed in a tab from the list: its title, then the dot on its logo during a turn sent
  *                through fake-model.js, and after the reply arrives while the tab is in the background
- *   Codex's page what the patch adds there: the time stamps, the rail, the buttons by the message box, the Agent map
+ *   Codex's page what the patch adds there: the time stamps, the rail, the buttons by the message box, the Agent map,
+ *                and the Work plan line in the information box
  *   the brief    a click on the conversation in Agent Plus's Conversations panel shows the brief its plan holds in the
  *                Answer view; the arrow on its row and the page's button each go back to the conversation's tab
  *   the sidebar  a conversation resumed in Codex's sidebar: each reply's stamp inside its column
@@ -509,6 +510,17 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       if (dbox) base.compare('agent-map-dialog', await crop(dbox), { masks: within(dbox, [times]) });
       await page.keyboard.press('Escape');
       check(!!await until(() => codex.evaluate(() => !document.querySelector('[data-codex-extras="map-dialog"]')), 5000, 200), 'Esc closes it');
+
+      const infoButton = codex.locator('[data-codex-extras="bar-button"][aria-label^="About this conversation"]').first();
+      await infoButton.click();
+      const info = await until(() => codex.evaluate(() => {
+        const b = document.querySelector('[data-codex-extras="info"]');
+        return b && getComputedStyle(b).display !== 'none' && b.innerText;
+      }), 10000, 200);
+      check(!!info && /Work plan\s+injected 1 time since the conversation began: \d+ characters, about \d+ tokens/.test(info),
+        'the information box says how much the work plan has added to the conversation\'s context', info);
+      await shot('information-box');
+      await infoButton.click();
     });
 
     await step('the dot on a tab', async () => {

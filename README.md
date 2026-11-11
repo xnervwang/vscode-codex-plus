@@ -41,7 +41,7 @@ The Codex sessions list in the Codex Plus sidebar:
 | Codex button on the tab bar, and New in tab: a new Codex conversation in a tab, in an editor group already holding only Codex tabs, else one holding any Codex tab, else the first group (the main editor area); it never opens a new split. With the patch in effect the tab bar shows this extension's Codex button instead of Codex's: it opens what `codexPlus.tabBarButton` says, and its hover is *New Codex Conversation in a Tab* or *Open Codex Sidebar* to match | Editor title bar; Codex sessions view | `codexPlus.tabBarButton`; the patch, then a reload |
 | Tabs VS Code did not restore after a reconnect are opened again, and the status bar says how many for ten seconds, as Claude Code Plus says it | Editor tabs; status bar | `codexPlus.reopenDroppedTabs` |
 | Ctrl+Shift+T (Cmd+Shift+T on a Mac) reopens the Codex conversation closed last, as Claude Code's shortcut reopens its last session, while the tab closed last was a Codex tab; after any other tab it is VS Code's Reopen Closed Editor | Editor tabs | `codexPlus.reopenClosedSessionShortcut` |
-| Session information: thread ID, the process id of Codex's server for this window, folder, the conversation log Codex writes (its rollout) and its size, how much of the context window is in use, tokens the conversation used, the account | The information button in the message box's toolbar, where clicking a value copies it | Patch; `codexPlus.infoButton` |
+| Session information: thread ID, the process id of Codex's server for this window, folder, the conversation log Codex writes (its rollout) and its size, how much of the context window is in use, how much the work plan has added to it since the last compaction, tokens the conversation used, the account | The information button in the message box's toolbar, where clicking a value copies it | Patch; `codexPlus.infoButton` |
 | Chimes on or off from the note button beside the information button; struck through while they are off | Codex message box's toolbar, after the permissions button | Patch; `codexPlus.chime`, `codexPlus.chimeButton` |
 | The Agent map, as Claude Code draws it: a pill reading like `2 agents · 1 timer · goal` while the conversation has a wake-up (the timer), a goal or sub-agents, and the dialog it opens, with a section for each of those the conversation has. The wake-up shows its interval, next time, end and prompt, with Remove; the goal its state and tokens, with Pause, Resume and Clear; each sub-agent its status dot and when it was last active, and a click opens it in a tab. Esc or a click outside closes it | Codex message box's toolbar, right of the context meter; in the row this extension adds below the box when the toolbar has no room | Patch |
 | Green / red / blue dot on a Codex tab's logo while working / replied and unread / stopped for your permission, in Claude Code Plus's colours and size; the tab titled by its conversation, kept in step as Codex names it, including a conversation started in a tab | Editor tabs | Patch |
@@ -127,6 +127,61 @@ Codex asks its client for an approval as a request, and records it in no file of
 | After this extension updates the plugin | The skill search's hook is new, so Codex asks once more to trust the plugin's hooks |
 | Codex's own list of skills | `codexPlus.skillsListBudget` is written into Codex's `config.toml` as `skills.max_context_tokens` when it is not 0: Codex's own default is 2% of the model's context window, about 50 characters a description with a hundred or more skills; 10,000 tokens, the most Codex takes, gives about 195 characters a description. Every turn's context then carries a skills list of up to that many tokens. 0, the default, leaves Codex's setting alone |
 | Skills you never want | `codexPlus.disabledSkills` names skills to turn off, each written as a `[[skills.config]]` entry with `enabled = false`: Codex leaves it out of its list and does not run it when named with `$name`, and the skill search leaves it out too. A plugin's skill is named with its plugin, as `Plugin-name:skill-name`. Removing a name removes only the entry this setting added, and a value you wrote into `config.toml` yourself is never changed |
+
+## What it costs in tokens
+
+The tables show the text Codex Plus adds to what Codex sends the model. All of it comes from the work plan plugin Codex Plus installs into Codex; what Codex Plus draws in VS Code sends nothing to the model. Text added to a conversation stays in context and goes with every later model call until compaction replaces the conversation with a summary. A token is about four characters of English.
+
+### Added to every message
+
+| What | When | At most | Turned off by |
+| --- | --- | --- | --- |
+| The work plan | Each message, while the conversation's plan has a row that is not `done` or `dropped`. The whole block, with what the states mean and how to change a row, on the conversation's first message and the first after each compaction; a short head in its place otherwise; one line when no row has changed since the message before | 6,000 characters, the brief included; the one line is about 160 characters and the plan's path | `codexPlus.workPlan` |
+| Skill search | Each message of six characters or more | 15,000 bytes | `codexPlus.skillRouting`; `codexPlus.skillRoutingCount` sets how many skills |
+
+### Added now and then
+
+| What | When | At most | Turned off by |
+| --- | --- | --- | --- |
+| End-of-turn reminders | At the end of a turn that left rows `doing`, asked you something without putting the question on a row, or changed things without reading or updating the plan | About 2,400 characters and the plan's path four times, with every reminder and both of the brief's requests at once | `codexPlus.workPlan` |
+| The brief's requests | At the end of a turn: the status once per turn, after a turn that did work; the summary when there is none, after a top-level row was added, removed or closed, and after a compaction | Counted in the end-of-turn reminders' row above | `codexPlus.conversationBrief` |
+| No row `doing` | At most once per turn, when the turn has started working and no row is `doing` | About 460 characters and the plan's path | `codexPlus.workPlan` |
+| Before a compaction | At 70% and 85% of where Codex compacts, once each between compactions | About 850 characters and the plan's path | `codexPlus.workPlan` |
+| After a compaction | Once per compaction | About 970 characters, the plan's path, and the path of its closed rows when it has any | `codexPlus.workPlan` |
+| The offer of a plan | Once, in a conversation with no plan, after your third message and a turn of 25 tool calls | About 480 characters and the plan's path | `codexPlus.workPlan`; `codexPlus.workPlanOfferMinTurns`, `codexPlus.workPlanOfferMinToolCalls` |
+| A direct write to the plan, refused | When the model edits the plan file instead of using the tools | About 310 characters | `codexPlus.workPlan` |
+| Your time zone | When Codex runs on another machine and its page has not told it the same zone since the last compaction | About 310 characters | `codexPlus.tellCodexYourTimeZone` |
+| A wake-up | Every interval while one is set, as a message of its own, so a whole turn | The prompt the model set, up to 4,000 characters, every 1 to 1,440 minutes, for 7 days | `codexPlus.wakeUps`; `clear_wakeup` |
+
+- The work plan, the skill search and the wake-up prompt are cut or refused at those sizes by the plugin. The reminders have no cut: each is fixed text with at most six row titles of 60 characters.
+- Rows closed more than a day ago are moved out of the plan file to `closed/<thread id>.json` beside it, so reading the plan after a compaction costs less too; Agent Plus's views read both files.
+
+### Sent with every call
+
+| What | When | At most | Turned off by |
+| --- | --- | --- | --- |
+| The work plan skill in Codex's list of skills | Every call | Its name and a 573-character description, which Codex shortens to fit the list's budget | `Codex Plus: Stop Loading the Work Plan Plugin` |
+| The `work_plan` MCP server's seven tools | Codex 0.167 finds MCP tools through its tool search, so their definitions join the context once a search returns them | 8,631 characters for all seven | `Codex Plus: Stop Loading the Work Plan Plugin` |
+| Codex's own list of skills, when `codexPlus.skillsListBudget` is not 0 | Every call | That many tokens | `codexPlus.skillsListBudget` at 0, the default |
+
+### Costing nothing
+
+- Everything Codex Plus and Agent Plus draw in VS Code.
+- Two of them start Codex's own model calls when used: clicking the context meter compacts the conversation, and Resume Goal lets the goal start turns.
+- The search by meaning, off by default, sends your message to `cohere.embed-v4` on Bedrock: billed there as embedding, nothing added to the conversation.
+- The information button shows, for the conversation in front, how many times the work plan was added since the last compaction, how many characters that came to, and about what share of the context in use.
+
+### Typical values
+
+Measured on 2026-11-11 on one machine.
+
+| What | Typical | How it was measured |
+| --- | --- | --- |
+| The work plan, whole block | Median 2,246 characters, 90th percentile 4,720 | The 41 plans written on that machine in the 14 days before; each was copied and put through the work plan plugin's hook that adds the plan to a message, once. All 41 are Claude Code plans, which go through the same hook. The two Codex plans there, not among the 41, gave 2,053 and 3,211 characters measured the same way |
+| The work plan, short head | Median 1,102 characters, 90th percentile 3,576 | The same plans; the two Codex plans gave 583 and 1,741 characters |
+| The work plan, one line | 220 characters with a 60-character path | The same plans |
+| Messages whose plan is unchanged since the message before | 48% | 8,587 messages with the plan in 63 Claude Code conversations over the same 14 days, counted as unchanged when only how long a row had been in its state differed; counted by `build/plan-injection-stats.js` in Agent Plus's repository |
+| Skill search | About 1,300 input tokens a message | 244 skills; see Skill search |
 
 ## Not here
 

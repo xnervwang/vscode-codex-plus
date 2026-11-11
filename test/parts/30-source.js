@@ -239,9 +239,17 @@ module.exports = async ({ ok, bad, eq, tmp }) => {
       }
     }
     fs.writeFileSync(path.join(sweepDir, 'config.json'), '{}');
+    fs.mkdirSync(path.join(sweepDir, 'closed'));
+    for (const [k, id] of Object.entries(ids)) {
+      const f = path.join(sweepDir, 'closed', id + '.json');
+      fs.writeFileSync(f, '{}');
+      if (k !== 'fresh') fs.utimesSync(f, oldMs / 1000, oldMs / 1000);
+    }
     const swept = sweepOrphans({ dir: sweepDir, live: new Set([ids.live]) });
-    eq([swept.deleted, fs.readdirSync(sweepDir).sort()], [2, ['config.json', `${ids.fresh}.json`, `${ids.fresh}.turn`, `${ids.live}.json`, `${ids.live}.turn`].sort()],
-      'a gone conversation\'s plan and side files are removed; a live one, one written this week and other files stay');
+    eq([swept.deleted, fs.readdirSync(sweepDir).sort(), fs.readdirSync(path.join(sweepDir, 'closed')).sort()],
+      [3, ['closed', 'config.json', `${ids.fresh}.json`, `${ids.fresh}.turn`, `${ids.live}.json`, `${ids.live}.turn`].sort(),
+        [`${ids.fresh}.json`, `${ids.live}.json`].sort()],
+      'a gone conversation\'s plan, closed rows and side files are removed; a live one, one written this week and other files stay');
     eq(sweepOrphans({ dir: sweepDir, live: null }).deleted, 0, 'and nothing is removed when the live set could not be read');
 
     /*

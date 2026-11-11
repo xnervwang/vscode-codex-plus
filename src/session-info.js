@@ -36,6 +36,57 @@ function appServerPid(hostPid = process.pid) {
   return '';
 }
 
+/*
+ * What the work plan's injection hook has added to this conversation's context: how many times, and how many
+ * characters, since the latest compaction. Codex records each hook's added context as its own input_text item of a
+ * developer message, and the work plan's item starts with PLAN_PREFIX in all three of its forms. A compaction is a row
+ * of type `compacted`; the history it carries over is in that row, and is not counted.
+ *
+ * Read backwards like the rest of the rollout, in windows that grow fourfold up to INJECTED_MAX. A rollout with no
+ * compaction in that much of its end gives a count that is short by whatever is earlier, and says so (`whole` false).
+ */
+const PLAN_PREFIX = "This conversation's work plan";
+const INJECTED_START = 256 * 1024;
+const INJECTED_MAX = 64 << 20;
+/* Characters to a token, for the share of the context: about four for the English this block is written in. */
+const CHARS_PER_TOKEN = 4;
+
+function planInjections(file) {
+  let bytes = 0;
+  try { bytes = fs.statSync(files.existingRollout(file) || file).size; } catch (_) { return { count: 0, chars: 0, sinceCompaction: false, whole: true }; }
+  for (let limit = INJECTED_START; ; limit *= 4) {
+    const out = { count: 0, chars: 0, sinceCompaction: false, whole: false };
+    for (const line of files.tailLines(file, limit)) {
+      if (line.includes('"compacted"')) {
+        let row = null;
+        try { row = JSON.parse(line); } catch (_) { /* not a row */ }
+        if (row && row.type === 'compacted') { out.sinceCompaction = true; break; }
+      }
+      if (!line.includes('"developer"') || !line.includes(PLAN_PREFIX)) continue;
+      let row = null;
+      try { row = JSON.parse(line); } catch (_) { continue; }
+      const p = row && row.type === 'response_item' && row.payload;
+      if (!p || p.type !== 'message' || p.role !== 'developer' || !Array.isArray(p.content)) continue;
+      for (const item of p.content) {
+        const text = item && typeof item.text === 'string' ? item.text : '';
+        if (text.startsWith(PLAN_PREFIX)) { out.count++; out.chars += text.length; }
+      }
+    }
+    if (out.sinceCompaction || limit >= bytes) return Object.assign(out, { whole: true });
+    if (limit >= INJECTED_MAX) return out;
+  }
+}
+
+/** The information box's line for planInjections, against the context `used` (tokens), or ''. */
+function planLine(got, used) {
+  if (!got.count) return '';
+  const tokens = Math.round(got.chars / CHARS_PER_TOKEN);
+  const since = got.sinceCompaction ? 'since the last compaction' : got.whole ? 'since the conversation began' : 'in the last 64 MB of the rollout';
+  const pct = used ? Math.round(100 * tokens / used) : 0;
+  const share = used ? `, ${pct ? `${pct}%` : 'under 1%'} of the ${used} in context` : '';
+  return `injected ${got.count} time${got.count === 1 ? '' : 's'} ${since}: ${got.chars} characters, about ${tokens} tokens${share}`;
+}
+
 function size(bytes) {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1 << 20) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -61,6 +112,8 @@ function rows(id, { pid = appServerPid() } = {}) {
   if (st && st.context && st.context.window) {
     out.push({ label: 'Context', value: `${st.context.used} of ${st.context.window} (${Math.round(100 * st.context.used / st.context.window)}%)` });
   }
+  const real = files.existingRollout(rollout);
+  if (real) out.push({ label: 'Work plan', value: planLine(planInjections(rollout), st && st.context ? st.context.used : 0) });
   /* What this conversation has spent. Codex records no price and its rate-limit records carry no plan or quota here,
      so there is no figure for a share of an allowance or for money - only tokens. */
   if (st && st.tokens && st.tokens.total) {
@@ -71,4 +124,4 @@ function rows(id, { pid = appServerPid() } = {}) {
   return out.filter((r) => r.value);
 }
 
-module.exports = { rows, appServerPid, size };
+module.exports = { rows, appServerPid, size, planInjections, planLine, PLAN_PREFIX };
