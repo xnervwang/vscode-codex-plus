@@ -1,0 +1,454 @@
+// BSD 3-Clause License
+// Copyright (c) 2026, Xnerv Wang
+// All rights reserved.
+
+'use strict';
+/*
+ * The window stage of run.js: a real VS Code window with Codex, Agent Plus and this extension freshly installed,
+ * driven through Playwright. It checks, in order:
+ *
+ *   the patch    Codex gets patched on the first start, VS Code says to reload, and until the reload the tab bar keeps
+ *                Codex's own button
+ *   tab bar      after the reload one Codex button, this extension's, whose hover and click follow codexPlus.tabBarButton,
+ *                with Codex's own back when the extension is turned off
+ *   list         the session list (this extension's webview): its rows, the right-click menu with no VS Code menu over
+ *                it, Text Color and Add to Group, each acting when clicked
+ *   a tab        a conversation resumed in a tab from the list: its title, then the dot on its logo during a turn sent
+ *                through fake-model.js, and after the reply arrives while the tab is in the background
+ *   Codex's page what the patch adds there: the time stamps, the rail, the buttons by the message box, the Agent map
+ *
+ * Every step saves a screenshot to <out>/shots, and crops of the parts this extension draws are compared with the
+ * approved copies (lib/baseline.js).
+ */
+const fs = require('fs');
+const path = require('path');
+const win = require('./lib/window');
+const { baselines } = require('./lib/baseline');
+const pixels = require('./lib/pixels');
+
+const { sleep, until } = win;
+const TITLES = { tab: 'Codex Plus: New Codex Conversation in a Tab', sidebar: 'Codex Plus: Open Codex Sidebar', codex: 'Open Codex Sidebar' };
+/* TAB_DOTS in src/patching.js. */
+const DOTS = { working: [0x22, 0xc5, 0x5e], unread: [0xef, 0x44, 0x44], prompt: [0x3b, 0x82, 0xf6] };
+/* The theme colour Text Color's Red gives a title, in the Dark Modern theme run.js sets. */
+const RED_TITLE = 'rgb(241, 76, 76)';
+
+async function run({ exe, profile, env, playwright, model, threads, out, check, note }) {
+  const shotsDir = path.join(out, 'shots');
+  fs.mkdirSync(shotsDir, { recursive: true });
+  const base = baselines({ out, check, note });
+  let shotNo = 0;
+  const w = await win.open({ exe, profile, env, playwright, log: path.join(out, 'vscode-window.log') });
+  const { page, call } = w;
+  const shot = (name) => page.screenshot({ path: path.join(shotsDir, `${String(++shotNo).padStart(2, '0')}-${name}.png`) }).catch(() => {});
+  const step = async (name, fn) => {
+    console.log(`\n── ${name}`);
+    try { await fn(); } catch (e) { check(false, `${name}: ran to its end`, String((e && e.stack) || e).split('\n').slice(0, 4).join(' | ')); await shot(`${name}-error`); }
+  };
+
+  /* ── what the window and the extension host say ── */
+  const patchState = () => call(`
+    const mine = vscode.extensions.getExtension('xnervwang.codex-plus'), codex = vscode.extensions.getExtension('openai.chatgpt');
+    if (!mine || !codex) return null;
+    const A = require(require('path').join(mine.extensionPath, 'src', 'adapters'));
+    return { active: mine.isActive, targets: A.map((a) => [a.name, a.status(codex.extensionPath)]) };`);
+  const tabs = () => call(`return vscode.window.tabGroups.all.map((g) => ({ column: g.viewColumn, active: g.isActive,
+    tabs: g.tabs.map((t) => ({ label: t.label, active: t.isActive, view: (t.input && t.input.viewType) || '' })) }));`);
+  const exec = (command, ...a) => call(`await vscode.commands.executeCommand(${JSON.stringify(command)}, ...arg); return true;`, a);
+  /* Started and not waited for: the command opens a prompt that is answered through the window. */
+  const start = (command) => call(`vscode.commands.executeCommand(${JSON.stringify(command)}); return true;`);
+  const setting = (key, value) => call(`await vscode.workspace.getConfiguration('codexPlus').update(${JSON.stringify(key)}, arg, vscode.ConfigurationTarget.Global); return true;`, value);
+  const openNotes = () => call(`await vscode.window.showTextDocument(vscode.Uri.file(${JSON.stringify(path.join(profile.folder, 'notes.txt'))}), { preview: false }); return true;`);
+
+  /* The Codex buttons in the active editor group's tool bar, by their labels. */
+  const codexButtons = () => page.evaluate(() => [...document.querySelectorAll('.editor-group-container.active .editor-actions .action-item .action-label')]
+    .map((a) => a.getAttribute('aria-label') || a.title || '').filter((t) => /Codex/.test(t)));
+  const codexButton = () => page.locator('.editor-group-container.active .editor-actions .action-item .action-label[aria-label*="Codex"]').first();
+  /* The text of VS Code's hover over `loc`. */
+  const hoverText = async (loc) => {
+    await page.mouse.move(5, 300);
+    await sleep(300);
+    await loc.hover();
+    const text = await until(() => page.evaluate(() => {
+      const h = [...document.querySelectorAll('.monaco-hover, .workbench-hover')].find((e) => e.offsetParent && e.innerText.trim());
+      return h ? h.innerText.trim() : '';
+    }), 5000, 200);
+    await page.mouse.move(5, 300);
+    await sleep(300);
+    return text || '';
+  };
+  const toasts = () => page.evaluate(() => [...document.querySelectorAll('.notification-list-item-message')].map((e) => e.innerText));
+  const focused = () => call('return vscode.window.state.focused;');
+  const visibleNativeMenu = () => page.evaluate(() => !![...document.querySelectorAll('.context-view .monaco-menu, .monaco-menu-container')].find((e) => e.offsetParent));
+  const auxiliaryShowsCodex = () => page.evaluate(() => {
+    const part = document.getElementById('workbench.parts.auxiliarybar');
+    return !!(part && part.offsetWidth > 0 && part.offsetHeight > 0 && /Codex/.test(part.innerText));
+  });
+
+  /* A frame of the window's webviews in which `test` (a function of document) is true. */
+  const frameWhere = async (test, ms, arg) => until(async () => {
+    for (const f of page.frames()) {
+      try { if (await f.evaluate(test, arg)) return f; } catch (_) { /* not ready, or gone */ }
+    }
+    return null;
+  }, ms, 500);
+  /* The crop of `box` (in the window's CSS pixels) as a PNG, with each of its four edges rounded to the nearest pixel, as
+     the page itself snaps them: a size such as 258.5 px rounded alone comes out as 258 in one run and 259 in the next. */
+  const crop = (box) => {
+    const x = Math.round(box.x), y = Math.round(box.y);
+    return page.screenshot({ animations: 'disabled', clip: { x, y, width: Math.round(box.x + box.width) - x, height: Math.round(box.y + box.height) - y } });
+  };
+  /* Resolves once `loc` has stopped changing: its animations have finished and two readings of its box agree. The list's
+     menus scale in over a tenth of a second, and a box measured while they do is a few pixels short. */
+  const still = async (loc) => {
+    let last = '';
+    return until(async () => {
+      const busy = await loc.evaluate((e) => e.getAnimations({ subtree: true }).some((a) => a.playState === 'running'));
+      const box = JSON.stringify(await loc.boundingBox());
+      const same = !busy && box === last;
+      last = box;
+      return same;
+    }, 3000, 100);
+  };
+  /* Rectangles of `boxes` relative to `outer`, for the masks of a crop. */
+  const within = (outer, boxes) => boxes.filter(Boolean).map((b) => ({ x: Math.floor(b.x - Math.round(outer.x)), y: Math.floor(b.y - Math.round(outer.y)),
+    w: Math.ceil(b.width) + 1, h: Math.ceil(b.height) + 1 }));
+  /* How many pixels of each tab dot's colour the tab named `label` shows on its logo. */
+  const dotsOn = async (label) => {
+    const tab = page.locator('.tabs-container .tab').filter({ hasText: label }).first();
+    const box = await tab.boundingBox();
+    if (!box) return null;
+    const img = pixels.decode(await crop({ x: box.x, y: box.y, width: Math.min(40, box.width), height: box.height }));
+    const count = {};
+    for (const [k, c] of Object.entries(DOTS)) {
+      let n = 0;
+      for (let i = 0; i < img.data.length; i += 4) {
+        if (Math.abs(img.data[i] - c[0]) <= 24 && Math.abs(img.data[i + 1] - c[1]) <= 24 && Math.abs(img.data[i + 2] - c[2]) <= 24) n++;
+      }
+      count[k] = n;
+    }
+    return count;
+  };
+
+  try {
+    await w.hostUp();
+
+    await step('the patch', async () => {
+      const st = await until(async () => { const s = await patchState(); return s && s.targets.every(([, x]) => x === 'patched') && s; }, 120000, 1000);
+      check(!!st, 'Codex Plus patches Codex\'s host bundle, its page and its manifest on the first start', await patchState());
+      const toast = await until(() => page.evaluate(() => [...document.querySelectorAll('.notification-list-item-message')].map((e) => e.innerText)
+        .find((t) => /Codex is patched\. Reload the window/.test(t)) || ''), 30000, 500);
+      check(!!toast, 'and VS Code shows its prompt to reload the window', toast);
+      await shot('patched-reload-prompt');
+      await openNotes();
+      await until(async () => (await codexButtons()).length > 0, 15000);
+      const before = await codexButtons();
+      check(before.length === 1 && before[0] === TITLES.codex, 'until the reload the tab bar has one Codex button, Codex\'s own', before);
+      const hover = before.length ? await hoverText(codexButton()) : '';
+      check(hover === TITLES.codex, `and its hover reads "${TITLES.codex}"`, hover);
+      await shot('tab-bar-before-reload');
+    });
+
+    await step('tab bar', async () => {
+      await exec('notifications.clearAll');
+      await w.reload();
+      await until(async () => { const s = await patchState(); return s && s.active; }, 60000, 1000);
+      await openNotes();
+      const ours = await until(async () => { const b = await codexButtons(); return b.length === 1 && b[0] === TITLES.tab && b; }, 30000, 500);
+      check(!!ours, 'after the reload the tab bar has one Codex button, this extension\'s, for codexPlus.tabBarButton "tab"', await codexButtons());
+      const hover = await hoverText(codexButton());
+      check(hover === TITLES.tab, `its hover reads "${TITLES.tab}"`, hover);
+      await shot('tab-bar-after-reload');
+      const btn = await codexButton().boundingBox();
+      if (btn) base.compare('tab-bar-button', await crop({ x: btn.x - 4, y: btn.y - 4, width: btn.width + 8, height: btn.height + 8 }));
+
+      const groups = (await tabs()).length;
+      await codexButton().click();
+      const opened = await until(async () => {
+        const t = await tabs();
+        const front = t.find((g) => g.active).tabs.find((x) => x.active);
+        return front && front.view === 'chatgpt.conversationEditor' && front.label === 'Codex' && { t, front };
+      }, 20000, 500);
+      check(!!opened && opened.t.length === groups, 'a click opens a new Codex conversation in a tab titled Codex, in the group already there rather than a new split',
+        opened || await tabs());
+      const loaded = await frameWhere(() => !!document.querySelector('[data-codex-composer-root]'), 90000);
+      check(!!loaded, 'and Codex draws its message box in that tab');
+      await shot('tab-bar-new-tab');
+
+      await setting('tabBarButton', 'sidebar');
+      const side = await until(async () => { const b = await codexButtons(); return b.length === 1 && b[0] === TITLES.sidebar && b; }, 15000, 500);
+      check(!!side, 'with codexPlus.tabBarButton "sidebar" it is still one button, this extension\'s', await codexButtons());
+      const sideHover = await hoverText(codexButton());
+      check(sideHover === TITLES.sidebar, `its hover reads "${TITLES.sidebar}"`, sideHover);
+      const groupsBefore = (await tabs()).length;
+      await codexButton().click();
+      check(!!await until(auxiliaryShowsCodex, 15000, 500) && (await tabs()).length === groupsBefore, 'and a click shows Codex in the secondary sidebar, with no new tab group');
+      await shot('tab-bar-sidebar');
+      await exec('workbench.action.closeAuxiliaryBar');
+      await setting('tabBarButton', 'tab');
+
+      await setting('enabled', false);
+      const off = await until(async () => { const b = await codexButtons(); return b.length === 1 && b[0] === TITLES.codex && b; }, 15000, 500);
+      check(!!off, 'turned off, the tab bar has Codex\'s own button again, and only that one', await codexButtons());
+      await shot('tab-bar-turned-off');
+      await setting('enabled', true);
+      const on = await until(async () => { const b = await codexButtons(); return b.length === 1 && b[0] === TITLES.tab && b; }, 15000, 500);
+      check(!!on, 'turned back on, this extension\'s button is back in its place', await codexButtons());
+      await exec('notifications.clearAll');
+    });
+
+    let list = null;
+    const row = (t) => list.locator(`.cp-group .cp-row[data-id="${t.id}"]`).first();
+    /*
+     * Right-clicks `t`'s row and clicks the menu item labels[0], or, given labels[1], that item of its submenu.
+     * The page closes its menu when its window loses focus, like VS Code's own menus, and another webview of the
+     * window (Codex's page in a tab) can take the focus at any moment; a click then lands on whatever was under the
+     * menu. So the page records where each click lands, and a click that missed the item while the page lost the focus
+     * is retried, at most twice.
+     */
+    /* A press outside the page's menus closes them and does nothing else (sessions-page.js); the bottom of the list is empty. */
+    const closeMenus = async () => {
+      if (!await list.evaluate(() => !!document.querySelector('.cp-ctx'))) return;
+      const box = await (await list.frameElement()).boundingBox();
+      await page.mouse.click(box.x + 20, box.y + box.height - 12);
+      await until(() => list.evaluate(() => !document.querySelector('.cp-ctx')), 3000, 100);
+    };
+    /* Hovers `item`, coming from the menu's first item, until its submenu shows; three tries; returns the one that worked, or 0. */
+    const openSubOf = async (item) => {
+      for (let n = 1; n <= 3; n++) {
+        if (n > 1) await list.locator('.cp-ctx:not(.cp-ctx-sub) .cp-ctx-item').first().hover().catch(() => {});
+        await item.hover();
+        if (await until(() => list.evaluate(() => !!document.querySelector('.cp-ctx-sub')), 2000, 100)) return n;
+      }
+      return 0;
+    };
+    const hovered = (n, what) => { if (n > 1) note(`${what}: its submenu opened on hover ${n}, the earlier hovers reached nothing`); };
+    const pick = async (t, labels) => {
+      await list.evaluate(() => {
+        window.__landed = [];
+        if (window.__landedHook) return;
+        window.__landedHook = true;
+        window.addEventListener('click', (e) => {
+          const item = e.target.closest && e.target.closest('.cp-ctx-item');
+          window.__landed.push(item ? item.textContent.trim() : `outside the menu (${e.target.className || e.target.tagName})`);
+        }, true);
+        window.addEventListener('blur', () => window.__landed.push('the page lost the focus'));
+      });
+      const said = [];
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        await closeMenus();
+        await list.evaluate(() => { window.__landed = []; });
+        await row(t).click({ button: 'right' });
+        await until(() => list.evaluate(() => !!document.querySelector('.cp-ctx')), 5000, 100);
+        const main = list.locator('.cp-ctx:not(.cp-ctx-sub) .cp-ctx-item').filter({ hasText: labels[0] }).first();
+        const lostFocus = () => list.evaluate(() => window.__landed.includes('the page lost the focus'));
+        try {
+          if (labels.length > 1) {
+            const n = await openSubOf(main);
+            if (!n) throw new Error(`${labels[0]} opened no submenu in three hovers`);
+            hovered(n, labels[0]);
+            await list.locator('.cp-ctx-sub .cp-ctx-item').filter({ hasText: labels[1] }).first().click({ timeout: 5000 });
+          } else await main.click({ timeout: 5000 });
+        } catch (e) {
+          if (!await lostFocus()) throw e;
+          said.push(`the menu closed before the click: ${e.message.split('\n')[0]}`);
+          continue;
+        }
+        const landed = await list.evaluate(() => window.__landed.slice());
+        const last = labels[labels.length - 1];
+        if (landed.some((x) => x === last || x.startsWith(last))) return attempt;
+        said.push(landed.join(', ') || 'nothing recorded');
+        if (!landed.includes('the page lost the focus')) throw new Error(`the click on ${labels.join(' > ')} landed elsewhere: ${said.join('; ')}`);
+        await sleep(500);
+      }
+      throw new Error(`the menu kept closing before ${labels.join(' > ')} could be clicked: ${said.join('; ')}`);
+    };
+    const retried = (n, what) => { if (n > 1) note(`${what} took ${n} tries: the session list lost the focus while its menu was open`); };
+    await step('session list', async () => {
+      await exec('workbench.view.extension.codexPlus');
+      list = await frameWhere(() => !!document.querySelector('.cp-root'), 30000);
+      check(!!list, 'the session list opens in its own activity bar container');
+      if (!list) return;
+      const titles = await until(async () => {
+        const got = await list.evaluate(() => [...document.querySelectorAll('.cp-row .cp-title')].map((e) => e.textContent));
+        return threads.every((t) => got.includes(t.title)) && got;
+      }, 30000, 500);
+      check(!!titles, `it lists the ${threads.length} made-up conversations by their titles`, titles);
+      await page.mouse.move(5, 880);
+      await sleep(300);
+      await shot('session-list');
+      await still(row(threads[1]));
+      const r = await row(threads[1]).boundingBox();
+      const time = await row(threads[1]).locator('.cp-time').boundingBox();
+      if (r) base.compare('session-row', await crop(r), { masks: within(r, [time]) });
+
+      await list.evaluate(() => {
+        window.__ctx = [];
+        window.addEventListener('contextmenu', (e) => window.__ctx.push({ prevented: e.defaultPrevented }));
+      });
+      await row(threads[1]).click({ button: 'right' });
+      const menu = await until(() => list.evaluate(() => {
+        const m = [...document.querySelectorAll('.cp-ctx')].filter((x) => !x.classList.contains('cp-ctx-sub'));
+        return m.length && { count: m.length, labels: [...m[0].querySelectorAll('.cp-ctx-item')].map((x) => (x.childNodes[0] ? x.childNodes[0].textContent : '')) };
+      }), 5000, 200);
+      const ctx = await list.evaluate(() => window.__ctx);
+      check(!!menu && menu.count === 1 && ['Codex Plus: Resume in Tab', 'Codex Plus: Text Color'].every((l) => menu.labels.includes(l))
+        && !menu.labels.includes('Codex Plus: Add to Group'), 'a right-click on a row opens the list\'s own menu, with Resume in Tab and Text Color, and no Add to Group while there is no group', menu);
+      check(ctx.length === 1 && ctx[0].prevented && !await visibleNativeMenu(), 'the right-click is cancelled in the page, and no menu of VS Code\'s opens over it', { ctx, nativeMenu: await visibleNativeMenu() });
+      await shot('session-row-menu');
+      await still(list.locator('.cp-ctx:not(.cp-ctx-sub)').first());
+      const mbox = await list.locator('.cp-ctx:not(.cp-ctx-sub)').first().boundingBox();
+      if (mbox) base.compare('row-menu', await crop(mbox));
+
+      const item = (label) => list.locator('.cp-ctx-item').filter({ hasText: label }).first();
+      hovered(await openSubOf(item('Codex Plus: Text Color')), 'Text Color');
+      const sub = await until(() => list.evaluate(() => { const s = document.querySelector('.cp-ctx-sub'); return s && [...s.querySelectorAll('.cp-ctx-item')].map((x) => x.textContent.trim()); }), 5000, 200);
+      check(!!sub && sub[0].startsWith('Default') && ['Red', 'Blue', 'Green', 'Yellow', 'Purple', 'Orange', 'Pink', 'Cyan'].every((c) => sub.includes(c)),
+        'resting on Text Color opens its submenu beside it: Default and the eight colours', sub);
+      await shot('session-text-color');
+      await still(list.locator('.cp-ctx-sub').first());
+      const sbox = await list.locator('.cp-ctx-sub').first().boundingBox();
+      if (sbox) base.compare('text-color-submenu', await crop(sbox));
+      const colourOf = () => row(threads[1]).locator('.cp-title').evaluate((e) => getComputedStyle(e).color);
+      const was = await colourOf();
+      retried(await pick(threads[1], ['Codex Plus: Text Color', 'Red']), 'Text Color > Red');
+      const now = await until(async () => { const c = await colourOf(); return c === RED_TITLE && c; }, 10000, 300);
+      check(!!now && (await list.evaluate(() => document.querySelectorAll('.cp-ctx').length)) === 0,
+        'clicking Red closes the menu and draws that row\'s title in the theme\'s red', { was, now: await colourOf() });
+      await shot('session-row-red');
+
+      await start('codexPlus.newGroup');
+      const input = page.locator('.quick-input-widget input').first();
+      await input.waitFor({ state: 'visible', timeout: 10000 });
+      await input.fill('Release 1.2');
+      await input.press('Enter');
+      const made = await until(() => list.evaluate(() => [...document.querySelectorAll('.cp-group-name')].map((e) => e.textContent).includes('Release 1.2')), 20000, 500);
+      if (!made) {
+        note('New group did not put a group in the list, so Add to Group was not tried: Codex\'s app-server here may not have its section methods');
+        await shot('session-no-group');
+        return;
+      }
+      check(true, 'New group makes a group the list shows');
+      await row(threads[1]).click({ button: 'right' });
+      await until(() => list.evaluate(() => !!document.querySelector('.cp-ctx')), 5000, 200);
+      hovered(await openSubOf(item('Codex Plus: Add to Group')), 'Add to Group');
+      const groupsSub = await until(() => list.evaluate(() => { const s = document.querySelector('.cp-ctx-sub'); return s && [...s.querySelectorAll('.cp-ctx-item')].map((x) => x.textContent.trim()); }), 5000, 200);
+      check(!!groupsSub && groupsSub.includes('Release 1.2'), 'resting on Add to Group opens a submenu of the groups made', groupsSub);
+      await shot('session-add-to-group');
+      await still(list.locator('.cp-ctx-sub').first());
+      const gbox = await list.locator('.cp-ctx-sub').first().boundingBox();
+      if (gbox) base.compare('add-to-group-submenu', await crop(gbox));
+      retried(await pick(threads[1], ['Codex Plus: Add to Group', 'Release 1.2']), 'Add to Group > Release 1.2');
+      const moved = await until(() => list.evaluate((id) => {
+        const g = [...document.querySelectorAll('.cp-group')].find((x) => (x.querySelector('.cp-group-name') || {}).textContent === 'Release 1.2');
+        return !!(g && g.querySelector(`.cp-row[data-id="${id}"]`));
+      }, threads[1].id), 20000, 500);
+      check(!!moved, 'and clicking the group moves the row into it', moved ? undefined : { toasts: await toasts(), codex: await call(`
+        const mine = vscode.extensions.getExtension('xnervwang.codex-plus');
+        const p = require(require('path').join(mine.extensionPath, 'src', 'patching'));
+        return { sections: await p.hostRequest('threadSection/list', {}),
+          thread: await p.hostRequest('thread/read', { threadId: arg }) };`, threads[1].id).catch((e) => e.message) });
+      await shot('session-row-grouped');
+    });
+
+    let codex = null;
+    const title = threads[0].title;
+    await step('a conversation in a tab', async () => {
+      if (!list) throw new Error('the session list did not open');
+      const groups = (await tabs()).length;
+      retried(await pick(threads[0], ['Codex Plus: Resume in Tab']), 'Resume in Tab');
+      const open = await until(async () => { const t = await tabs(); const x = t.flatMap((g) => g.tabs).find((y) => y.label === title); return x && x.active && t; }, 20000, 500);
+      check(!!open && open.length === groups, 'Resume in Tab opens the conversation in a tab of the group there, titled by the conversation', open || await tabs());
+      codex = await frameWhere((want) => {
+        return !!document.querySelector('[data-codex-composer-root]') && document.querySelectorAll('[data-turn-key]').length >= 4
+          && document.body.innerText.includes(want);
+      }, 90000, title);
+      check(!!codex, 'Codex draws the conversation in that tab, every turn of it, with its message box');
+      await shot('conversation-tab');
+    });
+
+    await step('Codex\'s page', async () => {
+      if (!codex) throw new Error('the conversation did not open');
+      await sleep(2000);
+      const seen = await codex.evaluate(() => ({
+        user: document.querySelectorAll('.codex-extras-stamp-user').length, assistant: document.querySelectorAll('.codex-extras-stamp-assistant').length,
+        rail: !!document.querySelector('.codex-extras-rail'), buttons: document.querySelectorAll('[data-codex-extras="bar-button"]').length,
+        meter: !!document.querySelector('[data-codex-extras="meter"]'), pill: ((document.querySelector('[data-codex-extras="agents"]') || {}).innerText || '').trim(),
+        turns: document.querySelectorAll('[data-turn-key]').length }));
+      check(seen.user === 4 && seen.assistant >= 4, 'each of the four messages and replies carries a time stamp', seen);
+      check(seen.rail, 'the rail at the right edge is drawn', seen);
+      check(seen.buttons === 2 && seen.meter, 'the information and chime buttons and the context meter are by the message box', seen);
+      check(/1 timer/.test(seen.pill), 'the Agent map pill names the wake-up the conversation has', seen.pill);
+      /* Two crops, so that neither takes in Codex's buttons between them: the information and chime buttons, and the
+         context meter with the Agent map pill. */
+      const frameBox = await (await codex.frameElement()).boundingBox();
+      for (const [name, sel] of [['composer-buttons', '[data-codex-extras="bar-button"]'], ['composer-meter-pill', '[data-codex-extras="meter"], [data-codex-extras="agents"]']]) {
+        const r = await codex.evaluate((q) => {
+          const all = [...document.querySelectorAll(q)].map((e) => e.getBoundingClientRect()).filter((b) => b.width > 0);
+          return all.length ? { x0: Math.min(...all.map((b) => b.left)), y0: Math.min(...all.map((b) => b.top)), x1: Math.max(...all.map((b) => b.right)), y1: Math.max(...all.map((b) => b.bottom)) } : null;
+        }, sel);
+        if (r && frameBox) base.compare(name, await crop({ x: frameBox.x + r.x0 - 2, y: frameBox.y + r.y0 - 2, width: r.x1 - r.x0 + 4, height: r.y1 - r.y0 + 4 }));
+      }
+
+      await codex.locator('.codex-extras-rail-handle').first().click();
+      const rows = await until(() => codex.evaluate(() => {
+        const p = document.querySelector('.codex-extras-panel');
+        return p && getComputedStyle(p).display !== 'none' && [...p.querySelectorAll('.codex-extras-row')].map((x) => x.textContent);
+      }), 5000, 200);
+      check(!!rows && rows.length === 4 && rows.every((t) => /^(\d\d\/\d\d )?\d\d:\d\d:\d\d {2}\S/.test(t)), 'the rail\'s handle opens the list of your messages, one row each with its time', rows);
+      await shot('conversation-rail-list');
+      await codex.locator('.codex-extras-rail-handle').first().click();
+
+      await codex.locator('[data-codex-extras="agents"]').first().click();
+      const map = await until(() => codex.evaluate(() => {
+        const d = document.querySelector('[data-codex-extras="map-dialog"]');
+        const s = d && d.querySelector('[data-codex-extras="map-wakeups"]');
+        return d && { text: d.innerText, prompt: s ? s.textContent : '', wakeups: !!s, remove: !!d.querySelector('[data-codex-extras-act="removeWakeup"]') };
+      }), 5000, 200);
+      check(!!map && map.wakeups && map.remove && /every 45 min/.test(map.text) && /nightly export/.test(map.prompt),
+        'the pill opens the Agent map, with the wake-up\'s interval, its prompt and Remove', map);
+      await shot('agent-map');
+      const dialog = codex.locator('[data-codex-extras="map-dialog"]').first();
+      await still(dialog);
+      const dbox = await dialog.boundingBox();
+      const times = await dialog.locator('[data-codex-extras="map-wakeups"] summary span:nth-child(2)').boundingBox().catch(() => null);
+      if (dbox) base.compare('agent-map-dialog', await crop(dbox), { masks: within(dbox, [times]) });
+      await page.keyboard.press('Escape');
+      check(!!await until(() => codex.evaluate(() => !document.querySelector('[data-codex-extras="map-dialog"]')), 5000, 200), 'Esc closes it');
+    });
+
+    await step('the dot on a tab', async () => {
+      if (!codex) throw new Error('the conversation did not open');
+      const before = await dotsOn(title);
+      check(!!before && before.working === 0 && before.unread === 0, 'an idle conversation\'s tab has no dot', before);
+      model.hold();
+      const turns = model.turns();
+      await codex.locator('[data-codex-composer-root] [contenteditable="true"]').first().click();
+      await page.keyboard.type('Run the tests again.');
+      await page.keyboard.press('Enter');
+      check(!!await until(() => model.turns() > turns, 20000, 300), 'a message sent from the tab reaches the made-up model', model.seen.slice(-3));
+      const working = await until(async () => { const d = await dotsOn(title); return d && d.working >= 6 && d; }, 20000, 500);
+      check(!!working, 'while the turn runs the tab\'s logo carries the green dot', await dotsOn(title));
+      await shot('tab-dot-working');
+      const lbox = await page.locator('.tabs-container .tab').filter({ hasText: title }).first().boundingBox();
+      await openNotes();
+      await sleep(800);
+      model.release();
+      const unread = await until(async () => { const d = await dotsOn(title); return d && d.unread >= 6 && d.working === 0 && d; }, 30000, 500);
+      check(!!unread, 'once the reply lands with the tab not in front, the dot turns red', await dotsOn(title));
+      await shot('tab-dot-unread');
+      if (lbox) base.compare('tab-dot-unread', await crop({ x: lbox.x + 4, y: lbox.y + 4, width: 24, height: lbox.height - 8 }));
+      await page.locator('.tabs-container .tab').filter({ hasText: title }).first().click();
+      await page.bringToFront().catch(() => {});
+      const read = await until(async () => { const d = await dotsOn(title); return d && d.unread === 0 && d.working === 0 && d; }, 20000, 500);
+      check(!!read, 'and bringing the tab to the front clears it', { dots: await dotsOn(title), windowFocused: await focused() });
+      await shot('tab-dot-read');
+      note('the blue dot of a turn waiting for approval is not made here: the made-up model sends replies only, never a command to approve');
+    });
+  } finally {
+    await shot('last');
+    await w.close();
+  }
+}
+
+module.exports = { run };

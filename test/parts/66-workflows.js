@@ -4,7 +4,7 @@
 
 'use strict';
 /*
- * The two CI workflows: that they are there, what starts each of them, and that the daily one against the Codex being
+ * The CI workflows: that they are there, what starts each of them, and that the daily one against the Codex being
  * shipped cannot pass while the patch no longer fits.
  *
  * That last part is checked by running the step's own shell with a `node` of this file's making, once for each exit
@@ -63,7 +63,24 @@ module.exports = ({ ok, bad, eq, tmp, root }) => {
   const daily = /cron:\s*'([^']+)'/.exec(check);
   eq(!!daily && daily[1].split(/\s+/).slice(2).join(' ') === '* * *' && daily[1].split(/\s+/)[0] !== '0', true,
     'and it runs once a day, not on the hour, so a change to Agent Plus\'s main that breaks this one shows within a day');
-  for (const [name, text] of [['check.yml', check], ['against-latest.yml', latest]]) {
+  /* ── the one in a real VS Code window, on three platforms ── */
+  const ui = read('vscode.yml');
+  eq(!!ui, true, 'the workflow that runs the extension in a real VS Code window is there too');
+  if (ui) {
+    eq([/^\s+push:\s*\n(\s*#.*\n)*\s+branches:\s*\[main,\s*'ci\/\*\*'\]/m.test(ui), /^\s+pull_request:/m.test(ui), /workflow_dispatch:/.test(ui)], [true, true, true],
+      'it runs on a push to main or to a ci/ branch, on a pull request, and by hand');
+    const cron = (text) => ((/cron:\s*'([^']+)'/.exec(text) || [])[1] || '').trim().split(/\s+/);
+    const [minute, hour, ...days] = cron(ui);
+    const others = [check, latest].map((t) => cron(t).slice(0, 2).join(' '));
+    eq(days.join(' ') === '* * *' && /^\d+$/.test(minute) && !['0', '30'].includes(minute) && !others.includes(`${minute} ${hour}`), true,
+      'and once a day, neither on the hour nor on the half hour, and not at the time of the other two');
+    eq(/os:\s*\[ubuntu-latest,\s*macos-latest,\s*windows-latest\]/.test(ui), true, 'on Linux, macOS and Windows');
+    eq([/xvfb-run[^\n]*node test\/vscode\/run\.js/.test(ui), /CODEX_PLUS_UI_OFFLINE:\s*require/.test(ui)], [true, true],
+      'on Linux under a virtual display, and failing there if the test stage cannot be cut off from the network');
+    eq(/if:\s*always\(\)\s*\n\s*with:\s*\n\s*name:\s*vscode-/.test(ui), true, 'and the results are kept as an artifact whether the run passed or not');
+  }
+
+  for (const [name, text] of [['check.yml', check], ['against-latest.yml', latest], ['vscode.yml', ui]].filter(([, t]) => t)) {
     const uses = text.match(/uses:\s*actions\/(?:checkout|setup-node)@\S+/g) || [];
     eq(uses.length > 0 && uses.every((u) => /@v7$/.test(u)), true, `${name} uses checkout and setup-node at v7, as Claude Code Plus's workflow does`);
   }
