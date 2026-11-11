@@ -422,11 +422,15 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await sleep(2000);
       const seen = await codex.evaluate(() => ({
         user: document.querySelectorAll('.codex-extras-stamp-user').length, assistant: document.querySelectorAll('.codex-extras-stamp-assistant').length,
-        rail: !!document.querySelector('.codex-extras-rail'), buttons: document.querySelectorAll('[data-codex-extras="bar-button"]').length,
+        rail: !!document.querySelector('.codex-extras-rail'),
+        railAt: (() => { const r = document.querySelector('.codex-extras-rail'); if (!r) return null; const b = r.getBoundingClientRect();
+          return { top: b.top, off: Math.abs(b.top + b.height / 2 - innerHeight / 2) }; })(),
+        buttons: document.querySelectorAll('[data-codex-extras="bar-button"]').length,
         meter: !!document.querySelector('[data-codex-extras="meter"]'), pill: ((document.querySelector('[data-codex-extras="agents"]') || {}).innerText || '').trim(),
         turns: document.querySelectorAll('[data-turn-key]').length }));
       check(seen.user === 4 && seen.assistant >= 4, 'each of the four messages and replies carries a time stamp', seen);
       check(seen.rail, 'the rail at the right edge is drawn', seen);
+      check(!!seen.railAt && Number.isInteger(seen.railAt.top) && seen.railAt.off <= 1, 'and is centred on a whole pixel, so its arrows are drawn sharp', seen.railAt);
       check(seen.buttons === 2 && seen.meter, 'the information and chime buttons and the context meter are by the message box', seen);
       check(/1 timer/.test(seen.pill), 'the Agent map pill names the wake-up the conversation has', seen.pill);
       /* Two crops, so that neither takes in Codex's buttons between them: the information and chime buttons, and the

@@ -39,8 +39,8 @@ if (found.missing.length) {
   for (const m of found.missing) console.log(`  - ${m}`);
   process.exit(0);
 }
-/* --only <name>[,<name>] runs those scenes alone: conversation, narrow, wide, stamps (stamps-300 and stamps-200), rail (rail-wide
-   and rail-narrow), agentmap (and agentmap-narrow), approval, background, compact, chime, long, sessions. */
+/* --only <name>[,<name>] runs those scenes alone: conversation, narrow, wide, stamps (stamps-300 and stamps-200), rail (rail-wide,
+   rail-narrow and rail-odd), agentmap (and agentmap-narrow), approval, background, compact, chime, long, sessions. */
 const ONLY = arg('--only') ? arg('--only').split(',') : null;
 const want = (name) => !ONLY || ONLY.includes(name);
 const OUT = path.resolve(arg('--out') || fs.mkdtempSync(path.join(os.tmpdir(), 'codex-plus-render-')));
@@ -570,13 +570,18 @@ function selfchecked(r, where, { turns, users, rows, replies = turns }) {
   }
 
   /* ── the rail beside a scrollbar that is drawn, which the scenes above hide, at a wide window and at the sidebar's width ── */
-  for (const [name, width, height] of [['rail-wide', 1600, 900], ['rail-narrow', 400, 760]].filter(([n]) => want(n) || want('rail'))) {
+  /* rail-odd leaves an odd number of pixels between the page's height and the rail's, where centring by a translate would put
+     the rail half a pixel off. */
+  for (const [name, width, height] of [['rail-wide', 1600, 900], ['rail-narrow', 400, 760], ['rail-odd', 1000, 761]].filter(([n]) => want(n) || want('rail'))) {
     s = await opened(name, { width, height, scrollbars: true });
     try {
       await scrollTo(s, 'bottom');
       await shot(s, name);
       await shot(s, `${name}-edge`, { x: width - 140, y: 0, width: 140, height, scale: 2 });
       await railEdges(s, name);
+      const placed = await s.b.evaluate(`(() => { const r = document.querySelector('.codex-extras-rail'); if (!r) return null;
+        const b = r.getBoundingClientRect(); return { top: b.top, height: b.height, vh: innerHeight, off: Math.abs(b.top + b.height / 2 - innerHeight / 2) }; })()`);
+      check(!!placed && Number.isInteger(placed.top) && placed.off <= 1, `${name}: the rail is centred on a whole pixel, so its arrows are drawn sharp`, placed);
       const handle = await centre(s, '.codex-extras-rail-handle');
       if (handle) {
         await s.b.click(handle[0], handle[1]);

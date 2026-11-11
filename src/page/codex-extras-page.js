@@ -1789,7 +1789,7 @@
   /* Sized as Claude Code Extras sizes its own rail, so the two read as one control. Codex's stylesheet makes every
      element border-box and Claude Code's page does not, so the buttons say content-box: otherwise each comes out a
      pixel narrower and two shorter here, the border taken out of the size instead of added to it. */
-  var NAV_CSS = '.codex-extras-rail{position:fixed;right:0;top:50%;transform:translateY(-50%);z-index:' + Z_RAIL + ';'
+  var NAV_CSS = '.codex-extras-rail{position:fixed;right:0;top:0;z-index:' + Z_RAIL + ';'
     + 'display:flex;flex-direction:column;align-items:flex-end;}'
     + '.codex-extras-rail-btn{box-sizing:content-box;width:' + RAIL_W + 'px;height:24px;display:flex;align-items:center;'
     + 'justify-content:center;cursor:pointer;user-select:none;font-size:13px;border-radius:3px 0 0 3px;'
@@ -1828,6 +1828,13 @@
 
   /* ── the list of your own messages, and stepping between them ── */
   var nav = null, railBox = null, panel = null, rowsBox = null, filter = null, chevron = null;
+  /* Placed by script rather than by top 50% and translateY(-50%), which leave the rail half a pixel off whenever the page
+     and the rail differ in height by an odd number, and blur its arrows. */
+  var railResizeWired = false;
+  function placeRail() {
+    var h = globalThis.innerHeight;
+    if (railBox && railBox.isConnected && h > 0) railBox.style.top = Math.max(0, Math.round((h - railBox.offsetHeight) / 2)) + 'px';
+  }
   var rows = [], navNodes = [], sigNodes = [], sigTexts = [], sigRules = '';
   var stepIdx = -1, stepAt = 0, keysWired = false, outsideWired = false;
 
@@ -2080,6 +2087,12 @@
     nav.appendChild(panel);
 
     document.body.appendChild(nav);
+    placeRail();
+    if (typeof ResizeObserver === 'function') new ResizeObserver(placeRail).observe(railBox);
+    if (!railResizeWired) {
+      railResizeWired = true;
+      try { globalThis.addEventListener('resize', placeRail); } catch (e) { /* no window events */ }
+    }
     /* A click anywhere else dismisses the list; one inside it, or on the rail, does not. Wired to the document once,
        so a list rebuilt after a setting came back on does not leave a second listener behind. */
     if (!outsideWired) {
