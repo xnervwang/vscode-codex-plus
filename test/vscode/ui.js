@@ -118,25 +118,25 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
   /* Rectangles of `boxes` relative to `outer`, for the masks of a crop. */
   const within = (outer, boxes) => boxes.filter(Boolean).map((b) => ({ x: Math.floor(b.x - Math.round(outer.x)), y: Math.floor(b.y - Math.round(outer.y)),
     w: Math.ceil(b.width) + 1, h: Math.ceil(b.height) + 1 }));
-  /* Crops the tab's logo and dot from three pixels left of the logo's first light column, not from the tab's box: on
-     Windows the logo sat anywhere from one pixel left to three right of where the box puts it, from run to run. */
+  /* Crops the tab's logo and dot, starting three pixels left of and above the first lit pixel. On Windows the tab's box
+     is no guide: the logo sat up to one pixel left or three right of where it puts it, and its height changed between
+     runs. */
   const logoCrop = async (label) => {
     const box = await page.locator('.tabs-container .tab').filter({ hasText: label }).first().boundingBox();
     if (!box) return null;
-    const img = pixels.decode(await crop({ x: box.x, y: box.y + 4, width: Math.min(48, box.width), height: box.height - 8 }));
-    const lit = (x) => {
-      for (let y = 0; y < img.height; y++) {
-        const i = (y * img.width + x) * 4;
-        if (img.data[i] > 120 && img.data[i + 1] > 120 && img.data[i + 2] > 120) return true;
+    const img = pixels.decode(await crop({ x: box.x, y: box.y, width: Math.min(48, box.width), height: box.height }));
+    let left = img.width, top = img.height;
+    for (let y = 0; y < img.height; y++) {
+      for (let x = 0; x < img.width; x++) {
+        const i = (y * img.width + x) * 4, r = img.data[i], g = img.data[i + 1], b = img.data[i + 2];
+        if ((r > 120 && g > 120 && b > 120) || (r > 180 && g < 110 && b < 110)) { left = Math.min(left, x); top = Math.min(top, y); }
       }
-      return false;
-    };
-    let left = 0;
-    while (left < img.width && !lit(left)) left++;
+    }
     if (left >= img.width) return null;
-    const x0 = Math.max(0, left - 3), w = Math.min(24, img.width - x0), data = Buffer.alloc(w * img.height * 4);
-    for (let y = 0; y < img.height; y++) img.data.copy(data, y * w * 4, (y * img.width + x0) * 4, (y * img.width + x0 + w) * 4);
-    return pixels.encode({ width: w, height: img.height, data });
+    const x0 = Math.max(0, left - 3), y0 = Math.max(0, top - 3), w = Math.min(24, img.width - x0), h = Math.min(22, img.height - y0);
+    const data = Buffer.alloc(w * h * 4);
+    for (let y = 0; y < h; y++) img.data.copy(data, y * w * 4, ((y0 + y) * img.width + x0) * 4, ((y0 + y) * img.width + x0 + w) * 4);
+    return pixels.encode({ width: w, height: h, data });
   };
   /* How many pixels of each tab dot's colour the tab named `label` shows on its logo. */
   const dotsOn = async (label) => {
