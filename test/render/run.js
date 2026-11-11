@@ -57,9 +57,11 @@ const sleep = scene.sleep;
 
 const VIEW = { type: 'codex-extras-view', timestamps: true, navigation: true, userColor: '', userEdge: true, lowContext: true,
   replyFigures: true, buttons: true, chime: true, infoButton: true, chimeButton: true, contextMeter: true };
-/* The usage this extension's host would send for the made-up conversation: its newest token count and what it spent. */
-const USAGE = patching.usageOf({ context: { used: 251000, window: 400000 }, model: 'gpt-6.1-sol', effort: 'medium',
-  tokens: { total: 1245000, input: 1200000, output: 45000, cached: 980000, reasoning: 12000 } }, 0);
+/* What the host would send for the fake conversation, with a 1.05M window set for its model: Codex caps it at 872,000
+   and reports 95% of that. */
+const WINDOW_FROM = { kind: 'setting', model: 'gpt-6.1-sol', asked: '1.05M', used: 872000, most: true };
+const USAGE = patching.usageOf({ context: { used: 251000, window: 828400 }, model: 'gpt-6.1-sol', effort: 'medium',
+  tokens: { total: 1245000, input: 1200000, output: 45000, cached: 980000, reasoning: 12000 } }, 0, WINDOW_FROM);
 
 /* Open a scene, tell the page what this extension's host would, and wait for it to draw. */
 async function opened(name, opts = {}) {
@@ -276,6 +278,12 @@ async function meterHover(s, where, file) {
   check(!!box && box.rect[0] >= 0 && box.rect[1] >= 0 && box.rect[2] <= innerW(s) && box.rect[3] <= box.meterTop
     && ['In context', 'Free', 'Auto-compact at', 'This conversation', 'Cached input', 'Reasoning', 'Click to compact now'].every((w) => box.text.includes(w)),
   `${where}: resting on the meter opens its figures above it, inside the page`, box);
+  const lines = box ? box.text.split('\n').map((l) => l.trim()).filter(Boolean) : [];
+  const row = lines.findIndex((l) => l.startsWith('Context window'));
+  check(row >= 0 && /828\.4k/.test(lines.slice(row, row + 2).join(' '))
+    && lines.some((l) => l === '95% of 872.0k, Codex\'s maximum · codexPlus.contextWindow for gpt-6.1-sol, 1.05M')
+    && lines.findIndex((l) => l.startsWith('In context')) > row,
+  `${where}: the figures give the window this conversation uses, above In context, with the setting it came from under it`, lines);
   check(!!box && box.rect[2] - box.rect[0] === Math.min(330, innerW(s) - 16), `${where}: the figures' box is 330 px wide, as Claude Code Plus's`, box);
   await s.b.hover(10, 10);
   await sleep(500);

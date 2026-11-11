@@ -57,7 +57,7 @@ function page(root, opts) {
     view(over = {}) { this.send(Object.assign({ type: 'codex-extras-view', timestamps: true, navigation: true, userColor: '', userEdge: true }, over)); } };
 }
 
-const USAGE = { used: 251000, window: 400000, line: 378947, lineFrom: 'default', model: 'gpt-6.1-sol', effort: 'medium',
+const USAGE = { used: 251000, window: 400000, line: 378947, lineFrom: 'default', model: 'gpt-6.1-sol', effort: 'medium', windowFrom: null,
   total: { input: 1200000, cached: 980000, output: 45000, reasoning: 12000, total: 1245000 } };
 const THREAD = '019a6a10-0000-7000-8000-0000000000c1';
 
@@ -118,6 +118,33 @@ module.exports = async ({ eq, note, tmp, root }) => {
     meter.dispatch('mouseleave', {});
     p.dom.runTimers();
     eq(box.style.display, 'none', 'and they go when the pointer leaves');
+
+    /* The window this conversation uses, with where it came from. */
+    const rows = () => p.q('[data-codex-extras="context"]')[0].childNodes.map((n) => n.textContent);
+    const hover = (from, window = 828400) => {
+      p.send({ type: 'codex-extras-usage', usage: { ...USAGE, window, line: Math.floor(window * 0.9 / 0.95), windowFrom: from } });
+      meter.dispatch('mouseenter', {});
+      p.dom.runTimers();
+      const all = rows();
+      const at = all.findIndex((t) => t.startsWith('Context window'));
+      meter.dispatch('mouseleave', {});
+      p.dom.runTimers();
+      return at < 0 ? null : [all[at], all[at + 1], all[at + 2].startsWith('In context')];
+    };
+    eq(hover({ kind: 'setting', model: 'gpt-6.1-sol', asked: '1.05M', used: 872000, most: true }),
+      ['Context window828.4k', '95% of 872.0k, Codex\'s maximum · codexPlus.contextWindow for gpt-6.1-sol, 1.05M', true],
+      'a row above In context gives the window Codex uses for this conversation, and a note under it the setting it came from and Codex\'s most');
+    eq(hover({ kind: 'default', model: 'openai.gpt-6.1-sol', asked: '', used: 272000, most: false }, 258400),
+      ['Context window258.4k', '95% of 272.0k · Codex\'s default for openai.gpt-6.1-sol', true], 'or Codex\'s own default for the model');
+    eq(hover({ kind: 'config', model: 'gpt-6.1-sol', asked: '', used: 500000, most: false }, 475000),
+      ['Context window475.0k', '95% of 500.0k · model_context_window in config.toml', true], 'or the value written into config.toml');
+    eq(hover({ kind: 'earlier', model: 'gpt-6.1-sol', asked: '', used: 0, most: false }, 258400)[1],
+      'set when Codex opened this conversation, before the window set now; a reload of the window applies it',
+      'or a value from before the setting changed, with what applies the current one');
+    eq(hover(null, 400000), ['Context window400.0k', 'In context251.0k62.8%', false], 'with nothing said about it, the row has no note');
+    p.send({ type: 'codex-extras-usage', usage: { ...USAGE, window: 828400, line: 784800 } });
+    eq([/30%/.test(meter.textContent), meter.getAttribute('aria-label')], [true, 'Context: 30% of the window in use. Click to compact this conversation now.'],
+      'the meter\'s share follows the window Codex reports');
 
     let prevented = 0;
     meter.dispatch('mousedown', { preventDefault() { prevented++; } });

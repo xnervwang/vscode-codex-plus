@@ -523,22 +523,26 @@ function viewOf(s = {}) {
 /*
  * The context meter's share is the newest token count in the conversation's rollout (the last model call's input
  * against the window Codex reports), the same figure the session information and the line beside each reply use. The
- * message also carries the tokens the conversation has used in total, the model and effort, and the
- * compaction line, as the work plan plugin computes it
+ * message also carries the tokens the conversation has used in total, the model and effort, where the window came from,
+ * and the compaction line, as the work plan plugin computes it
  * (codex-plugin/agent-work-plan/hooks/refresh-work-plan.py compaction_line): Codex compacts once a call would pass 90%
  * of the model's full window, and the window it reports is 95% of that, so the line is at 0.9 / 0.95 of the reported
  * window, or at model_auto_compact_token_limit if that is lower.
  */
 const COMPACT_SHARE = 0.9 / 0.95;
-function usageOf(c, limit = 0) {
+function usageOf(c, limit = 0, from = null) {
   const ctx = c && c.context;
   if (!ctx || !(+ctx.window > 0) || !(+ctx.used >= 0)) return NO_USAGE;
   const own = Math.floor(ctx.window * COMPACT_SHARE);
   const set = Number.isInteger(limit) && limit > 0 && limit < own;
   const t = c.tokens;
   return { type: 'codex-extras-usage', usage: { used: +ctx.used, window: +ctx.window, line: set ? limit : own, lineFrom: set ? 'config' : 'default',
-    model: String(c.model || ''), effort: String(c.effort || ''),
+    model: String(c.model || ''), effort: String(c.effort || ''), windowFrom: from && typeof from === 'object' ? from : null,
     total: t ? { input: +t.input || 0, cached: +t.cached || 0, output: +t.output || 0, reasoning: +t.reasoning || 0, total: +t.total || 0 } : null } };
+}
+function windowFromOf(c) {
+  if (!c || !c.context || !deps || typeof deps.contextWindowFrom !== 'function') return null;
+  try { return deps.contextWindowFrom(c) || null; } catch (_) { return null; }
 }
 
 /*
@@ -812,7 +816,7 @@ async function refreshPanels() {
          `state` reads `prompt` for it, which would otherwise ring the finished-turn chime. */
       if (deps.settings().chime && was && was.working && c && !c.working) postTo(panel, { type: 'codex-extras-chime', kind: turnEndChime(c) });
       postTo(panel, (figuresOn && figuresOf(c, runningCommands(thread).length)) || NO_FIGURES);
-      postTo(panel, meterOn ? usageOf(c, limit) : NO_USAGE);
+      postTo(panel, meterOn ? usageOf(c, limit, windowFromOf(c)) : NO_USAGE);
       postTo(panel, view);
       if (whens.has(thread)) postTo(panel, { type: 'codex-extras-user-times', ...whens.get(thread) });
       postMap(panel, thread);
@@ -826,7 +830,7 @@ async function refreshPanels() {
       if (c) last.set(side, { state: c.state, working: !!c.working });
     }
     postToSidebar((figuresOn && figuresOf(c, runningCommands(side).length)) || NO_FIGURES);
-    postToSidebar(meterOn ? usageOf(now.get(side), limit) : NO_USAGE);
+    postToSidebar(meterOn ? usageOf(now.get(side), limit, windowFromOf(now.get(side))) : NO_USAGE);
     if (whens.has(side)) postToSidebar({ type: 'codex-extras-user-times', ...whens.get(side) });
     postMapToSidebar(side);
   }
@@ -902,8 +906,12 @@ function installHooks() {
    * are not in the registry, and a page's request is tied to its answer by the request id Codex itself routes the
    * answer back by. A thread the answer marks ephemeral is a side chat drawn beside the conversation, never the
    * conversation the tab shows.
+   *
+   * Every page's request, including the sidebar's, first goes to deps.adjustRequest, which may add to its params
+   * (src/context-window.js). Codex then sends that same params object.
    */
   globalThis.__codexExtrasPageRequest = (webview, request, kind) => {
+    if (deps && typeof deps.adjustRequest === 'function') { try { deps.adjustRequest(request, kind); } catch (_) { /* sent as it was */ } }
     const rec = recordOfWebview(webview);
     if (!rec || !request || request.id === undefined || request.id === null) return;
     if (kind !== 'prewarm' && request.method !== 'thread/start') return;

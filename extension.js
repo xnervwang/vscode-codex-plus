@@ -39,6 +39,7 @@ const uninstallPlan = require('./src/uninstall-plan');
 const wakeup = require('./src/wakeup');
 const agentMaps = require('./src/agent-map');
 const skillsConfig = require('./src/skills-config');
+const contextWindow = require('./src/context-window');
 const codexManifest = require('./src/manifest');
 
 const CONFIG = 'codexPlus';
@@ -166,6 +167,66 @@ function applySkillSettings(context, say) {
     maxTokens: c.get('skillsListBudget', 0), disabled: c.get('disabledSkills', []), log: say }))
     .catch((e) => say(`writing the skills settings into Codex's config: ${e.message}`));
   return skillsWriting;
+}
+
+/*
+ * codexPlus.contextWindow (src/context-window.js). config.toml's `model` and model_context_window are read again only
+ * when the file changes, because every page request that opens a conversation checks them before Codex sends it. If
+ * config.toml names no model, the default model is the one Codex's model/list returns with isDefault.
+ */
+let modelSeen = { key: '', model: '', window: 0 };
+function modelSettingsNow() {
+  const file = path.join(files.codexHome(), 'config.toml');
+  let key = 'none';
+  try { const st = fs.statSync(file); key = `${file}:${st.mtimeMs}:${st.size}`; } catch (_) { key = 'none'; }
+  if (key !== modelSeen.key) modelSeen = { key, ...(key === 'none' ? { model: '', window: 0 } : codexConfig.modelSettings(files.codexHome())) };
+  return modelSeen;
+}
+let listedDefault = '';
+const windowTable = () => { const m = cfg().get('contextWindow', {}); return m && typeof m === 'object' && !Array.isArray(m) ? m : {}; };
+const startingModel = () => modelSettingsNow().model || listedDefault;
+let windowWriting = Promise.resolve();
+function applyContextWindow(context, say) {
+  if (!trusted() || standsDown()) return windowWriting;
+  windowWriting = windowWriting.then(async () => {
+    if (!modelSettingsNow().model && !listedDefault && Object.keys(windowTable()).length) {
+      const r = await askAppServer('model/list', {});
+      const data = (r && r.result && Array.isArray(r.result.data)) ? r.result.data : [];
+      listedDefault = String((data.find((m) => m && m.isDefault) || {}).model || '');
+    }
+    return contextWindow.applyTopLevel({ ask: askAppServer, memento: context.globalState, map: windowTable(), model: startingModel(),
+      inFile: modelSettingsNow().window, log: say });
+  }).catch((e) => say(`writing the context window into Codex's config: ${e.message}`));
+  return windowWriting;
+}
+/* The page-request hook that adds the context window override (src/context-window.js overrideFor). */
+function windowOverride(context, say) {
+  return (request, kind) => {
+    if (!contextWindow.opens(request, kind)) return;
+    const map = windowTable();
+    const applied = context.globalState.get(contextWindow.APPLIED_KEY) || {};
+    if (!Object.keys(map).length && !applied.value) return;
+    const value = contextWindow.overrideFor(request, kind, { map, top: modelSettingsNow().window, ours: +applied.value || 0,
+      defaultModel: startingModel(), threadModel: (id) => (reader.state(id) || {}).model || (reader.thread(id) || {}).model || '' });
+    if (!value) return;
+    contextWindow.addOverride(request, value);
+    say(`a context window of ${value} was added to ${kind === 'prewarm' ? 'a prewarmed thread/start' : request.method}`);
+  };
+}
+function windowSource(context) {
+  return (c) => contextWindow.windowFrom({ model: c.model, reported: c.context && c.context.window, map: windowTable(),
+    top: modelSettingsNow().window, applied: context.globalState.get(contextWindow.APPLIED_KEY) || null });
+}
+/* One notice per change of the setting, shown only while this window has a Codex conversation open. */
+let windowToldAt = null;
+function tellWindowChange() {
+  if (windowToldAt) clearTimeout(windowToldAt);
+  windowToldAt = setTimeout(() => {
+    windowToldAt = null;
+    if (!patching.panelThreads().length && !patching.sidebarShowing()) return;
+    vscode.window.showInformationMessage('Codex Plus: the new context window applies to conversations you start or open after this. '
+      + 'Conversations already loaded, including tabs closed in the last few hours, keep their window until you run Developer: Reload Window.');
+  }, 1200);
 }
 
 /* What the plugin's hooks read: the few settings that change their behaviour, and the user's time zone. */
@@ -296,6 +357,7 @@ async function activate(context) {
     else if (e.affectsConfiguration('chat.fontFamily') || e.affectsConfiguration('chat.fontSize')) sessionsModel.refresh();
     if (e.affectsConfiguration(`${CONFIG}.enabled`)) ownTabBar();
     if (e.affectsConfiguration(`${CONFIG}.skillsListBudget`) || e.affectsConfiguration(`${CONFIG}.disabledSkills`)) applySkillSettings(context, say);
+    if (e.affectsConfiguration(`${CONFIG}.contextWindow`)) { applyContextWindow(context, say); tellWindowChange(); }
     /* The time stamps, the message list and the colours live in Codex's page, and this is how a change to one of them
        gets there: the same redraw the figures use, rather than a watcher of its own. The master switch is in the list
        because it decides all three, and a page has to be told when it goes either way. */
@@ -356,6 +418,12 @@ async function activate(context) {
     wrote = true;
     writeHookSettings(context);
     applySkillSettings(context, say);
+    applyContextWindow(context, say);
+    /* Codex's model picker writes the default model into config.toml. */
+    const toml = path.join(files.codexHome(), 'config.toml');
+    const tomlChanged = () => applyContextWindow(context, say);
+    fs.watchFile(toml, { interval: 2000, persistent: false }, tomlChanged);
+    context.subscriptions.push({ dispose: () => fs.unwatchFile(toml, tomlChanged) });
     later(() => ensurePlugin(context, say), 3000);
     later(() => {
       reader.request('sweep', { home: files.codexHome() }).then((r) => {
@@ -366,6 +434,7 @@ async function activate(context) {
     try {
       patching.activate(context, { vscode, log: say, codexProgram, source, context, settings, onTimeZone: reportTimeZone,
         userTimes, sessionInfo: (id) => sessionInfoRows(id), compactLimit: compactLimitNow, agentMap, agentMapAct,
+        adjustRequest: windowOverride(context, say), contextWindowFrom: windowSource(context),
         copy: async (value, label) => { await vscode.env.clipboard.writeText(value); vscode.window.setStatusBarMessage(`Copied ${label}`, 3000); },
         toggleChime: () => cfg().update('chime', !cfg().get('chime', true), vscode.ConfigurationTarget.Global) });
     } catch (e) { say(`patching: ${e.message}`); }

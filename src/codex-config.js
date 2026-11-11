@@ -4,8 +4,8 @@
 
 'use strict';
 /*
- * A few plain values out of Codex's config.toml, read-only: which model provider it uses and in which region, and the
- * compaction limit the user set.
+ * A few plain values out of Codex's config.toml, read-only: which model provider it uses and in which region, the
+ * compaction limit the user set, and the default model and its context window.
  *
  * Read without a TOML parser, because only `key = value` lines with a string, a number or a boolean are wanted. A value
  * of any other shape (an inline table, an array, a multi-line string) reads as absent. A `profile` named at the top
@@ -71,6 +71,14 @@ function compactLimit(home) {
   return Number.isInteger(v) && v > 0 ? v : 0;
 }
 
+/** config.toml's `model` (the default model) and model_context_window; '' and 0 when it sets neither. */
+function modelSettings(home) {
+  const tables = read(home);
+  const model = profiled(tables, 'model');
+  const window = profiled(tables, 'model_context_window');
+  return { model: typeof model === 'string' ? model : '', window: Number.isInteger(window) && window > 0 ? window : 0 };
+}
+
 const NAMES = { 'amazon-bedrock': 'Amazon Bedrock', openai: 'OpenAI (ChatGPT sign-in or an API key)', oss: 'a local open-source model',
   ollama: 'Ollama', lmstudio: 'LM Studio' };
 
@@ -90,4 +98,4 @@ function accountLine(home) {
   return `${p.name}${p.region ? ` · ${p.region}` : ''}`;
 }
 
-module.exports = { tablesOf, compactLimit, provider, accountLine };
+module.exports = { tablesOf, compactLimit, modelSettings, provider, accountLine };

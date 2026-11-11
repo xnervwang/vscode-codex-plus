@@ -434,6 +434,15 @@
           "default": [],
           "markdownDescription": "Skills Codex is to leave out of its list, and not run even when named with `$name`: each one is written into Codex's `config.toml` as a `[[skills.config]]` entry with `enabled = false`. Name a plugin's skill with its plugin in front, as `Plugin-name:skill-name`; the skill's own name alone does not match it. Taking a name off this list removes only the entry written from here."
         },
+        "codexPlus.contextWindow": {
+          "scope": "application",
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {},
+          "markdownDescription": "A context window for each model you list, which Codex uses instead of its default. Name the model as it appears in `config.toml` or Codex's model picker (`gpt-6.1-sol` also matches Amazon Bedrock's `openai.gpt-6.1-sol`) and give the window in tokens, as `1.05M`, `512K` or a plain number.\n\nFor GPT-6.1 Sol, GPT-6.1 Terra, GPT-6 Astra and GPT-6 Luna, the window is the one [OpenAI publishes](https://developers.openai.com/api/docs/models), up to 1.05M. It includes up to 128K of output, which this setting subtracts before passing the value to Codex. Codex then caps the input at its model list's maximum, 872K for GPT-6.1 Sol. For any other model the value goes to Codex's `model_context_window` as written, in input tokens.\n\nChanges apply to conversations started or opened afterwards; conversations Codex has already loaded keep their window until you reload the VS Code window. If you set `model_context_window` in `config.toml` yourself, your value wins and this setting does nothing."
+        },
         "codexPlus.workPlanOfferMinTurns": {
           "scope": "application",
           "type": "number",

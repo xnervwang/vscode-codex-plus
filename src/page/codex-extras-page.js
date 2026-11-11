@@ -842,6 +842,14 @@
     d.style.cssText = 'font-weight:600;margin-top:8px;padding-top:5px;border-top:1px solid var(--vscode-widget-border,rgba(255,255,255,.12));';
     return d;
   }
+  /* The note under the window row (src/context-window.js windowFrom); Codex reports 95% of the value it works with. */
+  function windowNote(f) {
+    var of = f.used > 0 ? '95% of ' + kfmt(f.used) + (f.most ? ', Codex\'s maximum' : '') + ' · ' : '';
+    if (f.kind === 'setting') return of + 'codexPlus.contextWindow for ' + f.model + (f.asked ? ', ' + f.asked : '');
+    if (f.kind === 'config') return of + 'model_context_window in config.toml';
+    if (f.kind === 'default') return of + 'Codex\'s default for ' + f.model;
+    return 'set when Codex opened this conversation, before the window set now; a reload of the window applies it';
+  }
   function ctxRender() {
     var u = usage;
     ctxBox.textContent = '';
@@ -869,6 +877,8 @@
       track.appendChild(mark);
     }
     ctxBox.appendChild(track);
+    ctxBox.appendChild(ctxRow('Context window', kfmt(u.window)));
+    if (u.windowFrom) ctxBox.appendChild(ctxNote(windowNote(u.windowFrom)));
     ctxBox.appendChild(ctxRow('In context', kfmt(u.used), pctOf(u.used, u.window)));
     ctxBox.appendChild(ctxRow('Free', kfmt(Math.max(0, u.window - u.used)), pctOf(Math.max(0, u.window - u.used), u.window), true));
     if (u.line > 0) {
@@ -956,7 +966,10 @@
     var n = function (x) { return typeof x === 'number' && isFinite(x) && x >= 0 ? x : null; };
     if (!u || typeof u !== 'object' || n(u.used) === null || !(n(u.window) > 0)) return null;
     var t = u.total && typeof u.total === 'object' ? u.total : null;
+    var f = u.windowFrom && typeof u.windowFrom === 'object' && /^(setting|config|default|earlier)$/.test(String(u.windowFrom.kind)) ? u.windowFrom : null;
+    var text = function (x, most) { return typeof x === 'string' ? x.slice(0, most) : ''; };
     return { used: u.used, window: u.window, line: n(u.line) || 0, lineFrom: u.lineFrom === 'config' ? 'config' : 'default',
+      windowFrom: f ? { kind: f.kind, model: text(f.model, 80), asked: text(f.asked, 20), used: n(f.used) || 0, most: f.most === true } : null,
       model: typeof u.model === 'string' ? u.model.slice(0, 80) : '', effort: typeof u.effort === 'string' ? u.effort.slice(0, 20) : '',
       total: t ? { input: n(t.input) || 0, cached: n(t.cached) || 0, output: n(t.output) || 0, reasoning: n(t.reasoning) || 0, total: n(t.total) || 0 } : null };
   }
