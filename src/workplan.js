@@ -148,11 +148,31 @@ function sweepOrphans(opts = {}) {
   return { deleted, kept, live, why: '' };
 }
 
+/*
+ * Removes the side files and lock folders of conversations Codex has just deleted.
+ * sweepOrphans would keep them until they are SETTLED_MS old.
+ */
+function removeSideFiles(dir, ids) {
+  const failed = [];
+  for (const id of new Set(Array.isArray(ids) ? ids : [])) {
+    if (!files.THREAD_ID.test(String(id))) continue;
+    for (const suffix of SIDE_SUFFIXES) {
+      const file = path.join(dir, id + suffix);
+      try { fs.unlinkSync(file); } catch (e) { if (e.code !== 'ENOENT') failed.push(`${file}: ${e.message}`); }
+    }
+    for (const lock of ['.json.lock', '.wakeup.lock']) {
+      const folder = path.join(dir, id + lock);
+      try { fs.rmdirSync(folder); } catch (e) { if (e.code !== 'ENOENT') failed.push(`${folder}: ${e.message}`); }
+    }
+  }
+  return failed;
+}
+
 /** The states that mean a row still needs something done to it. */
 const OPEN_STATES = ['discussing', 'todo', 'doing', 'waiting', 'parked'];
 
 module.exports = {
-  planDir, liveSessions, sweepOrphans,
+  planDir, liveSessions, sweepOrphans, removeSideFiles,
   DATA_ROOT, PLAN_DIR, PLAN_FILE, SIDE_SUFFIXES, SETTLED_MS, LOCK_STALE_MS, OPEN_STATES,
   STATES, MAX_DETAIL_LINES, MAX_DETAIL_CHARS, WAITING_ON, MAX_QUESTION_CHARS,
 };

@@ -37,6 +37,7 @@ const openTimes = require('./src/open-times');
 const codexConfig = require('./src/codex-config');
 const uninstallPlan = require('./src/uninstall-plan');
 const wakeup = require('./src/wakeup');
+const workplan = require('./src/workplan');
 const agentMaps = require('./src/agent-map');
 const skillsConfig = require('./src/skills-config');
 const contextWindow = require('./src/context-window');
@@ -807,6 +808,126 @@ function registerCommands(context, { source, memory, sessionsModel, sessionsView
   reg('clearGoal', async (arg) => {
     const id = goalThread(arg);
     if (id && !restricted()) await changeThread('clear the goal', 'thread/goal/clear', { threadId: id, origin: 'user' });
+  });
+  /*
+   * Codex's thread/delete deletes the sub-agents below a conversation too (test/parts/35r-thread-delete-codex.js), so
+   * a conversation whose sub-agent is open or running is left alone, as one that is open or running itself is.
+   *
+   * Open means in a tab of this window or in Codex's sidebar. Only the patch can name the sidebar's conversation and
+   * that of a tab opened with Codex's own New button, so while Codex runs here without the patch connected, nothing is
+   * deleted. If Codex has not started in this window, the request goes to a short-lived app-server, as Rename's does.
+   */
+  const openNow = () => {
+    const codex = vscode.extensions.getExtension('openai.chatgpt');
+    if (!patching.canType() && codex && codex.isActive) return null;
+    try { return new Set([...memory.openThreads(), patching.sidebarShowing()].filter(Boolean)); } catch (_) { return null; }
+  };
+  const subAgentsOf = (id) => {
+    const all = reader.threads() || [];
+    const out = [];
+    for (let i = -1; i < out.length; i++) {
+      const parent = i < 0 ? id : out[i];
+      for (const t of all) if (t.parent === parent && t.id !== id && !out.includes(t.id)) out.push(t.id);
+    }
+    return out;
+  };
+  /* Reads the rollouts of `ids` again, to catch a turn started since the last poll. */
+  const readNow = async (ids) => {
+    while (reader.busy) await reader.busy;
+    await reader.refresh({ home: files.codexHome(), extra: ids, force: true });
+  };
+  /* A turn running or waiting for the user. A rollout that could not be read counts as running. */
+  const busyNow = (id) => {
+    if (!reader.present(id)) return false;
+    const st = source.threadState(id);
+    return !st || !!(st.working || st.decide || st.soon || st.runningHere);
+  };
+  const nameOf = (id) => {
+    const t = reader.thread(id) || {};
+    return String((t.kind === 'subagent' && t.nickname) || t.title || '(untitled)').slice(0, 120);
+  };
+  const sizeText = (bytes) => (bytes < 1024 ? `${bytes} B` : bytes < 1024 * 1024 ? `${Math.round(bytes / 102.4) / 10} KB` : `${Math.round(bytes / 104857.6) / 10} MB`);
+  const describe = (id, subs) => {
+    const dir = install.planDir(files.codexHome());
+    const bytes = [id, ...subs].reduce((n, x) => {
+      const t = reader.thread(x);
+      try { return n + (t && t.rollout ? fs.statSync(files.existingRollout(t.rollout) || t.rollout).size : 0); } catch (_) { return n; }
+    }, 0);
+    let what = 'the rollout';
+    if (subs.length) what += ` and ${subs.length} sub-agent conversation${subs.length === 1 ? '' : 's'}`;
+    if (fs.existsSync(path.join(dir, `${id}.json`))) what += ', the work plan';
+    if (fs.existsSync(path.join(dir, `${id}.wakeup`))) what += ', the wake-up';
+    return `${what} (${sizeText(bytes)})`;
+  };
+  reg('deleteThread', async (arg, selected) => {
+    if (!threadArg(arg) || restricted()) return;
+    const want = chosen(arg, selected).filter((id) => files.THREAD_ID.test(id));
+    if (!want.length) return;
+    if (!openNow()) {
+      vscode.window.showWarningMessage('Not deleted: this window could not tell which conversations are open, so none was deleted.');
+      return;
+    }
+    await readNow([...new Set(want.flatMap((id) => [id, ...subAgentsOf(id)]))]);
+    const open = openNow() || new Set(want);
+    const blocker = (id) => [id, ...subAgentsOf(id)].find((x) => open.has(x) || busyNow(x)) || '';
+    const busy = [], go = [];
+    let gone = 0;
+    for (const id of want) {
+      const by = blocker(id);
+      if (by) busy.push({ id, title: nameOf(id), by: by === id ? '' : nameOf(by) });
+      else if (!reader.thread(id) || !reader.present(id)) gone++;
+      else { const subs = subAgentsOf(id); go.push({ id, title: nameOf(id), subs, what: describe(id, subs) }); }
+    }
+    const named = (list) => list.map((b) => `"${b.title}"${b.by ? ` (its sub-agent "${b.by}")` : ''}`).join(', ');
+    if (!go.length) {
+      vscode.window.showInformationMessage(busy.length ? `Not deleted: ${named(busy)} ${busy.length === 1 ? 'is' : 'are'} open or running.`
+        : `Nothing of ${gone > 1 ? 'those conversations' : 'that conversation'} is left on disk.`);
+      return;
+    }
+    const lines = go.map((g) => `"${g.title}": ${g.what}`);
+    lines.push('', `Codex deletes ${go.length === 1 ? 'its' : 'each one\'s'} rollout file, its row in Codex's state database, its title and its goal, `
+      + 'and the same for every sub-agent it started.');
+    if (busy.length) lines.push('', `Left alone, open or running: ${named(busy)}`);
+    lines.push('', 'This cannot be undone.');
+    const pick = await vscode.window.showWarningMessage(
+      go.length === 1 ? `Delete "${go[0].title}" from disk?` : `Delete ${go.length} conversations from disk?`,
+      { modal: true, detail: lines.join('\n') }, 'Delete');
+    if (pick !== 'Delete') return;
+    /* Checked again after Delete is pressed: a conversation opened or started meanwhile is left alone. */
+    await readNow([...new Set(go.flatMap((g) => [g.id, ...g.subs]))]);
+    const openAfter = openNow();
+    const late = go.filter((g) => !openAfter || [g.id, ...g.subs, ...subAgentsOf(g.id)].some((x) => openAfter.has(x) || busyNow(x)));
+    if (late.length) {
+      vscode.window.showWarningMessage(`Not deleted: ${late.map((g) => `"${g.title}"`).join(', ')} ${late.length === 1 ? 'was' : 'were'} opened or started meanwhile.`);
+    }
+    const refused = [], stuck = [], deleted = [];
+    for (const g of go) {
+      if (late.includes(g)) continue;
+      const r = await askAppServer('thread/delete', { threadId: g.id });
+      /* Codex's answer for a conversation it no longer has, deleted from another window say. */
+      const already = r.outcome === 'failed' && /^no rollout found for thread id/.test(r.reason || '');
+      if (r.outcome !== 'done' && !already) {
+        refused.push(`"${g.title}" (${g.id}): ${r.outcome === 'sent' ? 'Codex did not answer' : r.reason}`);
+        continue;
+      }
+      const ids = [g.id, ...g.subs];
+      deleted.push(...ids);
+      stuck.push(...workplan.removeSideFiles(install.planDir(files.codexHome()), ids));
+      say(already ? `"${g.title}" (${g.id}) was already gone from Codex; what Codex Plus kept for it is removed` : `Deleted "${g.title}" (${g.id}): ${g.what}`);
+    }
+    if (deleted.length) {
+      try { await sessionsModel.setColor(deleted, null); } catch (_) { /* the colours stay; nothing shows them */ }
+      try { await memory.forget(deleted); } catch (_) { /* Recently closed keeps the row until it drops off */ }
+    }
+    source._poll({ tell: true });
+    if (refused.length) {
+      say(`Could not delete:\n  ${refused.join('\n  ')}`);
+      vscode.window.showWarningMessage(`${refused.length} conversation${refused.length === 1 ? '' : 's'} could not be deleted; the output "Codex Plus" lists them.`);
+    }
+    if (stuck.length) {
+      say(`Could not remove what Codex Plus kept for a deleted conversation:\n  ${stuck.join('\n  ')}`);
+      if (!refused.length) vscode.window.showWarningMessage(`${stuck.length} file${stuck.length === 1 ? '' : 's'} could not be deleted; the output "Codex Plus" lists them.`);
+    }
   });
   /*
    * Messages from the session list's page, each handled like the matching command: a row clicked, New in tab, New in

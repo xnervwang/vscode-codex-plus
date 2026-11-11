@@ -12,7 +12,7 @@ const { LIST_MENU, COLORS, COLOR_NAMES } = require('../../src/sessions-view');
 
 const ID = (n) => `01a1f0f0-0000-7000-8000-${String(n).padStart(12, '0')}`;
 const row = (n, extra = {}) => ({ id: ID(n), title: `Conversation ${n}`, time: '1d', dot: 'idle', color: '', open: false, sidebar: false,
-  unread: false, grouped: false, group: 'Ungrouped', branch: '', goal: '', goalText: '', here: false, ...extra });
+  unread: false, grouped: false, group: 'Ungrouped', branch: '', goal: '', goalText: '', here: false, deletable: !extra.here, ...extra });
 /* The context the page sends with an item of an ungrouped, read row's menu. */
 const thread = (id) => ({ webviewSection: 'thread', threadId: id, codexPlusGrouped: false, codexPlusUnread: false, codexPlusGoal: '',
   codexPlusGoalResumable: false, codexPlusOpenHere: false });
@@ -43,7 +43,7 @@ module.exports = async ({ eq, root }) => {
   const clickAway = () => { page.bubble('mousedown', { button: 0 }); page.bubble('click'); };
   const gone = () => $$('.cp-ctx').length === 0;
   const timers = dom.waiting();
-  const COLOR = 'Codex Plus: Text Color', GROUP = 'Codex Plus: Add to Group', RENAME = 'Codex Plus: Rename';
+  const COLOR = 'Codex Plus: Text Color', GROUP = 'Codex Plus: Add to Group', RENAME = 'Codex Plus: Rename', DELETE = 'Codex Plus: Delete Conversation...';
 
   /* ── a right-click on a row ── */
   posted.length = 0;
@@ -52,8 +52,8 @@ module.exports = async ({ eq, root }) => {
     [true, true, 'menu', '30px', '50px'],
     'a right-click on a row is kept from VS Code, whose own menu would open otherwise, and the page opens its menu where the click was');
   eq(items(main()).map(label), ['Codex Plus: Resume in Tab', 'Codex Plus: Resume in Sidebar', GROUP, 'Codex Plus: Mark as Unread', RENAME,
-    COLOR], 'with the row\'s items, each after "Codex Plus: ", and no goal item on a row with no goal');
-  eq(kinds(main()), ['item', 'item', '-', 'item', '-', 'item', '-', 'item', '-', 'item'],
+    COLOR, DELETE], 'with the row\'s items, each after "Codex Plus: ", Delete last, and no goal item on a row with no goal');
+  eq(kinds(main()), ['item', 'item', '-', 'item', '-', 'item', '-', 'item', '-', 'item', '-', 'item'],
     'and a separator between groups of items, as VS Code drew them, with none after the last');
   eq([!!items(main())[0] && items(main())[0].focused, dom.waiting() === timers, posted], [true, true, [{ kind: 'select', ids: [ID(4)] }]],
     'the first item has the focus, opening started no timer, and the row right-clicked is selected');
@@ -69,14 +69,14 @@ module.exports = async ({ eq, root }) => {
   const goalMenu = (goal) => {
     toPage({ type: 'model', model: withGoal(goal) });
     rightClick(rowEl('ungrouped', 4));
-    const out = [items(main()).map(label).filter((t) => /Goal/.test(t)), kinds(main()).slice(-4)];
+    const out = [items(main()).map(label).filter((t) => /Goal/.test(t)), kinds(main()).slice(-6)];
     clickAway();
     return out;
   };
   eq([goalMenu('active'), goalMenu('paused')],
-    [[['Codex Plus: Pause Goal', 'Codex Plus: Clear Goal'], ['item', '-', 'item', 'item']],
-      [['Codex Plus: Resume Goal', 'Codex Plus: Clear Goal'], ['item', '-', 'item', 'item']]],
-    'a row with a running goal ends in Pause Goal and Clear Goal after a separator, one with a paused goal in Resume Goal and Clear Goal');
+    [[['Codex Plus: Pause Goal', 'Codex Plus: Clear Goal'], ['item', '-', 'item', 'item', '-', 'item']],
+      [['Codex Plus: Resume Goal', 'Codex Plus: Clear Goal'], ['item', '-', 'item', 'item', '-', 'item']]],
+    'a row with a running goal has Pause Goal and Clear Goal between two separators, before Delete; one with a paused goal Resume Goal and Clear Goal');
   toPage({ type: 'model', model });
 
   rightClick($(`.cp-section[data-key="open"] .cp-row[data-id="${ID(1)}"]`));
@@ -164,6 +164,48 @@ module.exports = async ({ eq, root }) => {
   eq([onlyGroup.length > 0 && !onlyGroup.includes(GROUP), noGroups.length > 0 && !noGroups.includes(GROUP), headEv.defaultPrevented, gone()], [true, true, false, true],
     'with no other group to add to there is no Add to Group; with no groups in this Codex neither, and a header with nothing to offer opens nothing');
   toPage({ type: 'model', model });
+
+  /* ── Delete: the rows chosen that may go, which the host checks again before it asks ── */
+  const deleteOf = () => items(main()).map(label).filter((t) => /Delete/.test(t));
+  page.bubble('keydown', { key: 'Escape' });
+  posted.length = 0;
+  rightClick(rowEl('ungrouped', 4));
+  if (item(DELETE)) item(DELETE).bubble('click');
+  eq(posted.filter((m) => m.kind === 'menu'), [{ kind: 'menu', command: 'codexPlus.deleteThread', context: thread(ID(4)) }],
+    'Delete sends its command with the row\'s context, and the host acts on the selection it was told of');
+  rowEl('ungrouped', 3).bubble('click', { ctrlKey: true });
+  rightClick(rowEl('ungrouped', 4));
+  const two = deleteOf();
+  clickAway();
+  rowEl('ungrouped', 1).bubble('click', { ctrlKey: true });
+  rightClick(rowEl('ungrouped', 4));
+  const withOpen = deleteOf();
+  clickAway();
+  rightClick(rowEl('ungrouped', 1));
+  const onOpen = deleteOf();
+  clickAway();
+  eq([two, withOpen, onOpen], [['Codex Plus: Delete 2 Conversations...'], ['Codex Plus: Delete 2 Conversations...'], ['Codex Plus: Delete 2 Conversations...']],
+    'with several selected it counts them, as Claude Code Plus\'s Delete does, leaving out one open here; a right-click on that one counts the same');
+  page.bubble('keydown', { key: 'Escape' });
+  rightClick(rowEl('ungrouped', 1));
+  const aloneOpen = deleteOf();
+  clickAway();
+  rightClick($(`.cp-section[data-key="open"] .cp-row[data-id="${ID(1)}"]`));
+  const inOpen = deleteOf();
+  clickAway();
+  const busy = Object.assign({}, model, { groups: model.groups.map((g) => (g.key !== 'ungrouped' ? g
+    : Object.assign({}, g, { rows: g.rows.map((r) => (r.id === ID(3) ? Object.assign({}, r, { dot: 'working', deletable: false }) : r)) }))) });
+  toPage({ type: 'model', model: busy });
+  rightClick(rowEl('ungrouped', 3));
+  const running = deleteOf();
+  clickAway();
+  rightClick(head('section:a'));
+  const onHead = items(main()).map(label).filter((t) => /Delete Conversation/.test(t));
+  clickAway();
+  toPage({ type: 'model', model });
+  eq([aloneOpen, inOpen, running, onHead], [[], [], [], []],
+    'with only one that may not go chosen there is no Delete: open here, in Open sessions, or running; and no group header has it');
+  page.bubble('keydown', { key: 'Escape' });
 
   /* ── keys ── */
   page.bubble('keydown', { key: 'Escape' });

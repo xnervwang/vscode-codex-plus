@@ -70,13 +70,14 @@ const LIST_MENU = [
   ['codexPlus.pauseGoal', '6_goal@2', "webviewSection == 'thread' && codexPlusGoal == 'active'"],
   ['codexPlus.resumeGoal', '6_goal@3', "webviewSection == 'thread' && codexPlusGoalResumable"],
   ['codexPlus.clearGoal', '6_goal@4', "webviewSection == 'thread' && codexPlusGoal"],
+  ['codexPlus.deleteThread', '9_delete@1', "webviewSection == 'thread'", null, { rows: 'deletable', plural: 'Codex Plus: Delete {n} Conversations...' }],
   ['codexPlus.newThreadInGroup', '1_new@1', "webviewSection == 'group' && codexPlusMade && !codexPlus.noGroups"],
   ['codexPlus.newGroup', '1_new@2', "webviewSection == 'group' && !codexPlus.noGroups"],
   ['codexPlus.renameGroup', '2_group@1', "webviewSection == 'group' && codexPlusMade && !codexPlus.noGroups"],
   ['codexPlus.deleteGroup', '9_delete@1', "webviewSection == 'group' && codexPlusMade && !codexPlus.noGroups"],
-].map(([command, group, when, submenu]) => {
+].map(([command, group, when, submenu, more]) => {
   const title = COMMAND_TITLES.get(command) || command;
-  return submenu ? { command, title: title.replace(/\.\.\.$/, ''), group, when, submenu } : { command, title, group, when };
+  return submenu ? { command, title: title.replace(/\.\.\.$/, ''), group, when, submenu } : { command, title, group, when, ...more };
 });
 /* The same dots Claude Code's list uses: green running, blue waiting for you, red replied and unread or last turn
    failed, grey idle. A conversation running or waiting in another window gets a ring in that colour. The list draws
@@ -108,6 +109,8 @@ function lookKey(conv, here) {
   return STATE_LOOK[state] ? state : 'idle';
 }
 const lookOf = (conv, here) => STATE_LOOK[lookKey(conv, here)];
+/* Dots that mean a turn is running or waiting for the user. */
+const BUSY_LOOKS = new Set(['working', 'workingElsewhere', 'prompt', 'promptElsewhere']);
 
 /* How long ago, as Claude Code's own list writes it, and the days a conversation spans, from the page code Agent Plus
    shares with both extensions (src/page/kit.js): `2d · 11/05→11/09`. */
@@ -271,6 +274,7 @@ class SessionsModel {
       /* `here` leaves Resume in Tab and Resume in Sidebar out of the row's menu, as Claude Code Plus offers them only for
          a conversation that is not open; a sub-agent drawn under its parent in Open sessions counts as open too. */
       return { id: t.id, title: t.title || '(untitled)', time: dateSpan(t.createdMs, t.updatedMs, now), dot, here: here || where === 'open',
+        deletable: !here && where !== 'open' && !BUSY_LOOKS.has(look),
         color: COLORS[colors[t.id]] || '', open: open.has(t.id), sidebar: where === 'open' && t.id === this.sidebarNow && !open.has(t.id),
         unread: !!(conv && conv.state === 'unread'), grouped: !!(t.section && this.sections.has(t.section)),
         group: placeOf(t, this.sections), branch: t.branch || '', goal: (goal && goal.status) || '', goalText: goalText(goal),

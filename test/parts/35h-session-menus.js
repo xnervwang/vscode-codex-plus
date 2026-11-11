@@ -57,11 +57,12 @@ module.exports = async ({ eq, root }) => {
     ['pauseGoal', '6_goal@2', "webviewSection == 'thread' && codexPlusGoal == 'active'"],
     ['resumeGoal', '6_goal@3', "webviewSection == 'thread' && codexPlusGoalResumable"],
     ['clearGoal', '6_goal@4', "webviewSection == 'thread' && codexPlusGoal"],
+    ['deleteThread', '9_delete@1', "webviewSection == 'thread'"],
     ['newThreadInGroup', '1_new@1', "webviewSection == 'group' && codexPlusMade && !codexPlus.noGroups"],
     ['newGroup', '1_new@2', "webviewSection == 'group' && !codexPlus.noGroups"],
     ['renameGroup', '2_group@1', "webviewSection == 'group' && codexPlusMade && !codexPlus.noGroups"],
     ['deleteGroup', '9_delete@1', "webviewSection == 'group' && codexPlusMade && !codexPlus.noGroups"],
-  ], 'the list\'s menus have fifteen items, in the groups and with the when clauses its native menu had');
+  ], 'the list\'s menus have sixteen items, in the groups and with the when clauses its native menu had, and Delete after them on a row');
   const bySection = (sec) => table.filter((m) => m.when.startsWith(`webviewSection == '${sec}'`));
   const vscodeOrder = (list) => [...list].sort((a, b) => a.group.localeCompare(b.group)).map((m) => m.command);
   eq(table.map((m) => m.command), [...vscodeOrder(bySection('thread')), ...vscodeOrder(bySection('group'))],
@@ -77,7 +78,10 @@ module.exports = async ({ eq, root }) => {
   eq(table.map((m) => [m.command, m.title, m.submenu || '']),
     table.map((m) => [m.command, SUBMENUS[m.command] ? (titled.get(m.command) || '').replace(/\.\.\.$/, '') : titled.get(m.command), SUBMENUS[m.command] || '']),
     'each item is titled as its command is, and Text Color and Add to Group, which open a submenu, lose their "..."');
-  eq([table.length, table.filter((m) => !/^Codex Plus: /.test(m.title)).map((m) => m.title)], [15, []],
+  eq(table.filter((m) => m.rows || m.plural).map((m) => [m.command, m.rows, m.plural]),
+    [['codexPlus.deleteThread', 'deletable', 'Codex Plus: Delete {n} Conversations...']],
+    'Delete alone counts the rows chosen that may go, and is titled for several as Claude Code Plus\'s is');
+  eq([table.length, table.filter((m) => !/^Codex Plus: /.test(m.title)).map((m) => m.title)], [16, []],
     'every item of the list\'s right-click menus starts "Codex Plus: "');
 
   /* The when clauses, against what the page knows of a row or a header. Only `a == 'b'`, `x` and `!x` joined by && are
@@ -92,8 +96,8 @@ module.exports = async ({ eq, root }) => {
   const unreadRow = rows.find((r) => r.id === ID(1)), readRow = rows.find((r) => r.id === ID(2));
   eq([offered(rowCtx(readRow)).filter((c) => /^markThread/.test(c)), offered(rowCtx(unreadRow)).filter((c) => /^markThread/.test(c))],
     [['markThreadUnread'], ['markThreadRead']], 'a read conversation offers Mark as Unread, an unread one Mark as Read');
-  eq(offered(rowCtx(readRow)), ['openThreadInTab', 'openThreadInSidebar', 'moveThreadToSection', 'markThreadUnread', 'renameThread', 'setTitleColor'],
-    'a row offers Resume, Add to Group, Mark as Unread, Rename and Text Color; Remove from Group only in a group');
+  eq(offered(rowCtx(readRow)), ['openThreadInTab', 'openThreadInSidebar', 'moveThreadToSection', 'markThreadUnread', 'renameThread', 'setTitleColor', 'deleteThread'],
+    'a row offers Resume, Add to Group, Mark as Unread, Rename, Text Color and Delete; Remove from Group only in a group');
   eq(pkg.contributes.commands.filter((c) => c.command === 'codexPlus.newGroupFromThreads').length, 0,
     'and no New Group from Conversation, which Claude Code\'s menu lacks: New group above the list makes a group');
   eq([offered({ ...rowCtx(readRow), codexPlusGoal: 'active' }).filter((c) => /Goal$/.test(c)),
@@ -129,7 +133,7 @@ module.exports = async ({ eq, root }) => {
   /* ── the page's menus, against the table ── */
   const p = runSessionsPage(root);
   const prow = (n, extra = {}) => ({ id: ID(n), title: `Conversation ${n}`, time: '1d', dot: 'idle', color: '', open: false, sidebar: false,
-    unread: false, grouped: false, group: 'Ungrouped', branch: '', goal: '', goalText: '', here: false, ...extra });
+    unread: false, grouped: false, group: 'Ungrouped', branch: '', goal: '', goalText: '', here: false, deletable: !extra.here, ...extra });
   const pageModel = (noGroups) => ({ account: null, closed: [], front: '', noGroups, menu: table, colors: hm.colors,
     open: [prow(6, { here: true, open: true })],
     groups: [{ key: 'section:pin', label: 'Pinned', made: false, rows: [prow(7, { grouped: true, group: 'Pinned' })] },
@@ -151,7 +155,7 @@ module.exports = async ({ eq, root }) => {
     const out = [];
     let last = '';
     for (const m of table) {
-      if (!holds(m.when, ctx)) continue;
+      if (!holds(m.when, ctx) || (m.rows === 'deletable' && !ctx.deletable)) continue;
       const g = m.group.split('@')[0];
       if (out.length && g !== last) out.push('-');
       out.push(m.title);
@@ -163,7 +167,7 @@ module.exports = async ({ eq, root }) => {
     const m = pageModel(noGroups);
     p.toPage({ type: 'model', model: m });
     const thread = (r) => ({ webviewSection: 'thread', codexPlusGrouped: !!r.grouped, codexPlusUnread: !!r.unread, codexPlusGoal: r.goal || '',
-      codexPlusGoalResumable: ['paused', 'blocked', 'usageLimited', 'budgetLimited'].includes(r.goal), codexPlusOpenHere: !!r.here, 'codexPlus.noGroups': noGroups });
+      codexPlusGoalResumable: ['paused', 'blocked', 'usageLimited', 'budgetLimited'].includes(r.goal), codexPlusOpenHere: !!r.here, 'codexPlus.noGroups': noGroups, deletable: !!r.deletable });
     const cases = [];
     for (const g of m.groups) {
       cases.push([`${g.key} header`, p.$(`.cp-group[data-key="${g.key}"] .cp-group-head`),

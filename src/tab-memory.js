@@ -175,6 +175,20 @@ class TabMemory {
     this.emitter.fire();
   }
 
+  /* Conversations that were deleted: no longer in Recently closed, or reopened by Ctrl/Cmd+Shift+T or the tab bar's
+     open button. */
+  async forget(threads) {
+    const gone = new Set(threads || []);
+    if (!gone.size) return;
+    this.closeOrder = this.closeOrder.filter((c) => !gone.has(c.thread));
+    for (const t of gone) this.lastFront.delete(t);
+    const kept = this.memento.get(LAST_KEY);
+    if (kept && gone.has(kept.thread)) await this.memento.update(LAST_KEY, undefined);
+    const closed = this.memento.get(CLOSED_KEY) || [];
+    if (closed.some((c) => c && gone.has(c.thread))) await this.memento.update(CLOSED_KEY, closed.filter((c) => c && !gone.has(c.thread)));
+    this.emitter.fire();
+  }
+
   /** Recently closed conversations not open now, newest first, at most `limit`. */
   recentlyClosed(limit = 10) {
     const open = new Set(this.openThreads());

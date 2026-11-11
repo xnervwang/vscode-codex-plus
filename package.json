@@ -189,6 +189,10 @@
         "title": "Codex Plus: Clear Goal"
       },
       {
+        "command": "codexPlus.deleteThread",
+        "title": "Codex Plus: Delete Conversation..."
+      },
+      {
         "command": "codexPlus.removePatch",
         "title": "Codex Plus: Remove the Patch from Codex (restore original files)"
       },
@@ -276,6 +280,10 @@
         },
         {
           "command": "codexPlus.newThreadInGroup",
+          "when": "false"
+        },
+        {
+          "command": "codexPlus.deleteThread",
           "when": "false"
         }
       ],

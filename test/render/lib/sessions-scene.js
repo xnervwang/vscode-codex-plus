@@ -24,13 +24,16 @@ const TITLES = ['Fix the retry delay in the inventory sync', 'Why does the night
   'Review the cache eviction change', 'Split the settings page into two', 'Upgrade the test runner', 'Trace the slow login on staging',
   'Rename the billing columns', 'Write the migration for the new index', 'Explain the flaky upload test'];
 
-/* A model of `n` conversations in three groups and Ungrouped, as SessionsModel.model() makes one. */
+/* A model of `n` conversations in three groups and Ungrouped, as SessionsModel.model() makes one. A row may be
+   deleted unless it is open here, running or waiting for the user (BUSY_LOOKS in src/sessions-view.js). */
+const BUSY = ['working', 'workingElsewhere', 'prompt', 'promptElsewhere'];
 function fakeModel(n, { stamp = '' } = {}) {
 /* An idle conversation not open in this window has no dot, as the host draws it (SessionsModel.build). */
   const dotOf = (i) => (DOTS[i % DOTS.length] === 'idle' && i >= 2 ? 'none' : DOTS[i % DOTS.length]);
   const row = (i, extra = {}) => ({ id: ID(i), title: `${TITLES[i % TITLES.length]}${i >= TITLES.length ? ` (${i})` : ''}`,
     time: `${(i % 9) + 1}d · 11/0${(i % 9) + 1}→11/09${stamp}`, dot: dotOf(i), color: i % 7 === 3 ? 'charts.purple' : '',
-    open: i < 2, sidebar: false, unread: DOTS[i % DOTS.length] === 'unread', grouped: false, group: 'Ungrouped', branch: i % 4 ? '' : `fix/${i}`, ...extra });
+    open: i < 2, sidebar: false, unread: DOTS[i % DOTS.length] === 'unread', grouped: false, group: 'Ungrouped', branch: i % 4 ? '' : `fix/${i}`,
+    deletable: i >= 2 && !BUSY.includes(dotOf(i)), ...extra });
   const rows = Array.from({ length: n }, (_, i) => row(i));
   const groups = [{ key: 'section:a', label: 'Release 1.2', made: true, rows: [] }, { key: 'section:b', label: 'Investigations', made: true, rows: [] },
     { key: 'section:e', label: 'Later', made: true, rows: [] }, { key: 'ungrouped', label: 'Ungrouped', made: false, rows: [] }];
@@ -368,7 +371,8 @@ async function run({ env, check, shots, out, results }) {
       && row.main.sep && row.main.sep.h === 1 && row.main.sep.margin === '2px 2px' && row.main.sep.bg === CC.border.slice(10)
       && row.main.chevron && row.main.chevron.text === '›' && row.main.chevron.float === 'right' && row.main.chevron.opacity === '0.7' && row.main.chevron.marginLeft === '12px'
       && row.focused === 'Codex Plus: Resume in Tab',
-    'sessions: a grouped row\'s items, separators 1 px with 2 px above and below, Claude Code\'s › on the two with a submenu, the first item focused', row.main);
+    'sessions: a grouped row\'s items, separators 1 px with 2 px above and below, Claude Code\'s › on the two with a submenu, the first item focused; '
+      + 'no Delete, since this one is waiting for the user', row.main);
     check(!!row.main && row.main.cut.length === 0, 'sessions: no item of a row\'s menu is cut short', row.main && row.main.cut);
 
     const centre = (label) => b.evaluate(`(() => { const i = [...document.querySelectorAll('.cp-ctx-item')].find((x) => x.childNodes[0] && x.childNodes[0].textContent === ${JSON.stringify(label)});
@@ -428,6 +432,35 @@ async function run({ env, check, shots, out, results }) {
     await sleep(100);
     await toPage({ type: 'model', model: small });
     await sleep(100);
+
+    const delSel = `.cp-group[data-key="section:b"] .cp-row[data-id="${ID(7)}"]`;
+    const delAt = await rowAt(delSel);
+    await rightClick(delAt[0], delAt[1]);
+    await sleep(200);
+    await shot('sessions-ctx-row-delete', { x: 0, y: 0, width: 360, height: 900 });
+    const dOne = await b.evaluate(MEASURE_CTX);
+    await esc();
+    await sleep(100);
+    const alsoAt = await rowAt(`.cp-group[data-key="ungrouped"] .cp-row[data-id="${ID(3)}"]`);
+    for (const type of ['mousePressed', 'mouseReleased']) {
+      await b.send('Input.dispatchMouseEvent', { type, x: alsoAt[0], y: alsoAt[1], button: 'left', clickCount: 1, modifiers: 2 });
+    }
+    await sleep(100);
+    await rightClick(delAt[0], delAt[1]);
+    await sleep(200);
+    await shot('sessions-ctx-rows-delete', { x: 0, y: 0, width: 360, height: 900 });
+    const dTwo = await b.evaluate(MEASURE_CTX);
+    await esc();
+    await sleep(50);
+    await esc();
+    await sleep(100);
+    r.measures.ctxRowDelete = { one: dOne.main, two: dTwo.main };
+    check(!!dOne.main && looks(dOne.main) && dOne.main.labels.join('|') === 'Codex Plus: Resume in Tab|Codex Plus: Resume in Sidebar|Codex Plus: Add to Group|'
+      + 'Codex Plus: Remove from Group|Codex Plus: Mark as Unread|Codex Plus: Rename|Codex Plus: Text Color|Codex Plus: Delete Conversation...'
+      && dOne.main.seps === 'itemitem-itemitem-item-item-item-item' && dOne.main.cut.length === 0,
+    'sessions: a row that may be deleted ends its menu in Delete Conversation..., after a separator, not cut short', dOne.main);
+    check(!!dTwo.main && dTwo.main.labels[dTwo.main.labels.length - 1] === 'Codex Plus: Delete 2 Conversations...' && dTwo.main.cut.length === 0,
+      'sessions: with a second one selected it reads Delete 2 Conversations..., not cut short', dTwo.main);
 
     const headSel = '.cp-group[data-key="section:a"] .cp-group-head';
     const headAt = await b.evaluate(`(() => { const r = document.querySelector(${JSON.stringify(headSel)}).getBoundingClientRect(); return [r.left + 40, r.top + r.height / 2]; })()`);

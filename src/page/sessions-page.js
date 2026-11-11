@@ -482,8 +482,14 @@
       if (!holds(m.when, at)) continue;
       const sub = m.submenu === 'color' ? colorItems(ids) : m.submenu === 'group' ? groupItems(ids) : null;
       if (sub && !sub.length) continue;
+      let label = m.title;
+      if (m.rows === 'deletable') {
+        const n = (ids.length ? ids : [ctx.threadId]).filter((id) => { const rs = rowsOf(id); return rs.length > 0 && rs.every((r) => r._row && r._row.deletable); }).length;
+        if (!n) continue;
+        if (n > 1) label = String(m.plural || m.title).replace('{n}', String(n));
+      }
       const group = String(m.group).split('@')[0];
-      out.push({ label: m.title, command: m.command, submenu: sub, separatorBefore: out.length > 0 && group !== last });
+      out.push({ label, command: m.command, submenu: sub, separatorBefore: out.length > 0 && group !== last });
       last = group;
     }
     return out;

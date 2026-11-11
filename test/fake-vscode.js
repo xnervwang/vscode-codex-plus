@@ -56,7 +56,8 @@ function create() {
   /* A notification is answered with the button the test set for text it contains (control.answer), else dismissed. */
   const answer = async (message, ...rest) => {
     const buttons = rest.filter((b) => typeof b === 'string');
-    state.said.push({ message, buttons });
+    const options = rest.find((b) => b && typeof b === 'object');
+    state.said.push(options ? { message, buttons, options } : { message, buttons });
     for (const [match, pick] of state.answers) if (String(message).includes(match)) return typeof pick === 'function' ? pick(message, buttons) : pick;
     return undefined;
   };

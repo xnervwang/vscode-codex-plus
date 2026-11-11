@@ -157,6 +157,9 @@ async function testStage() {
     'workbench.editor.wrapTabs': true,
     /* Agent Plus would otherwise offer to edit VS Code's own files, which are what is under test here. */
     'agentPlus.webviewRequestLimit': 'leave',
+    /* Draw modal dialogs, such as Delete's confirmation, inside the window so Playwright can read them and click their
+       buttons. VS Code's default is the system dialog on every platform. */
+    'window.dialogStyle': 'custom',
   }, null, 2));
 
   try {

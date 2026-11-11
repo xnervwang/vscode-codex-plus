@@ -13,6 +13,8 @@
  *                with Codex's own back when the extension is turned off
  *   list         the session list (this extension's webview): its rows, the right-click menu with no VS Code menu over
  *                it, Text Color and Add to Group, each acting when clicked
+ *   delete       Delete on a row: VS Code's modal confirmation, drawn in the window (run.js sets window.dialogStyle),
+ *                cancelled and then accepted, and the rollout gone from the Codex home
  *   a tab        a conversation resumed in a tab from the list: its title, then the dot on its logo during a turn sent
  *                through fake-model.js, and after the reply arrives while the tab is in the background
  *   Codex's page what the patch adds there: the time stamps, the rail, the buttons by the message box, the Agent map
@@ -349,6 +351,44 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         return { sections: await p.hostRequest('threadSection/list', {}),
           thread: await p.hostRequest('thread/read', { threadId: arg }) };`, threads[1].id).catch((e) => e.message) });
       await shot('session-row-grouped');
+    });
+
+    /* Delete the made-up conversation that no other step uses: cancel the first confirmation, accept the second. */
+    await step('delete', async () => {
+      if (!list) throw new Error('the session list did not open');
+      const t = threads[2];
+      const rollouts = () => fs.readdirSync(path.join(profile.codexHome, 'sessions'), { recursive: true }).filter((n) => String(n).includes(t.id));
+      const dialog = () => page.evaluate(() => {
+        const d = [...document.querySelectorAll('.monaco-dialog-box')].find((e) => e.offsetParent);
+        if (!d) return null;
+        const text = (sel) => { const e = d.querySelector(sel); return e ? e.innerText.trim() : ''; };
+        return { title: text('.dialog-message-text'), detail: text('.dialog-message-detail'),
+          buttons: [...d.querySelectorAll('.dialog-buttons .monaco-button')].map((b) => b.innerText.trim()) };
+      });
+      const press = (label) => page.locator('.monaco-dialog-box .dialog-buttons .monaco-button').filter({ hasText: label }).first().click({ timeout: 5000 });
+      const listed = () => list.evaluate((id) => !!document.querySelector(`.cp-row[data-id="${id}"]`), t.id);
+      check(rollouts().length === 1 && await listed(), 'the conversation to delete is listed and has its rollout in the made-up Codex home', rollouts());
+      retried(await pick(t, ['Codex Plus: Delete Conversation...']), 'Delete Conversation...');
+      const asked = await until(dialog, 15000, 300);
+      if (!asked) {
+        note(`no confirmation drawn in the window was found on ${process.platform}, so Delete was not tried here: VS Code may have shown the system's own dialog`);
+        await shot('delete-no-dialog');
+        return;
+      }
+      await shot('delete-confirmation');
+      check(asked.title === `Delete "${t.title}" from disk?` && asked.buttons.includes('Delete') && asked.buttons.includes('Cancel')
+        && asked.detail.startsWith(`"${t.title}": the rollout`) && /This cannot be undone\.$/.test(asked.detail),
+      'Delete Conversation... opens VS Code\'s modal confirmation, naming the conversation and what goes, with Delete and Cancel', asked);
+      await press('Cancel');
+      await until(async () => !await dialog(), 5000, 200);
+      await sleep(1500);
+      check(!await dialog() && await listed() && rollouts().length === 1, 'Cancel closes it and deletes nothing', { dialog: await dialog(), rollouts: rollouts() });
+      retried(await pick(t, ['Codex Plus: Delete Conversation...']), 'Delete Conversation...');
+      if (!await until(dialog, 15000, 300)) throw new Error('the second Delete opened no confirmation');
+      await press('Delete');
+      const gone = await until(async () => !await listed() && rollouts().length === 0, 30000, 500);
+      check(!!gone, 'Delete deletes it: its row leaves the list and its rollout the Codex home', { listed: await listed(), rollouts: rollouts(), toasts: await toasts() });
+      await shot('delete-done');
     });
 
     let codex = null;
