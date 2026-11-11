@@ -81,7 +81,8 @@ module.exports = async ({ eq, tmp, root }) => {
 
   p.send({ type: 'codex-extras-figures', text: '', tool: 'exec_command', toolSince: Date.now() - 65000 });
   const strip = p.q('[data-codex-extras="figures"]')[0];
-  eq([!!strip && /^exec_command running for 1m(\d+s)? \(since \d\d:\d\d:\d\d\)$/.test(strip.textContent), strip && /z-index:25;/.test(strip.style.cssText)],
+  // A start 65 s back lands on the previous day for the first 65 s after midnight, and the stamp then leads with the date.
+  eq([!!strip && /^exec_command running for 1m(\d+s)? \(since (?:(?:\d{4}\/)?\d\d\/\d\d )?\d\d:\d\d:\d\d\)$/.test(strip.textContent), strip && /z-index:25;/.test(strip.style.cssText)],
     [true, true], 'the corner strip says which tool call is running, for how long and since when, and sits under Codex\'s overlays');
 
   const css = (p.q('[data-codex-extras="style"]')[0] || {}).textContent || '';
