@@ -277,11 +277,26 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
   eq(patching.canDeliver(thread), false, 'before Codex hands over a panel, nothing can be typed');
   globalThis.__codexExtrasPanel(panel, thread, provider);
   eq(patching.canDeliver(thread), true, 'once its panel is handed over, that conversation can take an answer');
-  const r = await patching.deliver(thread, 'My answer to row 1', { waitMs: 50 });
-  eq([r.outcome, sent[0] && sent[0].type, sent[0] && sent[0].path, sent[0] && sent[0].state.prefillPrompt,
-    sent[0] && sent[0].state.prefillPromptOnlyIfEmpty],
-  ['uncertain', 'navigate-to-route', `/local/${thread}`, 'My answer to row 1', true],
-  'the answer goes to its panel as a draft, only into an empty box, and is reported uncertain when its page does not say what it saw');
+  /*
+   * What goes to the panel depends on whether Codex's page carries the page script. Both cases are set up here: the
+   * checks above leave that state as the installed Codex has it, or unset when there is none.
+   */
+  const plainCodex = tmp('codex-plain-page');
+  fs.mkdirSync(path.join(plainCodex, 'webview'), { recursive: true });
+  fs.writeFileSync(page.targetFile(plainCodex), '<html><head><script type="module" crossorigin src="./assets/index-0a1b2c3d.js"></script></head></html>');
+  const answerWith = async (codexDir) => {
+    if (codexDir) control.state.extensions.set('openai.chatgpt', { extensionPath: codexDir, packageJSON: { version: '26.1106.51428' } });
+    else control.state.extensions.delete('openai.chatgpt');
+    sent.length = 0;
+    const outcome = (await patching.deliver(thread, 'My answer to row 1', { waitMs: 50 })).outcome;
+    return [outcome, sent.map((m) => (m.type === 'navigate-to-route' ? [m.type, m.path, m.state && m.state.prefillPrompt, m.state && m.state.prefillPromptOnlyIfEmpty]
+      : [m.type, m.text]))];
+  };
+  const route = ['navigate-to-route', `/local/${thread}`, 'My answer to row 1', true];
+  eq(await answerWith(plainCodex), ['uncertain', [route]],
+    'to a page without the page script the answer goes only as a route draft, into an empty box only, and is reported uncertain');
+  eq(await answerWith(''), ['uncertain', [['codex-extras-answer', 'My answer to row 1'], route]],
+    'with no Codex to read the page from, the page is told about the answer first, and with no reply in time it is reported uncertain');
   eq((await patching.deliver('aaaaaaaa-0000-0000-0000-000000000000', 'x')).outcome, 'notReceived', 'a conversation with no panel here does not receive it');
   vscode.commands.executeCommand = async () => {};
   eq([await patching.openInSidebar(thread), navigated[0]], [true, `/local/${thread}`], 'opening in the sidebar navigates Codex\'s sidebar to it');

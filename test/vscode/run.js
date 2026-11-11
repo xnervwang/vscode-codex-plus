@@ -152,6 +152,9 @@ async function testStage() {
     'workbench.startupEditor': 'none', 'workbench.tips.enabled': false, 'security.workspace.trust.enabled': false, 'window.restoreWindows': 'none',
     'workbench.colorTheme': 'Default Dark Modern', 'chat.disableAIFeatures': true, 'git.enabled': false,
     'http.proxy': NO_PROXY_TO, 'http.proxySupport': 'override', 'http.noProxy': ['127.0.0.1', 'localhost'],
+    /* On macOS and Windows the window opens at VS Code's default 1024 px, and a tab bar that narrow can scroll the dot
+       on a Codex tab's logo out of view. */
+    'workbench.editor.wrapTabs': true,
     /* Agent Plus would otherwise offer to edit VS Code's own files, which are what is under test here. */
     'agentPlus.webviewRequestLimit': 'leave',
   }, null, 2));

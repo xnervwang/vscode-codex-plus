@@ -1018,7 +1018,9 @@ class F_Signing(Case):
                                                   creds)
         req = AWSRequest(method="POST", url=url, data=body,
                          headers={"content-type": "application/json", "accept": "application/json"})
-        with mock.patch("botocore.auth.datetime") as dt:
+        # Older botocore reads the clock with datetime.utcnow in botocore.auth, newer with get_current_datetime there.
+        with mock.patch("botocore.auth.datetime") as dt, \
+                mock.patch("botocore.auth.get_current_datetime", create=True, return_value=self.WHEN):
             dt.datetime.utcnow.return_value = self.WHEN
             SigV4Auth(Credentials(creds["key"], creds["secret"], creds["token"]), "bedrock", "eu-west-1").add_auth(req)
         self.assertEqual(ours["authorization"], req.headers["Authorization"])
