@@ -68,8 +68,10 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     .map((a) => a.getAttribute('aria-label') || a.title || '').filter((t) => /Codex/.test(t)));
   const codexButton = () => page.locator('.editor-group-container.active .editor-actions .action-item .action-label[aria-label*="Codex"]').first();
   /* The text of VS Code's hover over `loc`. */
+  const anyHover = () => page.evaluate(() => !![...document.querySelectorAll('.monaco-hover, .workbench-hover')].find((e) => e.offsetParent && e.innerText.trim()));
   const hoverText = async (loc) => {
     await page.mouse.move(5, 300);
+    await until(async () => !await anyHover(), 3000, 200);
     await sleep(300);
     await loc.hover();
     const text = await until(() => page.evaluate(() => {
@@ -141,7 +143,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       try {
         const box = page.locator('.monaco-dialog-box').filter({ hasText: 'Trust the work plan hooks in Codex?' }).first();
         if (await box.isVisible()) {
-          await box.locator('.dialog-buttons .monaco-button').filter({ hasText: 'Cancel' }).first().click({ timeout: 2000 });
+          await box.locator('.dialog-buttons .monaco-button').filter({ hasText: 'Cancel' }).first().dispatchEvent('click');
           trustCancelled++;
         }
       } catch (_) { /* the window is reloading */ }
@@ -511,7 +513,9 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await page.locator('.tabs-container .tab').filter({ hasText: title }).first().click();
       await page.bringToFront().catch(() => {});
       const read = await until(async () => { const d = await dotsOn(title); return d && d.unread === 0 && d.working === 0 && d; }, 20000, 500);
-      check(!!read, 'and bringing the tab to the front clears it', { dots: await dotsOn(title), windowFocused: await focused() });
+      const inFront = await focused();
+      if (read || inFront) check(!!read, 'and bringing the tab to the front clears it', { dots: await dotsOn(title), windowFocused: inFront });
+      else note(`the window does not have the system's focus on ${process.platform}, so the reply stays unread, as it should; clearing the dot was not checked`);
       await shot('tab-dot-read');
       note('the blue dot of a turn waiting for approval is not made here: the made-up model sends replies only, never a command to approve');
     });
