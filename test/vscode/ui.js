@@ -310,7 +310,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await still(row(threads[1]));
       const r = await row(threads[1]).boundingBox();
       const time = await row(threads[1]).locator('.cp-time').boundingBox();
-      if (r) base.compare('session-row', await crop(r), { masks: within(r, [time]) });
+      /* The mask starts 40 px left of the time: "1m" is narrower than "now", and the title's ellipsis moves with it. */
+      if (r) base.compare('session-row', await crop(r), { masks: within(r, [time && { ...time, x: time.x - 40, width: time.width + 40 }]) });
 
       await list.evaluate(() => {
         window.__ctx = [];
@@ -451,10 +452,9 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       check(!!seen.railAt && Number.isInteger(seen.railAt.top) && seen.railAt.off <= 1, 'and is centred on a whole pixel, so its arrows are drawn sharp', seen.railAt);
       check(seen.buttons === 2 && seen.meter, 'the information and chime buttons and the context meter are by the message box', seen);
       check(/1 timer/.test(seen.pill), 'the Agent map pill names the wake-up the conversation has', seen.pill);
-      /* Two crops, so that neither takes in Codex's buttons between them: the information and chime buttons, and the
-         context meter with the Agent map pill. */
+      /* Each crop is one control, so none takes in Codex's buttons or the gap before the pill, which moves by a pixel. */
       const frameBox = await (await codex.frameElement()).boundingBox();
-      for (const [name, sel] of [['composer-buttons', '[data-codex-extras="bar-button"]'], ['composer-meter-pill', '[data-codex-extras="meter"], [data-codex-extras="agents"]']]) {
+      for (const [name, sel] of [['composer-buttons', '[data-codex-extras="bar-button"]'], ['composer-meter', '[data-codex-extras="meter"]'], ['composer-pill', '[data-codex-extras="agents"]']]) {
         const r = await codex.evaluate((q) => {
           const all = [...document.querySelectorAll(q)].map((e) => e.getBoundingClientRect()).filter((b) => b.width > 0);
           return all.length ? { x0: Math.min(...all.map((b) => b.left)), y0: Math.min(...all.map((b) => b.top)), x1: Math.max(...all.map((b) => b.right)), y1: Math.max(...all.map((b) => b.bottom)) } : null;
