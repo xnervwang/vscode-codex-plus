@@ -502,13 +502,14 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       const working = await until(async () => { const d = await dotsOn(title); return d && d.working >= 6 && d; }, 20000, 500);
       check(!!working, 'while the turn runs the tab\'s logo carries the green dot', await dotsOn(title));
       await shot('tab-dot-working');
-      const lbox = await page.locator('.tabs-container .tab').filter({ hasText: title }).first().boundingBox();
       await openNotes();
       await sleep(800);
       model.release();
       const unread = await until(async () => { const d = await dotsOn(title); return d && d.unread >= 6 && d.working === 0 && d; }, 30000, 500);
       check(!!unread, 'once the reply lands with the tab not in front, the dot turns red', await dotsOn(title));
       await shot('tab-dot-unread');
+      /* Measured here rather than before notes.txt opens: the tab can move a few pixels in between. */
+      const lbox = await page.locator('.tabs-container .tab').filter({ hasText: title }).first().boundingBox();
       if (lbox) base.compare('tab-dot-unread', await crop({ x: lbox.x + 4, y: lbox.y + 4, width: 24, height: lbox.height - 8 }));
       await page.locator('.tabs-container .tab').filter({ hasText: title }).first().click();
       await page.bringToFront().catch(() => {});
