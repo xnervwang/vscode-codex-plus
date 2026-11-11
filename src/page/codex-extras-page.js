@@ -762,9 +762,10 @@
       infoBox.appendChild(line);
     });
     var r = rectOf(infoBtn), vh = +globalThis.innerHeight || 0, vw = +globalThis.innerWidth || 0;
-    infoBox.style.left = Math.round(r ? Math.max(8, vw ? Math.min(r.left || 0, vw - 416) : r.left || 0) : 8) + 'px';
     infoBox.style.bottom = Math.round(vh && r ? Math.max(4, vh - (r.top || 0) + 4) : 28) + 'px';
     infoBox.style.display = 'block';
+    var w = infoBox.offsetWidth || 0;
+    infoBox.style.left = Math.round(r ? Math.max(8, vw ? Math.min(r.left || 0, vw - w - 8) : r.left || 0) : 8) + 'px';
   }
 
   /*

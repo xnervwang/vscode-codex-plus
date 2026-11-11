@@ -302,7 +302,7 @@ const PARITY = `(() => {
   const boxes = ['.codex-extras-panel', '[data-codex-extras="info"]', '[data-codex-extras="context"]', '[data-codex-extras="figures"]', '[data-codex-extras="bar"]']
     .map((sel) => [sel, document.querySelector(sel)]).filter(([, e]) => e).map(([sel, e]) => [sel, st(e).fontFamily === body]);
   return { info: info && info.style.display === 'block' ? { w: Math.round(info.getBoundingClientRect().width), name: Math.round(line.firstElementChild.getBoundingClientRect().width),
-      align: st(line).alignItems } : null,
+      align: st(line).alignItems, left: Math.round(info.getBoundingClientRect().left), right: Math.round(info.getBoundingClientRect().right) } : null,
     stamps: { user: stamp('user'), assistant: stamp('assistant') }, mono: probe('fontFamily', 'var(--vscode-editor-font-family, monospace)'),
     boxes, panelLine: panel ? st(panel).lineHeight : '' };
 })()`;
@@ -318,6 +318,7 @@ async function parity(s, where) {
   if (m.info) await shot(s, `${where}-info-box`, { x: 0, y: 360, width: innerW(s), height: 400 });
   check(!!m.info && m.info.w === Math.min(400, innerW(s) - 32) && m.info.name === 72 && m.info.align === 'baseline',
     `${where}: the information box is 400 px wide with its names in a 72 px column on the values' baseline, as Claude Code Plus's`, m.info);
+  check(!!m.info && m.info.left >= 8 && m.info.right <= innerW(s) - 8, `${where}: the information box lies inside the page, 8 px or more from either side`, m.info);
   const sides = [m.stamps.user, m.stamps.assistant];
   check(sides.every((x) => x && x.family === m.mono && x.size === 0.8 && x.opacity === '0.6' && x.sameColour),
     `${where}: a stamp is in the editor's monospace font at 0.8 of its message's size, in the text's own colour at 60%`, m.stamps);

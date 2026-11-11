@@ -14,14 +14,14 @@ const vm = require('vm');
 const fake = require('../fake-vscode');
 const { createDom } = require('../fake-dom');
 
-function page(root, { box = true } = {}) {
+function page(root, { box = true, rect = { top: 600, left: 40, width: 700, height: 120 }, innerWidth } = {}) {
   const dom = createDom();
-  const kids = box ? [dom.el('div', { attrs: { 'data-codex-composer-root': '' }, rect: { top: 600, left: 40, width: 700, height: 120 } })] : [];
+  const kids = box ? [dom.el('div', { attrs: { 'data-codex-composer-root': '' }, rect })] : [];
   dom.setBody(dom.el('body', { kids: [dom.el('div', { kids })] }));
   const posted = [];
   const listeners = {};
   const win = { acquireVsCodeApi: () => ({ postMessage: (m) => posted.push(m) }), addEventListener: (t, fn) => { listeners[t] = fn; },
-    location: { pathname: '/index.html', hash: '' }, innerHeight: 760 };
+    location: { pathname: '/index.html', hash: '' }, innerHeight: 760, innerWidth };
   vm.runInContext(require(path.join(root, 'src', 'webview-inject.js')).pageScript(), vm.createContext(Object.assign({ globalThis: win }, dom.sandbox)));
   const q = (sel) => dom.document.root.querySelectorAll(sel);
   return { dom, posted, q, send(m) { listeners.message({ data: m }); },
@@ -80,6 +80,31 @@ module.exports = async ({ eq, tmp, root }) => {
     const p = page(root, { box: false });
     p.view();
     eq(p.q('[data-codex-extras="bar"]').length, 0, 'with no message box recognised nothing is drawn');
+  }
+  {
+    /* 400 px is the box in Codex's page, which uses border-box sizing, and 422 px the box with its padding and border
+       added in a page that does not. */
+    const placed = (innerWidth, buttonLeft, WIDTH) => {
+      const p = page(root, { rect: { top: 600, left: 8, width: innerWidth - 16, height: 120 }, innerWidth });
+      p.view();
+      const button = p.q('[data-codex-extras="bar-button"]')[0];
+      button.rect = { top: 722, left: buttonLeft, width: 24, height: 24 };
+      const open = () => {
+        button.dispatch('click', { stopPropagation() {} });
+        const ask = p.posted.filter((m) => m.kind === 'infoAsk').pop();
+        p.send({ type: 'codex-extras-info', id: ask.id, rows: [{ label: 'Thread id', value: '019a6a10-0000-7000-8000-000000000001' }] });
+        return p.q('[data-codex-extras="info"]')[0];
+      };
+      const box = open();
+      box.offsetWidth = WIDTH;
+      button.dispatch('click', { stopPropagation() {} });
+      open();
+      const left = parseInt(box.style.left, 10);
+      return [box.style.display, left, left + WIDTH];
+    };
+    eq([placed(500, 460, 400), placed(500, 460, 422)], [['block', 92, 492], ['block', 70, 492]],
+      'in a window 500 px wide, with the button near its right edge, the box ends 8 px inside the window, however wide it is laid out');
+    eq(placed(1200, 300, 400), ['block', 300, 700], 'with room to its right, the box starts where the button does');
   }
 
   /* ── the host: the rows, a value copied from its own copy, and the chime switched ── */
