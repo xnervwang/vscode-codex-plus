@@ -48,6 +48,7 @@ const fs = require('fs');
 const path = require('path');
 const targets = require('./adapters');
 const { applyAll } = require('./patch-target');
+const linked = targets.filter((t) => !t.standsAlone);
 const { activeThread } = require('./codex-tabs');
 const { iconsFor } = require('./logo-dot');
 const { createApprovals } = require('./approvals');
@@ -105,6 +106,9 @@ function statusLines() {
   if (deps) {
     const dir = codexPath(deps.vscode);
     for (const t of targets) lines.push(`  ${t.name}: ${dir ? t.status(dir) : 'Codex not found'}`);
+    const codex = deps.vscode.extensions.getExtension('openai.chatgpt');
+    lines.push(`  Tab bar button: ${require('./manifest').carries(codex && codex.packageJSON)
+      ? "this extension's, titled for what it opens" : "Codex's own: the Codex manifest this window loaded does not hide it"}`);
   }
   if (state.anchorsMissing) lines.push(`  At ${new Date(state.anchorsMissing.at).toISOString()}: ${anchorsMissingLine(state.anchorsMissing)}`);
   const waiting = approvals.threads();
@@ -1068,31 +1072,45 @@ function installHooks() {
 async function ensurePatched(vscode, context, log, mode) {
   const dir = codexPath(vscode);
   if (!dir) { state.reason = 'the Codex extension is not installed'; return; }
-  const states = targets.map((t) => t.status(dir));
-  if (states.every((s) => s === 'patched')) { state.reason = state.active ? 'connected' : 'patched; reload to connect'; return; }
+  const states = linked.map((t) => t.status(dir));
+  const due = targets.filter((t) => t.standsAlone && t.status(dir) !== 'patched');
+  const linkedDone = states.every((s) => s === 'patched');
+  if (linkedDone && !due.length) { state.reason = state.active ? 'connected' : 'patched; reload to connect'; return; }
   if (mode === 'off') {
     state.reason = context.globalState.get(PATCH_REMOVED_KEY) === true
       ? 'removed by "Remove the Patch from Codex"; "Codex Plus: Turn On" puts it back' : 'the additions are off (codexPlus.enabled)';
     return;
   }
+  const alone = applyAll(due, dir);
+  for (const [name, r] of alone) log(`patch ${name}: ${r.message}`);
+  const tabBar = alone.some(([, r]) => r.changed);
+  /* Codex reads these files when its extension starts and when it builds a page, and VS Code reads its manifest when a
+     window loads. */
+  const offer = async (message) => {
+    reloadOffered = true;
+    const reload = 'Reload Window';
+    const pick = await vscode.window.showInformationMessage(message, reload);
+    if (pick === reload) await vscode.commands.executeCommand('workbench.action.reloadWindow');
+  };
+  const TAB_BAR = 'Codex Plus put its own tab bar button in place of Codex\'s, with a title that says what it opens. Reload the window for it to take effect.';
+  if (linkedDone) {
+    state.reason = state.active ? 'connected' : 'patched; reload to connect';
+    if (tabBar) await offer(TAB_BAR);
+    return;
+  }
   const refresh = states.every((s) => s === 'patched' || s === 'outdated');
-  // All or nothing across the targets: a page patch without the host patch would post to nobody.
-  const results = applyAll(targets, dir, { allOrNothing: true });
+  // All or nothing across these two: a page patch without the host patch would post to nobody.
+  const results = applyAll(linked, dir, { allOrNothing: true });
   for (const [name, r] of results) log(`patch ${name}: ${r.message}`);
   const failed = results.filter(([, r]) => !r.current);
   if (failed.length) {
     state.reason = `not patched: ${failed.map(([n, r]) => `${n}: ${r.message}`).join('; ')}`;
+    if (tabBar) await offer(TAB_BAR);
     return;
   }
   state.reason = 'patched; reload the window to connect';
-  reloadOffered = true;
-  const reload = 'Reload Window';
-  /* Codex reads these files when its extension starts and when it builds a page, so neither half of what was just
-     written runs until the window is reloaded. There is no way to hand it over without one. */
-  const pick = await vscode.window.showInformationMessage(refresh
-    ? 'Codex Plus brought its patch of Codex up to this version. Reload the window for it to take effect.'
-    : 'Codex is patched. Reload the window for it to take effect.', reload);
-  if (pick === reload) await vscode.commands.executeCommand('workbench.action.reloadWindow');
+  await offer(refresh ? 'Codex Plus brought its patch of Codex up to this version. Reload the window for it to take effect.'
+    : 'Codex is patched. Reload the window for it to take effect.');
 }
 
 function removePatch(vscode) {
@@ -1133,7 +1151,7 @@ async function offerReloadIfStale() {
   try { mtime = (await fs.promises.stat(path.join(dir, 'out', 'extension.js'))).mtimeMs; } catch (_) { return false; }
   if (mtime === seenMtime) return false;
   seenMtime = mtime;
-  if (!targets.every((t) => t.status(dir) === 'patched')) return false;
+  if (!linked.every((t) => t.status(dir) === 'patched')) return false;
   reloadOffered = true;
   state.reason = 'patched after this window\'s Codex started; reload to connect';
   const reload = 'Reload Window';

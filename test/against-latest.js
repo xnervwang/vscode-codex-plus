@@ -22,6 +22,7 @@ const path = require('path');
 const { execFileSync } = require('child_process');
 const host = require('../src/host');
 const page = require('../src/webview-inject');
+const manifest = require('../src/manifest');
 const supported = require('../src/supported');
 const known = require('../src/protocol-known');
 const { codexBinary } = require('../src/appserver');
@@ -74,12 +75,14 @@ async function newest() {
     if (!res.ok) throw new Error(`package download returned ${res.status}`);
     const vsix = path.join(work, 'codex.vsix');
     fs.writeFileSync(vsix, Buffer.from(await res.arrayBuffer()));
-    execFileSync('unzip', ['-q', vsix, 'extension/out/extension.js', 'extension/webview/index.html', '-d', work], { stdio: 'ignore' });
+    execFileSync('unzip', ['-q', vsix, 'extension/out/extension.js', 'extension/webview/index.html', 'extension/package.json', '-d', work], { stdio: 'ignore' });
     const dir = path.join(work, 'extension');
     const h = host.patchSource(fs.readFileSync(host.targetFile(dir), 'utf8'));
     if (h.error) { failed++; console.log(`FAIL  host: ${h.error}`); } else console.log(`ok    host: every edit matches once (${h.chosen.map((c) => c.name).join(', ')}) and parses`);
     const p = page.patchSource(fs.readFileSync(page.targetFile(dir), 'utf8'));
     if (p.error) { failed++; console.log(`FAIL  page: ${p.error}`); } else console.log('ok    page: the script tag goes in ahead of the entry script');
+    const m = manifest.patchSource(fs.readFileSync(manifest.targetFile(dir), 'utf8'));
+    if (m.error) { failed++; console.log(`FAIL  manifest: ${m.error}`); } else console.log('ok    manifest: the tab bar button gets its "when", and the result is JSON');
     /* What it can wait on. A name in neither list fails, printed so that it can be looked up and added to one. */
     try {
       execFileSync('unzip', ['-q', vsix, 'extension/webview/assets/*.js', 'extension/bin/*/codex', 'extension/bin/*/codex.exe', '-d', work], { stdio: 'ignore' });

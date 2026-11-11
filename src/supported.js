@@ -17,6 +17,8 @@
  *
  *   hostEdits      the edits of the host patch, by name, each matching exactly once on a pristine bundle. This one
  *                  fails loudly: the patch is all or nothing, so a rule that stops matching leaves Codex untouched.
+ *   manifestEdits  the edits of the manifest patch, by name, each matching exactly once on Codex's package.json. A rule
+ *                  that stops matching leaves that file as Codex shipped it, and Codex's own tab bar button stays.
  *   pagePatch      the script tag goes into Codex's page ahead of its entry script.
  *   stateDb        the state database file name. A new one is a new file, so the old one is simply not there.
  *   threadColumns  the columns read from the `threads` table. Missing ones are dropped from the query rather than
@@ -73,6 +75,7 @@ function verified(version, record = read()) {
 
 const FIELDS = [
   ['hostEdits', 'the host patch'],
+  ['manifestEdits', "Codex's manifest"],
   ['threadColumns', 'the state database columns'],
   ['pageAnchors', "Codex's page attributes"],
 ];

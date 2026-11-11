@@ -102,6 +102,22 @@
         }
       },
       {
+        "command": "codexPlus.tabBarNewInTab",
+        "title": "Codex Plus: New Codex Conversation in a Tab",
+        "icon": {
+          "light": "images/codex-light.svg",
+          "dark": "images/codex-dark.svg"
+        }
+      },
+      {
+        "command": "codexPlus.tabBarOpenSidebar",
+        "title": "Codex Plus: Open Codex Sidebar",
+        "icon": {
+          "light": "images/codex-light.svg",
+          "dark": "images/codex-dark.svg"
+        }
+      },
+      {
         "command": "codexPlus.openThreadInTab",
         "title": "Codex Plus: Resume in Tab"
       },
@@ -203,6 +219,14 @@
     "menus": {
       "commandPalette": [
         {
+          "command": "codexPlus.tabBarNewInTab",
+          "when": "false"
+        },
+        {
+          "command": "codexPlus.tabBarOpenSidebar",
+          "when": "false"
+        },
+        {
           "command": "codexPlus.openThreadInTab",
           "when": "false"
         },
@@ -257,8 +281,13 @@
       ],
       "editor/title": [
         {
-          "command": "codexPlus.openCodex",
-          "when": "!codexPlus.tabBarHooked",
+          "command": "codexPlus.tabBarNewInTab",
+          "when": "codexPlus.ownsTabBarButton && config.codexPlus.tabBarButton != 'sidebar'",
+          "group": "navigation"
+        },
+        {
+          "command": "codexPlus.tabBarOpenSidebar",
+          "when": "codexPlus.ownsTabBarButton && config.codexPlus.tabBarButton == 'sidebar'",
           "group": "navigation"
         }
       ],
@@ -305,9 +334,9 @@
         "codexPlus.tabBarButton": {
           "type": "string",
           "enum": ["tab", "sidebar"],
-          "enumDescriptions": ["A new Codex conversation in a tab.", "Codex's sidebar: with the patch in effect, as Codex's own button opens it; without it, a new conversation there."],
+          "enumDescriptions": ["A new Codex conversation in a tab.", "Codex's sidebar."],
           "default": "tab",
-          "markdownDescription": "What the Codex button on the editor tab bar opens. With the patch in effect the button is Codex's own: set to `tab` it starts a conversation in a tab, and set to `sidebar` it opens Codex's sidebar, as it always did. Its hover still reads Codex's own title, *Open Codex Sidebar*, whichever is set. Without the patch this extension shows a button of its own instead, and Codex's beside it can be hidden by right-clicking it and choosing **Hide**."
+          "markdownDescription": "What the Codex button on the editor tab bar opens. With the patch in effect the button is this extension's, in place of Codex's own, and its hover says what it opens: *New Codex Conversation in a Tab* or *Open Codex Sidebar*. A window shows it once it has been reloaded after the patch was written; until then it shows Codex's own button, which opens a tab all the same when this is `tab` but keeps Codex's title, *Open Codex Sidebar*. Without the patch Codex's button opens its sidebar."
         },
         "codexPlus.sessionList": {
           "type": "boolean",

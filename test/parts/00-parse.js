@@ -48,10 +48,12 @@ module.exports = ({ ok, bad, eq, root }) => {
   eq(gone.filter((g) => commands.includes(g) || JSON.stringify(c).includes(`"${g}"`)), [], 'the commands of the views Agent Plus draws are gone');
   eq(['codexPlus.conversations', 'codexPlus.webviewRequestLimit'].filter((k) => k in c.configuration.properties), [], 'and so are their settings');
   eq(/claudeCodeExtras|codexPlus\.(standalone|hosted|answer"|sessionsHosted|conversations")/.test(JSON.stringify(c)), false, 'nothing names the old host or the standalone views');
-  const open = c.commands.find((x) => x.command === 'codexPlus.openCodex');
-  eq([c.menus['editor/title'], open && open.icon, ['codex-light.svg', 'codex-dark.svg'].every((f) => fs.existsSync(path.join(root, 'images', f)))],
-    [[{ command: 'codexPlus.openCodex', when: '!codexPlus.tabBarHooked', group: 'navigation' }], { light: 'images/codex-light.svg', dark: 'images/codex-dark.svg' }, true],
-    'the tab bar has the one Codex button, with its icons, while Codex\'s own does not do its work, and nothing else of this extension\'s');
+  const icons = ['codexPlus.tabBarNewInTab', 'codexPlus.tabBarOpenSidebar'].map((id) => (c.commands.find((x) => x.command === id) || {}).icon);
+  eq([c.menus['editor/title'], icons, ['codex-light.svg', 'codex-dark.svg'].every((f) => fs.existsSync(path.join(root, 'images', f)))],
+    [[{ command: 'codexPlus.tabBarNewInTab', when: "codexPlus.ownsTabBarButton && config.codexPlus.tabBarButton != 'sidebar'", group: 'navigation' },
+      { command: 'codexPlus.tabBarOpenSidebar', when: "codexPlus.ownsTabBarButton && config.codexPlus.tabBarButton == 'sidebar'", group: 'navigation' }],
+    [0, 1].map(() => ({ light: 'images/codex-light.svg', dark: 'images/codex-dark.svg' })), true],
+    'the tab bar has one Codex button of this extension\'s, with its icons, for each setting, while Codex\'s own is hidden, and nothing else of this extension\'s');
   /* What the Claude side has no counterpart of, and so is not here either. */
   const trimmed = ['goToWaiting', 'refreshSessions', 'copyThreadId', 'loadWorkPlanPlugin', 'sampleConversationDom', 'pageSelfCheck']
     .map((n) => 'codexPlus.' + n);

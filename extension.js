@@ -39,6 +39,7 @@ const uninstallPlan = require('./src/uninstall-plan');
 const wakeup = require('./src/wakeup');
 const agentMaps = require('./src/agent-map');
 const skillsConfig = require('./src/skills-config');
+const codexManifest = require('./src/manifest');
 
 const CONFIG = 'codexPlus';
 /* This copy's id and folder, kept for deactivate, which runs after the editor's API is gone. */
@@ -293,6 +294,7 @@ async function activate(context) {
   context.subscriptions.push(vscode.workspace.onDidChangeConfiguration((e) => {
     if (e.affectsConfiguration(CONFIG)) { writeHookSettings(context); sessionsModel.refresh(); }
     else if (e.affectsConfiguration('chat.fontFamily') || e.affectsConfiguration('chat.fontSize')) sessionsModel.refresh();
+    if (e.affectsConfiguration(`${CONFIG}.enabled`)) ownTabBar();
     if (e.affectsConfiguration(`${CONFIG}.skillsListBudget`) || e.affectsConfiguration(`${CONFIG}.disabledSkills`)) applySkillSettings(context, say);
     /* The time stamps, the message list and the colours live in Codex's page, and this is how a change to one of them
        gets there: the same redraw the figures use, rather than a watcher of its own. The master switch is in the list
@@ -399,6 +401,12 @@ async function newConversationInTab(say) {
     say(`opening a new conversation: ${e.message}`);
   }
   await vscode.commands.executeCommand('chatgpt.newCodexPanel');
+}
+
+function ownTabBar() {
+  const codex = vscode.extensions.getExtension('openai.chatgpt');
+  vscode.commands.executeCommand('setContext', codexManifest.CONTEXT_KEY,
+    settings().enabled !== false && !!codex && codexManifest.carries(codex.packageJSON));
 }
 
 function registerCommands(context, { source, memory, sessionsModel, sessionsView, say, link, opens, groups, placer }) {
@@ -538,16 +546,18 @@ function registerCommands(context, { source, memory, sessionsModel, sessionsView
     try { await vscode.commands.executeCommand('chatgpt.newChat'); } catch (_) { /* the shortcut is not enabled in every build */ }
   });
   /*
-   * The tab bar's button: a new Codex conversation, in a tab or, with codexPlus.tabBarButton set to sidebar, in Codex's
-   * sidebar. It never raises a conversation that is already open: the session list is where an existing one is picked,
-   * and a button that sometimes only moved the focus read as doing nothing.
+   * It never raises a conversation that is already open: the session list is where an existing one is picked, and a
+   * button that sometimes only moved the focus read as doing nothing.
    */
   reg('openCodex', () => (cfg().get('tabBarButton', 'tab') === 'sidebar'
     ? vscode.commands.executeCommand('codexPlus.newInSidebar') : newConversationInTab(say)));
+  reg('tabBarNewInTab', () => newConversationInTab(say));
+  reg('tabBarOpenSidebar', () => vscode.commands.executeCommand('chatgpt.openSidebar'));
+  ownTabBar();
+  context.subscriptions.push(vscode.extensions.onDidChange(ownTabBar));
   /*
-   * Handles clicks on Codex's own tab bar button once the host patch routes them here (src/host.js, "tab bar button").
-   * With codexPlus.tabBarButton set to tab, a click opens a new conversation in a tab, as codexPlus.openCodex does, and
-   * that button is hidden.
+   * Handles clicks on Codex's own tab bar button, which the host patch routes here (src/host.js, "tab bar button").
+   * With codexPlus.tabBarButton set to tab, a click opens a new conversation in a tab.
    */
   const fromTabBar = (args) => (Array.isArray(args) ? args : []).some((a) => !!a && typeof a === 'object'
     && ((typeof a.scheme === 'string' && typeof a.path === 'string') || typeof a.groupId === 'number'));
@@ -556,9 +566,6 @@ function registerCommands(context, { source, memory, sessionsModel, sessionsView
     newConversationInTab(say).catch((e) => say(`new conversation in a tab: ${e.message}`));
     return true;
   };
-  const hooked = () => { vscode.commands.executeCommand('setContext', 'codexPlus.tabBarHooked', true); };
-  globalThis.__codexExtrasTabBarReady = hooked;
-  if (globalThis.__codexExtrasTabBarHooked) hooked();
   reg('openThreadInTab', async (arg) => {
     const id = threadArg(arg);
     if (!id) return;
@@ -932,7 +939,6 @@ async function trustPlugin(say, { interactive }) {
 function deactivate() {
   /* A patched Codex still running then finds no one to ask, and its button opens its sidebar again. */
   delete globalThis.__codexExtrasTabBar;
-  delete globalThis.__codexExtrasTabBarReady;
   files.closeAll();
   try { uninstallPlan.finishUninstall(selfPath, [ID, ...uninstallPlan.FORMER_IDS]); } catch (_) { /* VS Code runs the hook later */ }
 }

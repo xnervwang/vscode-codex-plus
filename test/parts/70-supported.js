@@ -45,10 +45,10 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
   for (const v of all) {
     const e = supported.entry(v, record);
     const shape = [/^\d+(\.\d+)+$/.test(v), ISO_DATE.test(e.checked || ''), Number.isFinite(Date.parse(e.checked)),
-      Array.isArray(e.hostEdits), e.pagePatch === true, typeof e.stateDb === 'string' && !!e.stateDb,
+      Array.isArray(e.hostEdits), Array.isArray(e.manifestEdits), e.pagePatch === true, typeof e.stateDb === 'string' && !!e.stateDb,
       Array.isArray(e.threadColumns) && e.threadColumns.length > 0,
       Array.isArray(e.pageAnchors) && e.pageAnchors.length > 0];
-    eq(shape, [true, true, true, true, true, true, true, true],
+    eq(shape, [true, true, true, true, true, true, true, true, true],
       `${v} carries a version key, a real date it was checked on, and one claim per thing that can break`);
   }
 
@@ -57,6 +57,10 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
   const entry = supported.entry(newest, record);
   eq(entry.hostEdits, host.EDITS.map((e) => e.name),
     `the host patch's ${host.EDITS.length} rules are named in ${newest} exactly as src/host.js has them`);
+  let manifest = null;
+  try { manifest = require('../../src/manifest'); } catch (_) { /* compared as no rules */ }
+  eq(entry.manifestEdits, manifest ? manifest.EDITS.map((e) => e.name) : [],
+    `the manifest patch's rules are named in ${newest} exactly as src/manifest.js has them`);
   eq(entry.threadColumns, files.THREAD_COLUMNS,
     `the state database columns recorded for ${newest} are the ones src/codex-files.js queries`);
   const page = fs.readFileSync(path.join(root, 'src', 'page', 'codex-extras-page.js'), 'utf8');
@@ -79,7 +83,8 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
   const known = supported.statusLines(newest, record);
   eq([known.length >= 2, known[0].includes(newest), known[0].includes(entry.checked), /NOT this build/.test(known.join('\n'))],
     [true, true, true, false], 'a recorded build gets a status line naming it and the date it was checked on');
-  eq(known[1].includes(entry.stateDb) && known[1].includes(`the host patch (${entry.hostEdits.length})`) && known[1].includes('the page patch'),
+  eq(known[1].includes(entry.stateDb) && known[1].includes(`the host patch (${entry.hostEdits.length})`) && known[1].includes('the page patch')
+    && known[1].includes(`Codex's manifest (${(entry.manifestEdits || []).length})`),
     true, 'and a second line listing what was checked on it');
   const strange = supported.statusLines(UNRECORDED, record);
   eq([/NOT this build/.test(strange[0]), strange[0].includes(UNRECORDED), strange[1].includes(newest)],

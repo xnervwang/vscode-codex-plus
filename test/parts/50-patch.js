@@ -30,6 +30,7 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
   fake.install(vscode);
   const host = require('../../src/host');
   const page = require('../../src/webview-inject');
+  const manifest = require('../../src/manifest');
   const patching = require('../../src/patching');
 
   const installs = codexInstalls();
@@ -58,16 +59,19 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
     const src = installs[0];
     const origHost = fs.readFileSync(fs.existsSync(host.targetFile(src) + host.BACKUP_SUFFIX) ? host.targetFile(src) + host.BACKUP_SUFFIX : host.targetFile(src));
     const origPage = fs.readFileSync(fs.existsSync(page.targetFile(src) + page.BACKUP_SUFFIX) ? page.targetFile(src) + page.BACKUP_SUFFIX : page.targetFile(src));
+    const origMan = fs.readFileSync(fs.existsSync(manifest.targetFile(src) + manifest.BACKUP_SUFFIX) ? manifest.targetFile(src) + manifest.BACKUP_SUFFIX : manifest.targetFile(src));
     fs.writeFileSync(host.targetFile(copy), origHost);
     fs.writeFileSync(page.targetFile(copy), origPage);
+    fs.writeFileSync(manifest.targetFile(copy), origMan);
     const targets = require('../../src/adapters');
-    eq(targets.map((t) => t.apply(copy).current), [true, true], 'both targets apply to a copy');
-    eq(targets.map((t) => t.status(copy)), ['patched', 'patched'], 'and report themselves patched');
-    eq(targets.map((t) => t.apply(copy).changed), [false, false], 'a second apply changes nothing');
+    eq(targets.map((t) => t.apply(copy).current), [true, true, true], 'the three targets apply to a copy');
+    eq(targets.map((t) => t.status(copy)), ['patched', 'patched', 'patched'], 'and report themselves patched');
+    eq(targets.map((t) => t.apply(copy).changed), [false, false, false], 'a second apply changes nothing');
     try { new vm.Script(fs.readFileSync(host.targetFile(copy), 'utf8')); ok('the patched copy parses'); } catch (e) { bad(`the patched copy does not parse: ${e.message}`); }
     [...targets].reverse().forEach((t) => t.restore(copy));
     eq([fs.readFileSync(host.targetFile(copy)).equals(origHost), fs.readFileSync(page.targetFile(copy)).equals(origPage),
-      fs.existsSync(path.join(copy, 'webview', page.PAGE_FILE))], [true, true, false], 'restoring leaves both files byte for byte as they were');
+      fs.readFileSync(manifest.targetFile(copy)).equals(origMan), fs.existsSync(path.join(copy, 'webview', page.PAGE_FILE))], [true, true, true, false],
+    'restoring leaves the three files byte for byte as they were');
 
     /*
      * A build of this extension that changes what the patch writes leaves Codex carrying an older copy of it. That is
@@ -79,6 +83,7 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
     fs.mkdirSync(path.join(stale, 'webview'));
     fs.writeFileSync(host.targetFile(stale), origHost);
     fs.writeFileSync(page.targetFile(stale), origPage);
+    fs.writeFileSync(manifest.targetFile(stale), origMan);
     targets.forEach((t) => t.apply(stale));
     /* What an older build looks like from status(): the mark is one of ours, with another build's digest in it. */
     const age = (file, anyMark) => {
@@ -88,7 +93,8 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
     };
     age(host.targetFile(stale), host.ANY_MARK);
     age(page.targetFile(stale), page.ANY_MARK);
-    eq(targets.map((t) => t.status(stale)), ['outdated', 'outdated'], 'another build\'s patch in Codex reads as outdated, not as clean');
+    age(manifest.targetFile(stale), manifest.ANY_MARK);
+    eq(targets.map((t) => t.status(stale)), ['outdated', 'outdated', 'outdated'], 'another build\'s patch in Codex reads as outdated, not as clean');
 
     const codexVersion = '26.1021.22027';
     control.state.extensions.set('openai.chatgpt', { extensionPath: stale, packageJSON: { version: codexVersion } });
@@ -97,7 +103,7 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
     await patching.ensurePatched(vscode, { globalState: memo }, () => {}, 'on');
     const refreshed = control.state.said.map((s) => s.message).join('\n');
     eq([targets.map((t) => t.status(stale)), control.state.said.length, refreshed.includes('Reload the window')],
-      [['patched', 'patched'], 1, true],
+      [['patched', 'patched', 'patched'], 1, true],
       'so it is brought up to this build with no question put, and only a reload is asked for');
 
     const fromClean = async (mode, removed) => {
@@ -109,13 +115,32 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
         reason: patching._state().reason };
     };
     const fresh = await fromClean('on', undefined);
-    eq([fresh.status, fresh.said.length, /Reload the window/.test(fresh.said[0] || '')], [['patched', 'patched'], 1, true],
+    eq([fresh.status, fresh.said.length, /Reload the window/.test(fresh.said[0] || '')], [['patched', 'patched', 'patched'], 1, true],
       'a clean Codex is patched without asking, and the only thing said is to reload');
+    manifest.restore(stale);
+    control.state.said.length = 0;
+    await patching.ensurePatched(vscode, { globalState: memo }, () => {}, 'on');
+    const tabBarOnly = control.state.said.map((m) => m.message);
+    eq([targets.map((t) => t.status(stale)), tabBarOnly.length, /tab bar/.test(tabBarOnly[0] || '') && /Reload the window/.test(tabBarOnly[0] || '')],
+      [['patched', 'patched', 'patched'], 1, true],
+      'a Codex patched but for its manifest has that patched too, and the window is asked once to reload for its tab bar button');
+    control.state.said.length = 0;
+    await patching.ensurePatched(vscode, { globalState: memo }, () => {}, 'on');
+    eq(control.state.said.length, 0, 'and with all three patched nothing more is said');
+    [...targets].reverse().forEach((t) => t.restore(stale));
+    const theirs = fs.readFileSync(manifest.targetFile(stale), 'utf8');
+    fs.writeFileSync(manifest.targetFile(stale), theirs.replace(/"group": "navigation"(\s*\})/, '"group": "navigation",\n\t\t\t\t\t"when": "isWeb"$1'));
+    control.state.said.length = 0;
+    await patching.ensurePatched(vscode, { globalState: memo }, () => {}, 'on');
+    eq([targets.map((t) => t.status(stale)), control.state.said.length], [['patched', 'patched', 'clean'], 1],
+      'a manifest the edit does not fit is left alone, and the host and page patches go in all the same');
+    [...targets].reverse().forEach((t) => t.restore(stale));
+    fs.writeFileSync(manifest.targetFile(stale), origMan);
     const removed = await fromClean('off', true);
-    eq([removed.status, removed.said, /Remove the Patch from Codex/.test(removed.reason)], [['clean', 'clean'], [], true],
+    eq([removed.status, removed.said, /Remove the Patch from Codex/.test(removed.reason)], [['clean', 'clean', 'clean'], [], true],
       'after Remove the Patch it stays clean, saying nothing, and the status names the command that removed it');
     const switchedOff = await fromClean('off', undefined);
-    eq([switchedOff.status, /codexPlus\.enabled/.test(switchedOff.reason)], [['clean', 'clean'], true],
+    eq([switchedOff.status, /codexPlus\.enabled/.test(switchedOff.reason)], [['clean', 'clean', 'clean'], true],
       'and with the additions switched off it is left clean too, for that reason');
 
     /*
@@ -131,6 +156,7 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
       fs.mkdirSync(path.join(codex, 'webview'), { recursive: true });
       fs.writeFileSync(host.targetFile(codex), origHost);
       fs.writeFileSync(page.targetFile(codex), origPage);
+      fs.writeFileSync(manifest.targetFile(codex), origMan);
       targets.forEach((t) => t.apply(codex));
       for (const c of copies) fs.mkdirSync(path.join(ext, c));
       if (Object.keys(marked).length) fs.writeFileSync(path.join(ext, '.obsolete'), JSON.stringify(marked));
@@ -150,13 +176,13 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
     require('child_process').execFileSync(process.execPath, [path.join(self, 'uninstall.js')],
       { stdio: 'pipe', env: { ...process.env, HOME: home, USERPROFILE: home } });
     const st = (e) => targets.map((t) => t.status(e.codex));
-    eq([st(mine), st(kept), st(former)], [['clean', 'clean'], ['patched', 'patched'], ['patched', 'patched']],
+    eq([st(mine), st(kept), st(former)], [['clean', 'clean', 'clean'], ['patched', 'patched', 'patched'], ['patched', 'patched', 'patched']],
       'uninstalling puts back the Codex in its own extensions folder and leaves one whose editor still has this extension, '
       + 'under this name or the one it had before, codex-extras');
-    eq([st(leaving), st(lookalike)], [['clean', 'clean'], ['clean', 'clean']],
+    eq([st(leaving), st(lookalike)], [['clean', 'clean', 'clean'], ['clean', 'clean', 'clean']],
       'and puts back another editor\'s Codex when that editor has no copy of this extension left: only one '
       + 'marked for deletion, or only an extension whose name merely starts with this one\'s');
-    eq(st(elsewhere), ['patched', 'patched'], 'a folder that is no editor\'s extensions folder is not looked in');
+    eq(st(elsewhere), ['patched', 'patched', 'patched'], 'a folder that is no editor\'s extensions folder is not looked in');
   }
 
   /*
@@ -186,10 +212,11 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
     const dir = tmp(`race-${t.name.replace(/\W+/g, '-')}`);
     const file = t.targetFile(dir);
     fs.mkdirSync(path.dirname(file), { recursive: true });
-    const mark = t === host ? host.MARK : page.mark();
+    const mark = t === host ? host.MARK : t === manifest ? manifest.MARK : page.mark();
     /* A page backup is held to be a Codex page, one with the entry script the patch anchors on, as in Codex's
        webview/index.html. */
-    const original = t === page ? '<html><head><script type="module" crossorigin src="./assets/index-0a1b2c3d.js"></script></head></html>' : 'original';
+    const original = t === page ? '<html><head><script type="module" crossorigin src="./assets/index-0a1b2c3d.js"></script></head></html>'
+      : t === manifest ? '{"contributes":{"menus":{"editor/title":[{"command":"chatgpt.openSidebar","group":"navigation"}]}}}' : 'original';
     const writePatched = () => {
       fs.writeFileSync(file + t.BACKUP_SUFFIX, original);
       if (t === page) fs.writeFileSync(path.join(path.dirname(file), page.PAGE_FILE), 'script');

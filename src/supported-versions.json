@@ -15,6 +15,9 @@
         "app-server answers",
         "tab bar button"
       ],
+      "manifestEdits": [
+        "tab bar button when"
+      ],
       "pagePatch": true,
       "stateDb": "state_5.sqlite",
       "threadColumns": [

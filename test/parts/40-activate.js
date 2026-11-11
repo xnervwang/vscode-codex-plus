@@ -215,12 +215,12 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
    * last in front, which with a single Codex tab already in front only moved the focus and looked like nothing
    * happened. It opens Codex's new-conversation route itself, naming the editor group Claude Code's own Open command
    * would pick, because Codex's own command asks for the group of the text file last focused and so can put the
-   * conversation in a split. Codex's own button beside it opens the sidebar.
+   * conversation in a split.
    */
   {
     const w = await run(root, tmp, { takesRoute: true });
     const before = w.state.commands.length;
-    await w.state.handlers['codexPlus.openCodex']();
+    await w.state.handlers['codexPlus.tabBarNewInTab']();
     const ran = w.state.commands.slice(before);
     const [cmd, uri, viewType, options] = ran[0] || [];
     eq([ran.length, cmd, uri && uri.path, viewType, options && options.viewColumn, options && options.preview],
@@ -230,17 +230,17 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
   {
     const w = await run(root, tmp);
     const before = w.state.commands.length;
-    await w.state.handlers['codexPlus.openCodex']();
+    await w.state.handlers['codexPlus.tabBarNewInTab']();
     eq(w.state.commands.slice(before).map((c) => c[0]), ['vscode.openWith', 'chatgpt.newCodexPanel'],
       'when the route leaves no conversation tab, Codex\'s own command is asked instead');
   }
   {
-    /* codexPlus.tabBarButton set to sidebar: the button does what New in sidebar does, so Codex's own button can be hidden. */
+    /* Open Codex, in the command palette, with codexPlus.tabBarButton set to sidebar does what New in sidebar does. */
     const w = await run(root, tmp, { takesRoute: true, config: { tabBarButton: 'sidebar' } });
     const before = w.state.commands.length;
     await w.state.handlers['codexPlus.openCodex']();
     eq(w.state.commands.slice(before).map((c) => c[0]).includes('vscode.openWith'), false,
-      'with codexPlus.tabBarButton set to sidebar the tab bar button opens no tab');
+      'with codexPlus.tabBarButton set to sidebar Open Codex opens no tab');
     eq(w.state.commands.slice(before).map((c) => c[0]).includes('codexPlus.newInSidebar'), true,
       'and starts a new conversation in the sidebar instead');
   }
@@ -254,10 +254,9 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
     const host = require(path.join(root, 'src', 'host.js'));
     const edit = host.EDITS.find((e) => e.name === 'tab bar button');
     const code = edit ? 'commands.registerCommand("chatgpt.openSidebar",open);'.replace(edit.re, edit.to) : '';
-    const sandbox = { calls: [], handlers: {}, readied: 0 };
+    const sandbox = { calls: [], handlers: {} };
     sandbox.commands = { registerCommand: (n, f) => { sandbox.handlers[n] = f; } };
     sandbox.open = (...a) => { sandbox.calls.push(a.length); return 'sidebar'; };
-    sandbox.__codexExtrasTabBarReady = () => { sandbox.readied++; };
     if (code) vm.runInNewContext(code, sandbox);
     const button = sandbox.handlers['chatgpt.openSidebar'] || (() => undefined);
     const results = [button({ scheme: 'file', path: '/w/a.ts' }, { groupId: 1 })];
@@ -265,8 +264,8 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
     results.push(button({ scheme: 'file', path: '/w/a.ts' }, { groupId: 1 }), button());
     sandbox.__codexExtrasTabBar = () => { throw new Error('broken'); };
     results.push(button({ groupId: 2 }));
-    eq([!!edit, sandbox.__codexExtrasTabBarHooked, sandbox.readied, results, sandbox.calls], [true, true, 1, ['sidebar', undefined, 'sidebar', 'sidebar'], [2, 0, 1]],
-      'the patched command says it is hooked, and runs Codex\'s own function unless this extension takes the click: '
+    eq([!!edit, results, sandbox.calls], [true, ['sidebar', undefined, 'sidebar', 'sidebar'], [2, 0, 1]],
+      'the patched command runs Codex\'s own function unless this extension takes the click: '
       + 'without this extension, for a call with no arguments, and when this extension fails');
 
     const fromBar = [{ scheme: 'file', path: '/w/a.ts', fsPath: '/w/a.ts' }, { groupId: 1 }];
@@ -278,19 +277,13 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
       await new Promise((r) => setTimeout(r, 50));
       return { took, tabs: control.state.commands.slice(before).filter((c) => c[0] === 'vscode.openWith').length };
     };
-    globalThis.__codexExtrasTabBarHooked = true;
     const w = await run(root, tmp, { takesRoute: true, probe: asked([fromBar, [], [{ groupId: 1 }]]) });
-    delete globalThis.__codexExtrasTabBarHooked;
     eq([w.probed.took, w.probed.tabs], [[true, false, true], 2],
       'with codexPlus.tabBarButton at tab, a click on Codex\'s button starts a conversation in a tab, and a call from anywhere else is left to Codex');
-    eq(w.state.commands.some((c) => c[0] === 'setContext' && c[1] === 'codexPlus.tabBarHooked' && c[2] === true), true,
-      'and a running Codex with the edit hides this extension\'s own button');
     const side = await run(root, tmp, { takesRoute: true, config: { tabBarButton: 'sidebar' }, probe: asked([fromBar]) });
     const off = await run(root, tmp, { takesRoute: true, config: { enabled: false }, probe: asked([fromBar]) });
     eq([side.probed.took, off.probed.took], [[false], [false]], 'set to sidebar, or with the additions off, the click is Codex\'s own: it opens Codex\'s sidebar');
     eq(typeof globalThis.__codexExtrasTabBar, 'undefined', 'and once this extension is deactivated a patched Codex has no one to ask, so its button is Codex\'s again');
-    const bar = (pkg.contributes.menus['editor/title'] || []).find((m) => m.command === 'codexPlus.openCodex');
-    eq(bar && bar.when, '!codexPlus.tabBarHooked', 'this extension\'s own button is shown only while the running Codex has no such edit');
   }
   {
     /* The group choice on its own, against the tab groups Claude Code's choice is made from. */

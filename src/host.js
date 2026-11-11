@@ -113,14 +113,13 @@ const EDITS = [
    * Codex's button on the editor tab bar runs chatgpt.openSidebar. VS Code passes a tab bar button's command the
    * editor's resource and its group; other callers pass neither. The wrapper offers a call with those arguments to
    * __codexExtrasTabBar first, which opens a new conversation in a tab when codexPlus.tabBarButton is tab, and every
-   * other call goes to Codex's own function. The flag tells this extension that the running Codex has the wrapper, so it hides its own
-   * button.
+   * other call goes to Codex's own function.
    */
   {
     name: 'tab bar button',
     re: /registerCommand\("chatgpt\.openSidebar",([\w$]+)\)/g,
-    to: (m, fn) => `registerCommand("chatgpt.openSidebar",(globalThis.__codexExtrasTabBarHooked=!0,${call('__codexExtrasTabBarReady', '')},`
-      + `(...a)=>{let _cx=!1;try{_cx=!!(globalThis.__codexExtrasTabBar&&globalThis.__codexExtrasTabBar(a))}catch(_e){}return _cx?void 0:${fn}(...a)}))`,
+    to: (m, fn) => 'registerCommand("chatgpt.openSidebar",'
+      + `(...a)=>{let _cx=!1;try{_cx=!!(globalThis.__codexExtrasTabBar&&globalThis.__codexExtrasTabBar(a))}catch(_e){}return _cx?void 0:${fn}(...a)})`,
   },
 ];
 

@@ -7,4 +7,4 @@
  * The single list of patch targets in Codex's extension, in the order they are applied. The extension and the uninstall
  * hook both read it from here, so a target added to one cannot be forgotten by the other.
  */
-module.exports = [require('./host'), require('./webview-inject')];
+module.exports = [require('./host'), require('./webview-inject'), require('./manifest')];
