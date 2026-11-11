@@ -165,8 +165,8 @@ function threadOfCodexTab(vscode, patching, tab) {
 }
 
 /*
- * `deps`: reader (src/codex-reader.js), patching (src/patching.js), enabled() (codexPlus.workPlan), trusted()
- * (not in Restricted Mode), seen (src/seen.js) and log.
+ * `deps`: reader (src/codex-reader.js), patching (src/patching.js), enabled() (codexPlus.workPlan as the token mode
+ * has it), trusted() (not in Restricted Mode), seen (src/seen.js) and log.
  */
 function createCodexSource(vscode, { log = () => {}, reader, patching = null, enabled = () => true, trusted = () => true,
   briefs = () => true, seen = createSeen() } = {}) {
@@ -326,7 +326,7 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
 
   const source = {
     protocol: PROTOCOL,
-    /* ['brief'] while codexPlus.conversationBrief and codexPlus.workPlan are both on. */
+    /* ['brief'] while the conversation brief and the work plan both run. */
     get features() { return enabled() && briefs() ? ['brief'] : []; },
     id: 'codex',
     label: 'Codex',
@@ -442,8 +442,8 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
       seen.markRead(sessionId);
       changed.fire();
     },
-    /* Called when codexPlus.conversationBrief or codexPlus.workPlan changes, so that Agent Plus lists the conversations
-       again and reads `features`. */
+    /* Called when codexPlus.conversationBrief, codexPlus.workPlan or the token mode changes, so that Agent Plus lists
+       the conversations again and reads `features`. */
     featuresChanged() { changed.fire(); },
     _poll: poll,
     wantState,

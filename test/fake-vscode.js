@@ -113,7 +113,19 @@ function create() {
     env: { language: 'en', uriScheme: 'vscode',
       openExternal: async (u) => { state.external.push(String(u)); return state.externalAnswer; },
       clipboard: { writeText: async (t) => { state.clipboard = t; }, readText: async () => state.clipboard } },
-    workspace: { workspaceFolders: [], getConfiguration: () => ({ get: (k, d) => (state.config && k in state.config ? state.config[k] : d) }),
+    workspace: { workspaceFolders: [], getConfiguration: (section) => ({
+      /* `state.config` holds this extension's settings by bare name and any other by its full key. */
+      get: (k, d) => {
+        const full = section ? `${section}.${k}` : k;
+        if (state.config && full in state.config) return state.config[full];
+        return state.config && k in state.config ? state.config[k] : d;
+      },
+      update: async (k, v) => {
+        state.config = state.config || {};
+        state.config[section && section !== 'codexPlus' ? `${section}.${k}` : k] = v;
+        (state.configWrites = state.configWrites || []).push([section ? `${section}.${k}` : k, v]);
+      },
+      inspect: (k) => ({ key: section ? `${section}.${k}` : k }) }),
       onDidChangeConfiguration: () => ({ dispose() {} }), onDidChangeWorkspaceFolders: () => ({ dispose() {} }) },
   };
   /* Test controls: put tabs in place and announce the change as VS Code would. */

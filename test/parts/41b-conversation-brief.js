@@ -56,10 +56,10 @@ module.exports = async ({ eq, tmp, root }) => {
   'codexPlus.conversationBrief is a machine-wide flag, on by default as the plugin is, saying what it asks for and what a click shows');
 
   const on = await run(root, tmp, {});
-  const off = await run(root, tmp, { conversationBrief: false });
-  const noPlans = await run(root, tmp, { workPlan: false });
+  const off = await run(root, tmp, { conversationBrief: false, 'agentPlus.tokenMode': 'custom' });
+  const noPlans = await run(root, tmp, { workPlan: false, 'agentPlus.tokenMode': 'custom' });
   eq([on.brief, on.features, off.brief, off.features, noPlans.features], [true, ['brief'], false, [], []],
-    'the hooks are given the setting as `brief`, and the source lists the brief while it is on and plans are kept');
+    'in the Custom token mode, the hooks are given the setting as `brief`, and the source lists the brief while it is on and plans are kept');
 
   /* The sweep (src/workplan.js) deletes side files by suffix, so a new suffix has to be added there too. */
   const hooks = path.join(root, 'codex-plugin', 'agent-work-plan', 'hooks');
@@ -69,8 +69,9 @@ module.exports = async ({ eq, tmp, root }) => {
   eq([suffixes.includes('.compacted') && suffixes.includes('.briefed'), suffixes.filter((x) => !SIDE_SUFFIXES.includes(x))], [true, []],
     'every file the hooks keep beside a plan, the brief\'s two included, is one the sweep removes with its conversation');
 
-  const turned = await run(root, tmp, {}, { conversationBrief: false });
-  const back = await run(root, tmp, { conversationBrief: false }, { conversationBrief: true });
+  const custom = { 'agentPlus.tokenMode': 'custom' };
+  const turned = await run(root, tmp, custom, { conversationBrief: false });
+  const back = await run(root, tmp, { conversationBrief: false, ...custom }, { conversationBrief: true });
   eq([turned.after, back.after], [{ brief: false, features: [], fired: 1 }, { brief: true, features: ['brief'], fired: 1 }],
     'changing the setting rewrites config.json, changes the features and tells Agent Plus the conversations changed');
 };

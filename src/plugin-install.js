@@ -159,6 +159,31 @@ async function setPluginEnabled({ binary, home, enabled }) {
 }
 
 /*
+ * How the plugin follows the token mode (src/token-mode.js). With `unload` (Interface features), Codex is told to skip
+ * the plugin, as "Stop Loading the Work Plan Plugin" does, and a marker is left beside the plans. Any other mode that
+ * finds the marker calls `load`, which loads the plugin as the install command does, and removes the marker. The marker
+ * tells a plugin the mode stopped from one the user stopped by hand; the user's is left as it is. It lives in
+ * CODEX_HOME because each machine has its own, and it is written first, so that a failed write to Codex leaves a marker
+ * and not a plugin nothing will load. Resolves to 'unloaded', 'loaded', 'failed' (`load` resolved to false; the marker
+ * stays) or 'left'.
+ */
+const UNLOADED_MARKER = 'unloaded-by-token-mode';
+async function followTokenMode({ binary, home, unload, load }) {
+  const marker = path.join(planDir(home), UNLOADED_MARKER);
+  if (unload) {
+    if (!installedVersions(home).length || pluginLoadState(home) === 'not loaded') return fs.existsSync(marker) ? 'unloaded' : 'left';
+    fs.mkdirSync(planDir(home), { recursive: true });
+    fs.writeFileSync(marker, `${new Date().toISOString()}\n`);
+    await setPluginEnabled({ binary, home, enabled: false });
+    return 'unloaded';
+  }
+  if (!fs.existsSync(marker)) return 'left';
+  if (await load() === false) return 'failed';
+  try { fs.unlinkSync(marker); } catch (e) { if (!e || e.code !== 'ENOENT') throw e; }
+  return 'loaded';
+}
+
+/*
  * Copy the marketplace to `stage`, replacing what an earlier version left there, and fit the copy to the Python found
  * on this machine. `python` is what src/python-runtime.js findPython returned, or null when there is none.
  *
@@ -479,5 +504,6 @@ function sameHooks(a, b) {
 module.exports = {
   MARKETPLACE, PLUGIN, PLUGIN_ID, DATA_DIR, DIGEST_FILE, SOURCE, SHIPPED, SHIPPED_PYTHON, planDir, cacheDir, installedVersions,
   pluginVersion, sourceDigest, installedDigest, installedFit, fitOf, installState, stageMarketplace, fitHooks, pluginLoadState, setPluginEnabled, pluginEnabledEdits,
+  followTokenMode, UNLOADED_MARKER,
   writeHookSettings, writeClientZone, install, uninstall, leftAfterRemoval, savePlans, hookStatus, trustHooks, sameHooks, hookKeys,
 };

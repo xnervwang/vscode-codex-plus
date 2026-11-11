@@ -22,7 +22,7 @@ module.exports = async ({ eq, root }) => {
   const props = Object.assign({}, ...[].concat(pkg.contributes.configuration).map((c) => c.properties || {}));
   const src = fs.readFileSync(path.join(root, 'extension.js'), 'utf8');
   const body = (/function writeHookSettings\(context\) \{([\s\S]*?)\n\}/.exec(src) || ['', ''])[1];
-  const names = [...new Set([...body.matchAll(/c\.get\('(\w+)'/g)].map((m) => m[1]))];
+  const names = [...new Set([...body.matchAll(/(?:c\.get|runs)\('(\w+)'/g)].map((m) => m[1]))];
   eq(names.length >= 5, true, `writeHookSettings reads the hooks' settings (${names.join(', ')})`);
   eq(names.filter((n) => !props[`codexPlus.${n}`] || props[`codexPlus.${n}`].scope !== 'application').map((n) => `codexPlus.${n}`), [],
     'every setting the hooks are given is an application setting, so no workspace can set it for the whole machine');

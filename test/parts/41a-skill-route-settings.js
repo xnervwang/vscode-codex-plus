@@ -56,6 +56,10 @@ module.exports = async ({ eq, tmp, root }) => {
     }
   };
   eq(await run({}), Object.values(KEYS).map(pyDefault), 'with nothing set, the hooks are given the defaults');
-  eq(await run({ skillRouting: false, skillRoutingVectorSearch: true, skillRoutingCount: 8, skillRoutingExtraFolders: ['/a'],
-    skillRoutingClaudePlugins: ['*'] }), [false, true, 8, ['/a'], ['*']], 'and what the user sets is handed on as it is');
+  const set = { skillRouting: false, skillRoutingVectorSearch: true, skillRoutingCount: 8, skillRoutingExtraFolders: ['/a'],
+    skillRoutingClaudePlugins: ['*'] };
+  eq(await run({ ...set, 'agentPlus.tokenMode': 'custom' }), [false, true, 8, ['/a'], ['*']],
+    'and in the Custom token mode what the user sets is handed on as it is');
+  eq(await run(set), [true, true, 8, ['/a'], ['*']],
+    'in All features, the default mode, the search runs whatever codexPlus.skillRouting says, and its other settings are handed on');
 };

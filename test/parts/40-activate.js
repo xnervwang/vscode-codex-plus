@@ -112,6 +112,9 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
       } });
     eq([/^Account: Amazon Bedrock · us-west-2 /m.test(w.probed.status), w.probed.info.includes('Account=Amazon Bedrock · us-west-2')], [true, true],
       'Show Status and Session Information name the account as the provider and region Codex is set to use');
+    eq([/^Token mode: All features \(agentPlus\.tokenMode\); in Codex: work plan on, time-zone note on, conversation brief on, skill suggestions on, wake-ups on$/m
+      .test(w.probed.status), w.probed.info.includes('Token mode=All features')], [true, true],
+    'and both say the token mode, Show Status with what it leaves running in Codex');
   }
   eq(hosted.state.said.length, 0, 'nothing is said when it is taken');
 

@@ -42,6 +42,7 @@ const agentMaps = require('./src/agent-map');
 const skillsConfig = require('./src/skills-config');
 const contextWindow = require('./src/context-window');
 const codexManifest = require('./src/manifest');
+const tokenMode = require('./src/token-mode');
 
 const CONFIG = 'codexPlus';
 /* This copy's id and folder, kept for deactivate, which runs after the editor's API is gone. */
@@ -54,6 +55,11 @@ let reader = null;
 let memento = null;
 
 function cfg() { return vscode.workspace.getConfiguration(CONFIG); }
+/* Whether a feature that adds to Codex's context runs: its own setting in the Custom token mode, the mode's table in the
+   others (src/token-mode.js). */
+const runs = (name) => tokenMode.effective(vscode, `${CONFIG}.${name}`);
+/* This extension's settings that the token mode decides. */
+const MODE_SWITCHES = tokenMode.SWITCHES.filter((s) => s.key.startsWith(`${CONFIG}.`)).map((s) => s.key);
 
 let toldStale = false;
 function standsDown() {
@@ -96,7 +102,7 @@ function settings() {
   const removed = !!(memento && memento.get(patching.PATCH_REMOVED_KEY) === true);
   return {
     enabled: on,
-    workPlan: c.get('workPlan', true),
+    workPlan: runs('workPlan'),
     hideBackgroundSessions: c.get('hideBackgroundSessions', true),
     recentClosedSessions: c.get('recentClosedSessions', 10),
     reopenDroppedTabs: c.get('reopenDroppedTabs', true),
@@ -236,14 +242,14 @@ function writeHookSettings(context) {
   const c = cfg();
   try {
     install.writeHookSettings(files.codexHome(), {
-      enabled: c.get('workPlan', true),
+      enabled: runs('workPlan'),
       offerMinTurns: c.get('workPlanOfferMinTurns', 3),
       offerMinToolCalls: c.get('workPlanOfferMinToolCalls', 25),
       quietWhenReplyMatches: c.get('workPlanQuietWhenReplyMatches', ''),
-      tellTimeZone: c.get('tellCodexYourTimeZone', true),
-      brief: c.get('conversationBrief', true),
+      tellTimeZone: runs('tellCodexYourTimeZone'),
+      brief: runs('conversationBrief'),
       compactTokenLimit: codexConfig.compactLimit(files.codexHome()),
-      skillRoute: c.get('skillRouting', true),
+      skillRoute: runs('skillRouting'),
       skillRouteVector: c.get('skillRoutingVectorSearch', false),
       skillRouteCount: c.get('skillRoutingCount', 5),
       skillRouteExtraDirs: c.get('skillRoutingExtraFolders', ['~/.claude/skills']),
@@ -265,8 +271,8 @@ async function activate(context) {
 
   reader = new CodexReader({ log: say });
   context.subscriptions.push(reader);
-  const source = createCodexSource(vscode, { log: say, reader, patching, trusted, enabled: () => cfg().get('workPlan', true),
-    briefs: () => cfg().get('conversationBrief', true), seen: createSeen(context.globalState) });
+  const source = createCodexSource(vscode, { log: say, reader, patching, trusted, enabled: () => runs('workPlan'),
+    briefs: () => runs('conversationBrief'), seen: createSeen(context.globalState) });
   context.subscriptions.push(source);
   planSource = source;
   /* The user's time zone, as Codex's page reported it through the patch. */
@@ -354,13 +360,21 @@ async function activate(context) {
   }
   redrawSessions();
 
+  context.subscriptions.push(tokenMode.warnOutsideCustom(vscode, MODE_SWITCHES, { who: 'Codex Plus', log: say }));
   context.subscriptions.push(vscode.workspace.onDidChangeConfiguration((e) => {
-    if (e.affectsConfiguration(CONFIG)) { writeHookSettings(context); sessionsModel.refresh(); }
-    if (e.affectsConfiguration(`${CONFIG}.conversationBrief`) || e.affectsConfiguration(`${CONFIG}.workPlan`)) source.featuresChanged();
+    const modeChanged = e.affectsConfiguration(tokenMode.SETTING);
+    if (e.affectsConfiguration(CONFIG) || modeChanged) { writeHookSettings(context); sessionsModel.refresh(); }
+    if (modeChanged || e.affectsConfiguration(`${CONFIG}.conversationBrief`) || e.affectsConfiguration(`${CONFIG}.workPlan`)) source.featuresChanged();
     else if (e.affectsConfiguration('chat.fontFamily') || e.affectsConfiguration('chat.fontSize')) sessionsModel.refresh();
     if (e.affectsConfiguration(`${CONFIG}.enabled`)) ownTabBar();
     if (e.affectsConfiguration(`${CONFIG}.skillsListBudget`) || e.affectsConfiguration(`${CONFIG}.disabledSkills`)) applySkillSettings(context, say);
     if (e.affectsConfiguration(`${CONFIG}.contextWindow`)) { applyContextWindow(context, say); tellWindowChange(); }
+    /* A change of mode only unloads or reloads the plugin, so it does not ask again to trust the hooks. If the plugin
+       was never installed, because the first start was in Interface features, it is installed as at start-up. */
+    if (modeChanged) {
+      followTokenMode(context, say).then((r) => (r === 'left' && runs('workPlan') && !install.installedVersions(files.codexHome()).length
+        ? ensurePlugin(context, say) : undefined)).catch((err) => say(`the work plan plugin under the new token mode: ${err.message}`));
+    }
     /* The time stamps, the message list and the colours live in Codex's page, and this is how a change to one of them
        gets there: the same redraw the figures use, rather than a watcher of its own. The master switch is in the list
        because it decides all three, and a page has to be told when it goes either way. */
@@ -379,7 +393,8 @@ async function activate(context) {
   }));
   /* A conversation's session information, as its rows, for the information button in its page. */
   const sessionInfoRows = async (id) => [...await reader.request('info', { home: files.codexHome(), id }),
-    { label: 'Account', value: codexConfig.accountLine(files.codexHome()) }];
+    { label: 'Account', value: codexConfig.accountLine(files.codexHome()) },
+    { label: 'Token mode', value: tokenMode.labelOf(tokenMode.modeNow(vscode)) }];
   /* When the user's own messages were sent, for the stamps Codex's page draws on them: read in the worker thread, since
      the first read of a conversation goes through its whole rollout (src/user-times.js). */
   const userTimes = (id) => reader.request('userTimes', { home: files.codexHome(), id });
@@ -391,7 +406,7 @@ async function activate(context) {
      (src/wakeup.js). Only over Codex's own connection: hostRequest answers 'unavailable' until the patch hands it over,
      and a short-lived app-server would queue for a conversation nobody has open. */
   const wakes = wakeup.createWakeups({ dir: () => install.planDir(files.codexHome()), ask: (m, p) => patching.hostRequest(m, p),
-    log: say, enabled: () => cfg().get('wakeUps', true) && trusted() && !standsDown() });
+    log: say, enabled: () => runs('wakeUps') && trusted() && !standsDown() });
   context.subscriptions.push(wakes.start(), patching.onAppServerNotification((m, p) => {
     wakes.heard(m, p).catch(() => { /* asked again next time */ });
     /* A goal changed, by a command here, by the model or by Codex itself: the list reads the goals database again. */
@@ -512,13 +527,15 @@ function registerCommands(context, { source, memory, sessionsModel, sessionsView
       /* Installed and loaded are two states, not one: Codex can hold the plugin and be set not to load it, and then
          the work plan simply stays empty with nothing else to show why. */
       `Work plan plugin: ${install.installedVersions(home).join(', ') || 'not installed'}`
-        + `${installed.length ? `, ${loadState === 'not loaded' ? 'INSTALLED BUT NOT LOADED (Codex is set to skip it)'
+        + `${installed.length ? `, ${loadState === 'not loaded' ? (fs.existsSync(path.join(install.planDir(home), install.UNLOADED_MARKER))
+          ? 'not loaded, as the Interface features token mode has it' : 'INSTALLED BUT NOT LOADED (Codex is set to skip it)')
           : loadState === 'no entry' ? 'no entry in config.toml, so Codex does not know of it' : 'loaded'}` : ''}`
         + ` (this extension ships ${install.pluginVersion()}`
         + `${installed.length ? `; Codex's copy has ${({ current: 'the same files', 'other version': 'another version',
           'no digest': 'files of unknown age', 'files differ': 'DIFFERENT FILES, reinstall to update it',
           'python differs': 'files fitted to another Python than the one found now, reinstall to update it' })[copy] || copy}` : ''})`,
       `Additions: ${settings().enabled ? 'on' : 'OFF (codexPlus.enabled); the patch to Codex is left as it is'}`,
+      tokenModeLine(),
       `Python for the hooks: ${python ? `${python.version} as ${python.launcher.join(' ')} (${python.executable})`
         : `none found, tried ${tried.map((l) => l.join(' ')).join(', ')}`
           + (pythonRuntime.build() ? '; "Codex Plus: Download Python for the Work Plan Hooks" fetches one' : '')}`,
@@ -526,7 +543,8 @@ function registerCommands(context, { source, memory, sessionsModel, sessionsView
       `Wake-ups: ${(() => {
         const set = wakeup.listed(install.planDir(home)).filter((w) => !w.expired);
         if (!set.length) return 'none set';
-        return `${set.length} set${cfg().get('wakeUps', true) ? '' : ', NOT SENT (codexPlus.wakeUps is off)'}: `
+        return `${set.length} set${runs('wakeUps') ? '' : `, NOT SENT (${tokenMode.modeNow(vscode) === tokenMode.CUSTOM
+          ? 'codexPlus.wakeUps is off' : `the token mode is ${tokenMode.labelOf(tokenMode.modeNow(vscode))}`})`}: `
           + set.map((w) => `${w.thread} every ${w.everyMinutes} min until ${new Date(w.expiresMs).toISOString().slice(0, 16).replace('T', ' ')} UTC`).join('; ');
       })()}`,
       `codex program: ${codexProgram() || '(not found)'}`,
@@ -974,7 +992,8 @@ function registerCommands(context, { source, memory, sessionsModel, sessionsView
  */
 async function ensurePlugin(context, say) {
   if (!trusted() || standsDown()) return;
-  if (!cfg().get('workPlan', true)) { for (const k of Object.keys(problems)) problem(k, null); return; }
+  if (await followTokenMode(context, say) === 'loaded') return;
+  if (!runs('workPlan')) { for (const k of Object.keys(problems)) problem(k, null); return; }
   /* The Python found now is part of it: a copy installed while there was none has no hooks, and one is fitted to the
      Python it was installed with. */
   const python = await findPython(context);
@@ -1048,14 +1067,14 @@ function notePython(context, say, python) {
     .catch((e) => say(`offering Python: ${e.message}`));
 }
 
-async function installPlugin(context, say, { interactive }) {
+async function installPlugin(context, say, { interactive, load }) {
   const stale = standsDown();
-  if (stale) { if (interactive && stale === 'replaced') await offerReloadForStale(); return; }
+  if (stale) { if (interactive && stale === 'replaced') await offerReloadForStale(); return false; }
   const binary = codexProgram();
   if (!binary) {
     problem('install', notInstalled('Finding the codex program of the Codex extension', 'It is looked for in that extension\'s bin folder, and at chatgpt.cliExecutable when that is set.'));
     if (interactive) vscode.window.showErrorMessage('The codex program of the Codex extension was not found.');
-    return;
+    return false;
   }
   try {
     const stage = path.join(context.globalStorageUri.fsPath, 'marketplace');
@@ -1075,17 +1094,48 @@ async function installPlugin(context, say, { interactive }) {
     say(python ? `work plan hooks will run with Python ${python.version} (${python.launcher.join(' ')})`
       : `no Python 3.7 or later was found (tried ${pythonRuntime.pythons(context.globalStorageUri.fsPath).map((l) => l.join(' ')).join(', ')});`
         + ' the plugin goes in without its hooks, MCP server and skill');
-    const r = await install.install({ binary, home: files.codexHome(), stage, python, load: interactive ? true : 'keep' });
+    const r = await install.install({ binary, home: files.codexHome(), stage, python, load: load !== undefined ? load : interactive ? true : 'keep' });
     say(`installed work plan plugin ${r.version} into ${files.codexHome()}${r.loaded === false ? '; Codex is still set not to load it' : ''}`);
     writeHookSettings(context);
     problem('install', null);
     notePython(context, say, python);
     await trustPlugin(say, { interactive: true });
+    return true;
   } catch (e) {
     problem('install', notInstalled('Installing it into Codex', e.message));
     say(`installing the plugin failed: ${e.message}`);
     if (interactive) vscode.window.showErrorMessage(`Could not install the work plan plugin: ${e.message}`);
+    return false;
   }
+}
+
+/*
+ * The Interface features mode takes the plugin out of Codex, and the next mode puts it back (src/plugin-install.js
+ * followTokenMode). One change at a time in this window, so that a quick change of mode and back cannot interleave
+ * them. Codex reads which plugins to load when a conversation starts, so either applies to conversations started
+ * afterwards.
+ */
+let following = Promise.resolve('left');
+function followTokenMode(context, say) {
+  following = following.then(async () => {
+    const binary = codexProgram();
+    if (!trusted() || standsDown() || !binary) return 'left';
+    const home = files.codexHome();
+    const r = await install.followTokenMode({ binary, home, unload: tokenMode.unloadsPlugin(tokenMode.modeNow(vscode)),
+      load: () => installPlugin(context, say, { interactive: false, load: true }) });
+    if (r === 'unloaded') say(`the token mode is Interface features, so Codex is set to skip the work plan plugin in ${home}`);
+    if (r === 'loaded') say(`the token mode is ${tokenMode.labelOf(tokenMode.modeNow(vscode))}, so Codex loads the work plan plugin in ${home} again`);
+    return r;
+  }).catch((e) => { say(`the work plan plugin under the token mode: ${e.message}`); return 'failed'; });
+  return following;
+}
+
+/* The line Show Status gives the token mode, with what it leaves running in Codex. */
+function tokenModeLine() {
+  const mode = tokenMode.modeNow(vscode);
+  const what = tokenMode.SWITCHES.filter((s) => MODE_SWITCHES.includes(s.key))
+    .map((s) => `${tokenMode.featureOf(s.feature).name} ${tokenMode.effective(vscode, s.key) ? 'on' : 'off'}`);
+  return `Token mode: ${tokenMode.labelOf(mode)} (agentPlus.tokenMode); in Codex: ${what.join(', ')}`;
 }
 
 /*
@@ -1138,5 +1188,6 @@ function deactivate() {
 /* `_settings` is for the tests: the master switch only works if every part reads its settings from settings(), with the
    switch already applied, and the tests check that table directly.
    `_ensurePlugin` (the start-up install of the plugin) and `_reopenDropped` (reopening dropped tabs) run after a delay
-   during activation, so the tests call them directly. */
-module.exports = { activate, deactivate, _settings: settings, _ensurePlugin: ensurePlugin, _reopenDropped: reopenDropped };
+   during activation, so the tests call them directly. `_tokenModeLine` is Show Status's line for the token mode. */
+module.exports = { activate, deactivate, _settings: settings, _ensurePlugin: ensurePlugin, _reopenDropped: reopenDropped,
+  _tokenModeLine: tokenModeLine };

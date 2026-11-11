@@ -609,6 +609,37 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       if (fit.length && !fit.some((x) => x.lines >= 2)) note('Codex\'s sidebar was wide enough for every stamp, so none had to wrap');
       await exec('workbench.action.closeAuxiliaryBar');
     });
+
+    await step('the token mode', async () => {
+      /* The hooks read their settings from a file under CODEX_HOME on every message, so a mode chosen in the status bar
+         has to be in that file at once. */
+      const file = path.join(profile.codexHome, 'plugins', 'data', 'agent-work-plan-codex-extras', 'config.json');
+      const hooks = () => { try { const h = JSON.parse(fs.readFileSync(file, 'utf8')); return [h.enabled, h.tellTimeZone, h.brief, h.skillRoute]; } catch (_) { return null; } };
+      const before = hooks();
+      check(JSON.stringify(before) === '[true,true,true,true]', 'with no mode chosen, which is All features, the hooks are given every feature', before);
+      await exec('notifications.clearAll');
+      const entry = page.locator('.statusbar-item').filter({ has: page.locator('.codicon-dashboard') }).first();
+      check(await entry.waitFor({ state: 'visible', timeout: 15000 }).then(() => true, () => false), 'Agent Plus shows the token mode in the status bar');
+      const text = (await entry.innerText().catch(() => '')).trim();
+      check(text === 'All', 'by its short name', text);
+      const tip = await hoverText(entry);
+      check(/^Token mode: All features/.test(tip) && /costs no tokens/.test(tip), 'and its hover says what the mode adds to the context', tip);
+      await entry.click();
+      const list = page.locator('.quick-input-widget .quick-input-list .monaco-list-row');
+      check(await list.first().waitFor({ state: 'visible', timeout: 10000 }).then(() => true, () => false), 'clicking it opens the list of modes');
+      const rows = await list.allInnerTexts();
+      check(rows.length === 4 && /Essential features/.test(rows[1] || '') && /the work plan and the time-zone note, nothing else/.test(rows[1] || ''),
+        'four modes, each with a line under its name saying what it runs', rows);
+      await shot('token-mode-list');
+      await list.filter({ hasText: 'Essential features' }).first().click();
+      const after = await until(() => { const h = hooks(); return h && h[2] === false && h; }, 15000, 250);
+      check(JSON.stringify(after) === '[true,true,false,false]',
+        'choosing Essential features rewrites the hooks\' settings at once: the work plan and the time zone on, the brief and the skill search off', after);
+      const shown = await until(async () => { const t = (await entry.innerText().catch(() => '')).trim(); return t === 'Essential' && t; }, 10000, 250);
+      check(shown === 'Essential', 'and the entry shows the new mode', shown);
+      await shot('token-mode-essential');
+      await call('await vscode.workspace.getConfiguration("agentPlus").update("tokenMode", undefined, vscode.ConfigurationTarget.Global); return true;');
+    });
   } finally {
     watchingTrust = false;
     await trustWatch;

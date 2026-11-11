@@ -15,6 +15,7 @@ The Codex sessions list in the Codex Plus sidebar:
 | Feature | Where | Needs |
 | --- | --- | --- |
 | Codex conversations in the work plan, Conversations and Answer views | Agent Plus's views (its README says what each shows) | Agent Plus (installed with this extension) |
+| Which of the features that add to Codex's context run: Agent Plus's token mode, `agentPlus.tokenMode`, chosen from its entry in the status bar; each feature's own setting, named in this table's Needs column, applies only in Custom. See What it costs in tokens | Codex's context | Agent Plus |
 | Work plan per conversation: rows with states, numbered, kept across turns and compactions | Agent Plus's Work plan view; Codex's context every turn | Work plan plugin (installed into Codex by this extension), its hooks trusted |
 | Plan changes through MCP tools `set_row` / `add_row`, and the brief's through `set_summary` / `set_status`, no sandbox approval | Codex | Work plan plugin |
 | Wake-ups: the model sets one with the MCP tool `set_wakeup` and removes it with `clear_wakeup`; when it is due, its prompt is queued for the conversation and Codex sends it once the conversation is idle. See Wake-ups | Codex conversations open in this window | Work plan plugin; patch (this extension's edit of Codex's installed files); `codexPlus.wakeUps` |
@@ -130,7 +131,21 @@ Codex asks its client for an approval as a request, and records it in no file of
 
 ## What it costs in tokens
 
-The tables show the text Codex Plus adds to what Codex sends the model. All of it comes from the work plan plugin Codex Plus installs into Codex; what Codex Plus draws in VS Code sends nothing to the model. Text added to a conversation stays in context and goes with every later model call until compaction replaces the conversation with a summary. A token is about four characters of English.
+| Feature | Interface features | Essential features | All features | Custom |
+| --- | --- | --- | --- | --- |
+| Work plan | Off, plugin not loaded | On | On | `codexPlus.workPlan` |
+| Time zone | Off | On | On | `codexPlus.tellCodexYourTimeZone` |
+| Conversation brief | Off | Off | On | `codexPlus.conversationBrief` |
+| Skill search | Off | Off | On | `codexPlus.skillRouting` |
+| Wake-ups | Off | Off | On | `codexPlus.wakeUps` |
+
+Codex Plus follows Agent Plus's `agentPlus.tokenMode` setting, which defaults to All features. Outside Custom, the five settings in the table's Custom column have no effect. Changing modes does not change them. Changing one of those settings outside Custom shows a notice with a Switch to Custom button.
+
+In Interface features, Codex does not load the work plan plugin, just as when you run `Codex Plus: Stop Loading the Work Plan Plugin`. Choosing another mode loads it again unless you stopped loading it yourself. Changes to plugin loading, the work plan skill in Codex's skill list, and the `work_plan` tools (see Sent with every call) apply only to conversations started after the mode change.
+
+In a running conversation, a mode change applies from the next message to work plan injection and reminders, conversation brief requests, the time zone, skill search, and wake-ups. `Codex Plus: Show Status` shows the mode and which of the five features run. The information button in a conversation's message box names the mode.
+
+The tables below show the text Codex Plus adds to what Codex sends the model. All of it comes from the work plan plugin Codex Plus installs into Codex; what Codex Plus draws in VS Code sends nothing to the model. Text added to a conversation stays in context and goes with every later model call until compaction replaces the conversation with a summary. A token is about four characters of English.
 
 ### Added to every message
 
@@ -160,8 +175,8 @@ The tables show the text Codex Plus adds to what Codex sends the model. All of i
 
 | What | When | At most | Turned off by |
 | --- | --- | --- | --- |
-| The work plan skill in Codex's list of skills | Every call | Its name and a 573-character description, which Codex shortens to fit the list's budget | `Codex Plus: Stop Loading the Work Plan Plugin` |
-| The `work_plan` MCP server's seven tools | Codex 0.167 finds MCP tools through its tool search, so their definitions join the context once a search returns them | 8,631 characters for all seven | `Codex Plus: Stop Loading the Work Plan Plugin` |
+| The work plan skill in Codex's list of skills | Every call | Its name and a 573-character description, which Codex shortens to fit the list's budget | `Codex Plus: Stop Loading the Work Plan Plugin`, or the Interface features token mode |
+| The `work_plan` MCP server's seven tools | Codex 0.167 finds MCP tools through its tool search, so their definitions join the context once a search returns them | 8,631 characters for all seven | `Codex Plus: Stop Loading the Work Plan Plugin`, or the Interface features token mode |
 | Codex's own list of skills, when `codexPlus.skillsListBudget` is not 0 | Every call | That many tokens | `codexPlus.skillsListBudget` at 0, the default |
 
 ### Costing nothing
@@ -226,6 +241,7 @@ code --install-extension build/xnervwang.codex-plus-1.0.0.vsix
 | --- | --- |
 | Off, but ready | `Codex Plus: Turn Off`, or `Toggle On/Off`, or the `codexPlus.enabled` setting. None of the additions is drawn (the times, the rail, the colouring, the chimes, the buttons and context meter in the message box's toolbar, the row below the message box, the dots on tab logos), and Codex is not patched or kept patched. An applied patch stays in Codex's files. Each setting keeps its own value, so turning it back on restores your choices. |
 | Codex's own files back | `Codex Plus: Remove the Patch from Codex`. This is the one that restores Codex's `out/extension.js`, `webview/index.html` and `package.json`, and it is also what uninstalling this extension does. Reload the window afterwards. |
+| Nothing added to Codex's context | The Interface features token mode (`agentPlus.tokenMode`, or Agent Plus's token mode entry in the status bar). The work plan, skill search, brief, time zone and wake-ups add nothing, and Codex is set not to load the plugin, as Stop Loading does; any other mode loads it again, unless you stopped loading it yourself. |
 | The plugin left alone | `Codex Plus: Stop Loading the Work Plan Plugin`. Codex keeps the plugin, its marketplace entry and the trust you gave its hooks, and is set not to load it (`enabled = false` under `[plugins."agent-work-plan@codex-extras"]` in `config.toml`). `Install the Work Plan Plugin into Codex` is the way back; the install at start-up does not turn loading back on. Uninstalling this extension instead takes all three away (below). |
 | Uninstalling this extension | Codex's own files are put back, in this editor's extensions folder and in any other editor's that no longer has this extension. Once no editor on the machine has it, the work plan plugin is removed from Codex too, with the plans copied to `agent-work-plan-plans-<time>` under `CODEX_HOME` first. A plugin it could not remove stops doing anything once VS Code has deleted this extension's global storage. |
 
