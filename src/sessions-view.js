@@ -67,7 +67,6 @@ const LIST_MENU = [
   ['codexPlus.markThreadRead', '3_read@1', "webviewSection == 'thread' && codexPlusUnread"],
   ['codexPlus.renameThread', '4_edit@1', "webviewSection == 'thread'"],
   ['codexPlus.setTitleColor', '5_look@1', "webviewSection == 'thread'", 'color'],
-  ['codexPlus.setGoal', '6_goal@1', "webviewSection == 'thread'"],
   ['codexPlus.pauseGoal', '6_goal@2', "webviewSection == 'thread' && codexPlusGoal == 'active'"],
   ['codexPlus.resumeGoal', '6_goal@3', "webviewSection == 'thread' && codexPlusGoalResumable"],
   ['codexPlus.clearGoal', '6_goal@4', "webviewSection == 'thread' && codexPlusGoal"],

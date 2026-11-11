@@ -96,15 +96,20 @@ module.exports = async ({ eq, root }) => {
   click(dlg(), { target: dlg() });
   eq(!!dlg(), false, 'and so does a click outside it');
 
+  p.send(Object.assign({}, MAP, { goal: Object.assign({}, MAP.goal, { status: 'active' }) }));
+  click(pill());
+  eq([pill().textContent, text('[data-codex-extras="map-goal"] summary'),
+    p.q('[data-codex-extras="map-goal"] [data-codex-extras="map-act"]').map((b) => [b.textContent, b.getAttribute('data-codex-extras-act')])],
+  ['2 agents · 1 timer · goal', 'Make the export skip archived rows · in progress · 120,000 of 1,000,000 tokens', [['Pause', 'pauseGoal'], ['Clear', 'clearGoal']]],
+  'a running goal says so, with Pause and Clear');
+  click(pill());
+
   p.send(Object.assign({}, MAP, { goal: null, agents: [], wakeups: MAP.wakeups }));
   eq(pill().textContent, '1 timer', 'with only a wake-up the pill says so, rather than 0 agents');
   click(pill());
-  p.posted.length = 0;
-  const setGoal = p.q('[data-codex-extras-act="setGoal"]')[0];
-  eq([sections(), setGoal && setGoal.textContent], [['map-wakeups'], 'Set goal…'], 'empty sections are left out, and with no goal there is a way to set one');
-  click(setGoal);
-  eq([p.posted.map((m) => m.action), !!dlg()], [['setGoal'], false], 'which asks the host and closes the dialog for its input box');
-  click(pill());
+  eq([sections(), p.q('[data-codex-extras="agent-map"] [data-codex-extras-act]').map((b) => b.getAttribute('data-codex-extras-act')),
+    /goal/i.test(dlg() ? dlg().textContent : '')], [['map-wakeups'], ['removeWakeup'], false],
+  'empty sections are left out: with no goal the dialog has no goal section and no button that sets one');
   p.send({ type: 'codex-extras-agent-map', shown: false, wakeups: [], goal: null, agents: [] });
   eq([!!pill(), !!dlg()], [false, false], 'once there is nothing to show the pill goes, and an open dialog with it');
 };

@@ -52,7 +52,7 @@ module.exports = async ({ eq, tmp, root }) => {
   goals.set(B, { status: 'complete', objective: 'Done', tokensUsed: 9, tokenBudget: 0 });
   wakes.delete(B);
   eq([mapOf(B, { reader }).shown, mapOf(B, { reader }).goal.tokenBudget], [true, 0], 'so is a goal that is not cleared, a finished one too');
-  eq(ACTIONS, ['removeWakeup', 'pauseGoal', 'resumeGoal', 'clearGoal', 'setGoal', 'openAgent'], 'the dialog\'s buttons ask for one of six things');
+  eq(ACTIONS, ['removeWakeup', 'pauseGoal', 'resumeGoal', 'clearGoal', 'openAgent'], 'the dialog\'s buttons ask for one of five things, none of them setting a goal');
 
   /* ── the wake-ups the worker reads, and Remove ── */
   const dir = tmp('plans');
@@ -132,12 +132,12 @@ module.exports = async ({ eq, tmp, root }) => {
   eq([maps().length, maps()[1].goal.status], [2, 'active'], 'a change is sent on the redraw that follows it');
   globalThis.__codexExtrasMessage(panel.webview, { type: 'codex-extras', kind: 'tz', timeZone: 'UTC' }, provider);
   eq(maps().length, 3, 'and a page that has just loaded, which says so with its time zone, is sent it again');
-  for (const action of ['pauseGoal', 'removeWakeup', 'openAgent', 'deleteEverything']) {
+  for (const action of ['pauseGoal', 'removeWakeup', 'openAgent', 'setGoal', 'deleteEverything']) {
     globalThis.__codexExtrasMessage(panel.webview, { type: 'codex-extras', kind: 'agentMap', action, id: action === 'openAgent' ? ID(3) : '' }, provider);
   }
   await new Promise((r) => setTimeout(r, 10));
   eq(acted, [[A, 'pauseGoal', ''], [A, 'removeWakeup', ''], [A, 'openAgent', ID(3)]],
-    'a button of the dialog is done for the conversation the page shows, and a word not on the list is ignored');
+    'a button of the dialog is done for the conversation the page shows, and a word not on the list, Set Goal among them, is ignored');
   /* The panel registry is the module's own; later parts start from a module with none of this part's panels. */
   disposePanel();
   delete require.cache[require.resolve('../../src/patching')];

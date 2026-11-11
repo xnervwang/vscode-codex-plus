@@ -720,19 +720,6 @@ function registerCommands(context, { source, memory, sessionsModel, sessionsView
    * app-server requires before it starts or stops that work for the user.
    */
   const goalThread = (arg) => threadArg(arg) || inFront();
-  reg('setGoal', async (arg) => {
-    const id = goalThread(arg);
-    if (!id || restricted()) return;
-    const was = (reader.goal(id) || {}).objective || '';
-    const objective = await vscode.window.showInputBox({ prompt: 'The goal Codex keeps working toward in this conversation, turn after turn, until it is done',
-      value: was, valueSelection: [0, was.length] });
-    if (objective === undefined || !objective.trim()) return;
-    const budget = await vscode.window.showInputBox({ prompt: 'Token budget for the goal: Codex stops once the goal has used this many tokens. Leave it empty for no budget.',
-      value: String(cfg().get('goalTokenBudget', 1000000) || ''), validateInput: (v) => (!v.trim() || /^\d+$/.test(v.trim()) ? null : 'A whole number of tokens, or nothing') });
-    if (budget === undefined) return;
-    await changeThread('set the goal', 'thread/goal/set', { threadId: id, objective: objective.trim(), status: 'active',
-      tokenBudget: budget.trim() ? Number(budget.trim()) : null, origin: 'user' });
-  });
   reg('pauseGoal', async (arg) => {
     const id = goalThread(arg);
     if (id && !restricted()) await changeThread('pause the goal', 'thread/goal/set', { threadId: id, status: 'paused', origin: 'user' });

@@ -52,8 +52,9 @@ module.exports = async ({ eq, root }) => {
     [true, true, 'menu', '30px', '50px'],
     'a right-click on a row is kept from VS Code, whose own menu would open otherwise, and the page opens its menu where the click was');
   eq(items(main()).map(label), ['Codex Plus: Resume in Tab', 'Codex Plus: Resume in Sidebar', GROUP, 'Codex Plus: Mark as Unread', RENAME,
-    COLOR, 'Codex Plus: Set Goal...'], 'with the row\'s items, each after "Codex Plus: "');
-  eq(kinds(main()), ['item', 'item', '-', 'item', '-', 'item', '-', 'item', '-', 'item', '-', 'item'], 'and a separator between groups of items, as VS Code drew them');
+    COLOR], 'with the row\'s items, each after "Codex Plus: ", and no goal item on a row with no goal');
+  eq(kinds(main()), ['item', 'item', '-', 'item', '-', 'item', '-', 'item', '-', 'item'],
+    'and a separator between groups of items, as VS Code drew them, with none after the last');
   eq([!!items(main())[0] && items(main())[0].focused, dom.waiting() === timers, posted], [true, true, [{ kind: 'select', ids: [ID(4)] }]],
     'the first item has the focus, opening started no timer, and the row right-clicked is selected');
   eq([item(COLOR) && item(COLOR).getAttribute('aria-haspopup'), item(COLOR) && (item(COLOR).querySelector('.cp-ctx-chevron') || {}).textContent,
@@ -63,6 +64,20 @@ module.exports = async ({ eq, root }) => {
   if (item(RENAME)) item(RENAME).bubble('click');
   eq([posted, gone(), dom.waiting() === timers], [[{ kind: 'menu', command: 'codexPlus.renameThread', context: thread(ID(4)) }], true, true],
     'an item clicked sends its command with the row\'s context to the host, and the menu is taken off the page');
+  const withGoal = (goal) => Object.assign({}, model, { groups: model.groups.map((g) => (g.key !== 'ungrouped' ? g
+    : Object.assign({}, g, { rows: g.rows.map((r) => (r.id === ID(4) ? Object.assign({}, r, { goal, goalText: `Goal (${goal}): x` }) : r)) }))) });
+  const goalMenu = (goal) => {
+    toPage({ type: 'model', model: withGoal(goal) });
+    rightClick(rowEl('ungrouped', 4));
+    const out = [items(main()).map(label).filter((t) => /Goal/.test(t)), kinds(main()).slice(-4)];
+    clickAway();
+    return out;
+  };
+  eq([goalMenu('active'), goalMenu('paused')],
+    [[['Codex Plus: Pause Goal', 'Codex Plus: Clear Goal'], ['item', '-', 'item', 'item']],
+      [['Codex Plus: Resume Goal', 'Codex Plus: Clear Goal'], ['item', '-', 'item', 'item']]],
+    'a row with a running goal ends in Pause Goal and Clear Goal after a separator, one with a paused goal in Resume Goal and Clear Goal');
+  toPage({ type: 'model', model });
 
   rightClick($(`.cp-section[data-key="open"] .cp-row[data-id="${ID(1)}"]`));
   const fromOpen = items(main()).map(label);

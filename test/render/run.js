@@ -527,11 +527,12 @@ function selfchecked(r, where, { turns, users, rows, replies = turns }) {
     s = await opened(name, { width, height });
     try {
       const ID = (n) => `01a1f0f0-0000-7000-8000-${String(n).padStart(12, '0')}`;
-      await s.toPage({ type: 'codex-extras-agent-map', shown: true,
+      const map = { type: 'codex-extras-agent-map', shown: true,
         wakeups: [{ everyMinutes: 10, prompt: 'Keep going with the open rows of the plan.', nextMs: Date.now() + 7 * 60e3, expiresMs: Date.now() + 6 * 86400e3, paused: false }],
         goal: { status: 'active', objective: 'Make the nightly export skip archived rows and report how many it skipped', tokensUsed: 182000, tokenBudget: 1000000 },
         agents: [{ id: ID(3), name: 'scout', title: 'Find where the retry delay is set', dot: 'working', updatedMs: Date.now() - 20e3 },
-          { id: ID(4), name: 'Fix the flaky upload test', title: 'Fix the flaky upload test', dot: 'idle', updatedMs: Date.now() - 12 * 60e3 }] });
+          { id: ID(4), name: 'Fix the flaky upload test', title: 'Fix the flaky upload test', dot: 'idle', updatedMs: Date.now() - 12 * 60e3 }] };
+      await s.toPage(map);
       await sleep(700);
       await scrollTo(s, 'bottom');
       const pill = await s.b.evaluate(`(() => {
@@ -571,7 +572,7 @@ function selfchecked(r, where, { turns, users, rows, replies = turns }) {
           tones: [...d.querySelectorAll('[data-codex-extras="map-agent"] [data-codex-extras-dot]')].map((x) => [x.getAttribute('data-codex-extras-dot'), getComputedStyle(x).backgroundColor]),
           border: st.borderTopColor, focusBorder: (() => { const q = document.createElement('span'); q.style.color = 'color-mix(in srgb, #2488db 65%, transparent)';
             document.body.appendChild(q); const v = getComputedStyle(q).color; q.remove(); return v; })(),
-          focused: document.activeElement === d };
+          focused: document.activeElement === d, acts: [...d.querySelectorAll('[data-codex-extras-act]')].map((x) => [x.textContent, x.getAttribute('data-codex-extras-act')]) };
       })()`);
       results.scenes[name].measures.dialog = { ...dlg, openMs: +(opened2 - t0).toFixed(1) };
       check(!!dlg && dlg.cover.join() === `0,0,${dlg.vw},${dlg.vh}` && dlg.overlay === 'rgba(0, 0, 0, 0.75)' && dlg.radius === '8px' && dlg.bg === 'rgb(24, 24, 24)'
@@ -580,6 +581,8 @@ function selfchecked(r, where, { turns, users, rows, replies = turns }) {
       check(!!dlg && dlg.sections.join() === 'map-wakeups,map-goal,map-agents' && dlg.box[0] >= 16 && dlg.box[2] <= dlg.vw - 16 && dlg.box[1] >= 0 && dlg.box[3] <= dlg.vh
         && dlg.rows.every(([w, rad]) => w === Math.min(300, dlg.box[2] - dlg.box[0] - 32 - 8) && rad === '4px') && dlg.dots.length === 2 && dlg.dots.every((x) => x === 8),
       `${name}: it holds the wake-up, the goal and the sub-agents in that order, inside the page, each agent a 4 px rounded row with an 8 px dot`, dlg);
+      check(!!dlg && JSON.stringify(dlg.acts) === JSON.stringify([['Remove', 'removeWakeup'], ['Pause', 'pauseGoal'], ['Clear', 'clearGoal']]),
+        `${name}: the wake-up has Remove and the running goal Pause and Clear`, dlg && dlg.acts);
       check(!!dlg && dlg.focused && dlg.border === dlg.focusBorder, `${name}: holding the focus, its border is the active input border at 65%, as Claude Code's dialog`,
         dlg && { border: dlg.border, want: dlg.focusBorder });
       check(!!dlg && dlg.tones.some(([k, c]) => k === 'working' && c === 'rgb(34, 197, 94)'), `${name}: a working sub-agent's dot is the session list's green, #22c55e`, dlg && dlg.tones);
@@ -593,6 +596,25 @@ function selfchecked(r, where, { turns, users, rows, replies = turns }) {
       const gone = await s.b.evaluate('!document.querySelector(\'[data-codex-extras="agent-map"]\')');
       check(gone && results.scenes[name].measures.dialog.openMs < 100, `${name}: Esc closes it and takes it off the page; it was on screen within 100 ms of the click`,
         { gone, openMs: results.scenes[name].measures.dialog.openMs });
+
+      await s.toPage({ ...map, goal: null });
+      await sleep(300);
+      const pillNoGoal = await s.b.evaluate(`(document.querySelector('[data-codex-extras="agents"]') || {}).textContent || ''`);
+      const at2 = await centre(s, '[data-codex-extras="agents"]');
+      if (at2) await s.b.click(at2[0], at2[1]);
+      await sleep(300);
+      await shot(s, `${name}-nogoal`);
+      const bare = await s.b.evaluate(`(() => {
+        const d = document.querySelector('[data-codex-extras="map-dialog"]');
+        if (!d) return null;
+        return { sections: [...d.querySelectorAll('[data-codex-extras^="map-"]')].map((x) => x.getAttribute('data-codex-extras')).filter((k) => /^map-(wakeups|goal|agents)$/.test(k)),
+          acts: [...d.querySelectorAll('[data-codex-extras-act]')].map((x) => x.getAttribute('data-codex-extras-act')), goalWord: /goal/i.test(d.textContent) };
+      })()`);
+      results.scenes[name].measures.dialogNoGoal = { pill: pillNoGoal, ...bare };
+      check(pillNoGoal === '2 agents · 1 timer' && !!bare && bare.sections.join() === 'map-wakeups,map-agents' && bare.acts.join() === 'removeWakeup' && !bare.goalWord,
+        `${name}: with no goal the pill names none, and the dialog has no goal section and no button that sets one`, results.scenes[name].measures.dialogNoGoal);
+      await s.b.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+      await sleep(200);
       results.blocked.push(...s.b.blocked);
     } finally { await s.close(); }
   }

@@ -576,7 +576,6 @@
       b.disabled = true;
       b.style.opacity = '0.5';
       post({ kind: 'agentMap', action: action, id: id || '' });
-      if (action === 'setGoal') closeMap();
     });
     return b;
   }
@@ -659,14 +658,6 @@
         list.appendChild(b);
       }
       out.push(section('map-agents', plural(m.agents.length, 'agent') + ' · click an agent to open it in a tab', [list]));
-    }
-    if (!m.goal) {
-      var foot = mk('div', 'display:flex;flex-direction:column;gap:8px;margin-top:4px;');
-      var set = actButton('Set goal…', 'setGoal');
-      set.style.cssText = 'cursor:pointer;font:inherit;text-align:left;width:100%;padding:6px 8px;border:none;border-radius:4px;color:inherit;'
-        + 'background:transparent;box-shadow:inset 0 0 0 1px ' + EDGE + ';';
-      foot.appendChild(set);
-      out.push(foot);
     }
     return out;
   }

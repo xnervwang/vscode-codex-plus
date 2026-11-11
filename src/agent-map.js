@@ -13,7 +13,7 @@
 const { lookKey } = require('./sessions-view');
 
 /* What the dialog's buttons may ask the host to do. */
-const ACTIONS = ['removeWakeup', 'pauseGoal', 'resumeGoal', 'clearGoal', 'setGoal', 'openAgent'];
+const ACTIONS = ['removeWakeup', 'pauseGoal', 'resumeGoal', 'clearGoal', 'openAgent'];
 
 /*
  * `reader` is the snapshot. `stateOf(id)` returns a thread's state as computed by threadState in src/codex-source.js,

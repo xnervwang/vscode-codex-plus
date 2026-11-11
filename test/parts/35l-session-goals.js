@@ -5,7 +5,7 @@
 'use strict';
 /*
  * Goals: while a conversation with a goal is idle, Codex keeps starting turns toward it until the goal is done, blocked
- * or out of budget. The session list sets, pauses, resumes and clears one with thread/goal/set and thread/goal/clear
+ * or out of budget. The session list pauses, resumes and clears one with thread/goal/set and thread/goal/clear
  * (origin user), and each row shows the goal's state, read from Codex's goals database.
  */
 const fs = require('fs');
@@ -20,18 +20,19 @@ const tick = (ms = 20) => new Promise((r) => setTimeout(r, ms));
 module.exports = async ({ eq, tmp, root }) => {
   /* ── what the extension declares ── */
   const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
-  const cmds = ['setGoal', 'pauseGoal', 'resumeGoal', 'clearGoal'].map((c) => `codexPlus.${c}`);
-  eq(cmds.filter((c) => !pkg.contributes.commands.some((x) => x.command === c)), [], 'Set, Pause, Resume and Clear Goal are commands');
+  const cmds = ['pauseGoal', 'resumeGoal', 'clearGoal'].map((c) => `codexPlus.${c}`);
+  eq(cmds.filter((c) => !pkg.contributes.commands.some((x) => x.command === c)), [], 'Pause, Resume and Clear Goal are commands');
   const inList = (c) => (require('../../src/sessions-view').LIST_MENU || []).find((m) => m.command === c);
-  eq(cmds.map((c) => !!inList(c) && /webviewSection == 'thread'/.test(inList(c).when)), [true, true, true, true],
-    'all four are in a session row\'s right-click menu');
+  eq(cmds.map((c) => !!inList(c) && /webviewSection == 'thread'/.test(inList(c).when)), [true, true, true],
+    'all three are in a session row\'s right-click menu');
+  eq([pkg.contributes.commands.some((x) => x.command === 'codexPlus.setGoal'), !!inList('codexPlus.setGoal')], [false, false],
+    'there is no Set Goal, in the command palette or the menu');
   eq([/codexPlusGoal == 'active'/.test(inList('codexPlus.pauseGoal').when), /codexPlusGoalResumable/.test(inList('codexPlus.resumeGoal').when),
     /codexPlusGoal$/.test(inList('codexPlus.clearGoal').when)], [true, true, true],
   'Pause only on a row whose goal is running, Resume on one Codex or the user stopped, Clear only on a row that has one');
   eq(cmds.filter((c) => (pkg.contributes.menus.commandPalette || []).some((m) => m.command === c && m.when === 'false')), [],
     'and in the command palette, for the conversation in front');
-  eq((pkg.contributes.configuration.properties['codexPlus.goalTokenBudget'] || {}).default, 1000000,
-    'a goal is set with a token budget unless the user empties it');
+  eq(Object.keys(pkg.contributes.configuration.properties).filter((k) => /goal/i.test(k)), [], 'nor a setting for the budget it started from');
 
   /* ── a conversation's goal, out of Codex's goals database ── */
   const { vscode, control } = fake.create();
@@ -84,17 +85,8 @@ module.exports = async ({ eq, tmp, root }) => {
     return requests.map((r) => [r.method, r.params]); };
   const row = (t) => ({ webview: 'codexPlus.sessions', webviewSection: 'thread', threadId: t.id });
   try {
-    const boxes = [];
-    control.state.inputAnswer = (o) => { boxes.push([o.prompt, o.value]); return /budget/i.test(o.prompt) ? o.value : 'Write the summary'; };
-    eq(await run('setGoal', row(made[2])), [['thread/goal/set', { threadId: made[2].id, objective: 'Write the summary', status: 'active',
-      tokenBudget: 1000000, origin: 'user' }]], 'Set Goal asks for the goal and a budget, and sets it as the user\'s');
-    eq(boxes.map((b) => b[1]), ['', '1000000'], 'the budget box starts at codexPlus.goalTokenBudget');
-    boxes.length = 0;
-    control.state.inputAnswer = (o) => { boxes.push([o.prompt, o.value]); return /budget/i.test(o.prompt) ? '' : o.value; };
-    eq(await run('setGoal', row(made[0])), [['thread/goal/set', { threadId: made[0].id, objective: 'Finish the report', status: 'active',
-      tokenBudget: null, origin: 'user' }]], 'changing a goal starts from the one set, and an emptied budget means none');
-    control.state.inputAnswer = undefined;
-    eq(await run('setGoal', row(made[0])), [], 'a dismissed box sets nothing');
+    eq(Object.keys(control.state.handlers).filter((c) => /goal/i.test(c)).sort(), [...cmds].sort(),
+      'the extension registers Pause, Resume and Clear Goal, and no command that sets a goal');
     eq(await run('pauseGoal', row(made[0])), [['thread/goal/set', { threadId: made[0].id, status: 'paused', origin: 'user' }]],
       'Pause Goal pauses it');
     eq(await run('resumeGoal', row(made[1])), [['thread/goal/set', { threadId: made[1].id, status: 'active', origin: 'user' }]],
@@ -137,7 +129,6 @@ module.exports = async ({ eq, tmp, root }) => {
     page.bubble('click');
     return out;
   };
-  eq(rows.map(goalItems), [['Codex Plus: Set Goal...', 'Codex Plus: Pause Goal', 'Codex Plus: Clear Goal'],
-    ['Codex Plus: Set Goal...', 'Codex Plus: Resume Goal', 'Codex Plus: Clear Goal'], ['Codex Plus: Set Goal...']],
-  'and hands it to the right-click menu, which offers what fits it');
+  eq(rows.map(goalItems), [['Codex Plus: Pause Goal', 'Codex Plus: Clear Goal'], ['Codex Plus: Resume Goal', 'Codex Plus: Clear Goal'], []],
+    'and hands it to the right-click menu, which offers what fits it, and nothing on a row with no goal');
 };

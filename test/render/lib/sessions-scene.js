@@ -364,7 +364,7 @@ async function run({ env, check, shots, out, results }) {
     check(row.main && near(row.main.box.l, ccMainLeft(Math.round(at[0]), row.main.box.w, row.vw)) && near(row.main.box.t, Math.round(at[1])),
       'sessions: it opens where Claude Code would put it for a click there', { main: row.main && row.main.box, at });
     check(row.main && row.main.labels.join('|') === 'Codex Plus: Resume in Tab|Codex Plus: Resume in Sidebar|Codex Plus: Add to Group|Codex Plus: Remove from Group|'
-      + 'Codex Plus: Mark as Unread|Codex Plus: Rename|Codex Plus: Text Color|Codex Plus: Set Goal...' && row.main.seps === 'itemitem-itemitem-item-item-item-item'
+      + 'Codex Plus: Mark as Unread|Codex Plus: Rename|Codex Plus: Text Color' && row.main.seps === 'itemitem-itemitem-item-item-item'
       && row.main.sep && row.main.sep.h === 1 && row.main.sep.margin === '2px 2px' && row.main.sep.bg === CC.border.slice(10)
       && row.main.chevron && row.main.chevron.text === '›' && row.main.chevron.float === 'right' && row.main.chevron.opacity === '0.7' && row.main.chevron.marginLeft === '12px'
       && row.focused === 'Codex Plus: Resume in Tab',
@@ -408,6 +408,26 @@ async function run({ env, check, shots, out, results }) {
       'sessions: moving onto Add to Group swaps in its submenu, of the groups the user made except the row\'s own', ag.sub);
     check(picked.left === 0 && picked.posted.length === 1 && picked.posted[0].command === 'codexPlus.moveThreadToSection' && picked.posted[0].pick === 'section:e'
       && picked.posted[0].context.threadId === ID(2), 'sessions: a group clicked there is sent to the host with the row\'s context, and the menu goes', picked);
+
+    const withGoal = JSON.parse(JSON.stringify(small));
+    Object.assign(withGoal.groups[1].rows.find((x) => x.id === ID(2)), { goal: 'active',
+      goalText: 'Goal (goal, 182,000 of 1,000,000 tokens): Make the nightly export skip archived rows' });
+    await toPage({ type: 'model', model: withGoal });
+    await sleep(200);
+    const goalAt = await rowAt(ctxRow);
+    await rightClick(goalAt[0], goalAt[1]);
+    await sleep(200);
+    await shot('sessions-ctx-row-goal', { x: 0, y: 0, width: 360, height: 900 });
+    const gm = await b.evaluate(MEASURE_CTX);
+    r.measures.ctxRowGoal = gm;
+    check(!!gm.main && looks(gm.main) && gm.main.labels.join('|') === 'Codex Plus: Resume in Tab|Codex Plus: Resume in Sidebar|Codex Plus: Add to Group|'
+      + 'Codex Plus: Remove from Group|Codex Plus: Mark as Unread|Codex Plus: Rename|Codex Plus: Text Color|Codex Plus: Pause Goal|Codex Plus: Clear Goal'
+      && gm.main.seps === 'itemitem-itemitem-item-item-item-itemitem' && gm.main.cut.length === 0,
+    'sessions: a row with a running goal ends its menu in Pause Goal and Clear Goal, after a separator, neither cut short', gm.main);
+    await esc();
+    await sleep(100);
+    await toPage({ type: 'model', model: small });
+    await sleep(100);
 
     const headSel = '.cp-group[data-key="section:a"] .cp-group-head';
     const headAt = await b.evaluate(`(() => { const r = document.querySelector(${JSON.stringify(headSel)}).getBoundingClientRect(); return [r.left + 40, r.top + r.height / 2]; })()`);

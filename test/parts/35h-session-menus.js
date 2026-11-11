@@ -54,7 +54,6 @@ module.exports = async ({ eq, root }) => {
     ['markThreadRead', '3_read@1', "webviewSection == 'thread' && codexPlusUnread"],
     ['renameThread', '4_edit@1', "webviewSection == 'thread'"],
     ['setTitleColor', '5_look@1', "webviewSection == 'thread'"],
-    ['setGoal', '6_goal@1', "webviewSection == 'thread'"],
     ['pauseGoal', '6_goal@2', "webviewSection == 'thread' && codexPlusGoal == 'active'"],
     ['resumeGoal', '6_goal@3', "webviewSection == 'thread' && codexPlusGoalResumable"],
     ['clearGoal', '6_goal@4', "webviewSection == 'thread' && codexPlusGoal"],
@@ -62,7 +61,7 @@ module.exports = async ({ eq, root }) => {
     ['newGroup', '1_new@2', "webviewSection == 'group' && !codexPlus.noGroups"],
     ['renameGroup', '2_group@1', "webviewSection == 'group' && codexPlusMade && !codexPlus.noGroups"],
     ['deleteGroup', '9_delete@1', "webviewSection == 'group' && codexPlusMade && !codexPlus.noGroups"],
-  ], 'the list\'s menus have the sixteen items its native menu had, with the same groups and the same when clauses');
+  ], 'the list\'s menus have fifteen items, in the groups and with the when clauses its native menu had');
   const bySection = (sec) => table.filter((m) => m.when.startsWith(`webviewSection == '${sec}'`));
   const vscodeOrder = (list) => [...list].sort((a, b) => a.group.localeCompare(b.group)).map((m) => m.command);
   eq(table.map((m) => m.command), [...vscodeOrder(bySection('thread')), ...vscodeOrder(bySection('group'))],
@@ -78,7 +77,7 @@ module.exports = async ({ eq, root }) => {
   eq(table.map((m) => [m.command, m.title, m.submenu || '']),
     table.map((m) => [m.command, SUBMENUS[m.command] ? (titled.get(m.command) || '').replace(/\.\.\.$/, '') : titled.get(m.command), SUBMENUS[m.command] || '']),
     'each item is titled as its command is, and Text Color and Add to Group, which open a submenu, lose their "..."');
-  eq([table.length, table.filter((m) => !/^Codex Plus: /.test(m.title)).map((m) => m.title)], [16, []],
+  eq([table.length, table.filter((m) => !/^Codex Plus: /.test(m.title)).map((m) => m.title)], [15, []],
     'every item of the list\'s right-click menus starts "Codex Plus: "');
 
   /* The when clauses, against what the page knows of a row or a header. Only `a == 'b'`, `x` and `!x` joined by && are
@@ -93,13 +92,13 @@ module.exports = async ({ eq, root }) => {
   const unreadRow = rows.find((r) => r.id === ID(1)), readRow = rows.find((r) => r.id === ID(2));
   eq([offered(rowCtx(readRow)).filter((c) => /^markThread/.test(c)), offered(rowCtx(unreadRow)).filter((c) => /^markThread/.test(c))],
     [['markThreadUnread'], ['markThreadRead']], 'a read conversation offers Mark as Unread, an unread one Mark as Read');
-  eq(offered(rowCtx(readRow)), ['openThreadInTab', 'openThreadInSidebar', 'moveThreadToSection', 'markThreadUnread', 'renameThread', 'setTitleColor', 'setGoal'],
-    'a row offers Resume, Add to Group, Mark as Unread, Rename, Text Color and Set Goal; Remove from Group only in a group');
+  eq(offered(rowCtx(readRow)), ['openThreadInTab', 'openThreadInSidebar', 'moveThreadToSection', 'markThreadUnread', 'renameThread', 'setTitleColor'],
+    'a row offers Resume, Add to Group, Mark as Unread, Rename and Text Color; Remove from Group only in a group');
   eq(pkg.contributes.commands.filter((c) => c.command === 'codexPlus.newGroupFromThreads').length, 0,
     'and no New Group from Conversation, which Claude Code\'s menu lacks: New group above the list makes a group');
   eq([offered({ ...rowCtx(readRow), codexPlusGoal: 'active' }).filter((c) => /Goal$/.test(c)),
     offered({ ...rowCtx(readRow), codexPlusGoal: 'budgetLimited', codexPlusGoalResumable: true }).filter((c) => /Goal$/.test(c))],
-  [['setGoal', 'pauseGoal', 'clearGoal'], ['setGoal', 'resumeGoal', 'clearGoal']],
+  [['pauseGoal', 'clearGoal'], ['resumeGoal', 'clearGoal']],
   'a row with a running goal offers Pause and Clear Goal, one with a stopped goal Resume and Clear Goal');
   eq(offered({ ...rowCtx(readRow), codexPlusGrouped: true }).includes('removeFromGroup'), true, 'and a row in a group offers Remove from Group');
   eq(offered({ ...rowCtx(readRow), 'codexPlus.noGroups': true }).filter((c) => /Group|Section/.test(c)), [], 'with no groups in this Codex, none of the group items');
