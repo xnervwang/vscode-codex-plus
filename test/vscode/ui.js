@@ -133,6 +133,22 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     return count;
   };
 
+  /* Installing the work plan plugin at start-up asks for trust in its hooks with a modal dialog, which takes every click
+     and hover in the window until answered. No step here needs the hooks, so the dialog is cancelled whenever it shows. */
+  let watchingTrust = true, trustCancelled = 0;
+  const trustWatch = (async () => {
+    while (watchingTrust) {
+      try {
+        const box = page.locator('.monaco-dialog-box').filter({ hasText: 'Trust the work plan hooks in Codex?' }).first();
+        if (await box.isVisible()) {
+          await box.locator('.dialog-buttons .monaco-button').filter({ hasText: 'Cancel' }).first().click({ timeout: 2000 });
+          trustCancelled++;
+        }
+      } catch (_) { /* the window is reloading */ }
+      await sleep(500);
+    }
+  })();
+
   try {
     await w.hostUp();
 
@@ -524,6 +540,9 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await exec('workbench.action.closeAuxiliaryBar');
     });
   } finally {
+    watchingTrust = false;
+    await trustWatch;
+    if (trustCancelled) note(`the dialog asking to trust the work plan hooks was cancelled ${trustCancelled} time(s)`);
     await shot('last');
     await w.close();
   }
