@@ -7,9 +7,9 @@
  * The information and chime buttons, placed after the permissions button in Codex's message-box toolbar. The toolbar is
  * built as Codex 26.1021 renders it (test/render measured it): a grid holding a group on the left with the add-context
  * and permissions buttons, and one on the right with the model picker, each group a flex row and each button known by
- * its data-composer-navigation-target or data-codex-intelligence-trigger. The left column is as wide as its content and
- * the right group is pushed to the right, so a node added after the permissions button moves none of Codex's buttons
- * while the gap between the groups holds it.
+ * its data-composer-navigation-target. The left column is as wide as its content and the right group is pushed to the
+ * right, so a node added after the permissions button moves none of Codex's buttons while the gap between the groups
+ * holds it.
  */
 const fs = require('fs');
 const path = require('path');
@@ -21,7 +21,7 @@ const ICON_CLASS = 'no-drag cursor-interaction rounded-full text-tertiary h-toke
 
 /* Codex's message box with its toolbar row; `rightAt` is where the right group starts, which sets the width of the gap
    between the two groups. */
-function toolbar(dom, { rightAt = 799, meter = false, squeeze = false } = {}) {
+function toolbar(dom, { rightAt = 799, meter = false, squeeze = false, build = '26.1106' } = {}) {
   const { el } = dom;
   const add = el('button', { attrs: { type: 'button', 'aria-label': 'Add files and more', 'data-composer-navigation-target': 'add-context' },
     class: ICON_CLASS, rect: { top: 708, left: 16, width: 28, height: 28 }, kids: [el('svg', { rect: { top: 714, left: 22, width: 16, height: 16 } })] });
@@ -29,7 +29,9 @@ function toolbar(dom, { rightAt = 799, meter = false, squeeze = false } = {}) {
     class: 'no-drag cursor-interaction rounded-full text-tertiary h-token-button-composer', rect: { top: 708, left: 49, width: 119, height: 28 } });
   const left = el('div', { class: 'flex min-w-0 items-center gap-[5px]', computed: FLEX, rect: { top: 708, left: 16, width: 152, height: 28 },
     kids: [el('span', { computed: CONTENTS, kids: [add] }), perm] });
-  const trigger = el('button', { attrs: { type: 'button', 'data-codex-intelligence-trigger': 'true' }, rect: { top: 708, left: rightAt + 20, width: 121, height: 28 } });
+  const model = { type: 'button', 'data-composer-navigation-target': 'reasoning', 'data-selected-reasoning-effort': 'medium' };
+  if (build === '26.1021') model['data-codex-intelligence-trigger'] = 'true';
+  const trigger = el('button', { attrs: model, rect: { top: 708, left: rightAt + 20, width: 121, height: 28 } });
   const modelSlot = el('span', { rect: { top: 708, left: rightAt + 20, width: 121, height: 28 }, kids: [el('span', { computed: CONTENTS, kids: [trigger] })] });
   const ide = el('span', { class: 'flex items-center gap-1', rect: { top: 708, left: rightAt + 145, width: 104, height: 28 } });
   const codexMeter = meter ? el('span', { class: 'text-sm', rect: { top: 713, left: rightAt, width: 16, height: 18 },
@@ -115,6 +117,13 @@ module.exports = async ({ eq, root }) => {
     eq(p.q('[data-codex-extras="tools"]').length + p.q('[data-codex-extras="bar-button"]').length, 0, 'both off, neither is drawn');
     p.view({ buttons: false });
     eq(p.q('[data-codex-extras="tools"]').length + p.q('[data-codex-extras="bar"]').length, 0, 'and the master switch off draws neither');
+  }
+  {
+    const p = page(root, (dom) => toolbar(dom, { build: '26.1021' }));
+    p.view();
+    const tools = p.q('[data-codex-extras="tools"]')[0];
+    eq([!!tools, tools && tools.previousElementSibling === p.box.perm], [true, true],
+      'with the model picker as 26.1021 marks it, the buttons go into the toolbar row the same way');
   }
   {
     /* The room between the groups is less than the buttons need: they go below the message box instead, as before. */

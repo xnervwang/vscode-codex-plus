@@ -110,7 +110,7 @@ const centre = (s, sel) => s.b.evaluate(`(() => { const e = document.querySelect
  * sampled where it overlaps anything of ours. No overlap at all is said, since nothing is then checked.
  */
 async function floating(s, name) {
-  for (const [label, sel] of [['model menu', 'button[data-codex-intelligence-trigger]'], ['chat actions menu', 'button[aria-label="Chat actions"]']]) {
+  for (const [label, sel] of [['model menu', 'button[data-composer-navigation-target="reasoning"]'], ['chat actions menu', 'button[aria-label="Chat actions"]']]) {
     const at = await centre(s, sel);
     if (!at) { check(false, `${name}: Codex's ${label} button is in the page`); continue; }
     await s.b.click(at[0], at[1]);
@@ -550,7 +550,7 @@ function selfchecked(r, where, { turns, users, rows, replies = turns }) {
         const meter = document.querySelector('[data-codex-extras="meter"]'), info = document.querySelector('[data-codex-extras="tools"]');
         const st = getComputedStyle(p);
         return { text: p.textContent, rect: b(p), meter: b(meter), tools: b(info), inBar: !!p.closest('[data-codex-extras="bar"]'),
-          model: b(document.querySelector('[data-codex-composer-root] [data-codex-intelligence-trigger]')),
+          model: b(document.querySelector('[data-codex-composer-root] [data-composer-navigation-target="reasoning"]')),
           radius: st.borderRadius, bg: st.backgroundColor, dot: (() => { const d = p.querySelector('[data-codex-extras-dot]'); return d ? [b(d).x1 - b(d).x0, d.getAttribute('data-codex-extras-dot')] : null; })() };
       })()`);
       results.scenes[name].measures.pill = pill;

@@ -112,16 +112,20 @@ function server({ dir, ch }) {
   return { request, ready, turn, start, stop: () => { try { proc.kill('SIGKILL'); } catch (_) { /* gone */ } } };
 }
 
-const MODELS = ['gpt-6.1-sol', 'gpt-6-luna', 'gpt-5.5', 'made-up-model'];
+const MODELS = ['gpt-6.1-sol', 'gpt-6.1-terra', 'gpt-6-luna', 'gpt-5.5', 'made-up-model'];
 
 (async () => {
   const m = await model();
-  const out = { reported: {}, compaction: {}, loaded: {}, override: {} };
+  const out = { listed: null, reported: {}, compaction: {}, loaded: {}, override: {} };
   try {
     for (const value of [0, 500000, 1050000]) {
       const h = home(m.url, value ? `model_context_window = ${value}` : '');
       const s = server(h);
       await s.ready;
+      if (!out.listed) {
+        const l = await s.request('model/list', {});
+        out.listed = l.error ? l.error.message : (l.result.data || []).filter((x) => !x.hidden).map((x) => x.model);
+      }
       out.reported[value] = {};
       for (const name of MODELS) {
         const t = await s.start({ model: name });

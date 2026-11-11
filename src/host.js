@@ -86,10 +86,11 @@ const EDITS = [
     re: /async sendBroadcast\(([\w$]+),([\w$]+),\{targetClientIds:([\w$]+)\}=\{\}\)\{/g,
     to: (m, method, params, targets) => `async sendBroadcast(${method},${params},{targetClientIds:${targets}}={}){${call('__codexExtrasBroadcast', `${method},${params}`)};`,
   },
+  /* "ready" opens the switch; in 26.1106 it shares its break with "request-app-server-state". */
   {
     name: 'page messages',
-    re: /async handleMessage\(([\w$]+),([\w$]+)\)\{switch\(\2\.type\)\{case"ready":break;/g,
-    to: (m, webview, msg) => `async handleMessage(${webview},${msg}){switch(${msg}.type){case"codex-extras":{${call('__codexExtrasMessage', `${webview},${msg},this`)};break}case"ready":break;`,
+    re: /async handleMessage\(([\w$]+),([\w$]+)\)\{switch\(\2\.type\)\{(case"ready":(?:case"[\w-]+":)*break;)/g,
+    to: (m, webview, msg, ready) => `async handleMessage(${webview},${msg}){switch(${msg}.type){case"codex-extras":{${call('__codexExtrasMessage', `${webview},${msg},this`)};break}${ready}`,
   },
   /*
    * Incoming app-server messages, where the request branch and the notification branch sit next to each other, so one

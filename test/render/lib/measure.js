@@ -120,10 +120,10 @@ function measure() {
     if (!frame) return null;
     const q = (sel) => frame.querySelector(sel);
     const add = q('[data-composer-navigation-target="add-context"]'), perm = q('[data-composer-navigation-target="permissions"]');
-    const model = q('[data-codex-intelligence-trigger]');
+    const model = q('[data-composer-navigation-target="reasoning"]');
     const tools = document.querySelector('[data-codex-extras="tools"]'), meter = document.querySelector('[data-codex-extras="meter"]');
     const buttons = [...frame.querySelectorAll('button')].filter((b) => !ourMark(b) && shown(b)).map((b) => ({
-      name: b.getAttribute('data-composer-navigation-target') || (b.hasAttribute('data-codex-intelligence-trigger') ? 'model' : '') || b.getAttribute('aria-label') || '',
+      name: b.getAttribute('data-composer-navigation-target') || b.getAttribute('aria-label') || '',
       rect: R(b) })).filter((x) => vis(x.rect));
     const meters = [...frame.querySelectorAll('span[role="img"][aria-label]')].filter((e) => !ourMark(e))
       .map((e) => ({ label: e.getAttribute('aria-label'), drawn: e.getBoundingClientRect().width > 0 }));

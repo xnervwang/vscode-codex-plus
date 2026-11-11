@@ -218,14 +218,14 @@
   }
 
   /*
-   * Codex's toolbar row. Its buttons are found by the attributes Codex gives them for its own keyboard navigation and
-   * for its model menu, never by class: the permissions button (the add-context one when that is missing) on the left,
-   * the model picker on the right. Each sits in one of Codex's flex rows, the left group or the right one. When Codex
-   * wraps the button in an element of its own (a tooltip trigger with display: contents), the new control has to go
-   * next to that wrapper, so `slotOf` climbs to the node whose parent lays out the row.
+   * Codex's toolbar row. Its buttons are found by data-composer-navigation-target, which Codex sets for its keyboard
+   * navigation, never by class: the permissions button (the add-context one when that is missing) on the left, the
+   * model picker ("reasoning") on the right. Each sits in one of Codex's flex rows, the left group or the right one.
+   * When Codex wraps the button in an element of its own (a tooltip trigger with display: contents), the new control
+   * has to go next to that wrapper, so `slotOf` climbs to the node whose parent lays out the row.
    */
   var PERMS_SEL = '[data-composer-navigation-target="permissions"]', ADD_SEL = '[data-composer-navigation-target="add-context"]',
-    MODEL_SEL = '[data-codex-intelligence-trigger]';
+    MODEL_SEL = '[data-composer-navigation-target="reasoning"]';
   var styleOf = function (el) { try { return typeof getComputedStyle === 'function' ? getComputedStyle(el) : null; } catch (e) { return null; } };
   function slotOf(el, root) {
     for (var n = el, i = 0; n && i < 5; n = n.parentElement, i++) {

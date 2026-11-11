@@ -30,14 +30,18 @@ module.exports = async ({ eq, note, root }) => {
   if (out.error) { eq(out.error, '', 'the probe ran to the end'); return; }
 
   const cw = require(path.join(root, 'src', 'context-window.js'));
-  eq(out.reported, {
+  const listed = Array.isArray(out.listed) ? out.listed : [];
+  eq([typeof out.listed === 'string' ? out.listed : '', listed.filter((m) => !cw.codexWindow(m))], ['', []],
+    'every model this Codex lists has its default and its most in src/context-window.js');
+  const some = (by) => Object.fromEntries(['gpt-6.1-sol', 'gpt-6-luna', 'gpt-5.5', 'made-up-model'].map((m) => [m, by[m]]));
+  eq(Object.fromEntries(Object.entries(out.reported).map(([v, by]) => [v, some(by)])), {
     0: { 'gpt-6.1-sol': 258400, 'gpt-6-luna': 258400, 'gpt-5.5': 258400, 'made-up-model': 258400 },
     500000: { 'gpt-6.1-sol': 475000, 'gpt-6-luna': 475000, 'gpt-5.5': 258400, 'made-up-model': 258400 },
     1050000: { 'gpt-6.1-sol': 828400, 'gpt-6-luna': 828400, 'gpt-5.5': 258400, 'made-up-model': 258400 },
   }, 'Codex reports 95% of the window it uses: its default of 272,000, or the value set, held to the most it allows each model '
     + '(872,000 for the GPT-6 models, 272,000 for GPT-5.5 and for a model it does not list)');
   const expect = (model, value) => {
-    const own = cw.codexWindow(model) || [cw.FALLBACK, cw.FALLBACK];
+    const own = (listed.includes(cw.baseName(model)) && cw.codexWindow(model)) || [cw.FALLBACK, cw.FALLBACK];
     return Math.floor(Math.min(value || own[0], own[1]) * 95 / 100);
   };
   eq(Object.entries(out.reported).flatMap(([v, by]) => Object.entries(by).filter(([m, got]) => expect(m, +v) !== got).map(([m]) => `${m} at ${v}`)), [],

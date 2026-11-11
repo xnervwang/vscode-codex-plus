@@ -43,15 +43,16 @@ function cleanHtml(dir) {
 }
 
 /*
- * The capnweb module of Codex's page: the asset holding both the transport's encodingLevel and the session's
- * getRemoteMain. Its file name changes with each Codex build, so it is found by what it contains.
+ * The asset of Codex's page that holds its capnweb module: the one module that defines the session's getRemoteMain and
+ * has the transport's encodingLevel. 26.1021 ships it as a module of its own (dist-*.js), 26.1106 inside an app-initial
+ * chunk. File names change with each Codex build, so it is found by what it contains.
  */
 function capnwebAsset(dir) {
   const assets = path.join(dir, 'webview', 'assets');
-  for (const n of fs.readdirSync(assets)) {
-    if (!/^dist-[\w-]+\.js$/.test(n)) continue;
+  for (const n of fs.readdirSync(assets).sort()) {
+    if (!n.endsWith('.js')) continue;
     const text = fs.readFileSync(path.join(assets, n), 'utf8');
-    if (text.includes('encodingLevel') && text.includes('getRemoteMain') && /export\s*\{/.test(text)) return n;
+    if (text.includes('getRemoteMain(){') && text.includes('encodingLevel') && /export\s*\{/.test(text)) return n;
   }
   return '';
 }

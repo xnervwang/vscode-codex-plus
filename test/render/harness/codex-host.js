@@ -7,16 +7,22 @@
  * object) with harness/services.js and the old-style postMessage requests, and hands every app-server request of the
  * page to Node through the __toNode binding (run.js), which gives it to Codex's real app-server.
  *
- * Codex's own capnweb module is imported, found by run.js by what it contains, and its three parts are told apart by
- * shape, since its file name and its minified export names change with every Codex build: the initialiser is the one
- * function export taking no arguments, RpcSession the class whose prototype has getRemoteMain, RpcTarget the empty
- * class. The import is asynchronous, so what the page sends before it is done is queued.
+ * Codex's own capnweb classes are taken from the asset run.js found, and told apart by shape, since minified export
+ * names change with every Codex build: RpcSession is the class whose prototype has getRemoteMain, RpcTarget the empty
+ * class. 26.1106 bundles them into an app chunk that exports thousands of names, so nothing in the module is called.
+ * The module is imported on the page's first capnweb message. By then the page's start-up has defined both classes,
+ * and the module's exports are live bindings, so they can be read there. Capnweb messages wait in the queue until then.
  */
 const config = window.__renderConfig || {};
 const services = window.__renderServices || {};
 const queue = [];
-let ready = false;
-window.__hostReply = (m) => { if (ready) handle(m); else queue.push(m); };
+let ready = false, loading = null;
+const capnweb = (m) => !!m && (m.type === 'vscode-capn-rpc-connect' || m.type === 'vscode-capn-rpc-message');
+window.__hostReply = (m) => {
+  if (ready || !capnweb(m)) { handle(m); return; }
+  queue.push(m);
+  loading = loading || load().catch((e) => { window.__hostShape = { error: String(e && e.message || e) }; });
+};
 const toPage = (msg) => setTimeout(() => window.__fromHost(JSON.parse(JSON.stringify(msg))), 0);
 const toNode = (m) => window.__toNode(JSON.stringify(m));
 
@@ -69,17 +75,27 @@ function handle(m) {
   if (m.type === 'fetch') toPage({ type: 'fetch-response', requestId: m.requestId, responseType: 'error', status: 503, error: 'offline' });
 }
 
-(async () => {
-  const ns = await import(config.capnweb);
-  const fns = Object.values(ns).filter((v) => typeof v === 'function');
-  for (const f of fns) {
-    if (f.length === 0 && !/^class\b/.test(Function.prototype.toString.call(f))) { try { f(); } catch (_) { /* not the initialiser */ } }
+/* The two classes among the module's exports, skipping a binding the module has not initialised yet. */
+function classesIn(ns) {
+  let session = null, target = null;
+  for (const k of Object.keys(ns)) {
+    let v;
+    try { v = ns[k]; } catch (_) { continue; }
+    if (typeof v !== 'function' || !v.prototype) continue;
+    if (!session && typeof v.prototype.getRemoteMain === 'function') session = v;
+    else if (!target && Object.getOwnPropertyNames(v.prototype).length === 1 && /^class\s*\{\s*\}$/.test(Function.prototype.toString.call(v))) target = v;
   }
-  const now = Object.values(ns).filter((v) => typeof v === 'function');
-  RpcSession = now.find((v) => v.prototype && typeof v.prototype.getRemoteMain === 'function') || null;
-  RpcTarget = now.find((v) => /^class\s*\{\s*\}$/.test(Function.prototype.toString.call(v))) || null;
+  return [session, target];
+}
+
+async function load() {
+  const ns = await import(config.capnweb);
+  for (let i = 0; i < 100 && !(RpcSession && RpcTarget); i++) {
+    if (i) await new Promise((r) => setTimeout(r, 50));
+    [RpcSession, RpcTarget] = classesIn(ns);
+  }
   window.__hostShape = { rpcSession: !!RpcSession, rpcTarget: !!RpcTarget };
   if (!RpcSession || !RpcTarget) return;
   ready = true;
   for (const m of queue.splice(0)) handle(m);
-})().catch((e) => { window.__hostShape = { error: String(e && e.message || e) }; });
+}

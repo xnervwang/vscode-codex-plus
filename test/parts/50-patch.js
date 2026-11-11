@@ -51,6 +51,28 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
     else bad(`${name}: the page script is not ahead of Codex's entry script`);
   }
 
+  const { applyEdits } = require('../../src/edits');
+  const pageMessages = host.EDITS.filter((e) => e.name === 'page messages');
+  for (const [build, ready] of [['26.1021', 'case"ready":break;'], ['26.1106', 'case"ready":case"request-app-server-state":break;']]) {
+    const src = `class P{async handleMessage(e,r){switch(r.type){${ready}case"persisted-atom-reset":{await this.reset();break}}}reset(){this.resets++}}`;
+    const r = applyEdits(src, pageMessages, 'Codex');
+    const got = [];
+    let resets = -1, before = false;
+    if (!r.error) {
+      before = r.out.indexOf('case"codex-extras":') < r.out.indexOf(ready) && r.out.includes(ready);
+      const box = vm.createContext({ globalThis: null });
+      box.globalThis = box;
+      box.__codexExtrasMessage = (webview, msg) => got.push([webview, msg.type]);
+      const p = vm.runInContext(`${r.out};const p=new P();p.resets=0;p`, box);
+      await p.handleMessage('w', { type: 'codex-extras' });
+      await p.handleMessage('w', { type: 'ready' });
+      await p.handleMessage('w', { type: 'persisted-atom-reset' });
+      resets = p.resets;
+    }
+    eq([r.error || '', before, got, resets], ['', true, [['w', 'codex-extras']], 1],
+      `${build}'s shape: the page messages edit puts this extension's case ahead of "ready", and Codex's own cases still run`);
+  }
+
   /* Apply and restore on a copy, never on the installed files. */
   if (installs.length) {
     const copy = tmp('codex-copy');
