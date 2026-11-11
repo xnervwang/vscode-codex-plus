@@ -18,9 +18,8 @@
  * A channel off by more than 32 of 255 is past that and short of any change of colour a reader would see; 0.2 per cent
  * of a 227 by 156 px menu is 70 px, about one letter. A crop of another size than the approved copy fails on its own,
  * unless it is one pixel off: an element 258.5 px tall is drawn 259 px tall where its top lands on a whole pixel and
- * 258 px where it lands on a half, and how far down a menu opens moves by half pixels from run to run. For the same
- * reason a whole element can come out a pixel to one side: the crop is laid on the approved copy at each offset of at
- * most one pixel across and down, compared on the part both have, and the offset with the fewest differing pixels counts.
+ * 258 px where it lands on a half, and how far down a menu opens moves by half pixels from run to run. A crop whose
+ * width or height differs from the approved copy's by one pixel is compared on the part both have, from the top left.
  *
  * `masks` are rectangles of the crop, { x, y, w, h }, that are not compared: time stamps.
  */
@@ -31,10 +30,10 @@ const pixels = require('./pixels');
 const ROOT = path.join(__dirname, '..', 'baseline');
 const TOLERANCE = { channel: 32, share: 0.002 };
 
-/* The `w` by `h` pixels of `img` from (`x`, `y`). */
-function region(img, x, y, w, h) {
+/* The top left `w` by `h` pixels of `img`. */
+function topLeft(img, w, h) {
   const data = Buffer.alloc(w * h * 4);
-  for (let r = 0; r < h; r++) img.data.copy(data, r * w * 4, ((y + r) * img.width + x) * 4, ((y + r) * img.width + x + w) * 4);
+  for (let y = 0; y < h; y++) img.data.copy(data, y * w * 4, y * img.width * 4, y * img.width * 4 + w * 4);
   return { width: w, height: h, data };
 }
 
@@ -60,22 +59,6 @@ function diff(a, b, masks = []) {
   return { differ, compared, image: { width: a.width, height: a.height, data: out } };
 }
 
-/* diff of the approved copy `a` and the crop `b`, laid on `a` at the offset that leaves the fewest pixels differing; `masks`
-   are in `b`'s pixels. Adds `dx` and `dy`, where `a`'s pixel (x, y) met `b`'s (x + dx, y + dy). */
-function closest(a, b, masks = []) {
-  let best = null;
-  for (const dy of [0, -1, 1]) {
-    for (const dx of [0, -1, 1]) {
-      const ax = Math.max(0, -dx), ay = Math.max(0, -dy), bx = Math.max(0, dx), by = Math.max(0, dy);
-      const w = Math.min(a.width - ax, b.width - bx), h = Math.min(a.height - ay, b.height - by);
-      if (w <= 0 || h <= 0) continue;
-      const d = diff(region(a, ax, ay, w, h), region(b, bx, by, w, h), masks.map((m) => ({ ...m, x: m.x - bx, y: m.y - by })));
-      if (!best || d.differ < best.differ) best = { ...d, dx, dy };
-    }
-  }
-  return best;
-}
-
 function baselines({ out, check, note, platform = process.platform }) {
   const dir = (kind) => { const d = path.join(out, kind, platform); fs.mkdirSync(d, { recursive: true }); return d; };
   const results = [];
@@ -88,24 +71,25 @@ function baselines({ out, check, note, platform = process.platform }) {
       results.push({ name, state: 'new' });
       return;
     }
-    const a = pixels.decode(fs.readFileSync(approved)), b = pixels.decode(png);
-    if (Math.abs(a.width - b.width) > 1 || Math.abs(a.height - b.height) > 1) {
+    let a = pixels.decode(fs.readFileSync(approved)), b = pixels.decode(png);
+    const off = Math.abs(a.width - b.width) <= 1 && Math.abs(a.height - b.height) <= 1 && (a.width !== b.width || a.height !== b.height);
+    if (off) { const w = Math.min(a.width, b.width), h = Math.min(a.height, b.height); a = topLeft(a, w, h); b = topLeft(b, w, h); }
+    if (a.width !== b.width || a.height !== b.height) {
       check(false, `${name} is drawn as approved for ${platform}`, `it is ${b.width}x${b.height} px, the approved copy ${a.width}x${a.height}`);
       results.push({ name, state: 'size', size: [b.width, b.height], approved: [a.width, a.height] });
       return;
     }
-    const off = a.width !== b.width || a.height !== b.height;
-    const d = closest(a, b, masks);
+    const d = diff(a, b, masks);
     const allowed = Math.floor(d.compared * TOLERANCE.share);
     const ok = d.differ <= allowed;
     if (!ok) fs.writeFileSync(path.join(dir('diff'), `${name}.png`), pixels.encode(d.image));
-    const left = d.image.width * d.image.height - d.compared;
+    const left = a.width * a.height - d.compared;
     check(ok, `${name} is drawn as approved for ${platform} (${d.differ} of ${d.compared} px differ, ${allowed} allowed${left ? `, ${left} masked` : ''}`
-      + `${off ? ', one pixel off in size' : ''}${d.dx || d.dy ? ', drawn a pixel to one side' : ''})`,
+      + `${off ? ', one pixel off in size and compared on the part both have' : ''})`,
       ok ? undefined : `see diff/${platform}/${name}.png`);
     results.push({ name, state: ok ? 'same' : 'differs', differ: d.differ, compared: d.compared, allowed });
   }
   return { compare, results };
 }
 
-module.exports = { baselines, diff, closest, ROOT, TOLERANCE };
+module.exports = { baselines, diff, ROOT, TOLERANCE };
