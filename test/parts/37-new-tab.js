@@ -10,13 +10,14 @@
  *
  * Every hook is called the way the patched host calls it: the argument expressions are taken from the patch applied to
  * the pristine Codex bundle installed here, and the names they use are bound to what Codex has there. The panel's thread
- * comes from Codex's own URI parser (B1), run on the tab's URI. Without an installed Codex the same calls are made by
+ * comes from Codex's own URI parser (test/codex-uri-parser.js), run on the tab's URI. Without an installed Codex the same calls are made by
  * hand, in the shape the patch would make them.
  */
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const fake = require('../fake-vscode');
+const { uriParser } = require('../codex-uri-parser');
 
 const NEW = '01a1aaaa-0000-7000-8000-00000000000a';
 const NEW2 = '01a1bbbb-0000-7000-8000-00000000000b';
@@ -94,11 +95,9 @@ module.exports = async ({ eq, note, tmp }) => {
     callOther = (panel, opts, provider) => bind('__codexExtrasPanel', panels[1])([op[1], op[2]], [panel, opts], provider);
     callRequest = (webview, msg, which) => bind('__codexExtrasPageRequest', requests[which === 'prewarm' ? 1 : 0])([pr[4], pr[2]], [webview, msg]);
     callResponse = (webview, resp) => bind('__codexExtrasPageResponse', response)([ps[3], ps[1]], [webview, resp]);
-    const fn = /function B1\(t\)\{[\s\S]*?conversationId:s\}\}/.exec(src);
-    const pv = /\bpv="([^"]+)"/.exec(src), zg = /\bZGe="([^"]+)"/.exec(src);
-    if (fn && pv && zg) {
-      const B1 = new Function('pv', 'ZGe', `${fn[0]};return B1;`)(pv[1], zg[1]);
-      parse = (p) => B1({ scheme: pv[1], authority: zg[1], path: p, query: '' });
+    const parser = uriParser(src);
+    if (parser) {
+      parse = (p) => parser.parse({ scheme: parser.scheme, authority: parser.authority, path: p, query: '' });
     } else {
       note(`${bundle.name}: Codex's URI parser was not found in its bundle, so a tab's thread is read by hand`);
     }

@@ -12,13 +12,14 @@
  * the same when scheme, authority, path, query and fragment all are (ExtUri.getComparisonKey keeps the fragment unless
  * told otherwise). The stand-in openWith below does exactly that.
  *
- * Codex reads a tab's route from its URI's path and query and never its fragment (B1, run here out of the installed
+ * Codex reads a tab's route from its URI's path and query and never its fragment (its URI parser, run here out of the installed
  * bundle when there is one), so a New tab whose URI carries a fragment of its own is still Codex's New route.
  */
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const fake = require('../fake-vscode');
+const { uriParser } = require('../codex-uri-parser');
 
 function codexParser() {
   for (const root of [path.join(os.homedir(), '.vscode-server', 'extensions'), path.join(os.homedir(), '.vscode', 'extensions')]) {
@@ -28,9 +29,8 @@ function codexParser() {
       const file = path.join(root, n, 'out', 'extension.js');
       let src = '';
       try { src = fs.readFileSync(fs.existsSync(file + '.codex-extras-host.bak') ? file + '.codex-extras-host.bak' : file, 'utf8'); } catch (_) { continue; }
-      const fn = /function B1\(t\)\{[\s\S]*?conversationId:s\}\}/.exec(src);
-      const pv = /\bpv="([^"]+)"/.exec(src), zg = /\bZGe="([^"]+)"/.exec(src);
-      if (fn && pv && zg) return { from: n, B1: new Function('pv', 'ZGe', `${fn[0]};return B1;`)(pv[1], zg[1]) };
+      const parser = uriParser(src);
+      if (parser) return { from: n, parse: parser.parse };
     }
   }
   return null;
@@ -73,8 +73,8 @@ module.exports = async ({ eq, note }) => {
 
   const parser = codexParser();
   if (!parser) note('no Codex extension installed here: its URI parser is not run on the New tabs\' URIs');
-  const B1 = parser ? parser.B1 : (u) => ({ path: `${u.path}${u.query ? `?${u.query}` : ''}`, conversationId: null });
-  eq(uris.map((u) => { const r = B1(u); return [r.path, r.conversationId]; }), [['/extension/panel/new', null], ['/extension/panel/new', null]],
+  const parse = parser ? parser.parse : (u) => ({ path: `${u.path}${u.query ? `?${u.query}` : ''}`, conversationId: null });
+  eq(uris.map((u) => { const r = parse(u); return [r.path, r.conversationId]; }), [['/extension/panel/new', null], ['/extension/panel/new', null]],
     `and Codex still reads each one as its New route${parser ? ` (${parser.from})` : ''}, naming no conversation`);
   eq(uris.map((u) => tabs.threadOfUri(u)), ['', ''], 'as this extension does');
 
