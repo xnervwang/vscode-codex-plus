@@ -557,6 +557,32 @@ async function run({ env, check, shots, out, results }) {
       check(nb.errors.length === 0, 'sessions: the 300 px page threw nothing', nb.errors);
     } finally { await narrow.close(); }
 
+    /* At 170 px the New in tab and New in sidebar labels no longer fit. */
+    const SIZES = `({ newButtons: [...document.querySelectorAll('.cp-new')].map((b) => { const i = b.querySelector('svg'), l = b.querySelector('span');
+        return { icon: i ? Math.round(i.getBoundingClientRect().width) : 0, cut: !!l && l.scrollWidth > l.clientWidth, overflow: l ? getComputedStyle(l).textOverflow : '' }; }),
+      tools: [...document.querySelectorAll('.cp-filter-row svg')].map((i) => Math.round(i.getBoundingClientRect().width)),
+      dots: [...document.querySelectorAll('.cp-row .cp-dot')].filter((d) => getComputedStyle(d).display !== 'none').map((d) => Math.round(d.getBoundingClientRect().width)),
+      chevrons: [...document.querySelectorAll('.cp-group-head svg')].map((i) => Math.round(i.getBoundingClientRect().width)),
+      counts: [...document.querySelectorAll('.cp-group-head .cp-group-count')].map((c) => c.scrollWidth <= c.clientWidth) })`;
+    const wideSizes = await b.evaluate(SIZES);
+    const thin = await open(env, path.join(work, 'thin'), { width: 170, height: 500 });
+    try {
+      const tb = thin.b;
+      await tb.navigate(`http://127.0.0.1:${thin.port}/sessions.html`);
+      for (let i = 0; i < 50; i++) { if (await tb.evaluate('(window.__posted || []).some((m) => m.kind === "ready")')) break; await sleep(100); }
+      await tb.evaluate(`window.__fromHost(${JSON.stringify({ type: 'model', model: small })})`);
+      await sleep(300);
+      await tb.screenshot(path.join(shots, 'sessions-170.png'));
+      const thinSizes = await tb.evaluate(SIZES);
+      r.measures.thin = { wide: wideSizes, thin: thinSizes };
+      check(thinSizes.newButtons.length === 2 && thinSizes.newButtons.every((x) => x.icon === 16 && x.overflow === 'ellipsis') && thinSizes.newButtons.some((x) => x.cut),
+        'sessions: in a 170 px list New in tab and New in sidebar keep their 16 px icons and their labels end in an ellipsis', thinSizes.newButtons);
+      const same = (k) => JSON.stringify(thinSizes[k].slice(0, Math.min(thinSizes[k].length, wideSizes[k].length))) === JSON.stringify(wideSizes[k].slice(0, Math.min(thinSizes[k].length, wideSizes[k].length)));
+      check(['tools', 'dots', 'chevrons'].every((k) => thinSizes[k].length > 0 && same(k)) && thinSizes.counts.every(Boolean),
+        'sessions: and the filter row\'s icons, the rows\' dots, the group headers\' arrows and counts are as large there as in a wide list', r.measures.thin);
+      check(tb.errors.length === 0, 'sessions: the 170 px page threw nothing', tb.errors);
+    } finally { await thin.close(); }
+
     /* The status filter's menu, and the search. */
     const fb = await b.evaluate(`(() => { const r = document.querySelector('[data-tool="filter"]').getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; })()`);
     await b.click(fb[0], fb[1]);

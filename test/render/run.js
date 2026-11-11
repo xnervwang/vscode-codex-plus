@@ -39,8 +39,8 @@ if (found.missing.length) {
   for (const m of found.missing) console.log(`  - ${m}`);
   process.exit(0);
 }
-/* --only <name>[,<name>] runs those scenes alone: conversation, narrow, wide, rail (rail-wide and rail-narrow), agentmap (and
-   agentmap-narrow), approval, background, compact, chime, long, sessions. */
+/* --only <name>[,<name>] runs those scenes alone: conversation, narrow, wide, stamps (stamps-300 and stamps-200), rail (rail-wide
+   and rail-narrow), agentmap (and agentmap-narrow), approval, background, compact, chime, long, sessions. */
 const ONLY = arg('--only') ? arg('--only').split(',') : null;
 const want = (name) => !ONLY || ONLY.includes(name);
 const OUT = path.resolve(arg('--out') || fs.mkdtempSync(path.join(os.tmpdir(), 'codex-plus-render-')));
@@ -359,7 +359,7 @@ function selfchecked(r, where, { turns, users, rows, replies = turns }) {
         replies: [...document.querySelectorAll('.codex-extras-stamp-assistant')].map((x) => [x.textContent, x.getAttribute('data-codex-extras-figures') || '']) })`);
       results.scenes.conversation.replyLines = said;
       const lined = said.replies.filter(([, f]) => f);
-      check(said.worked === 0 && lined.length === 4 && lined.every(([t, f]) => /\d\d:\d\d:\d\d$/.test(t) && /^ {2}\d+s · ctx \d+%/.test(f)),
+      check(said.worked === 0 && lined.length === 4 && lined.every(([t, f]) => /\d\d:\d\d:\d\d$/.test(t) && /^ {2}\d+s\u00a0· ctx\u00a0\d+%/.test(f)),
         'conversation: each reply carries its seconds, and after two spaces, as Claude Code Plus writes it, its turn\'s duration where Codex draws no "Worked for"', said);
     }
     /* The page script's layout sample of the drawn page, beside the one taken in a user's window (test/fixtures):
@@ -446,10 +446,16 @@ function selfchecked(r, where, { turns, users, rows, replies = turns }) {
         await shot(s, 'list-row-hover');
         check(!!tip && /^\d\d:\d\d/.test(tip.text) && tip.right <= tip.panelLeft && tip.panelWidth === 280,
           'conversation: resting on a row of the 280-wide list shows its time and words in a box to the left of the list', tip);
-        const lines = await s.b.evaluate(`[...document.querySelectorAll('.codex-extras-row')].map((x) => ({ text: x.textContent, parts: x.children.length }))`);
+        const lines = await s.b.evaluate(`[...document.querySelectorAll('.codex-extras-row')].map((x) => { const t = x.firstElementChild;
+          const b = t && t.getBoundingClientRect();
+          return { text: x.textContent, time: t && t.textContent, left: b ? +b.left.toFixed(2) : null, width: b ? +b.width.toFixed(2) : null,
+            words: t && t.nextSibling && t.nextSibling.nodeType === 3 ? t.nextSibling.nodeValue : null }; })`);
         results.scenes.conversation.listRows = lines;
-        check(lines.length === 4 && lines.every((x) => /^\d\d:\d\d:\d\d {2}\S/.test(x.text) && x.parts === 0),
-          'conversation: each row of the list is its time, two spaces and its words in one text, as Claude Code Plus writes it', lines);
+        check(lines.length === 4 && lines.every((x) => /^\d\d:\d\d:\d\d {2}\S/.test(x.text) && /^\d\d:\d\d:\d\d$/.test(x.time || '') && /^ {2}\S/.test(x.words || '')),
+          'conversation: each row of the list is its time, in a span of its own, then two spaces and its words, as Claude Code Plus writes it', lines);
+        const near = (k) => lines.every((x) => x[k] !== null && Math.abs(x[k] - lines[0][k]) < 0.5);
+        check(new Set(lines.map((x) => x.time)).size > 1 && near('left') && near('width'),
+          'conversation: the times of the rows, different times, are all one width, so every row\'s words start at the same place', lines.map((x) => [x.time, x.left, x.width]));
       }
       await s.b.click(handle[0], handle[1]);
       await s.b.hover(10, 10);
@@ -506,6 +512,59 @@ function selfchecked(r, where, { turns, users, rows, replies = turns }) {
       const handle = await centre(s, '.codex-extras-rail-handle');
       if (handle) { await s.b.click(handle[0], handle[1]); await sleep(500); await shot(s, `${name}-list-open`); await s.b.click(handle[0], handle[1]); await sleep(300); }
       if (name === 'narrow') { await scrollTo(s, 'bottom'); await floating(s, name); }
+      results.blocked.push(...s.b.blocked);
+    } finally { await s.close(); }
+  }
+
+  /* ── a reply's stamp at 300 px, about Codex's sidebar in a 1024 px window, and at 200 px ── */
+  /*
+   * The text after the time comes from ::after, which has no DOM boxes, so a hidden copy with the same font, width and
+   * white-space is measured character by character. A new line must begin right after "· " or after the gap following
+   * the time.
+   */
+  function stampsOnScreen() {
+    return [...document.querySelectorAll('.codex-extras-stamp')].filter((e) => e.getClientRects().length).map((e) => {
+      const r = e.getBoundingClientRect(), p = e.parentElement.getBoundingClientRect(), st = getComputedStyle(e);
+      const text = e.textContent + (e.getAttribute('data-codex-extras-figures') || '');
+      const copy = document.createElement('div');
+      for (const k of ['fontFamily', 'fontSize', 'fontWeight', 'letterSpacing', 'lineHeight', 'whiteSpace', 'overflowWrap', 'wordBreak']) copy.style[k] = st[k];
+      Object.assign(copy.style, { position: 'absolute', visibility: 'hidden', left: '0', top: '0', width: e.clientWidth + 'px' });
+      copy.textContent = text;
+      document.body.appendChild(copy);
+      const starts = [];
+      let top = null;
+      for (let i = 0; i < text.length; i++) {
+        if (text[i] === ' ' || text[i] === '\u2060') continue;
+        const range = document.createRange();
+        range.setStart(copy.firstChild, i);
+        range.setEnd(copy.firstChild, i + 1);
+        const b = range.getClientRects()[0];
+        if (!b || !b.width) continue;
+        if (top === null || b.top > top + 2) { starts.push(i); top = b.top; }
+      }
+      copy.remove();
+      const plain = (t) => t.replace(/\u2060/g, '');
+      return { side: e.classList.contains('codex-extras-stamp-user') ? 'user' : 'assistant', text: plain(text), lines: starts.length,
+        past: e.scrollWidth - e.clientWidth, over: Math.round(r.right - p.right), whiteSpace: st.whiteSpace,
+        splitAt: starts.slice(1).filter((i) => !/(\u00b7 | {2})$/.test(text.slice(0, i))).map((i) => plain(text.slice(Math.max(0, i - 8), i) + '|' + text.slice(i, i + 8))) };
+    });
+  }
+  for (const [name, width] of [['stamps-300', 300], ['stamps-200', 200]].filter(([n]) => want(n) || want('stamps'))) {
+    s = await opened(name, { width, height: 760 });
+    try {
+      const seen = [];
+      for (const where of ['top', 'bottom']) {
+        await scrollTo(s, where);
+        await shot(s, `${name}-${where}`);
+        seen.push(...await s.b.evaluate(`(${stampsOnScreen})()`));
+      }
+      results.scenes[name].stamps = seen;
+      const replies = seen.filter((x) => x.side === 'assistant');
+      check(seen.length > 0 && seen.every((x) => x.past <= 0 && x.over <= 1 && x.whiteSpace === 'normal'),
+        `${name}: every stamp stays inside its column at ${width} px, none cut off`, seen);
+      check(replies.length > 0 && replies.every((x) => /gpt-6\.1-sol (high|medium|low)$/.test(x.text.replace(/\u00a0/g, ' ')) && x.splitAt.length === 0),
+        `${name}: a line breaks only where a part starts, so "ctx 20%", the model and its effort each stay whole`, replies.map((x) => [x.text, x.lines, x.splitAt]));
+      if (width <= 200) check(replies.some((x) => x.lines >= 2), `${name}: a reply's line too long for the column wraps onto a second line`, replies.map((x) => [x.text, x.lines]));
       results.blocked.push(...s.b.blocked);
     } finally { await s.close(); }
   }
@@ -837,7 +896,7 @@ function selfchecked(r, where, { turns, users, rows, replies = turns }) {
     results.scenes.long.top = early;
     await shot(s, 'long-top');
     console.log(`  note  long, top: Codex's day divider reads ${JSON.stringify(early.divider)}; stamps there ${JSON.stringify(early.users.slice(0, 2))}...`);
-    const ofDay = (x) => !!early.day && new RegExp(`^${early.day} \\d\\d:\\d\\d`).test(x);
+    const ofDay = (x) => !!early.day && new RegExp(`^${early.day}\u00a0\\d\\d:\\d\\d`).test(x);
     check(early.users.length > 0 && early.users.every(ofDay) && early.replies.length > 0 && early.replies.every(ofDay),
       'long, top: yesterday\'s messages and replies carry a time too, read from Codex\'s "<day> <clock>" and written after the date of its divider', early);
     geometry(await measured(s, 'long', 'top'), 'long, top');

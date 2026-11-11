@@ -384,7 +384,7 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
     eq([keyed.length > 1, rf.turnsKeyed, rf.matched, rf.drawn, rf.fromHost], [true, keyed.length, keyed.length - 1, keyed.length - 1, keyed.length - 1],
       'every turn on the page has an id, all but the one the host sent nothing for line up, and each of those is drawn once');
     const drawn = d.document.root.querySelectorAll('[data-codex-extras-figures]');
-    eq([drawn.length, drawn.every((el) => /^ {2}ctx \d+% · gpt-test high$/.test(el.getAttribute('data-codex-extras-figures')))],
+    eq([drawn.length, drawn.every((el) => /^ {2}ctx\u00a0\d+%\u00a0\u00b7 gpt-\u2060test\u00a0high$/.test(el.getAttribute('data-codex-extras-figures')))],
       [keyed.length - 1, true], 'the line follows the time on the stamp, which keeps the time as its only text');
     const firstTurn = d.document.root.querySelectorAll('[data-turn-key]')[0];
     eq(firstTurn.querySelectorAll('[data-codex-extras-figures]').length, 0, 'and the turn the host knew nothing about has none');

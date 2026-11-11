@@ -95,12 +95,12 @@ module.exports = async ({ eq, tmp, root }) => {
   const pre = day.getFullYear() === new Date().getFullYear() ? md : `${day.getFullYear()}/${md}`;
   page.send({ type: 'codex-extras-user-times', times: [1, 2, 3], compactions: [], turns: { [T2]: 'ctx 12% · gpt-x low' }, turnTimes: marks.turnTimes });
   eq([said(u1), said(r1), said(u2), said(u2b), said(r2), said(u3)],
-    [`${pre} 22:35:01`, `${pre} 22:35:09`, `${pre} 22:36:00`, `${pre} 22:36:03`, `${pre} 22:36:05`, `${pre} 22:40:00`],
+    [`${pre}\u00a022:35:01`, `${pre}\u00a022:35:09`, `${pre}\u00a022:36:00`, `${pre}\u00a022:36:03`, `${pre}\u00a022:36:05`, `${pre}\u00a022:40:00`],
     'by turn id, every message and reply gets its own day and its seconds, though the conversation\'s counts do not line up (the host sent three times for four messages)');
-  eq([line(r1), line(r2)], [null, '  5s · ctx 12% · gpt-x low'],
+  eq([line(r1), line(r2)], [null, '  5s\u00a0\u00b7 ctx\u00a012%\u00a0\u00b7 gpt-\u2060x\u00a0low'],
     'a turn\'s duration goes after its reply\'s time where Codex shows no "Worked for" of its own, and nowhere it does');
   view({ replyDuration: false });
-  eq(line(r2), '  ctx 12% · gpt-x low', 'codexPlus.replyDuration off leaves it off');
+  eq(line(r2), '  ctx\u00a012%\u00a0\u00b7 gpt-\u2060x\u00a0low', 'codexPlus.replyDuration off leaves it off');
   view();
 
   /* A turn whose count of messages differs from the rollout's is left to what the page itself shows. */
@@ -110,6 +110,6 @@ module.exports = async ({ eq, tmp, root }) => {
   /* A reply time that is not in the minute Codex shows on that reply is not taken for it. */
   page.send({ type: 'codex-extras-user-times', times: null, compactions: [], turns: {},
     turnTimes: { [T1]: { u: [at(22, 35, 1, 250)], r: [at(22, 34, 59)], d: 9400 } } });
-  eq([said(u1), said(r1)], [`${pre} 22:35:01`, '22:35'], 'and a reply time a minute off what Codex shows on that reply is not used for it');
+  eq([said(u1), said(r1)], [`${pre}\u00a022:35:01`, '22:35'], 'and a reply time a minute off what Codex shows on that reply is not used for it');
   eq(JSON.stringify(page.posted).includes('question'), false, 'nothing of the conversation is posted back');
 };

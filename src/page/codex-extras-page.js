@@ -1562,6 +1562,18 @@
   }
 
   /*
+   * A stamp line wraps only after a "·" and after the time, as in Claude Code Plus, so "ctx 21%" or "gpt-6.1-sol high"
+   * never splits across lines. Each hyphen gets a U+2060 after it, since Chromium breaks after a hyphen.
+   */
+  var NBSP = '\u00a0', DOT = '\u00b7', JOIN = '\u2060';
+  function breakable(v) {
+    return String(v).split('  ').map(function (gap) {
+      return gap.split(' ' + DOT + ' ').map(function (part) { return part.split(' ').join(NBSP).split('-').join('-' + JOIN).split(',' + NBSP).join(', '); })
+        .join(NBSP + DOT + ' ');
+    }).join('  ');
+  }
+
+  /*
    * This script's own line at the top of Codex's element, put there once and only retitled afterwards. `figures` is the
    * turn's line from the host, shown after the time by the stylesheet from an attribute, so the line's own text stays
    * the time alone.
@@ -1583,12 +1595,13 @@
       el.setAttribute('aria-hidden', 'true');
       if (host.firstChild) host.insertBefore(el, host.firstChild); else host.appendChild(el);
     }
-    if (el.textContent !== text) el.textContent = text;
+    var shown = breakable(text);
+    if (el.textContent !== shown) el.textContent = shown;
     var timed = side === 'assistant' && !!text;
     if (timed !== (el.getAttribute(TIMED_ATTR) !== null)) { if (timed) el.setAttribute(TIMED_ATTR, ''); else el.removeAttribute(TIMED_ATTR); }
     /* As Claude Code Plus writes a reply's line: two spaces after the time, then the duration and the figures. */
     var bits = [took, figures].filter(Boolean);
-    var fig = bits.length ? (text ? '  ' : '') + bits.join(' \u00b7 ') : '';
+    var fig = bits.length ? breakable((text ? '  ' : '') + bits.join(' \u00b7 ')) : '';
     if (fig) { if (el.getAttribute(FIG_ATTR) !== fig) el.setAttribute(FIG_ATTR, fig); }
     else if (el.getAttribute(FIG_ATTR) !== null) el.removeAttribute(FIG_ATTR);
   }
@@ -1733,7 +1746,7 @@
      monospace font, 0.8em, and the message's text colour at 60% opacity. */
   function restyle() {
     var css = '.codex-extras-stamp{font-family:var(--vscode-editor-font-family,monospace);font-size:.8em;font-weight:normal;'
-      + 'font-style:normal;opacity:.6;line-height:1.4;user-select:none;pointer-events:none;}'
+      + 'font-style:normal;opacity:.6;line-height:1.4;white-space:normal;overflow-wrap:anywhere;user-select:none;pointer-events:none;}'
       + '.codex-extras-stamp-user{text-align:end;}'
       + '.codex-extras-stamp[' + FIG_ATTR + ']::after{content:attr(' + FIG_ATTR + ');}';
     if (view.userColor && SAFE_COLOR.test(view.userColor)) {
@@ -2133,8 +2146,15 @@
         var row = document.createElement('div');
         row.setAttribute('class', 'codex-extras-row');
         row.setAttribute(MARK, 'nav-row');
-        /* The time and the words in one text, two spaces apart, as Claude Code Plus writes a row. */
-        row.textContent = (when ? when + '  ' : '') + text.slice(0, ROW_CHARS);
+        /* tabular-nums on the time keeps every row's message starting at the same x. */
+        if (when) {
+          var clock = document.createElement('span');
+          clock.style.fontVariantNumeric = 'tabular-nums';
+          clock.style.fontKerning = 'none';
+          clock.textContent = when;
+          row.appendChild(clock);
+        }
+        row.appendChild(document.createTextNode((when ? '  ' : '') + (text.length > ROW_CHARS ? text.slice(0, ROW_CHARS) + '\u2026' : text)));
         row.addEventListener('mouseenter', function () { showTip(row, (when ? when + '\n' : '') + text.slice(0, TIP_CHARS)); });
         row.addEventListener('mouseleave', hideTip);
         row.addEventListener('click', function (ev) {

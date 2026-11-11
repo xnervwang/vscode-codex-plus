@@ -269,6 +269,7 @@ function createDom() {
     listeners: {},
     createElement(tag) { return new El(tag, document); },
     createElementNS(ns, tag) { const e = new El(tag, document); e.namespaceURI = ns; return e; },
+    createTextNode(value) { return new Text(String(value)); },
     addEventListener(type, fn) { (document.listeners[type] = document.listeners[type] || []).push(fn); },
     dispatch(type, event) { for (const fn of (document.listeners[type] || []).slice()) fn(Object.assign({ target: null }, event)); },
     querySelector(sel) { return document.root ? document.root.querySelector(sel) : null; },

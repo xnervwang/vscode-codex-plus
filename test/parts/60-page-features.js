@@ -438,8 +438,8 @@ module.exports = async ({ ok, bad, eq, note, tmp, root }) => {
     ]).built;
     p2.view();
     eq(built.map((b) => [stampText(b.user), stampText(b.reply)]),
-      [[`${lastYear.getFullYear()}/${md(lastYear)} 22:15`, `${lastYear.getFullYear()}/${md(lastYear)} 22:16`],
-        [`${md(thisYear)} 09:02`, `${md(thisYear)} 09:03`], ['07:00', '07:01']],
+      [[`${lastYear.getFullYear()}/${md(lastYear)}\u00a022:15`, `${lastYear.getFullYear()}/${md(lastYear)}\u00a022:16`],
+        [`${md(thisYear)}\u00a009:02`, `${md(thisYear)}\u00a009:03`], ['07:00', '07:01']],
       'a time of an earlier day this year starts with its month and day, one of another year with the year too, and today\'s is the clock alone');
     eq(d2.document.root.querySelectorAll('[data-codex-extras="nav-row"]').map((r) => r.textContent.split('  ')[0]),
       [`${lastYear.getFullYear()}/${md(lastYear)} 22:15`, `${md(thisYear)} 09:02`, '07:00'], 'and the list of messages shows each with the same date');

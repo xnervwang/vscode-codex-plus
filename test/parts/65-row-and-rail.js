@@ -155,7 +155,7 @@ module.exports = async ({ eq, root }) => {
       /* The divider's day is not today, so both stamps start with it (the form is checked in 60-page-features). */
       const day = new Date('2026-11-08T17:02:11.000Z'), now = new Date();
       const md = `${String(day.getMonth() + 1).padStart(2, '0')}/${String(day.getDate()).padStart(2, '0')}`;
-      const pre = day.toDateString() === now.toDateString() ? '' : `${day.getFullYear() === now.getFullYear() ? md : `${day.getFullYear()}/${md}`} `;
+      const pre = day.toDateString() === now.toDateString() ? '' : `${day.getFullYear() === now.getFullYear() ? md : `${day.getFullYear()}/${md}`}\u00a0`;
       eq([stamp(user), stamp(reply)], [`${pre}09:02`, `${pre}09:04`],
         'under a day the page states, a time written after its day\'s name is read as that day\'s clock, on both sides');
     } else {

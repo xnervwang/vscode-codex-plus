@@ -18,6 +18,7 @@
  *   a tab        a conversation resumed in a tab from the list: its title, then the dot on its logo during a turn sent
  *                through fake-model.js, and after the reply arrives while the tab is in the background
  *   Codex's page what the patch adds there: the time stamps, the rail, the buttons by the message box, the Agent map
+ *   the sidebar  a conversation resumed in Codex's sidebar: each reply's stamp inside its column
  *
  * Every step saves a screenshot to <out>/shots, and crops of the parts this extension draws are compared with the
  * approved copies (lib/baseline.js).
@@ -215,16 +216,19 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await page.mouse.click(box.x + 20, box.y + box.height - 12);
       await until(() => list.evaluate(() => !document.querySelector('.cp-ctx')), 3000, 100);
     };
-    /* Hovers `item`, coming from the menu's first item, until its submenu shows; three tries; returns the one that worked, or 0. */
+    /* In a narrow side bar the submenu can open on top of `item` itself, and Playwright would keep waiting for `item` to
+       be uncovered. */
+    const subOpenFor = (item) => item.evaluate((b) => b.getAttribute('aria-expanded') === 'true' && !!document.querySelector('.cp-ctx-sub')).catch(() => false);
     const openSubOf = async (item) => {
       for (let n = 1; n <= 3; n++) {
-        if (n > 1) await list.locator('.cp-ctx:not(.cp-ctx-sub) .cp-ctx-item').first().hover().catch(() => {});
-        await item.hover();
-        if (await until(() => list.evaluate(() => !!document.querySelector('.cp-ctx-sub')), 2000, 100)) return n;
+        if (await subOpenFor(item)) return n;
+        if (n === 1) await item.hover({ timeout: 3000 }).catch(() => {});
+        else await item.press('ArrowRight', { timeout: 3000 }).catch(() => {});
+        if (await until(() => subOpenFor(item), 2000, 100)) return n;
       }
       return 0;
     };
-    const hovered = (n, what) => { if (n > 1) note(`${what}: its submenu opened on hover ${n}, the earlier hovers reached nothing`); };
+    const hovered = (n, what) => { if (n > 1) note(`${what}: its submenu opened on try ${n}, with →, after resting on it opened none`); };
     const pick = async (t, labels) => {
       await list.evaluate(() => {
         window.__landed = [];
@@ -276,6 +280,12 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         return threads.every((t) => got.includes(t.title)) && got;
       }, 30000, 500);
       check(!!titles, `it lists the ${threads.length} made-up conversations by their titles`, titles);
+      /* On macOS and Windows the window is 1024 px, which makes the list narrow enough to test this. */
+      const icons = await list.evaluate(() => [...document.querySelectorAll('.cp-new')].map((b) => {
+        const i = b.querySelector('svg');
+        return i ? Math.round(i.getBoundingClientRect().width) : 0;
+      }));
+      check(icons.length === 2 && icons.every((x) => x === 16), 'New in tab and New in sidebar each keep their 16 px icon', icons);
       await page.mouse.move(5, 880);
       await sleep(300);
       await shot('session-list');
@@ -484,6 +494,30 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       check(!!read, 'and bringing the tab to the front clears it', { dots: await dotsOn(title), windowFocused: await focused() });
       await shot('tab-dot-read');
       note('the blue dot of a turn waiting for approval is not made here: the made-up model sends replies only, never a command to approve');
+    });
+
+    await step('a conversation in Codex\'s sidebar', async () => {
+      const t = threads[1];
+      /* Resume in Sidebar opens Codex's sidebar through a vscode:// link, and VS Code asks once before an extension
+         opens one. */
+      await call('vscode.commands.executeCommand("codexPlus.openThreadInSidebar", arg); return true;', t.id);
+      const allow = page.locator('.monaco-dialog-box').filter({ hasText: 'open this URI' }).first();
+      if (await allow.waitFor({ state: 'visible', timeout: 15000 }).then(() => true, () => false)) {
+        await allow.locator('.dialog-buttons .monaco-button').filter({ hasText: 'Open' }).first().click({ timeout: 5000 });
+      }
+      const side = await frameWhere((want) => innerWidth < 800 && document.body.innerText.includes(want)
+        && document.querySelectorAll('.codex-extras-stamp-assistant').length >= 4, 90000, t.title);
+      check(!!side, 'Resume in Sidebar draws the conversation in Codex\'s sidebar, with a stamp on each reply');
+      if (!side) return;
+      await shot('sidebar-conversation');
+      const fit = await side.evaluate(() => [...document.querySelectorAll('.codex-extras-stamp-assistant')].filter((e) => e.getClientRects().length).map((e) => {
+        const r = e.getBoundingClientRect(), p = e.parentElement.getBoundingClientRect(), st = getComputedStyle(e);
+        return { width: Math.round(r.width), column: Math.round(p.width), past: e.scrollWidth - e.clientWidth, over: Math.round(r.right - p.right),
+          lines: Math.round(r.height / (parseFloat(st.fontSize) * 1.4)) };
+      }));
+      check(fit.length >= 4 && fit.every((x) => x.past <= 0 && x.over <= 1), 'in Codex\'s sidebar every reply\'s stamp stays inside its column', fit);
+      if (fit.length && !fit.some((x) => x.lines >= 2)) note('Codex\'s sidebar was wide enough for every stamp, so none had to wrap');
+      await exec('workbench.action.closeAuxiliaryBar');
     });
   } finally {
     await shot('last');
