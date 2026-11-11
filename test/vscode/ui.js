@@ -118,6 +118,26 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
   /* Rectangles of `boxes` relative to `outer`, for the masks of a crop. */
   const within = (outer, boxes) => boxes.filter(Boolean).map((b) => ({ x: Math.floor(b.x - Math.round(outer.x)), y: Math.floor(b.y - Math.round(outer.y)),
     w: Math.ceil(b.width) + 1, h: Math.ceil(b.height) + 1 }));
+  /* Crops the tab's logo and dot from three pixels left of the logo's first light column, not from the tab's box: on
+     Windows the logo sat anywhere from one pixel left to three right of where the box puts it, from run to run. */
+  const logoCrop = async (label) => {
+    const box = await page.locator('.tabs-container .tab').filter({ hasText: label }).first().boundingBox();
+    if (!box) return null;
+    const img = pixels.decode(await crop({ x: box.x, y: box.y + 4, width: Math.min(48, box.width), height: box.height - 8 }));
+    const lit = (x) => {
+      for (let y = 0; y < img.height; y++) {
+        const i = (y * img.width + x) * 4;
+        if (img.data[i] > 120 && img.data[i + 1] > 120 && img.data[i + 2] > 120) return true;
+      }
+      return false;
+    };
+    let left = 0;
+    while (left < img.width && !lit(left)) left++;
+    if (left >= img.width) return null;
+    const x0 = Math.max(0, left - 3), w = Math.min(24, img.width - x0), data = Buffer.alloc(w * img.height * 4);
+    for (let y = 0; y < img.height; y++) img.data.copy(data, y * w * 4, (y * img.width + x0) * 4, (y * img.width + x0 + w) * 4);
+    return pixels.encode({ width: w, height: img.height, data });
+  };
   /* How many pixels of each tab dot's colour the tab named `label` shows on its logo. */
   const dotsOn = async (label) => {
     const tab = page.locator('.tabs-container .tab').filter({ hasText: label }).first();
@@ -508,9 +528,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       const unread = await until(async () => { const d = await dotsOn(title); return d && d.unread >= 6 && d.working === 0 && d; }, 30000, 500);
       check(!!unread, 'once the reply lands with the tab not in front, the dot turns red', await dotsOn(title));
       await shot('tab-dot-unread');
-      /* Measured here rather than before notes.txt opens: the tab can move a few pixels in between. */
-      const lbox = await page.locator('.tabs-container .tab').filter({ hasText: title }).first().boundingBox();
-      if (lbox) base.compare('tab-dot-unread', await crop({ x: lbox.x + 4, y: lbox.y + 4, width: 24, height: lbox.height - 8 }));
+      const logo = await logoCrop(title);
+      if (logo) base.compare('tab-dot-unread', logo);
       await page.locator('.tabs-container .tab').filter({ hasText: title }).first().click();
       await page.bringToFront().catch(() => {});
       const read = await until(async () => { const d = await dotsOn(title); return d && d.unread === 0 && d.working === 0 && d; }, 20000, 500);
