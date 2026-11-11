@@ -122,19 +122,34 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
     { jsonrpc: '2.0', id: 4, method: 'tools/call', params: { name: 'set_row', arguments: { plan, row: '1', state: 'waiting' } } },
     { jsonrpc: '2.0', id: 5, method: 'tools/call', params: { name: 'set_row', arguments: { plan: '/etc/x.json', row: '1' } } },
     { jsonrpc: '2.0', id: 6, method: 'tools/call', params: { name: 'add_row', arguments: { plan: lookalike, state: 'doing', title: 'T' } } },
+    { jsonrpc: '2.0', id: 7, method: 'tools/call', params: { name: 'set_summary', arguments: { plan, text: 'What it is for.' } } },
+    { jsonrpc: '2.0', id: 8, method: 'tools/call', params: { name: 'set_status', arguments: { plan, doing: 'd', progress: 'p', next: 'none' } } },
+    { jsonrpc: '2.0', id: 9, method: 'tools/call', params: { name: 'set_status', arguments: { plan, doing: 'x'.repeat(81), progress: 'p', next: 'n' } } },
+    { jsonrpc: '2.0', id: 10, method: 'tools/call', params: { name: 'set_summary', arguments: { plan: lookalike, text: 'x' } } },
   ];
   const r = cp.spawnSync(py, [path.join(hooksDir, 'plan-mcp.py')], { input: msgs.map((m) => JSON.stringify(m)).join('\n') + '\n',
     encoding: 'utf8', env: { ...process.env, PYTHONDONTWRITEBYTECODE: '1', CODEX_HOME: mcpHome } });
   const replies = r.stdout.trim().split('\n').filter(Boolean).map((l) => JSON.parse(l));
-  eq(replies.map((x) => x.id), [1, 2, 3, 4, 5, 6], 'the MCP server answers every request and no notification');
-  eq(replies[1].result.tools.map((t) => t.name), ['set_row', 'add_row', 'skill_search', 'set_wakeup', 'clear_wakeup'],
-    'it offers set_row, add_row, skill_search, set_wakeup and clear_wakeup');
+  eq(replies.map((x) => x.id), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], 'the MCP server answers every request and no notification');
+  eq(replies[1].result.tools.map((t) => t.name), ['set_row', 'add_row', 'set_summary', 'set_status', 'skill_search', 'set_wakeup', 'clear_wakeup'],
+    'it offers set_row, add_row, set_summary, set_status, skill_search, set_wakeup and clear_wakeup');
   eq(replies[2].result.isError, false, 'add_row creates the plan');
   eq(JSON.parse(fs.readFileSync(plan, 'utf8')).nodes[0].state, 'doing', 'with the row in it');
   eq(replies[3].result.isError, true, 'a move to waiting without waiting_on is refused, as by the row command');
   eq(replies[4].result.isError, true, 'a path outside the plan directory is refused');
   eq([replies[5].result.isError, fs.existsSync(lookalike)], [true, false],
     'a directory with the plan directory\'s name outside this Codex home is refused, and nothing is written there');
+  {
+    const brief = JSON.parse(fs.readFileSync(plan, 'utf8')).brief || {};
+    const tools = Object.fromEntries(replies[1].result.tools.map((t) => [t.name, t]));
+    eq([replies[6].result.isError, replies[7].result.isError, brief.summary, brief.status, /80/.test(replies[8].result.content[0].text),
+      replies[8].result.isError, replies[9].result.isError, tools.set_status.inputSchema.required,
+      tools.set_summary.annotations.destructiveHint, tools.set_status.annotations.openWorldHint],
+    [false, false, 'What it is for.', { doing: 'd', progress: 'p', next: 'none' }, true, true, true, ['plan', 'doing', 'progress', 'next'],
+      false, false],
+    'set_summary and set_status write the brief as the row command does, refuse a part past its width and a plan outside the plan '
+      + 'directory, and run without an approval');
+  }
 
   // The injection hook: a plan with an open row puts it in front of the model, with the tools to change it.
   const payload = { hook_event_name: 'UserPromptSubmit', session_id: path.basename(plan, '.json'), turn_id: 'turn-1',

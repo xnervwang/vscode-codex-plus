@@ -11,8 +11,8 @@ change of state must not cost. An MCP server is started by Codex itself, outside
 through one of its tools goes straight through.
 
 It speaks MCP over standard input and output, one JSON-RPC message per line, and offers two tools that take the same
-arguments as the row command. Every call is handed to plan-row.py's run(), so the rules for what a row may say live in
-one place. A path it is given must be a plan file in this plugin's data directory of the Codex home the server was started
+arguments as the row command, and two more that write the conversation's brief as its summary and status commands do.
+Every call is handed to plan-row.py's run(), so the rules for what a row or the brief may say live in one place. A path it is given must be a plan file in this plugin's data directory of the Codex home the server was started
 for, named by a thread id: the tools write only there.
 
 skill_search is read-only: it searches every installed skill with the words the model gives it (skill_route.py),
@@ -31,8 +31,8 @@ import types
 sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from plan_path import (PLAN_NAME, PLUGIN_DIR_NAME, SESSION_NAME, STATES, WAITING_ON, WAKEUP_SUFFIX, codex_home,  # noqa: E402
-                       write_atomic)
+from plan_path import (BRIEF_WIDTH, PLAN_NAME, PLUGIN_DIR_NAME, SESSION_NAME, STATES, STATUS_PARTS, WAITING_ON,  # noqa: E402
+                       WAKEUP_SUFFIX, codex_home, write_atomic)
 import skill_route  # noqa: E402
 
 
@@ -85,6 +85,23 @@ TOOLS = [
                          "title": {"type": "string"},
                          "under": {"type": "string", "description": "The row to add it under, such as 2."},
                      }, **COMMON)}},
+    {"name": "set_summary", "description": "Write this conversation's summary, which Agent Plus shows when its row is "
+     "clicked: what the conversation is for, the stage it has reached, and the decisions made that later work must not "
+     "forget. Write it for someone coming back to it, in the conversation's language, with no names coined in it. At "
+     "most %d wide, a CJK character counting 2 and any other 1; a longer one is refused. The time is read from the clock."
+     % BRIEF_WIDTH["summary"],
+     "annotations": dict(ANNOTATIONS, title="Write the conversation's summary", idempotentHint=True),
+     "inputSchema": {"type": "object", "required": ["plan", "text"], "additionalProperties": False, "properties": {
+         "plan": PLAN, "text": {"type": "string", "description": "The summary."}}}},
+    {"name": "set_status", "description": "Write where this conversation stands now, in three parts, for someone who "
+     "stepped away and has to pick up at once: what you are doing, the latest progress, and who it waits on or the next "
+     "step. In the conversation's language; write none in a part with nothing to say. Widths count a CJK character as "
+     "2 and any other as 1, and a part past its limit is refused. The time is read from the clock.",
+     "annotations": dict(ANNOTATIONS, title="Write where the conversation stands", idempotentHint=True),
+     "inputSchema": {"type": "object", "required": ["plan"] + list(STATUS_PARTS), "additionalProperties": False,
+                     "properties": dict({"plan": PLAN}, **{part: {"type": "string", "description": "%s, at most %d wide." % (
+                         says, BRIEF_WIDTH[part])} for part, says in zip(STATUS_PARTS, (
+                             "What you are doing", "The latest progress", "Who it waits on, or the next step"))})}},
     {"name": "skill_search", "description": "Search every skill installed for Codex by what you want to do, including "
      "skills that the skills list leaves out or cuts short. Write the query in your own words: rephrase the request, try "
      "synonyms, and turn a request made in another language into English keywords; when nothing fits, search again "
@@ -209,6 +226,13 @@ def call(name, args):
         return set_wakeup(args)
     if name == "clear_wakeup":
         return clear_wakeup(args)
+    if name in ("set_summary", "set_status"):
+        ns = types.SimpleNamespace(plan=plan_path(args.get("plan")), action=name[4:], text=args.get("text"),
+                                   **{part: args.get(part) for part in STATUS_PARTS})
+        try:
+            return ROW.run(ns)
+        except ROW.Refused as e:
+            raise Refused(str(e))
     ns = types.SimpleNamespace(plan=plan_path(args.get("plan")), note=args.get("note"),
                                waiting_on=args.get("waiting_on"), question=args.get("question"))
     if name == "set_row":
@@ -236,9 +260,9 @@ def respond(msg):
         return {"protocolVersion": (msg.get("params") or {}).get("protocolVersion") or PROTOCOL,
                 "capabilities": {"tools": {}},
                 "serverInfo": {"name": "work_plan", "version": "1.0.0"},
-                "instructions": "Changes rows of this conversation's work plan; the plan file's path is in the work "
-                                "plan block at the start of each turn. skill_search searches every installed skill, "
-                                "including the ones the skills list leaves out or cuts short."}
+                "instructions": "Changes rows of this conversation's work plan and writes its brief; the plan file's "
+                                "path is in the work plan block at the start of each turn. skill_search searches every "
+                                "installed skill, including the ones the skills list leaves out or cuts short."}
     if method == "tools/list":
         return {"tools": TOOLS}
     if method == "tools/call":

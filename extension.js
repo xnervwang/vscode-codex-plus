@@ -241,6 +241,7 @@ function writeHookSettings(context) {
       offerMinToolCalls: c.get('workPlanOfferMinToolCalls', 25),
       quietWhenReplyMatches: c.get('workPlanQuietWhenReplyMatches', ''),
       tellTimeZone: c.get('tellCodexYourTimeZone', true),
+      brief: c.get('conversationBrief', true),
       compactTokenLimit: codexConfig.compactLimit(files.codexHome()),
       skillRoute: c.get('skillRouting', true),
       skillRouteVector: c.get('skillRoutingVectorSearch', false),
@@ -265,7 +266,7 @@ async function activate(context) {
   reader = new CodexReader({ log: say });
   context.subscriptions.push(reader);
   const source = createCodexSource(vscode, { log: say, reader, patching, trusted, enabled: () => cfg().get('workPlan', true),
-    seen: createSeen(context.globalState) });
+    briefs: () => cfg().get('conversationBrief', true), seen: createSeen(context.globalState) });
   context.subscriptions.push(source);
   planSource = source;
   /* The user's time zone, as Codex's page reported it through the patch. */
@@ -355,6 +356,7 @@ async function activate(context) {
 
   context.subscriptions.push(vscode.workspace.onDidChangeConfiguration((e) => {
     if (e.affectsConfiguration(CONFIG)) { writeHookSettings(context); sessionsModel.refresh(); }
+    if (e.affectsConfiguration(`${CONFIG}.conversationBrief`) || e.affectsConfiguration(`${CONFIG}.workPlan`)) source.featuresChanged();
     else if (e.affectsConfiguration('chat.fontFamily') || e.affectsConfiguration('chat.fontSize')) sessionsModel.refresh();
     if (e.affectsConfiguration(`${CONFIG}.enabled`)) ownTabBar();
     if (e.affectsConfiguration(`${CONFIG}.skillsListBudget`) || e.affectsConfiguration(`${CONFIG}.disabledSkills`)) applySkillSettings(context, say);

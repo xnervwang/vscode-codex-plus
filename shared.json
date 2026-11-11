@@ -1,5 +1,5 @@
 {
-  "core": "73e42f63a9a6453e29aff9027ee77a6f6b0cf52b",
+  "core": "ed414f1b980e08453a0752bcc07491182a373715",
   "files": [
     {
       "path": "build/sync-shared.js",
@@ -84,12 +84,12 @@
     {
       "path": "codex-plugin/agent-work-plan/hooks/plan_common.py",
       "from": "shared/plugin/hooks/plan_common.py",
-      "sha256": "a78d9af2b678f36ffce53591ba23a0af515964d1250b3db7b98142aee6f3bb9f"
+      "sha256": "713d508bf4ea80977c4c1e4fd07e04d53769af2553866d8ff31fb073fbaf3a90"
     },
     {
       "path": "codex-plugin/agent-work-plan/hooks/plan-row.py",
       "from": "shared/plugin/hooks/plan-row.py",
-      "sha256": "16353a183b410770483b12c97f3c6325de06d6b6a71969d5c393d7f48a537993"
+      "sha256": "724a668aa268e42900b9b6196e38cbc2a4a368215e4baa59dbc8d043f53a92c9"
     },
     {
       "path": "codex-plugin/agent-work-plan/hooks/changes.py",
@@ -99,12 +99,12 @@
     {
       "path": "codex-plugin/agent-work-plan/hooks/inject-work-plan.py",
       "from": "shared/plugin/hooks/inject-work-plan.py",
-      "sha256": "38330d426485911a8d960130cbdb435e9e3b92a0735703afccff3668f8991361"
+      "sha256": "79409c5d4479b448d23366bdbc7f8e88ee7d9e3ce2d2a8450a7146b8c7049e45"
     },
     {
       "path": "codex-plugin/agent-work-plan/hooks/resume-work-plan.py",
       "from": "shared/plugin/hooks/resume-work-plan.py",
-      "sha256": "a0610fdd62b35d27cd8d00ee301716ee2839dfc5ecd7e19fcef13be84cd39458"
+      "sha256": "871490269ee2761c1156e8ad36da1dff555b272d9acd3e8f17a69d8690ad65c4"
     },
     {
       "path": "codex-plugin/agent-work-plan/hooks/tell-time-zone.py",
@@ -114,7 +114,7 @@
     {
       "path": "codex-plugin/agent-work-plan/hooks/nudge-work-plan.py",
       "from": "shared/plugin/hooks/nudge-work-plan.py",
-      "sha256": "aa815f334ef83778cc5542fdb82100402f9158f6688070f5817940967d4176d6"
+      "sha256": "0a64db69380d0bbb1270bad0d7c58bf82e4154a0669e83bef88a22f2cfd044a7"
     },
     {
       "path": "codex-plugin/agent-work-plan/hooks/remind-work-plan.py",
@@ -129,13 +129,13 @@
     {
       "path": "codex-plugin/agent-work-plan/hooks/plan_agent.py",
       "from": "shared/plugin/codex/plan_agent.py",
-      "sha256": "e691dc174e3f0abe9239674e4f8db042bbaddeefd5d67ebe1b0f187c94c50f4d"
+      "sha256": "5dd1ef16f107e4cd13f0ec17cdfdc53b5bf4b98056fd6bae8493f34581e13e8c"
     },
     {
       "path": "codex-plugin/agent-work-plan/skills/maintain/SKILL.md",
       "from": "shared/plugin/skills/maintain/SKILL.md",
       "fill": "shared/plugin/codex/maintain-skill.txt",
-      "sha256": "889ec2a659749a071de8a1fb532684945dd5a950b312945c75cdb8a82a0b2052"
+      "sha256": "496a4665b273c9d73837e7210747af1fec39ae3b0496446c6f7617239dc19a5d"
     }
   ]
 }

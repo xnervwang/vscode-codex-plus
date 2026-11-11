@@ -71,8 +71,11 @@ function liveSessions(home = files.codexHome()) {
  *   .tz          what the time-zone hook last told it
  *   .wakeup      the conversation's wake-up, set by the MCP tool set_wakeup (src/wakeup.js)
  *   .woke        when this extension last queued that wake-up, and whether it is paused
+ *   .compacted   when the context was last compacted, left by the compaction hook for the brief's summary
+ *   .briefed     what the Stop hook last asked about the brief, so it does not ask it again
  */
-const SIDE_SUFFIXES = ['.json', '.offered', '.nudged', '.settled', '.turn', '.watermark', '.tz', '.wakeup', '.woke'];
+const SIDE_SUFFIXES = ['.json', '.offered', '.nudged', '.settled', '.turn', '.watermark', '.tz', '.wakeup', '.woke', '.compacted',
+  '.briefed'];
 const SIDE_FILE = new RegExp('^[0-9a-f][0-9a-f-]{7,}(?:' + SIDE_SUFFIXES.map((s) => s.replace('.', '\\.')).join('|') + ')$', 'i');
 const PLAN_FILE = /^[0-9a-f][0-9a-f-]{7,}\.json$/i;
 /* Plan lock directories (<plan>.lock), made with mkdir around a read-change-write. Writers give up on one older than

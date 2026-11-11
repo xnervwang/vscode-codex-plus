@@ -169,7 +169,7 @@ function threadOfCodexTab(vscode, patching, tab) {
  * (not in Restricted Mode), seen (src/seen.js) and log.
  */
 function createCodexSource(vscode, { log = () => {}, reader, patching = null, enabled = () => true, trusted = () => true,
-  seen = createSeen() } = {}) {
+  briefs = () => true, seen = createSeen() } = {}) {
   const changed = new vscode.EventEmitter();
   const focused = new vscode.EventEmitter();
   /* The row above the work plan, set by the extension (_setNotice): { title, description, detail, command, arguments }. */
@@ -326,7 +326,8 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
 
   const source = {
     protocol: PROTOCOL,
-    features: [],
+    /* ['brief'] while codexPlus.conversationBrief and codexPlus.workPlan are both on. */
+    get features() { return enabled() && briefs() ? ['brief'] : []; },
     id: 'codex',
     label: 'Codex',
     extensionId: EXTENSION_ID,
@@ -441,6 +442,9 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
       seen.markRead(sessionId);
       changed.fire();
     },
+    /* Called when codexPlus.conversationBrief or codexPlus.workPlan changes, so that Agent Plus lists the conversations
+       again and reads `features`. */
+    featuresChanged() { changed.fire(); },
     _poll: poll,
     wantState,
     /* For tests: the tab listener this source installed, without an editor to fire it. */

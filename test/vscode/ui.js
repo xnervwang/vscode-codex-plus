@@ -18,6 +18,8 @@
  *   a tab        a conversation resumed in a tab from the list: its title, then the dot on its logo during a turn sent
  *                through fake-model.js, and after the reply arrives while the tab is in the background
  *   Codex's page what the patch adds there: the time stamps, the rail, the buttons by the message box, the Agent map
+ *   the brief    a click on the conversation in Agent Plus's Conversations panel shows the brief its plan holds in the
+ *                Answer view; the arrow on its row and the page's button each go back to the conversation's tab
  *   the sidebar  a conversation resumed in Codex's sidebar: each reply's stamp inside its column
  *
  * Every step saves a screenshot to <out>/shots, and crops of the parts this extension draws are compared with the
@@ -538,6 +540,38 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       else note(`the window does not have the system's focus on ${process.platform}, so the reply stays unread, as it should; clearing the dot was not checked`);
       await shot('tab-dot-read');
       note('the blue dot of a turn waiting for approval is not made here: the made-up model sends replies only, never a command to approve');
+    });
+
+    await step('the brief', async () => {
+      if (!codex) throw new Error('the conversation did not open');
+      const plans = path.join(profile.codexHome, 'plugins', 'data', 'agent-work-plan-codex-extras');
+      fs.mkdirSync(plans, { recursive: true });
+      const at = new Date().toISOString().replace(/\.\d+Z$/, '+00:00');
+      const summary = 'Made up for the window test: the brief of this conversation.';
+      fs.writeFileSync(path.join(plans, `${threads[0].id}.json`), JSON.stringify({ nodes: [{ title: 'Check the brief', state: 'doing', since: at }],
+        brief: { summary, summaryAt: at, status: { doing: 'Showing the brief', progress: 'Written', next: 'none' }, statusAt: at } }));
+      await exec('agentPlus.refreshWorkPlan');
+      await exec('agentPlus.showConversations');
+      const row = page.locator('[id="workbench.parts.panel"] .monaco-list-row').filter({ hasText: title }).first();
+      check(await row.waitFor({ state: 'visible', timeout: 30000 }).then(() => true, () => false), 'the conversation is listed in Agent Plus\'s Conversations panel');
+      await row.click();
+      const brief = await frameWhere((want) => {
+        const b = document.getElementById('brief'), t = document.getElementById('btitle');
+        return !!b && b.style.display === 'flex' && !!t && t.textContent === want;
+      }, 30000, title);
+      const shown = brief && await brief.evaluate(() => document.getElementById('bsections').innerText);
+      check(!!brief && shown.includes(summary) && /Showing the brief/.test(shown), 'clicking it shows the brief its plan holds in the Answer view', shown);
+      await shot('conversation-brief');
+      await openNotes();
+      await row.hover();
+      const arrow = row.locator('.action-label[aria-label*="Go to the Conversation"]').first();
+      await arrow.click({ timeout: 10000 });
+      const back = await until(async () => { const t = (await tabs()).flatMap((g) => g.tabs).find((x) => x.active); return t && t.label === title && t; }, 15000, 500);
+      check(!!back, 'the arrow at the end of its row goes to the conversation\'s tab', await tabs());
+      await openNotes();
+      if (brief) await brief.locator('#bopen').click({ timeout: 10000 });
+      const again = await until(async () => { const t = (await tabs()).flatMap((g) => g.tabs).find((x) => x.active); return t && t.label === title && t; }, 15000, 500);
+      check(!!again, 'and so does the button at the top of the brief', await tabs());
     });
 
     await step('a conversation in Codex\'s sidebar', async () => {
