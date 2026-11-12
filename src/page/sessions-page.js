@@ -23,7 +23,7 @@
 
   const saved = host.getState() || {};
   const ui = {
-    collapsed: Object.assign({ closed: true }, saved.collapsed || {}),
+    collapsed: Object.assign({ closed: true, 'group:archived': true }, saved.collapsed || {}),
     status: Object.assign({}, saved.status || {}),
     active: !!saved.active,
     search: typeof saved.search === 'string' ? saved.search : '',
@@ -137,7 +137,7 @@
     acts.appendChild(rename);
     meta.append(time, acts);
     r.append(dot, title, goal, meta);
-    r._p = { dot, title, time, goal };
+    r._p = { dot, title, time, goal, acts };
     r._sig = '';
     r._mark = '';
     return r;
@@ -153,7 +153,7 @@
     r._place = place;
     const sig = `${row.id}\u0001${row.title}\u0001${row.time}\u0001${row.dot}\u0001${row.color}\u0001${row.grouped}\u0001${row.unread}`
       + `\u0001${row.goal || ''}\u0001${row.goalText || ''}\u0001${row.child ? 1 : 0}\u0001${row.parentTitle || ''}\u0001${row.nickname || ''}`
-      + `\u0001${row.here ? 1 : 0}\u0001${row.running || ''}`;
+      + `\u0001${row.here ? 1 : 0}\u0001${row.running || ''}\u0001${row.archived ? 1 : 0}`;
     if (sig === r._sig) return;
     r._sig = sig;
     r.dataset.id = row.id;
@@ -165,9 +165,13 @@
     setText(r._p.goal, GOAL_WORD[row.goal] || (row.goal ? 'goal' : ''));
     r._p.goal.classList.toggle('cp-hidden', !row.goal);
     r._p.goal.classList.toggle('cp-goal-active', row.goal === 'active');
+    /* An archived conversation is not renamed or moved into a group, as its menu offers neither. */
+    r._p.acts.classList.toggle('cp-hidden', !!row.archived);
+    if (!r._editing) r.draggable = !row.archived;
     /* What the row's right-click menu is chosen by, under the names the when clauses of LIST_MENU use. */
     r._ctx = { webviewSection: 'thread', threadId: row.id, codexPlusGrouped: !!row.grouped, codexPlusUnread: !!row.unread,
-      codexPlusGoal: row.goal || '', codexPlusGoalResumable: RESUMABLE.includes(row.goal), codexPlusOpenHere: !!row.here };
+      codexPlusGoal: row.goal || '', codexPlusGoalResumable: RESUMABLE.includes(row.goal), codexPlusOpenHere: !!row.here,
+      codexPlusArchived: !!row.archived };
   }
   /* The title, with the part the search matched marked, written only when that changed. */
   function markTitle(r) {
@@ -483,8 +487,10 @@
       const sub = m.submenu === 'color' ? colorItems(ids) : m.submenu === 'group' ? groupItems(ids) : null;
       if (sub && !sub.length) continue;
       let label = m.title;
-      if (m.rows === 'deletable') {
-        const n = (ids.length ? ids : [ctx.threadId]).filter((id) => { const rs = rowsOf(id); return rs.length > 0 && rs.every((r) => r._row && r._row.deletable); }).length;
+      /* Some items apply only to some rows, and `rows` names the row field that marks those. Such an item shows how
+         many of the chosen rows have it, and is left out when none has. */
+      if (m.rows) {
+        const n = (ids.length ? ids : [ctx.threadId]).filter((id) => { const rs = rowsOf(id); return rs.length > 0 && rs.every((r) => r._row && r._row[m.rows]); }).length;
         if (!n) continue;
         if (n > 1) label = String(m.plural || m.title).replace('{n}', String(n));
       }
@@ -722,14 +728,14 @@
     return all.find(onScreen) || all[0] || null;
   }
   function startRename(r) {
-    if (!r || r._editing) return;
+    if (!r || r._editing || r._row.archived) return;
     const id = r._row.id;
     expand(r);
     r._editing = true;
     r.draggable = false;
     editText(r._p.title, r._row.title, (title) => {
       r._editing = false;
-      r.draggable = true;
+      r.draggable = !r._row.archived;
       if (title) { r._row = Object.assign({}, r._row, { title }); send({ kind: 'rename', id, title }); }
       r._mark = '';
       markTitle(r);
@@ -917,9 +923,9 @@
   const dropImage = () => { if (dragImage) { dragImage.remove(); dragImage = null; } };
   root.addEventListener('dragstart', (e) => {
     const r = e.target.closest && e.target.closest('.cp-row');
-    if (!r || r._editing) return;
+    if (!r || r._editing || r._row.archived) return;
     hideHover();
-    const ids = selection.has(r._row.id) ? [...selection] : [r._row.id];
+    const ids = (selection.has(r._row.id) ? [...selection] : [r._row.id]).filter((id) => !rowsOf(id).some((x) => x._row && x._row.archived));
     dragging = ids;
     e.dataTransfer.setData(DRAG, JSON.stringify(ids));
     e.dataTransfer.effectAllowed = 'move';

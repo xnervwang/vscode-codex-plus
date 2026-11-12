@@ -4,7 +4,8 @@
 
 'use strict';
 /*
- * Delete in the session list's row menu.
+ * Delete in the menu of a row in Archived sessions. Only an archived conversation is deleted, as in Claude Code Plus;
+ * test/parts/35t-session-archive.js checks that a conversation that is not archived is left alone.
  */
 const fs = require('fs');
 const path = require('path');
@@ -31,7 +32,8 @@ module.exports = async ({ eq, tmp, root }) => {
 
   /* ── which rows the page may offer it for ── */
   const { SessionsModel } = require(path.join(root, 'src', 'sessions-view.js'));
-  const threads = [1, 2, 3, 4, 5, 6, 7, 8].map((n) => ({ id: ID(n), title: `t${n}`, kind: 'user', cwd: '/w', section: '', createdMs: 1, updatedMs: n }));
+  const threads = [1, 2, 3, 4, 5, 6, 7, 8].map((n) => ({ id: ID(n), title: `t${n}`, kind: 'user', cwd: '/w', section: '', archived: true,
+    createdMs: 1, updatedMs: n }));
   const looks = { [ID(3)]: 'working', [ID(4)]: 'prompt', [ID(5)]: 'idle', [ID(6)]: 'unread' };
   const model = new SessionsModel(vscode, { memory: { openThreads: () => [ID(1)], recentlyClosed: () => [], frontAt: () => 0 }, memento: fake.memento(),
     reader: { threads: () => threads, sections: () => new Map(), state: (id) => (id === ID(7) ? null : {}), thread: () => null },
@@ -65,6 +67,7 @@ module.exports = async ({ eq, tmp, root }) => {
   const home = tmp('home');
   const now = Date.now();
   const spawn = (parent, nickname) => JSON.stringify({ subagent: { thread_spawn: { parent_thread_id: parent, depth: 1, agent_nickname: nickname } } });
+  /* All archived, as Delete is offered only in Archived sessions; Codex archives a conversation's sub-agents with it. */
   fixture.codexHome(home, [
     { id: ID(1), title: 'First', cwd: home, turns: [{}] },
     { id: ID(2), title: 'Second', cwd: home, turns: [{}] },
@@ -77,7 +80,7 @@ module.exports = async ({ eq, tmp, root }) => {
     { id: ID(9), title: 'Late', cwd: home, turns: [{}] },
     { id: ID(10), title: 'Refused', cwd: home, turns: [{}] },
     { id: ID(11), title: 'Gone already', cwd: home, turns: [{}] },
-  ]);
+  ].map((t) => ({ ...t, archived: true })));
   const planDir = path.join(home, 'plugins', 'data', 'agent-work-plan-codex-extras');
   fs.mkdirSync(planDir, { recursive: true });
   for (const n of [1, 2, 6, 10, 11]) fs.writeFileSync(path.join(planDir, `${ID(n)}.json`), JSON.stringify({ nodes: [] }));

@@ -43,6 +43,7 @@ const skillsConfig = require('./src/skills-config');
 const contextWindow = require('./src/context-window');
 const codexManifest = require('./src/manifest');
 const tokenMode = require('./src/token-mode');
+const archiveSweep = require('./src/archive-sweep');
 
 const CONFIG = 'codexPlus';
 /* This copy's id and folder, kept for deactivate, which runs after the editor's API is gone. */
@@ -53,6 +54,8 @@ let log = null;
 let reader = null;
 /* The memento that remembers "Remove the Patch" (patching.PATCH_REMOVED_KEY) until Turn On or Toggle. */
 let memento = null;
+/* Deletes conversations archived longer than codexPlus.deleteArchivedAfterDays (src/archive-sweep.js). */
+let archiveSweeper = null;
 
 function cfg() { return vscode.workspace.getConfiguration(CONFIG); }
 /* Whether a feature that adds to Codex's context runs: its own setting in the Custom token mode, the mode's table in the
@@ -160,6 +163,31 @@ async function askAppServer(method, params, { fallback = true } = {}) {
     const result = await require('./src/appserver').withAppServer(binary, files.codexHome(), (server) => server.request(method, params));
     return { outcome: 'done', result };
   } catch (e) { return { outcome: 'failed', reason: e.message }; }
+}
+
+/*
+ * Like askAppServer, for several requests in turn. Before the patch has handed Codex's connection over, the remaining
+ * ones share a single short-lived app-server instead of starting one each. Resolves to the answers in order.
+ */
+async function askAppServerEach(requests) {
+  const out = [];
+  for (const [method, params] of requests) {
+    const r = await patching.hostRequest(method, params);
+    if (r.outcome === 'unavailable') break;
+    out.push(r);
+  }
+  const rest = requests.slice(out.length);
+  if (!rest.length) return out;
+  const binary = codexProgram();
+  if (!binary) return out.concat(rest.map(() => ({ outcome: 'failed', reason: 'the codex program of the Codex extension was not found' })));
+  try {
+    await require('./src/appserver').withAppServer(binary, files.codexHome(), async (server) => {
+      for (const [method, params] of rest) {
+        try { out.push({ outcome: 'done', result: await server.request(method, params) }); } catch (e) { out.push({ outcome: 'failed', reason: e.message }); }
+      }
+    });
+  } catch (e) { while (out.length < requests.length) out.push({ outcome: 'failed', reason: e.message }); }
+  return out;
 }
 
 /*
@@ -275,7 +303,7 @@ async function activate(context) {
      running an older build than the installed one leaves this scan to the windows running the installed build. */
   const source = createCodexSource(vscode, { log: say, reader, patching, trusted, enabled: () => runs('workPlan'),
     briefs: () => runs('conversationBrief'), seen: createSeen(context.globalState),
-    scanLeft: () => !standsDown() && settings().enabled !== false });
+    scanLeft: () => !standsDown() && settings().enabled !== false, onPoll: () => { if (archiveSweeper) archiveSweeper.tick(); } });
   context.subscriptions.push(source);
   planSource = source;
   /* The user's time zone, as Codex's page reported it through the patch. */
@@ -319,7 +347,8 @@ async function activate(context) {
   sessionsModel = new SessionsModel(vscode, { memory, memento: context.globalState, settings, reader,
     stateOf: (id) => lastConversations.get(id), wantState: (ids) => source.wantState(ids),
     sidebarShowing: () => patching.sidebarShowing(), sections: () => new Map(groups.list()),
-    account: () => account.view(), front: frontNow, noGroups: () => groups.supported() === false });
+    account: () => account.view(), front: frontNow, noGroups: () => groups.supported() === false,
+    archivedAt: (id) => (archiveSweeper ? archiveSweeper.seenAt(id) : 0) });
   /* Once the list is visible, check for the section methods over Codex's own connection, never through a short-lived
      app-server. The group items stay in the list's menus until Codex answers. */
   let sessionsView = null;
@@ -451,6 +480,7 @@ async function activate(context) {
         if (r.deleted) say(`removed ${r.deleted} plan file(s) of conversations that no longer exist`);
         else if (r.why) say(`plan cleanup: ${r.why}`);
       }).catch((e) => say(`plan cleanup: ${e.message}`));
+      if (archiveSweeper) archiveSweeper.start();
     }, 60000);
     try {
       patching.activate(context, { vscode, log: say, codexProgram, source, context, settings, onTimeZone: reportTimeZone,
@@ -860,6 +890,8 @@ function registerCommands(context, { source, memory, sessionsModel, sessionsView
     while (reader.busy) await reader.busy;
     await reader.refresh({ home: files.codexHome(), extra: ids, force: true });
   };
+  /* Which conversations are archived is known only from a snapshot, so a command that picks by it waits for the first. */
+  const snapshotIn = async () => { if (!reader.threads()) await readNow([]); };
   /* A turn running or waiting for the user. A rollout that could not be read counts as running. */
   const busyNow = (id) => {
     if (!reader.present(id)) return false;
@@ -883,9 +915,20 @@ function registerCommands(context, { source, memory, sessionsModel, sessionsView
     if (fs.existsSync(path.join(dir, `${id}.wakeup`))) what += ', the wake-up';
     return `${what} (${sizeText(bytes)})`;
   };
+  /* Removes Codex Plus's own data for conversations Codex has deleted: their side files in the plans' folder, title
+     colours and rows in Recently closed. Resolves to the files that could not be removed. */
+  const forgetDeleted = async (ids) => {
+    const stuck = workplan.removeSideFiles(install.planDir(files.codexHome()), ids);
+    try { await sessionsModel.setColor(ids, null); } catch (_) { /* the colours stay; nothing shows them */ }
+    try { await memory.forget(ids); } catch (_) { /* Recently closed keeps the row until it drops off */ }
+    return stuck;
+  };
+  const named = (list) => list.map((b) => `"${b.title}"${b.by ? ` (its sub-agent "${b.by}")` : ''}`).join(', ');
+  /* Only an archived conversation is deleted, as in Claude Code Plus, where Delete is in the Archived sessions menu. */
   reg('deleteThread', async (arg, selected) => {
     if (!threadArg(arg) || restricted()) return;
-    const want = chosen(arg, selected).filter((id) => files.THREAD_ID.test(id));
+    await snapshotIn();
+    const want = chosen(arg, selected).filter((id) => files.THREAD_ID.test(id) && !(reader.thread(id) && !reader.thread(id).archived));
     if (!want.length) return;
     if (!openNow()) {
       vscode.window.showWarningMessage('Not deleted: this window could not tell which conversations are open, so none was deleted.');
@@ -902,7 +945,6 @@ function registerCommands(context, { source, memory, sessionsModel, sessionsView
       else if (!reader.thread(id) || !reader.present(id)) gone++;
       else { const subs = subAgentsOf(id); go.push({ id, title: nameOf(id), subs, what: describe(id, subs) }); }
     }
-    const named = (list) => list.map((b) => `"${b.title}"${b.by ? ` (its sub-agent "${b.by}")` : ''}`).join(', ');
     if (!go.length) {
       vscode.window.showInformationMessage(busy.length ? `Not deleted: ${named(busy)} ${busy.length === 1 ? 'is' : 'are'} open or running.`
         : `Nothing of ${gone > 1 ? 'those conversations' : 'that conversation'} is left on disk.`);
@@ -934,15 +976,10 @@ function registerCommands(context, { source, memory, sessionsModel, sessionsView
         refused.push(`"${g.title}" (${g.id}): ${r.outcome === 'sent' ? 'Codex did not answer' : r.reason}`);
         continue;
       }
-      const ids = [g.id, ...g.subs];
-      deleted.push(...ids);
-      stuck.push(...workplan.removeSideFiles(install.planDir(files.codexHome()), ids));
+      deleted.push(g.id, ...g.subs);
       say(already ? `"${g.title}" (${g.id}) was already gone from Codex; what Codex Plus kept for it is removed` : `Deleted "${g.title}" (${g.id}): ${g.what}`);
     }
-    if (deleted.length) {
-      try { await sessionsModel.setColor(deleted, null); } catch (_) { /* the colours stay; nothing shows them */ }
-      try { await memory.forget(deleted); } catch (_) { /* Recently closed keeps the row until it drops off */ }
-    }
+    if (deleted.length) stuck.push(...await forgetDeleted(deleted));
     source._poll({ tell: true });
     if (refused.length) {
       say(`Could not delete:\n  ${refused.join('\n  ')}`);
@@ -952,6 +989,85 @@ function registerCommands(context, { source, memory, sessionsModel, sessionsView
       say(`Could not remove what Codex Plus kept for a deleted conversation:\n  ${stuck.join('\n  ')}`);
       if (!refused.length) vscode.window.showWarningMessage(`${stuck.length} file${stuck.length === 1 ? '' : 's'} could not be deleted; the output "Codex Plus" lists them.`);
     }
+  });
+  /* Sends `method` for each of `ids`, then has the list read Codex's files again. A refusal matching `already` means it
+     was done already, from another window say. */
+  const sendEach = async (doing, method, ids, already) => {
+    const answers = await askAppServerEach(ids.map((id) => [method, { threadId: id }]));
+    const refused = [];
+    ids.forEach((id, i) => {
+      const r = answers[i];
+      if (r.outcome === 'done' || (r.outcome === 'failed' && already.test(r.reason || ''))) return;
+      refused.push(`"${nameOf(id)}" (${id}): ${r.outcome === 'sent' ? 'Codex did not answer' : r.reason}`);
+    });
+    if (ids.length) source._poll({ tell: true });
+    if (!refused.length) return;
+    say(`Could not ${doing}:\n  ${refused.join('\n  ')}`);
+    vscode.window.showWarningMessage(`${refused.length} conversation${refused.length === 1 ? '' : 's'} could not be ${doing}d; the output "Codex Plus" lists them.`);
+  };
+  /*
+   * Archive is offered for an open conversation, as Claude Code's list offers it. Codex moves the rollout to
+   * archived_sessions/ and archives the sub-agents along with it. Unlike Claude Code, it also stops a running turn, so a
+   * conversation that is running, or has a sub-agent running, is left as it is.
+   */
+  reg('archiveThread', async (arg, selected) => {
+    if (!threadArg(arg) || restricted()) return;
+    await snapshotIn();
+    const want = chosen(arg, selected).filter((id) => files.THREAD_ID.test(id) && reader.thread(id) && !reader.thread(id).archived);
+    if (!want.length) return;
+    await readNow([...new Set(want.flatMap((id) => [id, ...subAgentsOf(id)]))]);
+    const busy = [], go = [];
+    for (const id of want) {
+      const by = [id, ...subAgentsOf(id)].find((x) => busyNow(x));
+      if (by) busy.push({ id, title: nameOf(id), by: by === id ? '' : nameOf(by) });
+      else go.push(id);
+    }
+    if (busy.length) {
+      const one = busy.length === 1;
+      vscode.window.showInformationMessage(`Not archived: ${named(busy)} ${one ? 'is' : 'are'} running, and archiving ${one ? 'it' : 'them'} `
+        + `would stop ${one ? 'its turn' : 'their turns'}.`);
+    }
+    await sendEach('archive', 'thread/archive', go, /^no rollout found for thread id/);
+  });
+  reg('unarchiveThread', async (arg, selected) => {
+    if (!threadArg(arg) || restricted()) return;
+    await snapshotIn();
+    const want = chosen(arg, selected).filter((id) => files.THREAD_ID.test(id) && (reader.thread(id) || {}).archived);
+    await sendEach('unarchive', 'thread/unarchive', want, /^no archived rollout found for thread id/);
+  });
+  /* The daily pass over archived conversations (src/archive-sweep.js), with the same checks Delete makes. */
+  archiveSweeper = archiveSweep.createArchiveSweep({
+    dir: () => path.join(context.globalStorageUri.fsPath, 'archive-sweep'),
+    home: () => files.codexHome(),
+    days: () => cfg().get('deleteArchivedAfterDays', 30),
+    threads: () => reader.threads(),
+    check: () => (!context.globalStorageUri ? 'there is no storage folder' : !trusted() ? 'the workspace is not trusted'
+      : standsDown() ? 'this window runs a replaced build of Codex Plus' : ''),
+    hold: async (ids) => {
+      if (!openNow()) return null;
+      await readNow([...new Set(ids.flatMap((id) => [id, ...subAgentsOf(id)]))]);
+      const open = openNow();
+      return open ? new Set(ids.filter((id) => [id, ...subAgentsOf(id)].some((x) => open.has(x) || busyNow(x)))) : null;
+    },
+    remove: async (list) => {
+      const subs = new Map(list.map((t) => [t.id, subAgentsOf(t.id)]));
+      const titles = new Map(list.map((t) => [t.id, nameOf(t.id)]));
+      const answers = await askAppServerEach(list.map((t) => ['thread/delete', { threadId: t.id }]));
+      const deleted = [], failed = [], gone = [];
+      list.forEach((t, i) => {
+        const r = answers[i];
+        if (r.outcome !== 'done' && !(r.outcome === 'failed' && /^no rollout found for thread id/.test(r.reason || ''))) {
+          failed.push(`"${titles.get(t.id)}" (${t.id}): ${r.outcome === 'sent' ? 'Codex did not answer' : r.reason}`);
+          return;
+        }
+        deleted.push({ id: t.id, title: titles.get(t.id) });
+        gone.push(t.id, ...subs.get(t.id));
+      });
+      if (gone.length) failed.push(...await forgetDeleted(gone));
+      if (list.length) source._poll({ tell: true });
+      return { deleted, failed };
+    },
+    log: say,
   });
   /*
    * Messages from the session list's page, each handled like the matching command: a row clicked, New in tab, New in
@@ -973,14 +1089,14 @@ function registerCommands(context, { source, memory, sessionsModel, sessionsView
     else if (msg.kind === 'rename' && id && typeof msg.title === 'string') {
       const was = (reader.thread(id) || {}).title || '';
       const title = msg.title.replace(/\s+/g, ' ').trim();
-      if (title && title !== was && !restricted()) await changeThread('rename it', 'thread/name/set', { threadId: id, name: title });
+      if (title && title !== was && !(reader.thread(id) || {}).archived && !restricted()) await changeThread('rename it', 'thread/name/set', { threadId: id, name: title });
     } else if (msg.kind === 'renameGroup' && typeof msg.name === 'string') {
       const sec = sectionArg({ groupKey: msg.key });
       const name = msg.name.trim();
       if (sec && name && name !== (reader.sections().get(sec) || '') && !restricted()) done('rename the group', await groups.rename(sec, name));
     } else if (msg.kind === 'move' && Array.isArray(msg.ids) && typeof msg.key === 'string') {
       const sec = msg.key === 'ungrouped' ? null : sectionArg({ groupKey: msg.key });
-      const ids = msg.ids.filter((x) => typeof x === 'string' && (reader.thread(x) || {}).section !== (sec || ''));
+      const ids = msg.ids.filter((x) => typeof x === 'string' && !(reader.thread(x) || {}).archived && (reader.thread(x) || {}).section !== (sec || ''));
       if ((sec || msg.key === 'ungrouped') && ids.length && !restricted() && await groupsHere()) done('move it', await groups.move(ids, sec));
     }
   };
@@ -1192,6 +1308,7 @@ function deactivate() {
 /* `_settings` is for the tests: the master switch only works if every part reads its settings from settings(), with the
    switch already applied, and the tests check that table directly.
    `_ensurePlugin` (the start-up install of the plugin) and `_reopenDropped` (reopening dropped tabs) run after a delay
-   during activation, so the tests call them directly. `_tokenModeLine` is Show Status's line for the token mode. */
+   during activation, so the tests call them directly. `_tokenModeLine` is Show Status's line for the token mode.
+   `_sweepArchived` runs the pass over archived conversations that activation starts a minute in. */
 module.exports = { activate, deactivate, _settings: settings, _ensurePlugin: ensurePlugin, _reopenDropped: reopenDropped,
-  _tokenModeLine: tokenModeLine };
+  _tokenModeLine: tokenModeLine, _sweepArchived: () => (archiveSweeper ? archiveSweeper.run() : Promise.resolve(null)) };

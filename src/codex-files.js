@@ -167,6 +167,8 @@ function normalizeThread(r) {
     model: r.model || '',
     effort: r.reasoning_effort || '',
     archived: !!+r.archived,
+    /* archived_at is in seconds, as Codex writes it when it archives a thread; 0 when it is not set. */
+    archivedMs: Number.isFinite(+r.archived_at) && +r.archived_at > 0 ? +r.archived_at * 1000 : 0,
     pinned: !!+r.is_pinned,
     section: r.thread_section_id || '',
     branch: r.git_branch || '',
@@ -194,7 +196,7 @@ function threadsFromIndex(home) {
     const t = Date.parse(r.updated_at) || 0;
     byId.set(r.id, { id: r.id, rollout: '', createdMs: t, updatedMs: t, source: '', kind: 'user', parent: '',
       nickname: '', cwd: '', title: String(r.thread_name || ''), tokens: 0, model: '', effort: '', archived: false,
-      pinned: false, section: '', branch: '', originator: '' });
+      archivedMs: 0, pinned: false, section: '', branch: '', originator: '' });
   }
   return [...byId.values()].sort((a, b) => b.updatedMs - a.updatedMs);
 }

@@ -405,11 +405,13 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await shot('session-row-grouped');
     });
 
-    /* Delete the made-up conversation that no other step uses: cancel the first confirmation, accept the second. */
-    await step('delete', async () => {
+    /* The made-up conversation that no other step uses is archived, unarchived and archived again, then deleted from
+       Archived sessions: the first confirmation is cancelled and the second accepted. */
+    await step('archive and delete', async () => {
       if (!list) throw new Error('the session list did not open');
       const t = threads[2];
-      const rollouts = () => fs.readdirSync(path.join(profile.codexHome, 'sessions'), { recursive: true }).filter((n) => String(n).includes(t.id));
+      const under = (top) => { try { return fs.readdirSync(path.join(profile.codexHome, top), { recursive: true }).filter((n) => String(n).includes(t.id)); } catch (_) { return []; } };
+      const rollouts = () => [...under('sessions'), ...under('archived_sessions')];
       const dialog = () => page.evaluate(() => {
         const d = [...document.querySelectorAll('.monaco-dialog-box')].find((e) => e.offsetParent);
         if (!d) return null;
@@ -419,7 +421,21 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       });
       const press = (label) => page.locator('.monaco-dialog-box .dialog-buttons .monaco-button').filter({ hasText: label }).first().click({ timeout: 5000 });
       const listed = () => list.evaluate((id) => !!document.querySelector(`.cp-row[data-id="${id}"]`), t.id);
-      check(rollouts().length === 1 && await listed(), 'the conversation to delete is listed and has its rollout in the made-up Codex home', rollouts());
+      const shelved = () => list.evaluate((id) => !!document.querySelector(`.cp-group[data-key="archived"] .cp-row[data-id="${id}"]`), t.id);
+      const shelfOpen = () => list.evaluate(() => { const g = document.querySelector('.cp-group[data-key="archived"]'); return g ? g.classList.contains('cp-open') : null; });
+      check(under('sessions').length === 1 && await listed(), 'the conversation to archive is listed and has its rollout in the made-up Codex home', rollouts());
+      retried(await pick(t, ['Codex Plus: Archive']), 'Archive');
+      const archived = await until(async () => await shelved() && under('archived_sessions').length === 1 && under('sessions').length === 0, 30000, 500);
+      check(!!archived, 'Archive puts it in Archived sessions, and Codex moves its rollout to archived_sessions/', { rollouts: rollouts(), toasts: await toasts() });
+      check(await shelfOpen() === false, 'Archived sessions is drawn collapsed until it is opened', await shelfOpen());
+      await list.locator('.cp-group[data-key="archived"] .cp-group-head').first().click();
+      await until(async () => await shelfOpen() === true, 5000, 200);
+      await shot('archived-sessions');
+      retried(await pick(t, ['Codex Plus: Unarchive']), 'Unarchive');
+      const back = await until(async () => !await shelved() && await listed() && under('sessions').length === 1, 30000, 500);
+      check(!!back, 'Unarchive puts it back among the others, and its rollout back under sessions/', { rollouts: rollouts(), toasts: await toasts() });
+      retried(await pick(t, ['Codex Plus: Archive']), 'Archive');
+      if (!await until(shelved, 30000, 500)) throw new Error('the second Archive did not put it in Archived sessions');
       retried(await pick(t, ['Codex Plus: Delete Conversation...']), 'Delete Conversation...');
       const asked = await until(dialog, 15000, 300);
       if (!asked) {

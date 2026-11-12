@@ -154,10 +154,10 @@ module.exports = async ({ ok, bad, eq, tmp }) => {
   const inWs = (cwd) => cwd === inside;
   const shaped = group([thread(1, inside), thread(2, outsideA), thread(5, inside, { archived: true })],
     { open: [], closed: [], cwdFilter: inWs });
-  eq(shaped.map((g) => g.label), ['Recently closed', 'Open sessions', 'Ungrouped'],
+  eq(shaped.map((g) => g.label), ['Recently closed', 'Open sessions', 'Ungrouped', 'Archived sessions'],
     'the group names are the ones Claude Code\'s session list uses, in its order');
-  eq(shaped.filter((g) => !g.expanded).map((g) => g.label), ['Recently closed'],
-    'the one a reader opens only when looking for something starts collapsed');
+  eq(shaped.filter((g) => !g.expanded).map((g) => g.label), ['Recently closed', 'Archived sessions'],
+    'the ones a reader opens only when looking for something start collapsed');
 
   /* ── an empty Open sessions is left out, as Claude Code Plus leaves it out ── */
   const bare = new SessionsModel(vscode, { memory: stubMemory(), memento: fake.memento(), reader: stubReader([thread(1, inside)]),
@@ -191,8 +191,8 @@ module.exports = async ({ ok, bad, eq, tmp }) => {
   const kept = group([thread(1, inside)], { open: [], closed: closedList });
   eq(kept.find((g) => g.key === 'closed').threads.map((t) => t.title), ['closed one'],
     'a conversation closed here is listed by the title it was closed under, even with no thread row left for it');
-  eq(group([thread(5, inside, { archived: true })], { open: [], closed: [] }).flatMap((g) => g.threads).length, 0,
-    'an archived conversation is not listed anywhere');
+  eq(group([thread(5, inside, { archived: true })], { open: [], closed: [] }).filter((g) => g.threads.length).map((g) => g.key), ['archived'],
+    'an archived conversation is listed in Archived sessions and nowhere else');
 
   ok('the session list was checked against real directories and a symbolic link');
   /*

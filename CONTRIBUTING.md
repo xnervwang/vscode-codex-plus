@@ -13,6 +13,7 @@
 - `src/workplan.js`: plan files: the states and limits they share with the plugin and Agent Plus, and the sweep of plans whose conversation is gone.
 - `src/logo-dot.js`: Codex's logo with a state dot, for the tab icons.
 - `src/sessions-view.js`, `src/tab-memory.js`, `src/session-info.js`, `src/session-groups.js`: the Codex sessions view (its model and the webview view), recently closed and dropped tabs, session information, the groups (Codex's sections) and their order; `src/account-usage.js`: Account & usage.
+- `src/archive-sweep.js`: deleting the conversations archived longer than `codexPlus.deleteArchivedAfterDays`, by one window a day, with its state file and lock folder in this extension's global storage.
 - `src/agent-map.js`: each conversation's Agent map (its wake-up, goal and sub-agents) from the snapshot, which the page script draws as Claude Code's pill and dialog; `src/wakeup.js` lists the wake-ups for the worker and removes one.
 - `src/page/sessions-page.js`, `src/page/sessions-page.css`: the page the Codex sessions view draws, from the model the host sends it; `test/render/lib/sessions-scene.js` draws it in the render check.
 - `src/appserver.js`: a short-lived `codex app-server` client.
@@ -82,6 +83,8 @@ What bounds a single pass:
 | `HELD_MAX` (`src/codex-reader.js`) | 200 | Conversation states retained after an on-demand read |
 | `SUBAGENT_WINDOW_MS` (`src/codex-worker.js`) | 2 hours | Sub-agents updated this recently have their rollout read, so their conversation can show one of them still running |
 | `LEFT_EVERY_MS` (`src/left-running.js`) | 10 s | Shortest time between two scans for what conversations left running; each scan reads /proc and Claude Code's session records once |
+| `DAY_MS` (`src/archive-sweep.js`) | 1 day | How often a window tries the pass that deletes old archived conversations, checked on the poll rather than on a timer; the pass reads the snapshot and one small state file, and only the window holding the lock runs it |
+| `RETRY_MS` (`src/archive-sweep.js`) | 1 hour | How soon a window tries that pass again after one it could not run: another window held the lock, or which conversations are open was not known |
 | `LAUNCH_TAIL` (`src/left-running.js`) | 8 MB | How much of a rollout's end the first read for `claude --bg` launches covers; later reads take only what was appended. A rollout is read for this only while such a session is busy |
 
 What a change must not break:

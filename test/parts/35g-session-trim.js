@@ -6,9 +6,9 @@
 /*
  * Which groups the session list draws, compared with Claude Code's list and Claude Code Plus. There is no Pinned group:
  * Codex sets no pin flag the list could show, and it deletes nothing old, so a pin would protect nothing. There is no
- * Background group. There is no Archived sessions group: Codex never archives or deletes on its own, and VS Code's Codex
- * has no page that lists archived conversations, so the list cannot archive either. Rows carry the two hover lines, Open
- * sessions is hidden while empty, and a group the user made is drawn even when empty.
+ * Background group. Archived sessions is there, last, as in Claude Code's list: it is where an archived conversation can
+ * be seen again, unarchived or deleted (test/parts/35t-session-archive.js). Rows carry the two hover lines, Open sessions
+ * is hidden while empty, and a group the user made is drawn even when empty.
  */
 const fs = require('fs');
 const path = require('path');
@@ -31,18 +31,19 @@ module.exports = async ({ eq, root }) => {
   const keys = (gs) => gs.map((g) => `${g.key}:${g.threads.map((x) => x.title).join('|')}`);
 
   eq(keys(group(threads, { sections })),
-    ['closed:', 'open:', `section:${PINNED_SECTION}:t6`, 'section:sec-a:t5', 'section:sec-empty:', 'ungrouped:t1|t2'],
-    'no Pinned group of its own, no Archived sessions, no Background; Codex\'s built-in Pinned section only as a group holding what is in it');
+    ['closed:', 'open:', `section:${PINNED_SECTION}:t6`, 'section:sec-a:t5', 'section:sec-empty:', 'ungrouped:t1|t2', 'archived:t4'],
+    'no Pinned group of its own and no Background, Archived sessions last; Codex\'s built-in Pinned section only as a group holding what is in it');
   eq(keys(group(threads.filter((x) => x.section !== PINNED_SECTION), { sections })),
-    ['closed:', 'open:', 'section:sec-a:t5', 'section:sec-empty:', 'ungrouped:t1|t2'], 'an empty built-in Pinned section is not drawn');
-  eq(keys(group(threads, { sections, hideBackground: false })).pop(), 'ungrouped:t1|t2|t3',
+    ['closed:', 'open:', 'section:sec-a:t5', 'section:sec-empty:', 'ungrouped:t1|t2', 'archived:t4'], 'an empty built-in Pinned section is not drawn');
+  eq(keys(group(threads, { sections, hideBackground: false })).find((k) => k.startsWith('ungrouped:')), 'ungrouped:t1|t2|t3',
     'with the background filter off, Codex\'s own threads are listed among the rest, as Claude Code has no group for them');
 
   const provider = new SessionsModel(vscode, { memory: { openThreads: () => [], recentlyClosed: () => [], frontAt: () => 0 }, memento: fake.memento(),
     reader: { threads: () => threads, sections: () => sections, state: () => null, thread: () => null }, stateOf: () => null,
     settings: () => ({ recentClosedSessions: 10, hideBackgroundSessions: true }) });
   const m = provider.model();
-  eq([m.closed.length, m.open.length, m.groups.map((g) => g.key)], [0, 0, [`section:${PINNED_SECTION}`, 'section:sec-a', 'section:sec-empty', 'ungrouped']],
+  eq([m.closed.length, m.open.length, m.groups.map((g) => g.key)],
+    [0, 0, [`section:${PINNED_SECTION}`, 'section:sec-a', 'section:sec-empty', 'ungrouped', 'archived']],
     'with nothing open and nothing closed, neither Open sessions nor Recently closed has a row, and the empty group made by the user is drawn');
   eq(m.groups.find((g) => g.key === 'section:sec-empty').rows.length, 0, 'with no rows, so the page counts its nought, as Claude Code\'s does');
   const rowOf = (key) => m.groups.find((g) => g.key === key).rows[0];
@@ -50,6 +51,7 @@ module.exports = async ({ eq, root }) => {
     [['Ungrouped', ID(1)], ['Alpha', ID(5)]], 'each row carries its group and its session ID, which the page\'s hover shows in Claude Code Plus\'s two lines');
 
   const all = Object.values(pkg.contributes.menus).flat().map((m) => m.command).concat(pkg.contributes.commands.map((c) => c.command));
-  eq(['codexPlus.archiveThread', 'codexPlus.unarchiveThread', 'codexPlus.deleteArchivedThread'].filter((c) => all.includes(c)), [],
-    'Archive, Unarchive and Delete Conversation are gone, since nothing could bring an archived conversation back into sight');
+  eq(['codexPlus.archiveThread', 'codexPlus.unarchiveThread', 'codexPlus.deleteThread', 'codexPlus.deleteArchivedThread'].map((c) => all.includes(c)),
+    [true, true, true, false], 'Archive and Unarchive are commands, since Archived sessions shows what is archived, and Delete is a single '
+      + 'command offered only there');
 };

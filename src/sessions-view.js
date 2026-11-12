@@ -11,11 +11,14 @@
  *   RECENTLY CLOSED       tabs closed in this workspace, newest first (collapsed)
  *   OPEN SESSIONS         this window's Codex tabs and the conversation in Codex's sidebar, last focused first
  *   SESSION MANAGER       New in tab and New in sidebar, the filter row, then the groups (Codex's sections,
- *                         src/session-groups.js) and Ungrouped
+ *                         src/session-groups.js), Ungrouped and Archived sessions (collapsed)
  *
  * Groups the user made are drawn even when empty, so a new one can take conversations dropped on it; the other groups,
- * Codex's built-in Pinned section included, are hidden while empty. Archived conversations are not listed: VS Code's
- * Codex has no page that lists them, so the list does not archive either.
+ * Codex's built-in Pinned section and Archived sessions included, are hidden while empty.
+ *
+ * Archived sessions holds the conversations Codex has archived, from this list or from Codex itself, most recently
+ * archived first. As in Claude Code's list, a conversation is archived from the other groups and deleted only from this
+ * one; src/archive-sweep.js deletes those archived longer than codexPlus.deleteArchivedAfterDays.
  *
  * Like Claude Code's list, it holds this workspace's conversations only, and every conversation in a window with no
  * folder open. The workspace filter compares real paths (src/folders.js): the same directory reached through a symbolic
@@ -61,16 +64,21 @@ const COMMAND_TITLES = new Map(require('../package.json').contributes.commands.m
 const LIST_MENU = [
   ['codexPlus.openThreadInTab', '1_open@1', "webviewSection == 'thread' && !codexPlusOpenHere"],
   ['codexPlus.openThreadInSidebar', '1_open@2', "webviewSection == 'thread' && !codexPlusOpenHere"],
-  ['codexPlus.moveThreadToSection', '2_group@2', "webviewSection == 'thread' && !codexPlus.noGroups", 'group'],
-  ['codexPlus.removeFromGroup', '2_group@3', "webviewSection == 'thread' && codexPlusGrouped"],
-  ['codexPlus.markThreadUnread', '3_read@1', "webviewSection == 'thread' && !codexPlusUnread"],
-  ['codexPlus.markThreadRead', '3_read@1', "webviewSection == 'thread' && codexPlusUnread"],
-  ['codexPlus.renameThread', '4_edit@1', "webviewSection == 'thread'"],
+  ['codexPlus.moveThreadToSection', '2_group@2', "webviewSection == 'thread' && !codexPlusArchived && !codexPlus.noGroups", 'group'],
+  ['codexPlus.removeFromGroup', '2_group@3', "webviewSection == 'thread' && !codexPlusArchived && codexPlusGrouped"],
+  ['codexPlus.markThreadUnread', '3_read@1', "webviewSection == 'thread' && !codexPlusArchived && !codexPlusUnread"],
+  ['codexPlus.markThreadRead', '3_read@1', "webviewSection == 'thread' && !codexPlusArchived && codexPlusUnread"],
+  ['codexPlus.renameThread', '4_edit@1', "webviewSection == 'thread' && !codexPlusArchived"],
   ['codexPlus.setTitleColor', '5_look@1', "webviewSection == 'thread'", 'color'],
-  ['codexPlus.pauseGoal', '6_goal@2', "webviewSection == 'thread' && codexPlusGoal == 'active'"],
-  ['codexPlus.resumeGoal', '6_goal@3', "webviewSection == 'thread' && codexPlusGoalResumable"],
-  ['codexPlus.clearGoal', '6_goal@4', "webviewSection == 'thread' && codexPlusGoal"],
-  ['codexPlus.deleteThread', '9_delete@1', "webviewSection == 'thread'", null, { rows: 'deletable', plural: 'Codex Plus: Delete {n} Conversations...' }],
+  ['codexPlus.pauseGoal', '6_goal@2', "webviewSection == 'thread' && !codexPlusArchived && codexPlusGoal == 'active'"],
+  ['codexPlus.resumeGoal', '6_goal@3', "webviewSection == 'thread' && !codexPlusArchived && codexPlusGoalResumable"],
+  ['codexPlus.clearGoal', '6_goal@4', "webviewSection == 'thread' && !codexPlusArchived && codexPlusGoal"],
+  ['codexPlus.archiveThread', '8_archive@1', "webviewSection == 'thread' && !codexPlusArchived", null,
+    { rows: 'archivable', plural: 'Codex Plus: Archive {n} Conversations' }],
+  ['codexPlus.unarchiveThread', '8_archive@2', "webviewSection == 'thread' && codexPlusArchived", null,
+    { rows: 'archived', plural: 'Codex Plus: Unarchive {n} Conversations' }],
+  ['codexPlus.deleteThread', '9_delete@1', "webviewSection == 'thread' && codexPlusArchived", null,
+    { rows: 'deletable', plural: 'Codex Plus: Delete {n} Conversations...' }],
   ['codexPlus.newThreadInGroup', '1_new@1', "webviewSection == 'group' && codexPlusMade && !codexPlus.noGroups"],
   ['codexPlus.newGroup', '1_new@2', "webviewSection == 'group' && !codexPlus.noGroups"],
   ['codexPlus.renameGroup', '2_group@1', "webviewSection == 'group' && codexPlusMade && !codexPlus.noGroups"],
@@ -149,20 +157,27 @@ function chatFont(get) {
   return { family: family === 'default' ? CHAT_FAMILY : family, size: size > 0 ? size : 13 };
 }
 
-/** Group a list of threads for the list. Pure, so the test can hold it to the order above. */
+/*
+ * Groups a list of threads for the list. Pure, so the test can hold it to the order above. `archivedAt(id)` is when this
+ * extension first saw a thread archived, used only where Codex recorded no archive time (src/archive-sweep.js seenAt).
+ */
 function group(threads, { open = [], closed = [], sections = new Map(), hideBackground = true, cwdFilter = null, frontAt = () => 0,
-  sidebar = '' }) {
+  sidebar = '', archivedAt = () => 0 }) {
   if (sidebar && !open.includes(sidebar)) open = [...open, sidebar];
   const byId = new Map(threads.map((t) => [t.id, t]));
   const kindOk = (t) => (hideBackground ? t.kind === 'user' : true);
-  const listed = threads.filter((t) => kindOk(t) && !t.archived && (!cwdFilter || cwdFilter(t.cwd)));
-  /* Sub-agents by parent, oldest first, for the ones whose parent is listed too. */
+  const inWorkspace = (t) => kindOk(t) && (!cwdFilter || cwdFilter(t.cwd));
+  const listed = threads.filter((t) => inWorkspace(t) && !t.archived);
+  const archived = threads.filter((t) => inWorkspace(t) && t.archived);
+  /* Sub-agents by parent, oldest first, for those whose parent is listed too and in the same state, archived or not. */
   const kids = new Map();
-  const ids = new Set(listed.map((t) => t.id));
-  for (const t of hideBackground ? [] : listed) {
-    if (t.kind !== 'subagent' || !t.parent || t.parent === t.id || !ids.has(t.parent)) continue;
-    if (!kids.has(t.parent)) kids.set(t.parent, []);
-    kids.get(t.parent).push(t);
+  for (const list of [listed, archived]) {
+    const ids = new Set(list.map((t) => t.id));
+    for (const t of hideBackground ? [] : list) {
+      if (t.kind !== 'subagent' || !t.parent || t.parent === t.id || !ids.has(t.parent)) continue;
+      if (!kids.has(t.parent)) kids.set(t.parent, []);
+      kids.get(t.parent).push(t);
+    }
   }
   for (const list of kids.values()) list.sort((a, b) => (a.createdMs - b.createdMs) || a.id.localeCompare(b.id));
   const nested = new Set([...kids.values()].flat().map((t) => t.id));
@@ -182,6 +197,9 @@ function group(threads, { open = [], closed = [], sections = new Map(), hideBack
   }
   const known = new Set(sections.keys());
   out.push({ key: 'ungrouped', label: 'Ungrouped', expanded: true, threads: withKids(here.filter((t) => !t.section || !known.has(t.section))) });
+  const when = (t) => (+t.archivedMs > 0 ? +t.archivedMs : +archivedAt(t.id) || 0);
+  const shelf = archived.filter((t) => !nested.has(t.id)).sort((a, b) => (when(b) - when(a)) || (b.updatedMs - a.updatedMs));
+  out.push({ key: 'archived', label: 'Archived sessions', expanded: false, threads: withKids(shelf) });
   /* Which threads are drawn under a parent, for the model's rows. */
   out.nested = nested;
   return out;
@@ -192,6 +210,7 @@ const drawn = (groups) => groups.filter((g) => g.threads.length || g.made);
 
 /** The group a thread is listed under below Open sessions, for the hover. */
 function placeOf(t, sections) {
+  if (t.archived) return 'Archived sessions';
   return t.section && sections.has(t.section) ? sections.get(t.section) || 'Group' : 'Ungrouped';
 }
 
@@ -200,7 +219,7 @@ function placeOf(t, sections) {
  */
 class SessionsModel {
   constructor(vscode, { memory, memento, settings, stateOf, reader, wantState = () => {}, sidebarShowing = () => '', sections = null,
-    account = () => null, front = () => '', noGroups = () => false }) {
+    account = () => null, front = () => '', noGroups = () => false, archivedAt = () => 0 }) {
     this.vscode = vscode;
     this.reader = reader;
     this.memory = memory;
@@ -220,6 +239,7 @@ class SessionsModel {
     /* The conversation in front, whose row is drawn as the current one. */
     this.frontOf = front;
     this.noGroups = noGroups;
+    this.archivedAt = archivedAt;
     this.emitter = new vscode.EventEmitter();
     this.onDidChange = this.emitter.event;
     this.threads = [];
@@ -254,7 +274,7 @@ class SessionsModel {
       sidebar: this.sidebarNow,
       open: this.memory.openThreads(), closed: this.memory.recentlyClosed(this.settings().recentClosedSessions),
       sections: this.sections, hideBackground: this.settings().hideBackgroundSessions, cwdFilter,
-      frontAt: (id) => this.memory.frontAt(id),
+      frontAt: (id) => this.memory.frontAt(id), archivedAt: (id) => this.archivedAt(id),
     });
     const value = this.build();
     const json = JSON.stringify(value);
@@ -281,15 +301,16 @@ class SessionsModel {
          every old rollout just to colour dots costs too much. */
       const conv = this.stateOf(t.id);
       const look = this.reader.state(t.id) ? lookKey(conv, here) : 'unknown';
-      /* The unread mark, and whether the row can be deleted, follow the conversation's own state. */
+      /* The unread mark, and whether the row can be archived or deleted, follow the conversation's own state. */
       const own = conv && conv.ownState && conv.ownState !== conv.state ? { ...conv, state: conv.ownState, left: [] } : conv;
       const ownLook = this.reader.state(t.id) ? lookKey(own, here) : 'unknown';
       const dot = look === 'idle' && !here && where !== 'open' ? 'none' : look;
       const goal = typeof this.reader.goal === 'function' ? this.reader.goal(t.id) : null;
       /* `here` leaves Resume in Tab and Resume in Sidebar out of the row's menu, as Claude Code Plus offers them only for
          a conversation that is not open; a sub-agent drawn under its parent in Open sessions counts as open too. */
+      const busy = BUSY_LOOKS.has(ownLook);
       return { id: t.id, title: t.title || '(untitled)', time: dateSpan(t.createdMs, t.updatedMs, now), dot, here: here || where === 'open',
-        deletable: !here && where !== 'open' && !BUSY_LOOKS.has(ownLook),
+        archived: !!t.archived, archivable: !t.archived && !busy, deletable: !!t.archived && !here && where !== 'open' && !busy,
         color: COLORS[colors[t.id]] || '', open: open.has(t.id), sidebar: where === 'open' && t.id === this.sidebarNow && !open.has(t.id),
         unread: !!(own && own.state === 'unread'), running: leftText(conv), grouped: !!(t.section && this.sections.has(t.section)),
         group: placeOf(t, this.sections), branch: t.branch || '', goal: (goal && goal.status) || '', goalText: goalText(goal),

@@ -189,6 +189,14 @@
         "title": "Codex Plus: Clear Goal"
       },
       {
+        "command": "codexPlus.archiveThread",
+        "title": "Codex Plus: Archive"
+      },
+      {
+        "command": "codexPlus.unarchiveThread",
+        "title": "Codex Plus: Unarchive"
+      },
+      {
         "command": "codexPlus.deleteThread",
         "title": "Codex Plus: Delete Conversation..."
       },
@@ -283,6 +291,14 @@
           "when": "false"
         },
         {
+          "command": "codexPlus.archiveThread",
+          "when": "false"
+        },
+        {
+          "command": "codexPlus.unarchiveThread",
+          "when": "false"
+        },
+        {
           "command": "codexPlus.deleteThread",
           "when": "false"
         }
@@ -362,6 +378,13 @@
           "markdownDescription": "How many conversations **Recently closed** lists. 0 hides it.",
           "minimum": 0,
           "maximum": 50
+        },
+        "codexPlus.deleteArchivedAfterDays": {
+          "scope": "application",
+          "type": "integer",
+          "default": 30,
+          "minimum": 0,
+          "markdownDescription": "Conversations in **Archived sessions** across all workspaces that have been archived for at least this many days are deleted; 0 turns off this automatic deletion. Days count from when Codex archived the conversation.\n\nThis deletes the same things as Delete in the **Archived sessions** menu. A conversation that is open in this window or running is left for the next day. One VS Code window does this once a day without asking. The \"Codex Plus\" output lists what it deleted."
         },
         "codexPlus.reopenClosedSessionShortcut": {
           "type": "boolean",

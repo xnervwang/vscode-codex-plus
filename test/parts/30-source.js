@@ -289,8 +289,8 @@ module.exports = async ({ ok, bad, eq, tmp }) => {
     const groups = group(threads, { open: [working.id], closed: [{ thread: idle.id, title: 'Idle here', at: 1 }, { thread: working.id, at: 2 }],
       sections: new Map(), hideBackground: true });
     const names = groups.filter((g) => g.threads.length).map((g) => `${g.key}:${g.threads.map((t) => t.title).join('|')}`);
-    eq(names, ['closed:Idle here', 'open:Working here', 'ungrouped:Working here|Unread elsewhere|Idle here|Old'],
-      'recently closed (without the open one), then open, the rest newest first; no archived one and no guardian review');
+    eq(names, ['closed:Idle here', 'open:Working here', 'ungrouped:Working here|Unread elsewhere|Idle here|Old', 'archived:Archived'],
+      'recently closed (without the open one), then open, the rest newest first, and the archived one in Archived sessions; no guardian review');
     const withBg = group(threads, { hideBackground: false }).find((g) => g.key === 'ungrouped');
     eq(withBg.threads.filter((t) => t.kind !== 'user').map((t) => t.id), [guardian.id], 'turning the filter off lists the background threads with the rest');
     const day = 86400e3, t0 = new Date(2026, 8, 5, 12).getTime();
@@ -299,7 +299,7 @@ module.exports = async ({ ok, bad, eq, tmp }) => {
     const provider = new SessionsModel(vscode, { memory: { openThreads: () => [], recentlyClosed: () => [], frontAt: () => 0 }, memento: fake.memento(),
       settings: () => ({ recentClosedSessions: 10, hideBackgroundSessions: true }), stateOf: () => null, reader: inWorker });
     provider.refresh();
-    eq(provider.model().groups.map((g) => g.key), ['section:sec-1', 'ungrouped'], 'the session list draws from the reader\'s snapshot');
+    eq(provider.model().groups.map((g) => g.key), ['section:sec-1', 'ungrouped', 'archived'], 'the session list draws from the reader\'s snapshot');
 
     /* ── what the window remembers ── */
     const { TabMemory, OPEN_KEY, LAST_KEY } = require('../../src/tab-memory');

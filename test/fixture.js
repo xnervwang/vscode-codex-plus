@@ -84,16 +84,17 @@ function rolloutLines({ id, cwd, source = 'vscode', turns = [], startMs }) {
 }
 
 /*
- * Build a CODEX_HOME in `dir` holding `threads`: [{ title, source, threadSource, cwd, turns, unread, archived, pinned,
- * section }]. Returns the threads with their ids and rollout paths filled in.
+ * Build a CODEX_HOME in `dir` holding `threads`: [{ title, source, threadSource, cwd, turns, unread, archived, archivedAt,
+ * pinned, section }]. `archivedAt` is archived_at in seconds; an archived thread without it gets the time now, and null
+ * leaves the column empty. Returns the threads with their ids and rollout paths filled in.
  */
 function codexHome(dir, threads) {
   const { DatabaseSync } = require('node:sqlite');
   const db = new DatabaseSync(path.join(dir, 'state_5.sqlite'));
   db.exec(SCHEMA);
   const ins = db.prepare(`insert into threads (id, rollout_path, created_at, updated_at, created_at_ms, updated_at_ms,
-    source, thread_source, cwd, title, name, archived, is_pinned, thread_section_id, model, reasoning_effort, originator,
-    first_user_message) values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
+    source, thread_source, cwd, title, name, archived, archived_at, is_pinned, thread_section_id, model, reasoning_effort,
+    originator, first_user_message) values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
   const out = [];
   const now = Date.now();
   threads.forEach((t, i) => {
@@ -108,7 +109,8 @@ function codexHome(dir, threads) {
     fs.writeFileSync(rollout, rolloutLines({ id, cwd: t.cwd || dir, source: t.source || 'vscode', turns, startMs }));
     const updated = turns.length ? turns[turns.length - 1].startMs + 5000 : startMs;
     ins.run(id, rollout, Math.floor(startMs / 1000), Math.floor(updated / 1000), startMs, updated, t.source || 'vscode',
-      t.threadSource || 'user', t.cwd || dir, t.title || '', t.name || null, t.archived ? 1 : 0, t.pinned ? 1 : 0,
+      t.threadSource || 'user', t.cwd || dir, t.title || '', t.name || null, t.archived ? 1 : 0,
+      t.archived ? (t.archivedAt === undefined ? Math.floor(now / 1000) : t.archivedAt) : null, t.pinned ? 1 : 0,
       t.section || null, 'gpt-test', 'low', 'codex_vscode', t.title || '');
     if (t.unread) db.prepare('insert into thread_read_receipts values (?,?,?,?)').run(id, turns.length ? turns[0].id : '', 'r', null);
     out.push({ ...t, id, rollout, turns });

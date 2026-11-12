@@ -24,8 +24,9 @@ const TITLES = ['Fix the retry delay in the inventory sync', 'Why does the night
   'Review the cache eviction change', 'Split the settings page into two', 'Upgrade the test runner', 'Trace the slow login on staging',
   'Rename the billing columns', 'Write the migration for the new index', 'Explain the flaky upload test'];
 
-/* A model of `n` conversations in three groups and Ungrouped, as SessionsModel.model() makes one. A row may be
-   deleted unless it is open here, running or waiting for the user (BUSY_LOOKS in src/sessions-view.js). */
+/* A model of `n` conversations in three groups and Ungrouped, plus two archived ones, as SessionsModel.model() makes
+   one. A row may be archived unless it is running or waiting for the user (BUSY_LOOKS in src/sessions-view.js),
+   and one in Archived sessions may be deleted unless it is open here. */
 const BUSY = ['working', 'workingElsewhere', 'prompt', 'promptElsewhere'];
 function fakeModel(n, { stamp = '' } = {}) {
 /* An idle conversation not open in this window has no dot, as the host draws it (SessionsModel.build). */
@@ -33,10 +34,13 @@ function fakeModel(n, { stamp = '' } = {}) {
   const row = (i, extra = {}) => ({ id: ID(i), title: `${TITLES[i % TITLES.length]}${i >= TITLES.length ? ` (${i})` : ''}`,
     time: `${(i % 9) + 1}d · 11/0${(i % 9) + 1}→11/09${stamp}`, dot: dotOf(i), color: i % 7 === 3 ? 'charts.purple' : '',
     open: i < 2, sidebar: false, unread: DOTS[i % DOTS.length] === 'unread', grouped: false, group: 'Ungrouped', branch: i % 4 ? '' : `fix/${i}`,
-    deletable: i >= 2 && !BUSY.includes(dotOf(i)), ...extra });
+    archived: false, archivable: !BUSY.includes(dotOf(i)), deletable: false, ...extra });
+  const shelved = (i, title) => row(i, { title, dot: 'none', open: false, unread: false, group: 'Archived sessions', archived: true, archivable: false,
+    deletable: true });
   const rows = Array.from({ length: n }, (_, i) => row(i));
   const groups = [{ key: 'section:a', label: 'Release 1.2', made: true, rows: [] }, { key: 'section:b', label: 'Investigations', made: true, rows: [] },
-    { key: 'section:e', label: 'Later', made: true, rows: [] }, { key: 'ungrouped', label: 'Ungrouped', made: false, rows: [] }];
+    { key: 'section:e', label: 'Later', made: true, rows: [] }, { key: 'ungrouped', label: 'Ungrouped', made: false, rows: [] },
+    { key: 'archived', label: 'Archived sessions', made: false, rows: [shelved(n + 3, 'Archived last week'), shelved(n + 4, 'Archived last month')] }];
   rows.forEach((r, i) => {
     const g = i % 5 === 1 ? groups[0] : i % 5 === 2 ? groups[1] : groups[3];
     if (g !== groups[3]) Object.assign(r, { grouped: true, group: g.label });
@@ -372,7 +376,7 @@ async function run({ env, check, shots, out, results }) {
       && row.main.chevron && row.main.chevron.text === '›' && row.main.chevron.float === 'right' && row.main.chevron.opacity === '0.7' && row.main.chevron.marginLeft === '12px'
       && row.focused === 'Codex Plus: Resume in Tab',
     'sessions: a grouped row\'s items, separators 1 px with 2 px above and below, Claude Code\'s › on the two with a submenu, the first item focused; '
-      + 'no Delete, since this one is waiting for the user', row.main);
+      + 'no Archive, since this one is waiting for the user', row.main);
     check(!!row.main && row.main.cut.length === 0, 'sessions: no item of a row\'s menu is cut short', row.main && row.main.cut);
 
     const centre = (label) => b.evaluate(`(() => { const i = [...document.querySelectorAll('.cp-ctx-item')].find((x) => x.childNodes[0] && x.childNodes[0].textContent === ${JSON.stringify(label)});
@@ -437,7 +441,7 @@ async function run({ env, check, shots, out, results }) {
     const delAt = await rowAt(delSel);
     await rightClick(delAt[0], delAt[1]);
     await sleep(200);
-    await shot('sessions-ctx-row-delete', { x: 0, y: 0, width: 360, height: 900 });
+    await shot('sessions-ctx-row-archive', { x: 0, y: 0, width: 360, height: 900 });
     const dOne = await b.evaluate(MEASURE_CTX);
     await esc();
     await sleep(100);
@@ -448,19 +452,63 @@ async function run({ env, check, shots, out, results }) {
     await sleep(100);
     await rightClick(delAt[0], delAt[1]);
     await sleep(200);
-    await shot('sessions-ctx-rows-delete', { x: 0, y: 0, width: 360, height: 900 });
+    await shot('sessions-ctx-rows-archive', { x: 0, y: 0, width: 360, height: 900 });
     const dTwo = await b.evaluate(MEASURE_CTX);
     await esc();
     await sleep(50);
     await esc();
     await sleep(100);
-    r.measures.ctxRowDelete = { one: dOne.main, two: dTwo.main };
+    r.measures.ctxRowArchive = { one: dOne.main, two: dTwo.main };
     check(!!dOne.main && looks(dOne.main) && dOne.main.labels.join('|') === 'Codex Plus: Resume in Tab|Codex Plus: Resume in Sidebar|Codex Plus: Add to Group|'
-      + 'Codex Plus: Remove from Group|Codex Plus: Mark as Unread|Codex Plus: Rename|Codex Plus: Text Color|Codex Plus: Delete Conversation...'
+      + 'Codex Plus: Remove from Group|Codex Plus: Mark as Unread|Codex Plus: Rename|Codex Plus: Text Color|Codex Plus: Archive'
       && dOne.main.seps === 'itemitem-itemitem-item-item-item-item' && dOne.main.cut.length === 0,
-    'sessions: a row that may be deleted ends its menu in Delete Conversation..., after a separator, not cut short', dOne.main);
-    check(!!dTwo.main && dTwo.main.labels[dTwo.main.labels.length - 1] === 'Codex Plus: Delete 2 Conversations...' && dTwo.main.cut.length === 0,
-      'sessions: with a second one selected it reads Delete 2 Conversations..., not cut short', dTwo.main);
+    'sessions: a row that may be archived ends its menu in Archive, after a separator, not cut short, and has no Delete', dOne.main);
+    check(!!dTwo.main && dTwo.main.labels[dTwo.main.labels.length - 1] === 'Codex Plus: Archive 2 Conversations' && dTwo.main.cut.length === 0,
+      'sessions: with a second one selected it reads Archive 2 Conversations, not cut short', dTwo.main);
+
+    /* Archived sessions, opened for this and closed again after. */
+    const shelfHead = '.cp-group[data-key="archived"] .cp-group-head';
+    const shelfClosed = await b.evaluate(`!document.querySelector('.cp-group[data-key="archived"]').classList.contains('cp-open')`);
+    const shelfAt = await b.evaluate(`(() => { const r = document.querySelector(${JSON.stringify(shelfHead)}).getBoundingClientRect(); return [r.left + 40, r.top + r.height / 2]; })()`);
+    await b.click(shelfAt[0], shelfAt[1]);
+    await sleep(150);
+    const shelfSel = (n) => `.cp-group[data-key="archived"] .cp-row[data-id="${ID(n)}"]`;
+    await b.evaluate(`document.querySelector(${JSON.stringify(shelfSel(18))}).scrollIntoView({ block: 'end' })`);
+    await sleep(100);
+    const aAt = await rowAt(shelfSel(17));
+    await rightClick(aAt[0], aAt[1]);
+    await sleep(200);
+    await shot('sessions-ctx-archived-row', { x: 0, y: 0, width: 360, height: 900 });
+    const aOne = await b.evaluate(MEASURE_CTX);
+    await esc();
+    await sleep(100);
+    const a2At = await rowAt(shelfSel(18));
+    for (const type of ['mousePressed', 'mouseReleased']) {
+      await b.send('Input.dispatchMouseEvent', { type, x: a2At[0], y: a2At[1], button: 'left', clickCount: 1, modifiers: 2 });
+    }
+    await sleep(100);
+    await rightClick(aAt[0], aAt[1]);
+    await sleep(200);
+    await shot('sessions-ctx-archived-rows', { x: 0, y: 0, width: 360, height: 900 });
+    const aTwo = await b.evaluate(MEASURE_CTX);
+    await esc();
+    await sleep(50);
+    await esc();
+    await sleep(100);
+    await b.evaluate('document.querySelector(\'.cp-group[data-key="archived"] .cp-group-head\').scrollIntoView({ block: \'end\' })');
+    await sleep(100);
+    const shelfBack = await b.evaluate(`(() => { const r = document.querySelector(${JSON.stringify(shelfHead)}).getBoundingClientRect(); return [r.left + 40, r.top + r.height / 2]; })()`);
+    await b.click(shelfBack[0], shelfBack[1]);
+    await sleep(150);
+    await b.evaluate('document.getElementById(\'root\').scrollTop = 0; document.scrollingElement.scrollTop = 0');
+    await sleep(100);
+    r.measures.ctxArchived = { closed: shelfClosed, one: aOne.main, two: aTwo.main };
+    check(shelfClosed, 'sessions: Archived sessions is drawn collapsed until it is opened', shelfClosed);
+    check(!!aOne.main && looks(aOne.main) && aOne.main.labels.join('|') === 'Codex Plus: Resume in Tab|Codex Plus: Resume in Sidebar|Codex Plus: Text Color|'
+      + 'Codex Plus: Unarchive|Codex Plus: Delete Conversation...' && aOne.main.seps === 'itemitem-item-item-item' && aOne.main.cut.length === 0,
+    'sessions: an archived row offers Resume, Text Color, Unarchive and, after a separator, Delete, not cut short', aOne.main);
+    check(!!aTwo.main && aTwo.main.labels.slice(-2).join('|') === 'Codex Plus: Unarchive 2 Conversations|Codex Plus: Delete 2 Conversations...'
+      && aTwo.main.cut.length === 0, 'sessions: with a second archived one selected they read Unarchive 2 Conversations and Delete 2 Conversations..., not cut short', aTwo.main);
 
     const headSel = '.cp-group[data-key="section:a"] .cp-group-head';
     const headAt = await b.evaluate(`(() => { const r = document.querySelector(${JSON.stringify(headSel)}).getBoundingClientRect(); return [r.left + 40, r.top + r.height / 2]; })()`);

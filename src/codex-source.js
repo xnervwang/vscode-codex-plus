@@ -186,7 +186,7 @@ function threadOfCodexTab(vscode, patching, tab) {
  */
 function createCodexSource(vscode, { log = () => {}, reader, patching = null, enabled = () => true, trusted = () => true,
   briefs = () => true, seen = createSeen(), scanLeft = () => false, leftEveryMs = LEFT_EVERY_MS, procDir = '/proc',
-  claudeSessions = undefined } = {}) {
+  claudeSessions = undefined, onPoll = () => {} } = {}) {
   const changed = new vscode.EventEmitter();
   const focused = new vscode.EventEmitter();
   /* The row above the work plan, set by the extension (_setNotice): { title, description, detail, command, arguments }. */
@@ -385,6 +385,8 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
   }
   function poll({ force = false, tell = false } = {}) {
     pollLeft();
+    /* Other repeating work is done on this poll rather than on a timer of its own (src/archive-sweep.js tick). */
+    try { onPoll(); } catch (e) { log(`codex source: ${(e && e.message) || e}`); }
     const here = openThreads();
     const extra = [...new Set([...here, ...kidsOf([...here, sidebarInFront()]), ...wanted])];
     return reader.refresh({ home: files.codexHome(), extra, force }).then((moved) => {
