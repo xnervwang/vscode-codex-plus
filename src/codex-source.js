@@ -18,7 +18,8 @@
  *                                  the extension sets, and the reader's time zone, which Codex's page reports
  *
  * `working` comes from files: its rollout has a task_started with no task_complete after it, corrected by the turn
- * starts and ends this window's app-server reported since the last read, which arrive at once (turnOf). `unread` is a turn that
+ * starts and ends this window's app-server reported since the last read, which arrive at once (turnOf). A conversation
+ * whose turn has ended still counts as working while something it started is running (leftOf). `unread` is a turn that
  * ended after the user last had the conversation in front of them in a focused window (src/seen.js; Codex's own read
  * receipts stay unread for good inside VS Code). `idle` is the rest. `prompt` comes from the patch instead
  * (src/approvals.js), because Codex writes no approval request to a file, and only for the conversations of this
@@ -32,6 +33,7 @@ const tabs = require('./codex-tabs');
 const install = require('./plugin-install');
 const { createSeen } = require('./seen');
 const { oncePerDelivery } = require('./core-link');
+const { KINDS, LEFT_EVERY_MS } = require('./left-running');
 
 /* A turn whose rollout has been silent this long is no longer running, whatever its last line says: the process that
    was writing it is gone (a closed window, a crash). Long tool calls write nothing while they run, so this is generous. */
@@ -65,17 +67,23 @@ function turnOf(st, heard, now, last) {
   return { working, endedMs: Math.max((st && !st.working && st.endedMs) || 0, heardEnd) };
 }
 
+/* The latest sign of activity in a thread. A turn the rollout shows as running stops counting once this is too old. */
+const lastOf = (thread, st, heard) => Math.max((thread && thread.updatedMs) || 0, (st && st.lastActivityMs) || 0,
+  (heard && Math.max(heard.startedMs || 0, heard.endedMs || 0)) || 0);
+
 /*
  * What Codex's files say about one thread, in the protocol's terms. `state` is the rollout state the reader has for it,
  * or null for a thread not touched lately; `now` and `openHere` are passed in so the same answer can be computed in a
  * test. `waiting` is what the patch knows about requests stopped on the user, which no file records.
  *
  * `prompt` wins over `working`: as far as its rollout goes a turn stopped on an approval is still running, but it is
- * the user who has to act.
+ * the user who has to act. `left` lists what the conversation started that is still running (the kinds in
+ * src/left-running.js). While it is not empty, an idle or unread conversation is shown as working, as Claude Code Plus
+ * does, and `ownState` keeps the state it would otherwise have.
  */
-function conversationOf(thread, { unread, openHere, now = Date.now(), state = null, hasPlan = false, waiting = null, heard = null }) {
+function conversationOf(thread, { unread, openHere, now = Date.now(), state = null, hasPlan = false, waiting = null, heard = null, left = [] }) {
   const st = state;
-  const last = Math.max(thread.updatedMs || 0, (st && st.lastActivityMs) || 0, (heard && Math.max(heard.startedMs || 0, heard.endedMs || 0)) || 0);
+  const last = lastOf(thread, st, heard);
   const { working } = turnOf(st, heard, now, last);
   const decide = (waiting && waiting.decide) || 0;
   const soon = (waiting && waiting.soon) || 0;
@@ -86,12 +94,15 @@ function conversationOf(thread, { unread, openHere, now = Date.now(), state = nu
   else if (working) word = 'working';
   else if (asking) word = 'prompt';
   else if (unread.has(thread.id)) word = 'unread';
+  const after = !working && Array.isArray(left) ? left.slice() : [];
+  const own = word;
+  if (after.length && (word === 'idle' || word === 'unread')) word = 'working';
   return {
     sessionId: thread.id,
     title: thread.title || '(untitled)',
     cwd: thread.cwd,
     state: word,
-    running: working || openHere.has(thread.id) || now - last < RECENT_MS,
+    running: working || after.length > 0 || openHere.has(thread.id) || now - last < RECENT_MS,
     lastActiveAt: last,
     hasPlan,
     // Beyond the protocol: what this extension's own parts draw (the tab figures).
@@ -101,6 +112,8 @@ function conversationOf(thread, { unread, openHere, now = Date.now(), state = nu
     /* Set while this window's app-server runs the turn. The session list uses it to tell a conversation running here
        without a tab from one running in another window. */
     runningHere: !!(heard && heard.running),
+    ownState: own,
+    left: after,
     failed: !working && !!(st && st.error),
     decide,
     soon,
@@ -166,10 +179,14 @@ function threadOfCodexTab(vscode, patching, tab) {
 
 /*
  * `deps`: reader (src/codex-reader.js), patching (src/patching.js), enabled() (codexPlus.workPlan as the token mode
- * has it), trusted() (not in Restricted Mode), seen (src/seen.js) and log.
+ * has it), trusted() (not in Restricted Mode), seen (src/seen.js) and log. scanLeft() says whether this window scans
+ * for what conversations left running after their turn (src/left-running.js): no more often than leftEveryMs, in
+ * procDir and in the Claude Code session records under claudeSessions. A window that stands down for a newer build
+ * does not scan.
  */
 function createCodexSource(vscode, { log = () => {}, reader, patching = null, enabled = () => true, trusted = () => true,
-  briefs = () => true, seen = createSeen() } = {}) {
+  briefs = () => true, seen = createSeen(), scanLeft = () => false, leftEveryMs = LEFT_EVERY_MS, procDir = '/proc',
+  claudeSessions = undefined } = {}) {
   const changed = new vscode.EventEmitter();
   const focused = new vscode.EventEmitter();
   /* The row above the work plan, set by the extension (_setNotice): { title, description, detail, command, arguments }. */
@@ -300,7 +317,74 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
     const shown = new Set(ids.filter(Boolean));
     return (reader.threads() || []).filter((t) => t.kind === 'subagent' && shown.has(t.parent)).map((t) => t.id);
   };
+  /*
+   * The worker's last scan for what conversations left running: { available, threads: { [id]: [kinds] } }, or null
+   * before the first one. Scans run from the poll, one at a time and no more often than leftEveryMs, and the views
+   * are told only when the result for a known thread changes.
+   */
+  let leftSeen = null, leftKey = '', leftAt = 0, leftRun = null;
+  const leftKeyOf = (seenNow) => {
+    if (!seenNow) return '';
+    const known = new Set((reader.threads() || []).map((t) => t.id));
+    return JSON.stringify(Object.keys(seenNow.threads).filter((id) => known.has(id)).sort().map((id) => [id, seenNow.threads[id]]));
+  };
+  function pollLeft() {
+    if (leftRun || Date.now() - leftAt < leftEveryMs) return;
+    leftAt = Date.now();
+    let on = false;
+    try { on = !!scanLeft(); } catch (_) { on = false; }
+    if (!on) {
+      if (leftSeen) { leftSeen = null; if (leftKey) { leftKey = ''; changed.fire(); } }
+      return;
+    }
+    leftRun = reader.request('leftRunning', { home: files.codexHome(), proc: procDir, sessionsDir: claudeSessions }).then((r) => {
+      leftSeen = r && r.threads && typeof r.threads === 'object' ? r : null;
+      const key = leftKeyOf(leftSeen);
+      if (key !== leftKey) { leftKey = key; changed.fire(); }
+    }).catch((e) => log(`work left running: ${(e && e.message) || e}`)).finally(() => { leftRun = null; });
+  }
+  /* The kinds still running for `id` and its sub-agents, in KINDS order. They come from the worker's last scan, from
+     sub-agents with a turn in progress, from commands this window's app-server is still running, and, when /proc
+     could not be read, from commands the rollout shows as not yet finished. */
+  const turnRunning = (id, now) => {
+    const t = reader.thread(id), st = reader.state(id);
+    if (!t || !st) return false;
+    const heard = heardOf(id);
+    return turnOf(st, heard, now, lastOf(t, st, heard)).working;
+  };
+  const commandsHere = (id) => {
+    if (!patching || typeof patching.runningCommands !== 'function') return false;
+    try { return patching.runningCommands(id).length > 0; } catch (_) { return false; }
+  };
+  function familyOf(id, kids) {
+    const out = [id];
+    for (let i = 0; i < out.length && out.length < 200; i++) for (const k of kids.get(out[i]) || []) if (!out.includes(k)) out.push(k);
+    return out;
+  }
+  function childIndex() {
+    const kids = new Map();
+    for (const t of reader.threads() || []) {
+      if (t.kind !== 'subagent' || !t.parent) continue;
+      if (!kids.has(t.parent)) kids.set(t.parent, []);
+      kids.get(t.parent).push(t.id);
+    }
+    return kids;
+  }
+  function leftOf(id, kids = childIndex(), now = Date.now()) {
+    const kinds = new Set();
+    for (const x of familyOf(id, kids)) {
+      for (const k of (leftSeen && leftSeen.threads[String(x).toLowerCase()]) || []) kinds.add(k);
+      if (x !== id && turnRunning(x, now)) kinds.add('subagent');
+      if (commandsHere(x)) kinds.add('command');
+      if (leftSeen && leftSeen.available === false) {
+        const st = reader.state(x), t = reader.thread(x);
+        if (st && st.openCommands > 0 && now - lastOf(t, st, null) < STALE_WORKING_MS) kinds.add('command');
+      }
+    }
+    return KINDS.filter((k) => kinds.has(k));
+  }
   function poll({ force = false, tell = false } = {}) {
+    pollLeft();
     const here = openThreads();
     const extra = [...new Set([...here, ...kidsOf([...here, sidebarInFront()]), ...wanted])];
     return reader.refresh({ home: files.codexHome(), extra, force }).then((moved) => {
@@ -363,8 +447,9 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
       markFront();
       const unread = new Set(threads.filter((t) => seen.unread(t.id, endedOf(t.id))).map((t) => t.id));
       const openHere = new Set(openThreads());
+      const kids = childIndex(), now = Date.now();
       const out = threads.map((t) => conversationOf(t, { unread, openHere, state: reader.state(t.id),
-        hasPlan: enabled() && reader.hasPlan(t.id), waiting: waitingOn(t.id), heard: heardOf(t.id) }));
+        hasPlan: enabled() && reader.hasPlan(t.id), waiting: waitingOn(t.id), heard: heardOf(t.id), left: leftOf(t.id, kids, now) }));
       if (snap && !snap.readable) out.problem = 'Codex\'s list of conversations could not be read from ' + files.codexHome();
       return out;
     },
@@ -373,7 +458,7 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
     threadState(id) {
       const t = reader.thread(id), st = reader.state(id);
       if (!t || !st) return null;
-      return conversationOf(t, { unread: new Set(), openHere: new Set(), state: st, waiting: waitingOn(id), heard: heardOf(id) });
+      return conversationOf(t, { unread: new Set(), openHere: new Set(), state: st, waiting: waitingOn(id), heard: heardOf(id), left: leftOf(id) });
     },
     onDidChangeConversations: changed.event,
     planNotice() { return notice; },
@@ -446,6 +531,8 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
        the conversations again and reads `features`. */
     featuresChanged() { changed.fire(); },
     _poll: poll,
+    /* For tests: resolves when the scan in progress, if there is one, has finished. */
+    _leftDone: () => Promise.resolve(leftRun),
     wantState,
     /* For tests: the tab listener this source installed, without an editor to fire it. */
     _tabsChanged: tabsChanged,

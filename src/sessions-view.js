@@ -98,11 +98,13 @@ const STATE_LOOK = {
  * Picks the dot for a conversation from what the source reported. `here` is whether this window shows it, in a tab or
  * in Codex's sidebar. A conversation that is running or waiting, but that this window neither shows nor runs, is in
  * another window. A conversation with an approval counted in this window, or with a turn running on this window's
- * app-server, is always this window's.
+ * app-server, is always this window's, and so is one that is working only because of something it started (`left`),
+ * since that work does not belong to any window.
  */
 function lookKey(conv, here) {
   const state = (conv && conv.state) || 'idle';
-  const ours = here || !!(conv && (conv.runningHere || conv.decide || conv.soon));
+  const leftOnly = !!(conv && !conv.working && Array.isArray(conv.left) && conv.left.length);
+  const ours = here || leftOnly || !!(conv && (conv.runningHere || conv.decide || conv.soon));
   if (state === 'working') return ours ? 'working' : 'workingElsewhere';
   if (state === 'prompt') return ours ? 'prompt' : 'promptElsewhere';
   if (conv && conv.failed) return 'failed';
@@ -111,6 +113,16 @@ function lookKey(conv, here) {
 const lookOf = (conv, here) => STATE_LOOK[lookKey(conv, here)];
 /* Dots that mean a turn is running or waiting for the user. */
 const BUSY_LOOKS = new Set(['working', 'workingElsewhere', 'prompt', 'promptElsewhere']);
+/* What a row's hover says still runs after the conversation's turn, for each kind src/left-running.js names. */
+const LEFT_WORDS = {
+  subagent: 'A sub-agent is still running',
+  command: 'A background command is still running',
+  detached: 'A command it detached is still running',
+  codexExec: 'A codex exec it started is still running',
+  claudeWorker: 'A claude -p worker it started is still running',
+  claudeBg: 'A claude --bg session it started is still busy',
+};
+const leftText = (conv) => (conv && Array.isArray(conv.left) ? conv.left.map((k) => LEFT_WORDS[k]).filter(Boolean).join('\n') : '');
 
 /* How long ago, as Claude Code's own list writes it, and the days a conversation spans, from the page code Agent Plus
    shares with both extensions (src/page/kit.js): `2d · 11/05→11/09`. */
@@ -269,14 +281,17 @@ class SessionsModel {
          every old rollout just to colour dots costs too much. */
       const conv = this.stateOf(t.id);
       const look = this.reader.state(t.id) ? lookKey(conv, here) : 'unknown';
+      /* The unread mark, and whether the row can be deleted, follow the conversation's own state. */
+      const own = conv && conv.ownState && conv.ownState !== conv.state ? { ...conv, state: conv.ownState, left: [] } : conv;
+      const ownLook = this.reader.state(t.id) ? lookKey(own, here) : 'unknown';
       const dot = look === 'idle' && !here && where !== 'open' ? 'none' : look;
       const goal = typeof this.reader.goal === 'function' ? this.reader.goal(t.id) : null;
       /* `here` leaves Resume in Tab and Resume in Sidebar out of the row's menu, as Claude Code Plus offers them only for
          a conversation that is not open; a sub-agent drawn under its parent in Open sessions counts as open too. */
       return { id: t.id, title: t.title || '(untitled)', time: dateSpan(t.createdMs, t.updatedMs, now), dot, here: here || where === 'open',
-        deletable: !here && where !== 'open' && !BUSY_LOOKS.has(look),
+        deletable: !here && where !== 'open' && !BUSY_LOOKS.has(ownLook),
         color: COLORS[colors[t.id]] || '', open: open.has(t.id), sidebar: where === 'open' && t.id === this.sidebarNow && !open.has(t.id),
-        unread: !!(conv && conv.state === 'unread'), grouped: !!(t.section && this.sections.has(t.section)),
+        unread: !!(own && own.state === 'unread'), running: leftText(conv), grouped: !!(t.section && this.sections.has(t.section)),
         group: placeOf(t, this.sections), branch: t.branch || '', goal: (goal && goal.status) || '', goalText: goalText(goal),
         child: nested.has(t.id), parentTitle: nested.has(t.id) ? ((byId.get(t.parent) || {}).title || '(untitled)') : '',
         nickname: nested.has(t.id) ? String(t.nickname || '') : '' };
@@ -398,4 +413,4 @@ function pageHtml({ js, css, csp, nonce: n }) {
 const looksLikeId = (q) => /^[0-9a-f-]{4,}$/i.test(String(q || '').trim());
 
 module.exports = { SessionsModel, SessionsView, pageHtml, group, drawn, dateSpan, placeOf, looksLikeId, lookOf, lookKey, goalText,
-  chatFont, COLORS, COLOR_NAMES, COLOR_KEY, STATE_LOOK, GOAL_WORD, PAGE_FILES, LIST_MENU };
+  chatFont, COLORS, COLOR_NAMES, COLOR_KEY, STATE_LOOK, GOAL_WORD, LEFT_WORDS, PAGE_FILES, LIST_MENU };

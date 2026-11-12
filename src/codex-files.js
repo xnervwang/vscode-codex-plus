@@ -375,7 +375,35 @@ function rolloutState(file, lines = null) {
       } catch (_) { /* skip */ }
     }
   }
+  st.openCommands = openCommands(lines);
   return st;
+}
+
+/*
+ * Counts the commands in `lines` (newest first) that were still running when Codex last reported on them and have no
+ * end recorded since. Codex reports such a command with "Process running with session ID <n>", and when the process
+ * exits it writes an item_completed for it, even after the turn has ended. An app-server that exits kills its commands
+ * without writing anything, so this count cannot tell a running command from one a closed window left behind;
+ * src/codex-source.js uses it only when /proc is not available.
+ */
+const STILL_RUNNING = 'Process running with session ID';
+function openCommands(lines) {
+  const ended = new Set();
+  let open = 0;
+  for (const line of lines) {
+    const start = line.includes(STILL_RUNNING);
+    if (!start && !line.includes('"item_completed"')) continue;
+    let row;
+    try { row = JSON.parse(line); } catch (_) { continue; }
+    const p = (row && row.payload) || {};
+    if (row.type === 'event_msg' && p.type === 'item_completed' && p.item && p.item.type === 'CommandExecution') {
+      if (!/progress/i.test(String(p.item.status || ''))) ended.add(String(p.item.id || ''));
+    } else if (start && row.type === 'response_item' && p.type === 'function_call_output' && !ended.has(String(p.call_id || ''))) {
+      const text = typeof p.output === 'string' ? p.output : JSON.stringify(p.output || '');
+      if (text.includes(STILL_RUNNING)) open++;
+    }
+  }
+  return open;
 }
 
 /** The rollout of one thread: from the database when it knows, else by searching sessions/ for the id. */

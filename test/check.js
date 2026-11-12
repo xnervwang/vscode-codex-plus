@@ -48,6 +48,8 @@ const tmp = (name = 'd') => { const d = path.join(scratch, `${++n}-${name}`); fs
 process.env.CODEX_HOME = tmp('default-codex-home');
 /* The folder Agent Plus and its extensions share (src/files.js sharedHome) likewise. */
 process.env.AGENT_WORK_PLAN_HOME = tmp('default-shared-home');
+/* And Claude Code's, whose session records src/left-running.js reads. */
+process.env.CLAUDE_CONFIG_DIR = tmp('default-claude-home');
 
 const only = process.argv[2] || '';
 (async () => {

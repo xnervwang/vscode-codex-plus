@@ -271,8 +271,11 @@ async function activate(context) {
 
   reader = new CodexReader({ log: say });
   context.subscriptions.push(reader);
+  /* A conversation is shown as working while something it started is still running (src/left-running.js). A window
+     running an older build than the installed one leaves this scan to the windows running the installed build. */
   const source = createCodexSource(vscode, { log: say, reader, patching, trusted, enabled: () => runs('workPlan'),
-    briefs: () => runs('conversationBrief'), seen: createSeen(context.globalState) });
+    briefs: () => runs('conversationBrief'), seen: createSeen(context.globalState),
+    scanLeft: () => !standsDown() && settings().enabled !== false });
   context.subscriptions.push(source);
   planSource = source;
   /* The user's time zone, as Codex's page reported it through the patch. */

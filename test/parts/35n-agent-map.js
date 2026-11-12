@@ -78,10 +78,11 @@ module.exports = async ({ eq, tmp, root }) => {
 
   /* ── the worker: wake-ups in the snapshot, and a sub-agent's state when it is asked for ── */
   const home = tmp('home');
-  const P = ID(11), S = ID(12);
+  const P = ID(11), S = ID(12), Q = ID(13);
+  const spawned = JSON.stringify({ subagent: { thread_spawn: { parent_thread_id: P, agent_nickname: 'scout' } } });
   fixture.codexHome(home, [{ id: P, title: 'Parent', cwd: home, turns: [{}] },
-    { id: S, title: 'Child', cwd: home, threadSource: 'subagent', turns: [{}],
-      source: JSON.stringify({ subagent: { thread_spawn: { parent_thread_id: P, agent_nickname: 'scout' } } }) }]);
+    { id: S, title: 'Child', cwd: home, threadSource: 'subagent', turns: [{}], startMs: Date.now() - 3 * 3600e3, source: spawned },
+    { id: Q, title: 'Recent child', cwd: home, threadSource: 'subagent', turns: [{}], startMs: Date.now() - 600e3, source: spawned }]);
   const install = require('../../src/plugin-install');
   fs.mkdirSync(install.planDir(home), { recursive: true });
   fs.writeFileSync(path.join(install.planDir(home), `${P}.wakeup`), JSON.stringify({ thread: P, everyMinutes: 15, prompt: 'Next row.',
@@ -92,6 +93,7 @@ module.exports = async ({ eq, tmp, root }) => {
     'a snapshot carries the wake-ups, read with the plan files when the stamp has moved');
   eq([(plain.threads.find((t) => t.id === S) || {}).parent, !!plain.states[P], !!plain.states[S], !!asking.states[S]], [P, true, false, true],
     'a sub-agent\'s state is read only when asked for, which the extension does for the sub-agents of the conversations open in a window');
+  eq(!!plain.states[Q], true, 'except for one touched in the last two hours, which may still be running under its conversation');
 
   /* ── the poll asks for the sub-agents of what this window shows: its tabs, and the conversation in Codex's sidebar ── */
   {

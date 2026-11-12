@@ -20,6 +20,12 @@ const install = require('./plugin-install');
    (STALE_WORKING_MS in src/codex-source.js), and a list of every thread a person ever had would read thousands. */
 const STATE_WINDOW_MS = 2 * 24 * 3600e3;
 const STAMP_WINDOW_MS = 24 * 3600e3;
+/* Sub-agents updated this recently are read as well, so that their conversation can show one of them still running.
+   A turn silent for longer does not count as running anyway (STALE_WORKING_MS in src/codex-source.js is also two
+   hours). */
+const SUBAGENT_WINDOW_MS = 2 * 3600e3;
+/* How far src/left-running.js has read each rollout for claude --bg launches, and what it found, kept between scans. */
+const launchCache = new Map();
 
 let home = '';
 function at(h) {
@@ -37,9 +43,9 @@ function stampOf(dir, threads) {
     try { const s = fs.statSync(f); parts.push(s.size, s.mtimeMs); } catch (_) { parts.push(0); }
   }
   try { const s = fs.statSync(install.planDir(dir)); parts.push(s.mtimeMs); } catch (_) { parts.push(0); }
-  const day = Date.now() - STAMP_WINDOW_MS;
+  const day = Date.now() - STAMP_WINDOW_MS, subs = Date.now() - SUBAGENT_WINDOW_MS;
   for (const t of threads || []) {
-    if (t.kind !== 'user' || t.updatedMs < day || !t.rollout) continue;
+    if (!t.rollout || !(t.kind === 'user' ? t.updatedMs >= day : t.kind === 'subagent' && t.updatedMs >= subs)) continue;
     try { const s = fs.statSync(files.existingRollout(t.rollout) || t.rollout); parts.push(t.id.slice(-6), s.size); } catch (_) { /* gone */ }
   }
   return parts.join(',');
@@ -57,12 +63,14 @@ const ops = {
     const stamp = stampOf(dir, threads);
     if (previous && stamp === previous) return { stamp, same: true };
     const want = new Set(Array.isArray(extra) ? extra : []);
-    const since = Date.now() - STATE_WINDOW_MS;
+    const since = Date.now() - STATE_WINDOW_MS, subs = Date.now() - SUBAGENT_WINDOW_MS;
     const states = {};
     for (const t of threads || []) {
       t.present = !t.rollout || !!files.existingRollout(t.rollout);
-      /* A sub-agent's state only when asked for: the extension asks for those of the conversations open in a window. */
-      if (t.rollout && t.present && (want.has(t.id) || (t.kind === 'user' && t.updatedMs >= since))) {
+      /* An older sub-agent's state only when asked for: the extension asks for those of the conversations open in a
+         window. */
+      if (t.rollout && t.present && (want.has(t.id) || (t.kind === 'user' && t.updatedMs >= since)
+        || (t.kind === 'subagent' && t.updatedMs >= subs))) {
         try { states[t.id] = files.rolloutState(t.rollout); } catch (_) { /* left out */ }
       }
     }
@@ -93,6 +101,14 @@ const ops = {
     const r = rollout ? require('./user-times').rolloutMarks(rollout) : null;
     return { times: r ? r.times : null, compactions: r ? r.compactions : [], turns: r ? r.turns : {}, turnTimes: r ? r.turnTimes : {} };
   },
+  /* What the recent conversations and sub-agents still have running after their turn ended (src/left-running.js). */
+  leftRunning({ home: h, proc = '/proc', sessionsDir }) {
+    const dir = at(h);
+    const since = Date.now() - STATE_WINDOW_MS;
+    const threads = (files.listThreads(dir) || []).filter((t) => (t.kind === 'user' || t.kind === 'subagent') && t.updatedMs >= since && t.rollout)
+      .map((t) => { const real = files.existingRollout(t.rollout); return { id: t.id, rollout: real && !real.endsWith('.zst') ? real : '' }; });
+    return require('./left-running').leftRunning({ threads, proc, sessionsDir, cache: launchCache });
+  },
   /* Plans of conversations that are gone (src/workplan.js). */
   sweep({ home: h }) {
     const dir = at(h);
@@ -113,4 +129,4 @@ if (parent) {
   });
 }
 
-module.exports = { ops, stampOf, STATE_WINDOW_MS };
+module.exports = { ops, stampOf, STATE_WINDOW_MS, SUBAGENT_WINDOW_MS };

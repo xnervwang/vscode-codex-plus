@@ -1051,6 +1051,8 @@ function installHooks() {
       if (deps && deps.source && typeof deps.source._heard === 'function') deps.source._heard(turn);
       return;
     } else if (kind === 'notification' && noteCommand(msg)) {
+      /* The session list redraws too: a command still running after its turn keeps its conversation working. */
+      if (deps && deps.source && typeof deps.source._heard === 'function') deps.source._heard(String((msg.params || {}).threadId || ''));
       refreshPanels().catch(() => { /* the next poll draws it */ });
       return;
     }

@@ -5,6 +5,7 @@
 - `extension.js`: activation, settings, commands; wires the parts below together.
 - `src/codex-files.js`: CODEX_HOME, the state database (read-only), rollouts (plain or `.jsonl.zst`), read receipts. Blocking; runs in the worker.
 - `src/codex-worker.js`, `src/codex-reader.js`: the worker thread that reads Codex's files, and the snapshot the extension host reads instead.
+- `src/left-running.js`: finds what a conversation started that is still running after its turn (a background command in Codex, a detached shell, a `codex exec`, `claude -p` or `claude --bg` it started), from /proc, Claude Code's session records and the launching conversation's rollout. Blocking; runs in the worker.
 - `src/codex-tabs.js`: Codex conversation tabs (`chatgpt.conversationEditor`, `openai-codex://route/local/<id>`), opening one in a tab. A tab Codex opened with its own New button stays at `/extension/panel/new` and names no conversation; the patch supplies the missing conversation ids (`patching.panelThreads`), from the thread start of the tab's own page.
 - `src/folders.js`: whether a conversation's folder is in this window's workspace, by real path.
 - `src/codex-source.js`: Codex as a source of Agent Plus, protocol 1, defined in Agent Plus's `docs/protocol.md`.
@@ -79,6 +80,9 @@ What bounds a single pass:
 | `COMPRESSED_MAX` (`src/codex-files.js`) | 64 MB | Largest `.jsonl.zst` read at all |
 | `DECOMPRESSED_MAX` (`src/codex-files.js`) | 256 MB | Largest decompressed rollout |
 | `HELD_MAX` (`src/codex-reader.js`) | 200 | Conversation states retained after an on-demand read |
+| `SUBAGENT_WINDOW_MS` (`src/codex-worker.js`) | 2 hours | Sub-agents updated this recently have their rollout read, so their conversation can show one of them still running |
+| `LEFT_EVERY_MS` (`src/left-running.js`) | 10 s | Shortest time between two scans for what conversations left running; each scan reads /proc and Claude Code's session records once |
+| `LAUNCH_TAIL` (`src/left-running.js`) | 8 MB | How much of a rollout's end the first read for `claude --bg` launches covers; later reads take only what was appended. A rollout is read for this only while such a session is busy |
 
 What a change must not break:
 
