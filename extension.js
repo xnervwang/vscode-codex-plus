@@ -455,6 +455,7 @@ async function activate(context) {
     try {
       patching.activate(context, { vscode, log: say, codexProgram, source, context, settings, onTimeZone: reportTimeZone,
         userTimes, sessionInfo: (id) => sessionInfoRows(id), compactLimit: compactLimitNow, agentMap, agentMapAct,
+        planLine: (id) => (runs('workPlan') ? reader.request('plan', { home: files.codexHome(), id }) : Promise.resolve('')),
         adjustRequest: windowOverride(context, say), contextWindowFrom: windowSource(context),
         copy: async (value, label) => { await vscode.env.clipboard.writeText(value); vscode.window.setStatusBarMessage(`Copied ${label}`, 3000); },
         toggleChime: () => cfg().update('chime', !cfg().get('chime', true), vscode.ConfigurationTarget.Global) });

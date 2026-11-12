@@ -77,7 +77,7 @@ function planInjections(file) {
   }
 }
 
-/** The information box's line for planInjections, against the context `used` (tokens), or ''. */
+/** The work plan line for planInjections, with its share of the `used` tokens in context; '' if none was injected. */
 function planLine(got, used) {
   if (!got.count) return '';
   const tokens = Math.round(got.chars / CHARS_PER_TOKEN);
@@ -112,8 +112,6 @@ function rows(id, { pid = appServerPid() } = {}) {
   if (st && st.context && st.context.window) {
     out.push({ label: 'Context', value: `${st.context.used} of ${st.context.window} (${Math.round(100 * st.context.used / st.context.window)}%)` });
   }
-  const real = files.existingRollout(rollout);
-  if (real) out.push({ label: 'Work plan', value: planLine(planInjections(rollout), st && st.context ? st.context.used : 0) });
   /* What this conversation has spent. Codex records no price and its rate-limit records carry no plan or quota here,
      so there is no figure for a share of an allowance or for money - only tokens. */
   if (st && st.tokens && st.tokens.total) {
@@ -124,4 +122,13 @@ function rows(id, { pid = appServerPid() } = {}) {
   return out.filter((r) => r.value);
 }
 
-module.exports = { rows, appServerPid, size, planInjections, planLine, PLAN_PREFIX };
+/* The work plan line for thread `id`, shown on the context meter's hover (src/page/codex-extras-page.js). */
+function planText(id) {
+  const t = (files.listThreads() || []).find((x) => x.id === id) || { rollout: '' };
+  const rollout = t.rollout || files.rolloutOf(id);
+  if (!rollout || !files.existingRollout(rollout)) return '';
+  const st = files.rolloutState(rollout);
+  return planLine(planInjections(rollout), st && st.context ? st.context.used : 0);
+}
+
+module.exports = { rows, appServerPid, size, planInjections, planLine, planText, PLAN_PREFIX };

@@ -90,6 +90,11 @@ const ops = {
     at(h);
     return require('./session-info').rows(id);
   },
+  /* The work plan line for one thread, shown on the context meter's hover. */
+  plan({ home: h, id }) {
+    at(h);
+    return require('./session-info').planText(id);
+  },
   /* Whether a thread still has a rollout, searching sessions/ when the database does not know it. */
   rolloutExists({ home: h, id }) {
     return !!files.rolloutOf(id, at(h));

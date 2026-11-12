@@ -702,7 +702,7 @@ function leave(thread) {
  * none: a page is never matched to a conversation by anything but its own thread start.
  */
 function settle(now) {
-  for (const rec of registry.values()) {
+  for (const [panel, rec] of registry) {
     for (let i = rec.started.length - 1; i >= 0; i--) {
       const id = rec.started[i];
       if (!now.has(id)) continue;
@@ -711,6 +711,8 @@ function settle(now) {
         const was = rec.thread;
         rec.thread = id;
         leave(was);
+        /* The page still holds the previous conversation's work plan line. */
+        postTo(panel, { type: 'codex-extras-plan', text: '', cleared: true });
       }
       break;
     }
@@ -968,6 +970,14 @@ function installHooks() {
           infoShown.set(webview, { id: msg.id, rows: list });
           postToWebview(webview, { type: 'codex-extras-info', id: msg.id, rows: list });
         }).catch(() => { /* the box stays shut */ });
+    }
+    /* Sent when the pointer reaches the context meter: the work plan line for this page's conversation. */
+    if (msg && msg.kind === 'planAsk' && deps && typeof deps.planLine === 'function') {
+      const rec = recordOfWebview(webview);
+      const thread = rec ? rec.thread : sidebar;
+      Promise.resolve(thread ? deps.planLine(thread) : '')
+        .then((text) => postToWebview(webview, { type: 'codex-extras-plan', text: typeof text === 'string' ? text : '' }))
+        .catch(() => { /* the hover shows no line */ });
     }
     if (msg && msg.kind === 'infoCopy' && deps && typeof deps.copy === 'function') {
       const shown = infoShown.get(webview);

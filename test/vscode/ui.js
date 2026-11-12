@@ -18,7 +18,7 @@
  *   a tab        a conversation resumed in a tab from the list: its title, then the dot on its logo during a turn sent
  *                through fake-model.js, and after the reply arrives while the tab is in the background
  *   Codex's page what the patch adds there: the time stamps, the rail, the buttons by the message box, the Agent map,
- *                and the Work plan line in the information box
+ *                and the Work plan line on the context meter's hover
  *   the brief    a click on the conversation in Agent Plus's Conversations panel shows the brief its plan holds in the
  *                Answer view; the arrow on its row and the page's button each go back to the conversation's tab
  *   the sidebar  a conversation resumed in Codex's sidebar: each reply's stamp inside its column
@@ -517,10 +517,18 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         const b = document.querySelector('[data-codex-extras="info"]');
         return b && getComputedStyle(b).display !== 'none' && b.innerText;
       }), 10000, 200);
-      check(!!info && /Work plan\s+injected 1 time since the conversation began: \d+ characters, about \d+ tokens/.test(info),
-        'the information box says how much the work plan has added to the conversation\'s context', info);
+      check(!!info && /Token mode/.test(info) && !/Work plan/.test(info), 'the information box names the token mode, and leaves the work plan to the context meter', info);
       await shot('information-box');
       await infoButton.click();
+      await codex.locator('[data-codex-extras="meter"]').first().hover();
+      const hover = await until(() => codex.evaluate(() => {
+        const b = document.querySelector('[data-codex-extras="context"]');
+        return b && getComputedStyle(b).display !== 'none' && /Work plan:/.test(b.innerText) && b.innerText;
+      }), 10000, 200);
+      check(!!hover && /Work plan: injected 1 time since the conversation began: \d+ characters, about \d+ tokens/.test(hover),
+        'the context meter\'s hover says how much the work plan has added to the conversation\'s context', hover);
+      await shot('context-meter-hover');
+      await page.mouse.move(0, 0);
     });
 
     await step('the dot on a tab', async () => {

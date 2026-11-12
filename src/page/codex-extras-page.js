@@ -424,7 +424,7 @@
       if (!tools) { tools = document.createElement('div'); tools.setAttribute(MARK, 'tools'); }
       if (wantInfo && !infoBtn) {
         infoBtn = barButton('bar-button', 'About this conversation: its thread id, the process of Codex\'s server, the folder it '
-          + 'started in, its rollout and its size on disk, the model, the context in use and the tokens it used', toggleInfo);
+          + 'started in, its rollout and its size on disk, the model, the context in use, the tokens it used, and the token mode', toggleInfo);
         infoBtn.appendChild(infoIcon());
         tools.insertBefore(infoBtn, tools.firstChild);
       }
@@ -817,6 +817,20 @@
    */
   var ctxBox = null, ctxOpenAt = 0, ctxShutAt = 0, ctxOverMeter = false, ctxOverBox = false;
   var CTX_OPEN_MS = 300, CTX_SHUT_MS = 200;
+  /* The work plan line from the host's last codex-extras-plan message. The host reads the rollout to build it, so the
+     page asks at most once every PLAN_ASK_MS, when the pointer reaches the meter. */
+  var planText = '', planAskedAt = 0, PLAN_ASK_MS = 15000;
+  function askPlan() {
+    var now = Date.now();
+    if (planAskedAt && now - planAskedAt < PLAN_ASK_MS) return;
+    planAskedAt = now;
+    post({ kind: 'planAsk' });
+  }
+  function tookPlan(m) {
+    planText = typeof m.text === 'string' ? m.text.slice(0, 300) : '';
+    if (m.cleared) planAskedAt = 0;
+    if (ctxBox && ctxBox.style.display === 'block') ctxRender();
+  }
   var kfmt = kit.kfmt, pctOf = kit.pct;
   function ctxRow(name, value, share, dim) {
     var row = document.createElement('div');
@@ -896,6 +910,12 @@
       ctxBox.appendChild(ctxRow('Reasoning', kfmt(t.reasoning), '', true));
       ctxBox.appendChild(ctxRow('Total', kfmt(t.total)));
     }
+    if (planText) {
+      var plan = document.createElement('div');
+      plan.textContent = 'Work plan: ' + planText;
+      plan.style.cssText = 'margin-top:8px;padding-top:5px;border-top:1px solid var(--vscode-widget-border,rgba(255,255,255,.12));';
+      ctxBox.appendChild(plan);
+    }
     var foot = ctxNote('Click to compact now.');
     foot.style.marginTop = '6px';
     ctxBox.appendChild(foot);
@@ -932,6 +952,7 @@
   function ctxEnter(over) {
     ctxOverMeter = over;
     if (!over) { if (ctxOpenAt) { clearTimeout(ctxOpenAt); ctxOpenAt = 0; } ctxLater(); return; }
+    askPlan();
     if (ctxShutAt) { clearTimeout(ctxShutAt); ctxShutAt = 0; }
     if (ctxBox && ctxBox.style.display === 'block') { ctxShow(); return; }
     if (ctxOpenAt) clearTimeout(ctxOpenAt);
@@ -2443,6 +2464,7 @@
     if (m.type === 'codex-extras-chime') chime(m.kind);
     else if (m.type === 'codex-extras-answer' && typeof m.text === 'string' && m.id) takeAnswer(m);
     else if (m.type === 'codex-extras-info') showInfo(m);
+    else if (m.type === 'codex-extras-plan') tookPlan(m);
     else if (m.type === 'codex-extras-usage') { usage = usageFrom(m.usage); if (document.body) placeBar(); }
     else if (m.type === 'codex-extras-agent-map') {
       agentMap = m.shown === true && Array.isArray(m.wakeups) && Array.isArray(m.agents) ? m : null;

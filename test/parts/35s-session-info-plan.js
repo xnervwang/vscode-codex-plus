@@ -4,8 +4,7 @@
 
 'use strict';
 /*
- * The information box's line on what the work plan has added to the conversation's context, read from a rollout
- * made for the test.
+ * The work plan line the context meter's hover shows, read from a rollout made for the test.
  */
 const fs = require('fs');
 const path = require('path');
@@ -41,17 +40,17 @@ module.exports = async ({ eq, tmp, root }) => {
     const chars = plan(1000).length + plan(1960).length;
     eq([got.count, got.chars, got.sinceCompaction], [2, chars, true],
       'only the injections after the latest compaction are counted, by the length of the work plan block alone');
-    const row = (info.rows(id, { pid: '1' }).find((r) => r.label === 'Work plan') || {}).value;
-    eq(row, `injected 2 times since the last compaction: ${chars} characters, about ${Math.round(chars / 4)} tokens, `
-      + `${Math.round(100 * (chars / 4) / 40000)}% of the 40000 in context`, 'the information box says so in one line, against the newest token count');
+    eq(info.planText(id), `injected 2 times since the last compaction: ${chars} characters, about ${Math.round(chars / 4)} tokens, `
+      + `${Math.round(100 * (chars / 4) / 40000)}% of the 40000 in context`, 'it says so in one line, against the newest token count');
+    eq(info.rows(id, { pid: '1' }).some((r) => r.label === 'Work plan'), false, 'and the information box has no such row');
     write(lines.slice(0, 5));
-    eq((info.rows(id, { pid: '1' }).find((r) => r.label === 'Work plan') || {}).value,
+    eq(info.planText(id),
       `injected 1 time since the conversation began: ${plan(5000).length} characters, about ${Math.round(plan(5000).length / 4)} tokens, `
         + `${Math.round(100 * (plan(5000).length / 4) / 90000)}% of the 90000 in context`, 'and says so from the start when nothing has been compacted');
     eq(info.planLine({ count: 1, chars: 103, sinceCompaction: false, whole: true }, 79000),
       'injected 1 time since the conversation began: 103 characters, about 26 tokens, under 1% of the 79000 in context',
       'a share that rounds to nothing is said as under 1%');
     write(lines.slice(0, 3));
-    eq(info.rows(id, { pid: '1' }).some((r) => r.label === 'Work plan'), false, 'a conversation the plan was never injected into has no such line');
+    eq(info.planText(id), '', 'a conversation the plan was never injected into has no such line');
   } finally { files.setCodexHome(''); }
 };
