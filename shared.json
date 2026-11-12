@@ -1,5 +1,5 @@
 {
-  "core": "91fcce7fa658d4d297daa25bcdafb0bce4f3ba29",
+  "core": "0f557820353d5f092b0ffd139e69396239f5b002",
   "files": [
     {
       "path": "build/sync-shared.js",
@@ -89,7 +89,7 @@
     {
       "path": "codex-plugin/agent-work-plan/hooks/plan_common.py",
       "from": "shared/plugin/hooks/plan_common.py",
-      "sha256": "fd1e25e10e8b3b2a681d3e461fd5affafac0969cb365c6899d5a4b379b4e5f68"
+      "sha256": "8a91fce13ac0365812c1ddc97451453e6d00272fca2182528e1bfd671174e3cf"
     },
     {
       "path": "codex-plugin/agent-work-plan/hooks/plan-row.py",
@@ -104,7 +104,7 @@
     {
       "path": "codex-plugin/agent-work-plan/hooks/inject-work-plan.py",
       "from": "shared/plugin/hooks/inject-work-plan.py",
-      "sha256": "fcc087080347df34fdcaaa37c2cc110d9aac7a4ece5a6d798ee489a5cd22b460"
+      "sha256": "6a5f14b097230bf496278ca2a669e718831517235cd5b319bb8bd8046abc67c5"
     },
     {
       "path": "codex-plugin/agent-work-plan/hooks/resume-work-plan.py",
@@ -119,12 +119,12 @@
     {
       "path": "codex-plugin/agent-work-plan/hooks/nudge-work-plan.py",
       "from": "shared/plugin/hooks/nudge-work-plan.py",
-      "sha256": "04ac75d50c442679cba4a62aa7973a3187cd507f38c49d0dd2bf02f520efc153"
+      "sha256": "263b5160dafb0bd2561b552169a07866a977e9bedebae30041fc8c60ea590a2d"
     },
     {
       "path": "codex-plugin/agent-work-plan/hooks/remind-work-plan.py",
       "from": "shared/plugin/hooks/remind-work-plan.py",
-      "sha256": "4260f08cb68da5c9bae1ec0735979cbdce5ea2ed81f510f5a359455edb2d8971"
+      "sha256": "3e00cdc2fd8f5b77318e69102acd53a5f2d7e31efcafeb41e17ace2869b72015"
     },
     {
       "path": "codex-plugin/agent-work-plan/hooks/skill_route.py",
