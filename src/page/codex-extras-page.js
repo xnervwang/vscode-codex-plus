@@ -44,7 +44,7 @@
   /* This script's own version. A page runs the copy it was built with, so a page left on an older patch answers a
      self-check with an older version here, which is the one case the host cannot tell from reading its own files.
      test/parts/62-selfcheck.js holds it to package.json, since a page cannot read that file. */
-  var SCRIPT_VERSION = '1.0.2';
+  var SCRIPT_VERSION = '1.1.0';
 
   /* Set by the Chimes button until the setting it asked for comes back. */
   var chimeAsked = false;
