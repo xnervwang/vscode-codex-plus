@@ -2,7 +2,7 @@
   "name": "codex-plus",
   "displayName": "Codex Plus",
   "description": "Codex conversations in Agent Plus's work plan and Conversations views, a Codex session list, and a Codex button on the tab bar.",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "publisher": "xnervwang",
   "license": "BSD-3-Clause",
   "icon": "images/icon.png",

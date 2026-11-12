@@ -32,7 +32,7 @@ module.exports = ({ ok, bad, eq, root }) => {
   }
   const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
   eq([pkg.publisher, pkg.name, pkg.displayName], ['xnervwang', 'codex-plus', 'Codex Plus'], 'extension identity');
-  eq(pkg.version, '1.0.1', 'the version is the one after the release on the marketplaces, 1.0.0');
+  eq(pkg.version, '1.0.2', 'the version is the one after the release on the marketplaces, 1.0.1');
   eq(pkg.extensionDependencies, ['openai.chatgpt', 'xnervwang.agent-plus'], 'depends on the Codex extension and on Agent Plus');
   eq(pkg.agentPlus, { protocol: require(path.join(root, 'src', 'codex-source.js')).PROTOCOL }, 'the manifest states the protocol the source implements');
   eq(pkg.capabilities && pkg.capabilities.untrustedWorkspaces && pkg.capabilities.untrustedWorkspaces.supported, 'limited', 'it runs, limited, in Restricted Mode');
