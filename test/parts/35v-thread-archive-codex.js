@@ -25,22 +25,32 @@ module.exports = async ({ eq, note, root }) => {
   if (!out) { note(`the probe could not run (${((r.error && r.error.message) || r.stderr || `exit ${r.status}`).trim().slice(0, 200)}), so thread/archive was not checked`); return; }
   if (out.error) { eq(out.error, '', 'the probe ran to the end'); return; }
 
-  /* A is a conversation; P one with a sub-agent S; L is loaded on the probe's connection and T has a turn running. */
+  /*
+   * A is a conversation; P one with a sub-agent S; L is loaded on the probe's connection and T has a turn running.
+   *
+   * When a loaded thread is archived, Codex sends thread/status/changed notLoaded once or twice, depending on whether
+   * the thread's own listener or the archive request removes it first. Archive, Unarchive and Delete in this extension
+   * wait only for the answer.
+   */
+  const sorted = (list) => [...new Set(list)].sort();
   const a = out.archive;
   eq([a.answer, a.heard, a.disk.where.A, a.disk.rows.A.archived, a.disk.rows.A.inArchive], [{}, ['thread/archived A'], 'archived_sessions', 1, true],
     'thread/archive answers {}, reports it, and moves the rollout to archived_sessions/, where the state database then points');
   eq(a.disk.rows.A.archivedAt >= Math.floor(a.sentS) - 1 && a.disk.rows.A.archivedAt <= Math.ceil(a.sentS) + 2, true,
     'archived_at is the time of the request, in seconds');
   eq(out.again.answer, { error: 'no rollout found for thread id <id>' }, 'asked again, Codex says it has no rollout for it');
-  eq([out.parent.heard, out.parent.disk.rows.S.archived], [['thread/archived P', 'thread/archived S'], 1],
+  eq([sorted(out.parent.heard), out.parent.disk.where.S, out.parent.disk.rows.S.archived], [['thread/archived P', 'thread/archived S'], 'archived_sessions', 1],
     'archiving a conversation archives its sub-agent too');
   eq(/is archived/.test(String((out.resume.answer || {}).error || '')), true, 'an archived conversation cannot be resumed');
-  eq(out.loaded.heard, ['thread/status/changed L notLoaded', 'thread/archived L'],
+  const l = out.loaded;
+  eq([out.loadedBefore, l.answer, l.loadedAfter, l.disk.where.L, l.disk.rows.L.archived, l.disk.rows.L.inArchive, sorted(l.heard)],
+    [['L', 'T'], {}, ['T'], 'archived_sessions', 1, true, ['thread/archived L', 'thread/status/changed L notLoaded']],
     'one loaded on the connection is unloaded and archived, not refused');
-  eq([out.runningBefore, out.running.heard.filter((h) => /^(turn\/completed|thread\/archived)/.test(h))], [[], ['turn/completed T interrupted', 'thread/archived T']],
-    'one with a turn running has that turn stopped, which it was not before the request, and is then archived; this is why Archive leaves a running one alone');
+  eq([out.runningBefore, sorted(out.running.heard.filter((h) => /^(turn\/completed|thread\/archived)/.test(h))), out.running.disk.where.T],
+    [[], ['thread/archived T', 'turn/completed T interrupted'], 'archived_sessions'],
+    'one with a turn running has that turn stopped, which it was not before the request, and is archived; this is why Archive leaves a running one alone');
   const u = out.unarchive;
-  eq([u.answer, u.heard, u.disk.where.P, u.disk.where.S, u.disk.rows.P.archived, u.disk.rows.P.archivedAt],
+  eq([u.answer, sorted(u.heard), u.disk.where.P, u.disk.where.S, u.disk.rows.P.archived, u.disk.rows.P.archivedAt],
     [{ thread: 'P' }, ['thread/unarchived P', 'thread/unarchived S'], 'sessions/<day>', 'sessions/<day>', 0, null],
     'thread/unarchive puts the rollout and its sub-agent\'s back under sessions/ by day and clears archived_at');
   eq(out.unarchiveAgain.answer, { error: 'no archived rollout found for thread id <id>' }, 'asked again, Codex says it has no archived rollout for it');

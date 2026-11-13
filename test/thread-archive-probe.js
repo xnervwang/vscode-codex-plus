@@ -80,6 +80,10 @@ function onDisk(home) {
     await wait(800);
     return { sentS, answer: r.error ? { error: r.error.message.replace(threadId, '<id>') } : r.result, heard: took(), disk: onDisk(home) };
   };
+  const loadedNow = async () => {
+    const r = await server.request('thread/loaded/list', {});
+    return r.error ? { error: r.error.message } : ((r.result && r.result.data) || []).map(letter).filter((x) => IDS[x]).sort();
+  };
   try {
     fs.mkdirSync(home, { recursive: true });
     writeThread(home, root, IDS.A, 3);
@@ -101,12 +105,14 @@ function onDisk(home) {
     }
     await wait(500);
     out.before = onDisk(home);
+    out.loadedBefore = await loadedNow();
 
     out.archive = await ask('thread/archive', IDS.A);
     out.again = await ask('thread/archive', IDS.A);
     out.parent = await ask('thread/archive', IDS.P);
     out.resume = await ask('thread/resume', IDS.P);
     out.loaded = await ask('thread/archive', IDS.L);
+    out.loaded.loadedAfter = await loadedNow();
     took();
     const turn = await server.request('turn/start', { threadId: IDS.T, input: [{ type: 'text', text: 'hello' }] });
     if (turn.error) throw new Error(`turn/start: ${JSON.stringify(turn.error)}`);
