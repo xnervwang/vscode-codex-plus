@@ -550,6 +550,7 @@ function registerCommands(context, { source, memory, sessionsModel, sessionsView
     const installed = install.installedVersions(home);
     const copy = install.installState(home, undefined, python).why;
     const loadState = install.pluginLoadState(home);
+    await snapshotIn();
     const threads = reader.threads() || [];
     const counts = {};
     for (const t of threads) counts[t.kind] = (counts[t.kind] || 0) + 1;
@@ -722,20 +723,28 @@ function registerCommands(context, { source, memory, sessionsModel, sessionsView
     if (pick) await sessionsModel.setColor(ids, pick.name);
   });
   reg('findThread', async () => {
-    /* The same conversations the list holds: this workspace's, as the Codex sessions view filters them. */
-    const folders = (vscode.workspace.workspaceFolders || []).map((f) => f.uri.fsPath);
-    const inWorkspace = folders.length ? folderTest(folders, new Map()) : null;
-    const threads = (reader.threads() || []).filter((t) => (t.kind === 'user' || !settings().hideBackgroundSessions)
-      && !t.archived && (!inWorkspace || inWorkspace(t.cwd)));
     const qp = vscode.window.createQuickPick();
     qp.placeholder = 'Search titles, or four or more characters of a thread id';
     qp.matchOnDescription = true;
+    let threads = [];
     const items = (q) => threads.filter((t) => !looksLikeId(q) || t.id.includes(q.toLowerCase()) || t.title.toLowerCase().includes(q.toLowerCase()))
       .slice(0, 200).map((t) => ({ label: t.title || '(untitled)', description: t.id, detail: t.cwd, id: t.id, alwaysShow: looksLikeId(q) }));
-    qp.items = items('');
+    /* The same conversations the list holds: this workspace's, as the Codex sessions view filters them. */
+    const fill = () => {
+      const folders = (vscode.workspace.workspaceFolders || []).map((f) => f.uri.fsPath);
+      const inWorkspace = folders.length ? folderTest(folders, new Map()) : null;
+      threads = (reader.threads() || []).filter((t) => (t.kind === 'user' || !settings().hideBackgroundSessions)
+        && !t.archived && (!inWorkspace || inWorkspace(t.cwd)));
+      qp.items = items((qp.value || '').trim());
+    };
     qp.onDidChangeValue((q) => { qp.items = items(q.trim()); });
     qp.onDidAccept(async () => { const it = qp.selectedItems[0]; qp.hide(); if (it) await tabs.openInTab(vscode, it.id); });
+    /* Before the first read of Codex's files there is nothing to search: open busy and fill in when it arrives. */
+    const first = !reader.threads();
+    if (!first) fill();
+    qp.busy = first;
     qp.show();
+    if (first) { await snapshotIn(); qp.busy = false; fill(); }
   });
   /* Which rows a list command acts on: all the selected rows if the right-clicked row is one of them, otherwise only
      the right-clicked row, as in a file explorer. */
@@ -770,6 +779,7 @@ function registerCommands(context, { source, memory, sessionsModel, sessionsView
     if (!id) return;
     /* In the list the title is edited where it is, as in Claude Code's list. */
     if (fromList(arg) && sessionsView.tell({ type: 'startRename', id })) return;
+    await snapshotIn();
     const was = (reader.thread(id) || {}).title || '';
     const name = await vscode.window.showInputBox({ prompt: 'A new title for this Codex conversation', value: was, valueSelection: [0, was.length] });
     if (name === undefined || !name.trim() || name.trim() === was) return;

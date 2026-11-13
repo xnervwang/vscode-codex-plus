@@ -14,7 +14,16 @@ const fake = require('../fake-vscode');
 const fixture = require('../fixture');
 
 async function run(root, tmp, { core = 'accept', trusted = true, config = {}, takesRoute = false, probe = null, logDir = '', configToml = '',
-  extensionPath = root } = {}) {
+  extensionPath = root, holdReader = false } = {}) {
+  /* With holdReader the reader thread gets no request until the probe calls releaseReader, so the probe always runs
+     before the first snapshot. */
+  const threads = require('worker_threads');
+  const RealWorker = threads.Worker;
+  let releaseReader = () => {};
+  if (holdReader) {
+    const open = new Promise((r) => { releaseReader = r; });
+    threads.Worker = class extends RealWorker { postMessage(m, list) { open.then(() => super.postMessage(m, list)); } };
+  }
   const { vscode, control } = fake.create();
   vscode.workspace.isTrusted = trusted;
   vscode.workspace.onDidGrantWorkspaceTrust = () => ({ dispose() {} });
@@ -41,13 +50,13 @@ async function run(root, tmp, { core = 'accept', trusted = true, config = {}, ta
   const globalState = fake.memento({ 'codexPlus.patchRemoved': true });
   const context = { subscriptions: subs, workspaceState: fake.memento(), globalState, globalStorageUri: vscode.Uri.file(tmp('gs')), extensionPath };
   if (logDir) context.logUri = vscode.Uri.file(logDir);
-  await ext.activate(context);
+  try { await ext.activate(context); } finally { threads.Worker = RealWorker; }
   await new Promise((r) => setTimeout(r, 300));
   let hookSettings = null;
   try { hookSettings = JSON.parse(fs.readFileSync(path.join(home, 'plugins', 'data', 'agent-work-plan-codex-extras', 'config.json'), 'utf8')); } catch (_) { /* none */ }
   const out = { state: control.state, registered, home, hookSettings, storage: context.globalStorageUri.fsPath, wroteSettings: fs.existsSync(path.join(home, 'plugins', 'data', 'agent-work-plan-codex-extras', 'config.json')) };
   /* Asked while the extension is still up, since the lines below dispose it. */
-  if (probe) out.probed = await probe({ vscode, control, home });
+  if (probe) out.probed = await probe({ vscode, control, home, releaseReader });
   for (const d of subs) { try { d.dispose(); } catch (_) { /* gone */ } }
   ext.deactivate();
   return out;
@@ -192,6 +201,35 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
       return { elsewhere, here };
     } });
     eq([w.probed.elsewhere, w.probed.here], [0, ['One']], 'Find lists this workspace\'s conversations only, as the session list does');
+  }
+  {
+    const w = await run(root, tmp, { holdReader: true, probe: async ({ vscode, control, home, releaseReader }) => {
+      vscode.workspace.workspaceFolders = [{ uri: vscode.Uri.file(home) }];
+      const finding = control.state.handlers['codexPlus.findThread']();
+      const qp = control.state.quickPicks[control.state.quickPicks.length - 1];
+      const shown = [!!qp, !!(qp && qp.busy)];
+      releaseReader();
+      await finding;
+      return { shown, listed: control.state.quickPicks[control.state.quickPicks.length - 1].items.map((i) => i.label) };
+    } });
+    eq([w.probed.shown, w.probed.listed], [[true, true], ['One']],
+      'Find pressed before the first read of Codex\'s files opens at once, busy, and lists the conversations once they are read');
+  }
+  {
+    const w = await run(root, tmp, { holdReader: true, probe: async ({ control, home, releaseReader }) => {
+      const id = /([0-9a-f-]{36})\.jsonl$/.exec(fs.readdirSync(path.join(home, 'sessions'), { recursive: true }).map(String)
+        .find((f) => f.endsWith('.jsonl')).replace(/\\/g, '/'))[1];
+      const asked = [];
+      control.state.inputAnswer = (o) => { asked.push(o.value); return undefined; };
+      const mark = control.state.log.length;
+      const renaming = control.state.handlers['codexPlus.renameThread']({ kind: 'thread', thread: { id }, group: 'ungrouped' });
+      const showing = control.state.handlers['codexPlus.status']();
+      releaseReader();
+      await Promise.all([renaming, showing]);
+      return { asked, threads: (/Threads: (\d+)/.exec(control.state.log.slice(mark).join('\n')) || [])[1] };
+    } });
+    eq([w.probed.asked, w.probed.threads], [['One'], '1'],
+      'Rename and Show Status run before the first read of Codex\'s files wait for it: the box starts from the old title, and the count is right');
   }
 
   const refused = await run(root, tmp, { core: 'refuse' });
