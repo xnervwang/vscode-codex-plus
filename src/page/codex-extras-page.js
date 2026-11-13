@@ -281,9 +281,17 @@
     var all = slot && slot.querySelectorAll ? slot.querySelectorAll('*') : [], most = 0;
     for (var i = 0; i < all.length && i < 40; i++) {
       var hidden = (+all[i].scrollWidth || 0) - (+all[i].clientWidth || 0);
-      if (hidden > most) most = hidden;
+      if (hidden <= most) continue;
+      var st = styleOf(all[i]), ox = st ? String(st.overflowX || st.overflow || '') : '';
+      if (ox && ox !== 'visible') most = hidden;
     }
     return most;
+  }
+  /* Whether the pointer is on one of this script's controls or on a box one of them opened. */
+  function pointedAt() {
+    if (ctxOverMeter && meterBtn && meterBtn.isConnected) return true;
+    if (ctxOverBox && ctxBox && ctxBox.isConnected && ctxBox.style.display === 'block') return true;
+    try { return !!document.querySelector('[' + MARK + ']:hover'); } catch (e) { return false; }
   }
   /*
    * This script's controls stay in Codex's row while at least ROW_KEEP is left between the groups and nothing of
@@ -307,6 +315,8 @@
     var sig = (infoBtn ? 'i' : '') + (muteBtn ? 'm' : '') + (meterBtn ? 'c' : '') + (codexMeterHidden ? 'h' : '')
       + (agentsBtn ? 'a' + agentsBtn.textContent.length : '');
     if (sig !== rowSig) { rowSig = sig; rowNeed = -1; }
+    /* A control taken out from under the pointer gets no mouseleave, and the box it opened would stay open. */
+    if (rowMode && pointedAt()) return rowMode === 'row';
     if (rowMode === 'row') {
       intoRow(s);
       var left = rowRoom(s), roomy = left >= ROW_KEEP && !squeezed(s), cut = cutOff(s.slotR);

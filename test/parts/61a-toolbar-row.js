@@ -152,9 +152,9 @@ module.exports = async ({ eq, root }) => {
   /* The model picker's label hides whatever does not fit, so the picker can shrink to its icon while the gap between
      the groups looks wide enough and nothing overflows. `cut` picks when the label is cut off: 'never', 'with-tools'
      (only while this script's controls are in the row), or 'always'. */
-  const withLabel = (cut, shown) => (dom) => {
+  const withLabel = (cut, shown, overflowX = 'hidden') => (dom) => {
     const box = toolbar(dom);
-    const label = dom.el('span', {});
+    const label = dom.el('span', { computed: { overflowX } });
     box.trigger.appendChild(label);
     const inRow = () => box.left.querySelectorAll('[data-codex-extras="tools"]').length > 0;
     const full = () => (shown() ? 90 : 0);
@@ -185,5 +185,29 @@ module.exports = async ({ eq, root }) => {
     p.view();
     p.pass();
     eq(inLeft(p), 1, 'a model name Codex cuts off with or without the buttons does not keep them out of the row');
+  }
+  {
+    const p = page(root, withLabel('with-tools', () => true, 'visible'));
+    p.view();
+    eq(inLeft(p), 1, 'content wider than a box that does not clip it hides nothing, and does not keep the buttons out of the row');
+  }
+  {
+    let shown = false;
+    const p = page(root, withLabel('with-tools', () => shown));
+    p.view();
+    p.send({ type: 'codex-extras-usage', usage: { used: 251000, window: 400000, line: 378947, lineFrom: 'default', model: 'gpt-6.1-sol',
+      effort: 'medium', windowFrom: null, total: { input: 1, cached: 0, output: 1, reasoning: 0, total: 2 } } });
+    const meter = p.q('[data-codex-extras="meter"]')[0];
+    meter.dispatch('mouseenter', {});
+    p.dom.runTimers();
+    shown = true;
+    p.pass();
+    const resting = [inLeft(p), meter.parentNode === p.box.right];
+    meter.dispatch('mouseleave', {});
+    p.dom.runTimers();
+    p.pass();
+    eq([resting, inLeft(p), (p.q('[data-codex-extras="context"]')[0] || {}).style.display],
+      [[1, true], 0, 'none'],
+      'while the pointer rests on the meter nothing is moved, so its figures close when it leaves; the next pass moves the buttons');
   }
 };
