@@ -21,7 +21,7 @@ const ICON_CLASS = 'no-drag cursor-interaction rounded-full text-tertiary h-toke
 
 /* Codex's message box with its toolbar row; `rightAt` is where the right group starts, which sets the width of the gap
    between the two groups. */
-function toolbar(dom, { rightAt = 799, meter = false, squeeze = false, build = '26.1106' } = {}) {
+function toolbar(dom, { rightAt = 799, meter = false, squeeze = false, build = '26.1106', named = true } = {}) {
   const { el } = dom;
   const add = el('button', { attrs: { type: 'button', 'aria-label': 'Add files and more', 'data-composer-navigation-target': 'add-context' },
     class: ICON_CLASS, rect: { top: 708, left: 16, width: 28, height: 28 }, kids: [el('svg', { rect: { top: 714, left: 22, width: 16, height: 16 } })] });
@@ -31,7 +31,7 @@ function toolbar(dom, { rightAt = 799, meter = false, squeeze = false, build = '
     kids: [el('span', { computed: CONTENTS, kids: [add] }), perm] });
   const model = { type: 'button', 'data-composer-navigation-target': 'reasoning', 'data-selected-reasoning-effort': 'medium' };
   if (build === '26.1021') model['data-codex-intelligence-trigger'] = 'true';
-  const trigger = el('button', { attrs: model, rect: { top: 708, left: rightAt + 20, width: 121, height: 28 } });
+  const trigger = el('button', { attrs: model, rect: { top: 708, left: rightAt + 20, width: 121, height: 28 }, texts: named ? ['5.5 Medium'] : [] });
   const modelSlot = el('span', { rect: { top: 708, left: rightAt + 20, width: 121, height: 28 }, kids: [el('span', { computed: CONTENTS, kids: [trigger] })] });
   const ide = el('span', { class: 'flex items-center gap-1', rect: { top: 708, left: rightAt + 145, width: 104, height: 28 } });
   const codexMeter = meter ? el('span', { class: 'text-sm', rect: { top: 713, left: rightAt, width: 16, height: 18 },
@@ -173,6 +173,38 @@ module.exports = async ({ eq, root }) => {
     p.pass();
     eq([before, inLeft(p), !!p.q('[data-codex-extras="bar"]')[0]], [1, 0, true],
       'a model name that shows up after the buttons went into the row, and is cut off by them, sends them below the message box');
+  }
+  {
+    let shown = false;
+    const p = page(root, withLabel('with-tools', () => shown));
+    p.view();
+    const before = inLeft(p);
+    const picker = p.dom.live().find((o) => o.targets.some((t) => t.target === p.box.modelSlot && t.options.subtree && t.options.characterData));
+    shown = true;
+    if (picker) { picker.fn([{ type: 'characterData', target: p.box.trigger }]); p.dom.runTimers(); }
+    eq([before, !!picker, inLeft(p)], [1, true, 0],
+      'the model picker is watched on its own, so its name arriving later moves the buttons with no other change on the page');
+  }
+  {
+    const p = page(root, (dom) => toolbar(dom, { named: false }));
+    p.view();
+    const waiting = [inLeft(p), !!p.q('[data-codex-extras="bar"]')[0]];
+    p.box.trigger.appendChild(p.dom.text('5.5 Medium'));
+    const picker = p.dom.live().find((o) => o.targets.some((t) => t.target === p.box.modelSlot));
+    if (picker) { picker.fn([{ type: 'childList', target: p.box.trigger }]); p.dom.runTimers(); }
+    eq([waiting, inLeft(p)], [[0, true], 1],
+      'until Codex has drawn its model picker\'s name the buttons wait below the message box, and go into the row once it has');
+  }
+  {
+    const p = page(root, (dom) => toolbar(dom));
+    p.view();
+    const before = inLeft(p);
+    p.box.trigger.textContent = '';
+    p.pass();
+    const out = inLeft(p);
+    p.pass(); p.pass();
+    eq([before, out, inLeft(p)], [1, 0, 0],
+      'a model picker that turns into a bare icon with the buttons in the row sends them below the box, and they are not tried again at that width');
   }
   {
     const p = page(root, withLabel('with-tools', () => true));

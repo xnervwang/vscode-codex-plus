@@ -31,7 +31,7 @@ function toolbar(dom, { rightAt = 799, codexMeter = 0 } = {}) {
   const perm = el('button', { attrs: { type: 'button', 'data-composer-navigation-target': 'permissions' }, class: PILL_CLASS,
     rect: { top: 708, left: 49, width: 119, height: 28 } });
   const left = el('div', { computed: FLEX, rect: { top: 708, left: 16, width: 152, height: 28 }, kids: [el('span', { computed: CONTENTS, kids: [add] }), perm] });
-  const trigger = el('button', { attrs: { type: 'button', 'data-composer-navigation-target': 'reasoning', 'data-selected-reasoning-effort': 'medium' }, rect: { top: 708, left: rightAt + 20, width: 121, height: 28 } });
+  const trigger = el('button', { attrs: { type: 'button', 'data-composer-navigation-target': 'reasoning', 'data-selected-reasoning-effort': 'medium' }, rect: { top: 708, left: rightAt + 20, width: 121, height: 28 }, texts: ['5.5 Medium'] });
   const modelSlot = el('span', { rect: { top: 708, left: rightAt + 20, width: 121, height: 28 }, kids: [el('span', { computed: CONTENTS, kids: [trigger] })] });
   const wrap = codexMeter ? el('span', { class: 'text-sm', rect: { top: 713, left: rightAt, width: 16, height: 18 },
     kids: [el('span', { attrs: { role: 'img', 'aria-label': `Context usage: ${codexMeter}%` }, rect: { top: 715, left: rightAt, width: 16, height: 16 } })] }) : null;

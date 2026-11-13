@@ -23,7 +23,7 @@ function page(root) {
   const add = el('button', { attrs: { type: 'button', 'data-composer-navigation-target': 'add-context' }, rect: { top: 708, left: 16, width: 28, height: 28 } });
   const perm = el('button', { attrs: { type: 'button', 'data-composer-navigation-target': 'permissions' }, rect: { top: 708, left: 49, width: 119, height: 28 } });
   const left = el('div', { computed: FLEX, rect: { top: 708, left: 16, width: 152, height: 28 }, kids: [el('span', { computed: CONTENTS, kids: [add] }), perm] });
-  const trigger = el('button', { attrs: { type: 'button', 'data-composer-navigation-target': 'reasoning', 'data-selected-reasoning-effort': 'medium' }, rect: { top: 708, left: 819, width: 121, height: 28 } });
+  const trigger = el('button', { attrs: { type: 'button', 'data-composer-navigation-target': 'reasoning', 'data-selected-reasoning-effort': 'medium' }, rect: { top: 708, left: 819, width: 121, height: 28 }, texts: ['5.5 Medium'] });
   const modelSlot = el('span', { rect: { top: 708, left: 799, width: 121, height: 28 }, kids: [el('span', { computed: CONTENTS, kids: [trigger] })] });
   const right = el('div', { computed: FLEX, rect: { top: 708, left: 799, width: 250, height: 28 }, kids: [modelSlot] });
   const grid = el('div', { attrs: { 'data-composer-footer-responsive': '' }, kids: [el('div', { kids: [left] }), el('div', { kids: [right] })] });

@@ -287,6 +287,8 @@
     }
     return most;
   }
+  /* Codex draws its model picker as a bare icon if the row is full when the name is laid out, and keeps it so. */
+  function pickerNamed(slot) { return !!(slot && String(slot.textContent || '').trim()); }
   /* Whether the pointer is on one of this script's controls or on a box one of them opened. */
   function pointedAt() {
     if (ctxOverMeter && meterBtn && meterBtn.isConnected) return true;
@@ -319,7 +321,7 @@
     if (rowMode && pointedAt()) return rowMode === 'row';
     if (rowMode === 'row') {
       intoRow(s);
-      var left = rowRoom(s), roomy = left >= ROW_KEEP && !squeezed(s), cut = cutOff(s.slotR);
+      var left = rowRoom(s), roomy = left >= ROW_KEEP && !squeezed(s) && pickerNamed(s.slotR), cut = cutOff(s.slotR);
       if (roomy && cut <= rowCut + 1) { rowCut = Math.min(rowCut, cut); return true; }
       toBar(at);
       /* Codex hides that much of a long name without these controls too, so it is not theirs to make room for. */
@@ -329,7 +331,7 @@
       return false;
     }
     var free = rowRoom(s), was = rectOf(s.slotR), wasLeft = was ? was.left || 0 : 0, wasCut = cutOff(s.slotR);
-    if (rowNeed >= 0 && free < rowNeed + ROW_KEEP + ROW_AGAIN) return false;
+    if ((rowNeed >= 0 && free < rowNeed + ROW_KEEP + ROW_AGAIN) || !pickerNamed(s.slotR)) return false;
     intoRow(s);
     var after = rowRoom(s), now = rectOf(s.slotR), cutNow = cutOff(s.slotR);
     var moved = !!(was && now && Math.abs((now.left || 0) - wasLeft) > 0.5) || cutNow > wasCut + 1;
@@ -471,6 +473,23 @@
     }
     if (!wantMeter && meterBtn) { meterBtn = gone(meterBtn); ctxHideNow(); }
   }
+  /*
+   * The page's watcher looks at the conversation, not at the toolbar, so nothing would place the controls again when
+   * the model picker's name arrives, changes, or is redrawn in a font that loads late.
+   */
+  var pickerSeen = null, pickerWatch = null, pickerDue = 0, fontsWired = false;
+  function againSoon() { if (!pickerDue) pickerDue = setTimeout(function () { pickerDue = 0; placeBar(); }, 0); }
+  function watchPicker(slot) {
+    if (!fontsWired) {
+      fontsWired = true;
+      try { if (document.fonts && document.fonts.addEventListener) document.fonts.addEventListener('loadingdone', againSoon); } catch (e) { /* none */ }
+    }
+    if (!slot || slot === pickerSeen || typeof MutationObserver !== 'function') return;
+    if (pickerWatch) { try { pickerWatch.disconnect(); } catch (e) { /* gone */ } }
+    pickerSeen = slot;
+    pickerWatch = new MutationObserver(againSoon);
+    try { pickerWatch.observe(slot, { childList: true, subtree: true, characterData: true }); } catch (e) { pickerWatch = null; }
+  }
   function placeBar() {
     placeStrip();
     var on = view.buttons !== false;
@@ -485,6 +504,7 @@
     drawPill();
     hideCodexMeter(!!meterBtn);
     var s = rowSlots(root);
+    watchPicker(s && s.slotR);
     if (s && rowFits(s, at)) { rowMode = 'row'; bar = gone(bar); } else { rowMode = 'bar'; toBar(at); }
     if (!barWired) {
       barWired = true;
