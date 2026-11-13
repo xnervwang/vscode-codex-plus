@@ -21,7 +21,10 @@ const path = require('path');
 const fake = require('../fake-vscode');
 const { uriParser } = require('../codex-uri-parser');
 
+/* The first installed Codex whose parser is found, and the installed ones in which it is not; null with none installed. */
 function codexParser() {
+  let found = null;
+  const missing = [];
   for (const root of [path.join(os.homedir(), '.vscode-server', 'extensions'), path.join(os.homedir(), '.vscode', 'extensions')]) {
     let names = [];
     try { names = fs.readdirSync(root); } catch (_) { continue; }
@@ -30,13 +33,30 @@ function codexParser() {
       let src = '';
       try { src = fs.readFileSync(fs.existsSync(file + '.codex-extras-host.bak') ? file + '.codex-extras-host.bak' : file, 'utf8'); } catch (_) { continue; }
       const parser = uriParser(src);
-      if (parser) return { from: n, parse: parser.parse };
+      if (!parser) missing.push(n);
+      else if (!found) found = { from: n, parse: parser.parse };
     }
   }
-  return null;
+  return found || missing.length ? { ...(found || {}), missing } : null;
 }
 
-module.exports = async ({ eq, note }) => {
+/* Codex's URI parser as 26.1106.51428 and 26.1111.21308 ship it, cut out of their bundles. */
+const PARSER_1106 = 'var Iv="openai-codex",NHe="route";function S2(t){let{scheme:e,authority:r,path:n}=t;if(e!==Iv)return null;if(r!==NHe)return null;'
+  + 'let i=(n.startsWith("/")?n.slice(1):n).split("/"),s=null;return i.length>=2&&(i[0]==="local"||i[0]==="remote")&&(s=i[1]),'
+  + '{path:`${n}${t.query===""?"":`?${t.query}`}`,conversationId:s}}';
+const PARSER_1111 = 'var Av="openai-codex",yHe="route";function gL(t){let{scheme:e,authority:r,path:n}=t;if(e!==Av)return null;if(r!==yHe)return null;'
+  + 'let o=n.startsWith("/")?n.slice(1):n,[i,s]=o.split("/");return{path:`${n}${t.query===""?"":`?${t.query}`}`,'
+  + 'conversationId:i==="local"&&s!=null?s:null}}';
+
+module.exports = async ({ eq, bad, note }) => {
+  const reads = (src) => {
+    const p = uriParser(src);
+    if (!p) return null;
+    return ['/local/L1', '/remote/R1', '/extension/panel/new'].map((at) => p.parse({ scheme: p.scheme, authority: p.authority, path: at, query: '' }).conversationId);
+  };
+  eq([reads(PARSER_1106), reads(PARSER_1111)], [['L1', 'R1', null], ['L1', null, null]],
+    'Codex\'s URI parser is found in both shapes it has shipped in, the one that takes a conversation from /remote/ too and the one that takes it from /local/ only');
+
   const { vscode, control } = fake.create();
   fake.install(vscode);
   const tabs = require('../../src/codex-tabs');
@@ -73,9 +93,10 @@ module.exports = async ({ eq, note }) => {
 
   const parser = codexParser();
   if (!parser) note('no Codex extension installed here: its URI parser is not run on the New tabs\' URIs');
-  const parse = parser ? parser.parse : (u) => ({ path: `${u.path}${u.query ? `?${u.query}` : ''}`, conversationId: null });
+  else if (parser.missing.length) bad(`Codex's URI parser was not found in ${parser.missing.join(', ')}: test/codex-uri-parser.js does not match that build`);
+  const parse = parser && parser.parse ? parser.parse : (u) => ({ path: `${u.path}${u.query ? `?${u.query}` : ''}`, conversationId: null });
   eq(uris.map((u) => { const r = parse(u); return [r.path, r.conversationId]; }), [['/extension/panel/new', null], ['/extension/panel/new', null]],
-    `and Codex still reads each one as its New route${parser ? ` (${parser.from})` : ''}, naming no conversation`);
+    `and Codex still reads each one as its New route${parser && parser.from ? ` (${parser.from})` : ''}, naming no conversation`);
   eq(uris.map((u) => tabs.threadOfUri(u)), ['', ''], 'as this extension does');
 
   /* With Codex tabs already in a second group, a New goes there, and no third group appears. */

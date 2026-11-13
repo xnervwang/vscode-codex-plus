@@ -62,7 +62,7 @@ function callArgs(out, hook) {
   return all;
 }
 
-module.exports = async ({ eq, note, tmp }) => {
+module.exports = async ({ eq, bad, note, tmp }) => {
   const { vscode, control } = fake.create();
   fake.install(vscode);
   const host = require('../../src/host');
@@ -99,7 +99,7 @@ module.exports = async ({ eq, note, tmp }) => {
     if (parser) {
       parse = (p) => parser.parse({ scheme: parser.scheme, authority: parser.authority, path: p, query: '' });
     } else {
-      note(`${bundle.name}: Codex's URI parser was not found in its bundle, so a tab's thread is read by hand`);
+      bad(`${bundle.name}: Codex's URI parser was not found in its bundle, so a tab's thread is read by hand; test/codex-uri-parser.js does not match this build`);
     }
     eq([panels.length, requests.length, callArgs(out, '__codexExtrasPageResponse').length], [2, 2, 1],
       `${bundle.name}: the patch hands over panels from two places, page requests from two and page responses from one`);
