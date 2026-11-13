@@ -59,7 +59,7 @@ Three workflows in `.github/workflows/`. **None has ever run: this repository ha
 
 - `test/parts/70-supported.js` compares each entry's three lists against the places they are read from: the patch's own rule names, the columns `src/codex-files.js` queries, and the `data-*` attributes `src/page/codex-extras-page.js` looks for. So a new column or a new attribute fails the suite until some build with it has been checked and recorded.
 - It also fails when the Codex installed here is not in the record, which is how an upgrade gets noticed.
-- Drop a build once it is no longer installed, rather than carrying it forward. `git log -S<version> -- src/supported-versions.json` finds the commits that claimed it.
+- Drop a build once it is no longer installed, rather than carrying it forward. `git log -S<version> -- src/supported-versions.json` finds the commits that claimed it. Keep the build that the layout sample in `test/fixtures/` was taken from, though: `test/parts/70-supported.js` fails if the record does not name it.
 
 ## Cost budget
 
