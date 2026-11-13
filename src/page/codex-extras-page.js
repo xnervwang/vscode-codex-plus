@@ -276,16 +276,25 @@
     }
     return false;
   }
+  /* How many pixels of Codex's model picker are hidden: its label shrinks with the row, down to nothing. */
+  function cutOff(slot) {
+    var all = slot && slot.querySelectorAll ? slot.querySelectorAll('*') : [], most = 0;
+    for (var i = 0; i < all.length && i < 40; i++) {
+      var hidden = (+all[i].scrollWidth || 0) - (+all[i].clientWidth || 0);
+      if (hidden > most) most = hidden;
+    }
+    return most;
+  }
   /*
    * This script's controls stay in Codex's row while at least ROW_KEEP is left between the groups and nothing of
-   * Codex's right group has moved or overflowed. Out of the row, they go back in only once the room is what
-   * they took last time plus ROW_KEEP plus ROW_AGAIN, so a window resized near the edge does not move them back and
-   * forth. Their width is the gap before they went in minus the gap after, and at least
-   * the gap that was there when they did not fit, so a failed attempt is not repeated until the row is wider. The
-   * measurement is discarded whenever the set of controls drawn changes.
+   * Codex's right group has moved, overflowed or had more of its model name hidden than rowCut. Out of the row, they go
+   * back in only once the room is what they took last time plus ROW_KEEP plus ROW_AGAIN, so a window resized near the
+   * edge does not move them back and forth. Their width is the gap before they went in minus the gap after, and at
+   * least the gap that was there when they did not fit, so a failed attempt is not repeated until the row is wider.
+   * The measurement is discarded whenever the set of controls drawn changes.
    */
   var ROW_KEEP = 8, ROW_AGAIN = 16;
-  var rowMode = '', rowNeed = -1, rowSig = '';
+  var rowMode = '', rowNeed = -1, rowSig = '', rowCut = 0;
   function intoRow(s) {
     dress('row');
     if (tools && !(tools.parentElement === s.left && tools.previousElementSibling === s.slotL)) s.left.insertBefore(tools, s.slotL.nextSibling);
@@ -300,19 +309,21 @@
     if (sig !== rowSig) { rowSig = sig; rowNeed = -1; }
     if (rowMode === 'row') {
       intoRow(s);
-      var left = rowRoom(s);
-      if (left >= ROW_KEEP && !squeezed(s)) return true;
+      var left = rowRoom(s), roomy = left >= ROW_KEEP && !squeezed(s), cut = cutOff(s.slotR);
+      if (roomy && cut <= rowCut + 1) { rowCut = Math.min(rowCut, cut); return true; }
       toBar(at);
+      /* Codex hides that much of a long name without these controls too, so it is not theirs to make room for. */
+      if (roomy && cutOff(s.slotR) + 1 >= cut) { intoRow(s); rowCut = cut; return true; }
       var out = rowRoom(s);
       rowNeed = Math.max(0, out - left, out - ROW_KEEP + 1);
       return false;
     }
-    var free = rowRoom(s), was = rectOf(s.slotR), wasLeft = was ? was.left || 0 : 0;
+    var free = rowRoom(s), was = rectOf(s.slotR), wasLeft = was ? was.left || 0 : 0, wasCut = cutOff(s.slotR);
     if (rowNeed >= 0 && free < rowNeed + ROW_KEEP + ROW_AGAIN) return false;
     intoRow(s);
-    var after = rowRoom(s), now = rectOf(s.slotR);
-    var moved = !!(was && now && Math.abs((now.left || 0) - wasLeft) > 0.5);
-    if (after >= ROW_KEEP && !moved && !squeezed(s)) { rowNeed = Math.max(0, free - after); return true; }
+    var after = rowRoom(s), now = rectOf(s.slotR), cutNow = cutOff(s.slotR);
+    var moved = !!(was && now && Math.abs((now.left || 0) - wasLeft) > 0.5) || cutNow > wasCut + 1;
+    if (after >= ROW_KEEP && !moved && !squeezed(s)) { rowNeed = Math.max(0, free - after); rowCut = cutNow; return true; }
     toBar(at);
     rowNeed = Math.max(0, free - after, free - ROW_KEEP + 1);
     return false;

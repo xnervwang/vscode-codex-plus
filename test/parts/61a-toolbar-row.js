@@ -149,4 +149,41 @@ module.exports = async ({ eq, root }) => {
     eq(p.dom.takeMutations().filter((m) => !(m.target.closest && m.target.closest('[data-codex-extras]'))).length, 0,
       'and the passes after that do not try the row again at the same width, so Codex\'s tree is left still');
   }
+  /* The model picker's label hides whatever does not fit, so the picker can shrink to its icon while the gap between
+     the groups looks wide enough and nothing overflows. `cut` picks when the label is cut off: 'never', 'with-tools'
+     (only while this script's controls are in the row), or 'always'. */
+  const withLabel = (cut, shown) => (dom) => {
+    const box = toolbar(dom);
+    const label = dom.el('span', {});
+    box.trigger.appendChild(label);
+    const inRow = () => box.left.querySelectorAll('[data-codex-extras="tools"]').length > 0;
+    const full = () => (shown() ? 90 : 0);
+    Object.defineProperty(label, 'scrollWidth', { get: full, configurable: true });
+    Object.defineProperty(label, 'clientWidth', { configurable: true,
+      get: () => (!shown() || (cut === 'with-tools' && inRow()) ? 0 : cut === 'always' ? 60 : 90) });
+    return box;
+  };
+  const inLeft = (p) => p.q('[data-codex-extras="tools"]').filter((t) => t.parentNode === p.box.left).length;
+  {
+    let shown = false;
+    const p = page(root, withLabel('with-tools', () => shown));
+    p.view();
+    const before = inLeft(p);
+    shown = true;
+    p.pass();
+    eq([before, inLeft(p), !!p.q('[data-codex-extras="bar"]')[0]], [1, 0, true],
+      'a model name that shows up after the buttons went into the row, and is cut off by them, sends them below the message box');
+  }
+  {
+    const p = page(root, withLabel('with-tools', () => true));
+    p.view();
+    eq([inLeft(p), !!p.q('[data-codex-extras="bar"]')[0]], [0, true],
+      'buttons that would cut off the model name when they go in stay below the message box');
+  }
+  {
+    const p = page(root, withLabel('always', () => true));
+    p.view();
+    p.pass();
+    eq(inLeft(p), 1, 'a model name Codex cuts off with or without the buttons does not keep them out of the row');
+  }
 };
