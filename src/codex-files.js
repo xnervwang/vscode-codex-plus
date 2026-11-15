@@ -43,7 +43,20 @@ function codexHome() {
 function stateDbPath(home = codexHome()) { return newestDb(home, 'state'); }
 /* The database of thread goals, numbered the same way (goals_1.sqlite today). */
 function goalsDbPath(home = codexHome()) { return newestDb(home, 'goals'); }
+/*
+ * The newest of each database, by home and stem, kept while the home folder is unchanged: a file added to it, removed
+ * from it or renamed in it gives the folder a new change time, while a write inside a file there does not. As with a
+ * rollout's state (cachedRolloutState), an answer is kept only once that change time is SETTLED_MS old.
+ */
+const newest = new Map();
 function newestDb(home, stem) {
+  let s;
+  try { s = fs.statSync(home); } catch (_) { s = null; }
+  const key = s ? [s.ino, s.mtimeMs, s.ctimeMs].join(':') : '';
+  const which = `${home}\0${stem}`;
+  const kept = newest.get(which);
+  if (s && kept && kept.key === key) return kept.file;
+  newest.delete(which);
   let names;
   try { names = fs.readdirSync(home); } catch (_) { return ''; }
   let best = '', bestN = -1;
@@ -52,7 +65,9 @@ function newestDb(home, stem) {
     const m = re.exec(n);
     if (m && +m[1] > bestN) { bestN = +m[1]; best = n; }
   }
-  return best ? path.join(home, best) : '';
+  const file = best ? path.join(home, best) : '';
+  if (s && Date.now() - Math.max(s.mtimeMs, s.ctimeMs) >= SETTLED_MS) newest.set(which, { key, file });
+  return file;
 }
 
 let sqlite = undefined;
