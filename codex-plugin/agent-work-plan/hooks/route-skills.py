@@ -10,6 +10,9 @@ model, each with its full description and the path of its SKILL.md. A message un
 whole run, network included, is held to 1.5 seconds, and anything that goes wrong leaves the turn with the keyword
 results or with nothing.
 
+A skill whose description and path the conversation's context already holds, word for word, is named rather than given
+again (given_earlier below).
+
 On Stop it reads the turn back from the rollout and logs which SKILL.md files its tool calls named, so the log shows
 whether the model read the skills it was given.
 """
@@ -19,13 +22,150 @@ T0 = time.time()  # the budget counts from here, so that loading the modules bel
 
 import json  # noqa: E402
 import os  # noqa: E402
+import re  # noqa: E402
 import sys  # noqa: E402
 
 sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from plan_path import data_dir, open_tail, read_payload, settings  # noqa: E402
+from plan_path import (COMPACTED_SUFFIX, data_dir, open_tail, plan_file, read_payload, settings, side_file,  # noqa: E402
+                       write_quietly)
 import skill_route as route  # noqa: E402
+
+"""Skills given earlier in the conversation.
+
+ROUTED_SUFFIX beside the plan keeps which skills the conversation's context holds in full, name -> [path, description],
+read back from its transcript, where Codex writes each routing block as a developer message once the turn it came with
+has started: a block whose prompt never reached the model is not there to be read. Each turn reads on from where the
+last one stopped. A compaction (the compaction hook's COMPACTED_SUFFIX mark, or Codex's own compacted row) or turns
+rolled back (thread_rolled_back) start the record over, since either takes earlier messages out of the context.
+
+A skill this turn's search found whose name, path and description are in that record is named on ORDER_LINE, which
+lists every skill found in order of fit with those marked GIVEN_EARLIER, instead of being given again; one that is not,
+or whose description has changed since, is given in full as before. A turn with nothing to name gets the block it always
+got, without the line. A sub-agent's thread is not read for this: it is given every skill in full.
+
+src/user-times.js reads the names off ORDER_LINE for the line under each reply, as it reads them off the full lines.
+"""
+ROUTED_SUFFIX = ".routed"
+ROUTED_FORMAT = 1
+ORDER_LINE = "In order of fit: "
+GIVEN_EARLIER = " (given earlier)"
+ORDER_END = (". Those given earlier had their description and file given in full earlier in this conversation and are not "
+             "repeated here.")
+# Transcript read at most in one turn; past it, the record starts over and every skill is given in full.
+READ_MAX = 64 << 20
+FULL_LINE = re.compile(r"^- ([^\s:][^:]*(?::[^\s:][^:]*)?): (.*) \(file: (.+)\)$")
+RESETS = ("compacted", "context_compacted", "thread_rolled_back")
+
+
+def sub_agent(payload):
+    """Whether the thread is a sub-agent's: the event says so, or its transcript's session_meta has a sub-agent source."""
+    if payload.get("agent_id"):
+        return True
+    path = payload.get("transcript_path")
+    if not isinstance(path, str) or not path:
+        return False
+    try:
+        with open(path, "rb") as fh:
+            row = json.loads(fh.readline(1 << 20))
+        source = (row.get("payload") or {}).get("source") if row.get("type") == "session_meta" else None
+    except Exception:
+        return False
+    return isinstance(source, dict) and "subagent" in source
+
+
+def blocks_in(row):
+    """The full lines of the routing blocks in one transcript row: [(name, path, description)]."""
+    p = row.get("payload") if row.get("type") == "response_item" else None
+    if not isinstance(p, dict) or p.get("type") != "message" or p.get("role") != "developer":
+        return []
+    out = []
+    for part in p.get("content") if isinstance(p.get("content"), list) else []:
+        text = part.get("text") if isinstance(part, dict) and isinstance(part.get("text"), str) else ""
+        at = text.find(route.MARK)
+        if at < 0:
+            continue
+        for line in text[at:].split("\n")[1:]:
+            if line.startswith(ORDER_LINE):
+                continue
+            m = FULL_LINE.match(line)
+            if not m:
+                break
+            out.append((m.group(1), m.group(3), m.group(2)))
+    return out
+
+
+def given_earlier(plan, transcript):
+    """name -> [path, description] for the skills the context holds in full, brought up to date with the transcript and
+    saved beside the plan."""
+    if not plan or not isinstance(transcript, str) or not transcript:
+        return {}
+    compacted = ""
+    try:
+        with open(side_file(plan, COMPACTED_SUFFIX), encoding="utf-8") as fh:
+            compacted = fh.read().strip()
+    except Exception:
+        pass
+    try:
+        with open(side_file(plan, ROUTED_SUFFIX), encoding="utf-8") as fh:
+            kept = json.load(fh)
+    except Exception:
+        kept = {}
+    if not isinstance(kept, dict) or kept.get("format") != ROUTED_FORMAT or kept.get("transcript") != transcript:
+        kept = {}
+    given = kept.get("given") if isinstance(kept.get("given"), dict) else {}
+    offset = kept.get("offset") if isinstance(kept.get("offset"), int) else 0
+    if kept.get("compacted", "") != compacted:
+        given = {}
+    try:
+        size = os.path.getsize(transcript)
+    except OSError:
+        return {}
+    if size < offset:
+        given, offset = {}, 0
+    if size - offset > READ_MAX:
+        given, offset = {}, size
+    data = b""
+    if size > offset:
+        try:
+            with open(transcript, "rb") as fh:
+                fh.seek(offset)
+                data = fh.read(size - offset)
+        except OSError:
+            return {}
+    end = data.rfind(b"\n") + 1
+    for raw in data[:end].split(b"\n"):
+        if not any(k.encode() in raw for k in RESETS) and route.MARK.encode() not in raw:
+            continue
+        try:
+            row = json.loads(raw.decode("utf-8"))
+        except Exception:
+            continue
+        if not isinstance(row, dict):
+            continue
+        payload = row.get("payload") if isinstance(row.get("payload"), dict) else {}
+        if row.get("type") == "compacted" or (row.get("type") == "event_msg" and payload.get("type") in RESETS):
+            given = {}
+            continue
+        for name, path, desc in blocks_in(row):
+            given[name] = [path, desc]
+    write_quietly(side_file(plan, ROUTED_SUFFIX), json.dumps(
+        {"format": ROUTED_FORMAT, "transcript": transcript, "offset": offset + end, "compacted": compacted, "given": given},
+        ensure_ascii=False))
+    return given
+
+
+def block(top, given):
+    """The text for this turn's skills, and the names given in full and only named."""
+    full = [s for s in top if given.get(s["name"]) != [s["path"], route.one_line(s["desc"]) or "(no description)"]]
+    named = [s["name"] for s in top if s not in full]
+    if not named:
+        return route.render(top), [s["name"] for s in top], []
+    order = ORDER_LINE + ", ".join(s["name"] + ("" if s in full else GIVEN_EARLIER) for s in top) + ORDER_END
+    text = route.render(full, limit=route.CONTEXT_BYTES - len(order.encode("utf-8")) - 1)
+    head, _, rest = text.partition("\n")
+    return "\n".join([head, order] + ([rest] if rest else [])), [s["name"] for s in full], named
 
 
 def submitted(payload, directory, given, t0):
@@ -51,15 +191,19 @@ def submitted(payload, directory, given, t0):
         return None
     count = max(1, min(route.MAX_COUNT, int(given.get("skillRouteCount") or 5)))
     top, how, timings, failed = route.search(index, text, count, cwd, t0 + route.BUDGET, directory, given, conf)
-    record = dict(ids, ev="inject", via=how, skills=[s["name"] for s in top], ms=round((time.time() - t0) * 1000, 1),
-                  msLoad=round((t_load - t0) * 1000, 1), msLocal=round(timings["local"], 1),
-                  msNet=round(timings["net"], 1))
+    out, full, named = None, [], []
+    if top:
+        earlier = {} if sub_agent(payload) else given_earlier(plan_file(payload, directory), payload.get("transcript_path"))
+        out, full, named = block(top, earlier)
+    record = dict(ids, ev="inject", via=how, skills=[s["name"] for s in top], full=full, named=named,
+                  ms=round((time.time() - t0) * 1000, 1), msLoad=round((t_load - t0) * 1000, 1),
+                  msLocal=round(timings["local"], 1), msNet=round(timings["net"], 1))
     if failed:
         record["fellBack"] = failed[:160]
     if why:
         record["rebuild"] = why
     route.log(directory, record)
-    return route.render(top) if top else None
+    return out
 
 
 def stopped(payload, directory):

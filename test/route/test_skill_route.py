@@ -1345,6 +1345,159 @@ class I_SkillSearch(Case):
 # ── J. how well the keyword search finds the right skill ─────────────────────────────────────────────────────────────
 
 
+class L_Repeats(Case):
+    """A skill whose description and path the conversation was given in full earlier, and still holds, is named instead
+    of given again. Each turn below runs the hook, then writes the block into the transcript as Codex does: a developer
+    message after the turn's task_started. The hook reads the record back from there."""
+
+    def setUp(self):
+        super().setUp()
+        self.h.corpus()
+        self.h.build()
+        self.transcript = os.path.join(self.h.tmp, "rollout.jsonl")
+        self.meta({"id": THREAD, "source": "vscode"})
+        self.n = 0
+
+    def meta(self, payload):
+        with open(self.transcript, "w") as fh:
+            fh.write(json.dumps({"timestamp": "2026-11-15T00:00:00Z", "type": "session_meta", "payload": payload}) + "\n")
+
+    def rows(self, *rows):
+        with open(self.transcript, "a") as fh:
+            for r in rows:
+                fh.write(json.dumps(dict({"timestamp": "2026-11-15T00:00:01Z"}, **r)) + "\n")
+
+    def turn(self, text, delivered=True, **extra):
+        """The block this turn is given, '' for none, recorded in the transcript unless the prompt never got through."""
+        self.n += 1
+        tid = "turn-%d" % self.n
+        payload = dict({"hook_event_name": "UserPromptSubmit", "session_id": THREAD, "turn_id": tid, "cwd": self.h.tmp,
+                        "prompt": text, "transcript_path": self.transcript}, **extra)
+        code, out, err, _ = self.h.run(payload)
+        self.assertEqual((code, err), (0, ""))
+        block = json.loads(out)["hookSpecificOutput"]["additionalContext"] if out.strip() else ""
+        if delivered:
+            self.rows({"type": "event_msg", "payload": {"type": "task_started", "turn_id": tid}})
+            if block:
+                self.rows({"type": "response_item", "payload": {"type": "message", "role": "developer",
+                                                                "content": [{"type": "input_text", "text": block}]}})
+        return block
+
+    @staticmethod
+    def full(block):
+        return [line[2:].split(": ", 1)[0] for line in block.split("\n") if line.startswith("- ")]
+
+    @staticmethod
+    def order(block):
+        """The names on the line under the first, in order, and which of them are marked as given earlier."""
+        lines = block.split("\n")
+        hook = load_hook()
+        if len(lines) < 2 or not lines[1].startswith(hook.ORDER_LINE):
+            return None
+        items = lines[1][len(hook.ORDER_LINE):].split(hook.ORDER_END)[0].split(", ")
+        return [(i[:-len(hook.GIVEN_EARLIER)], True) if i.endswith(hook.GIVEN_EARLIER) else (i, False) for i in items]
+
+    def test_a_repeat_is_named_not_given_again(self):
+        """the first turn gets the block it always got; the same skills on the next turn are only named, in order"""
+        text = "the disk is full, clean it"
+        first = self.turn(text)
+        top = self.h.names(text)
+        self.assertEqual((self.full(first), first), (top, route.render(self.h.search(text)[0])))
+        again = self.turn(text)
+        self.assertEqual((self.full(again), self.order(again)), ([], [(n, True) for n in top]))
+        self.assertEqual(again.split("\n")[0], first.split("\n")[0])
+        rec = self.h.log()[-1]
+        self.assertEqual((rec["skills"], rec["full"], rec["named"]), (top, [], top))
+
+    def test_new_skills_in_full_and_the_order_kept(self):
+        """a turn whose skills are partly new gives the new ones in full, as the whole block would, and names all of them
+        in order of fit"""
+        a, b = "the disk is full, clean it", "fetch a web page that needs javascript and clean the disk"
+        self.turn(a)
+        was = set(self.h.names(a))
+        block = self.turn(b)
+        top = self.h.names(b)
+        fresh = [n for n in top if n not in was]
+        self.assertTrue(fresh and len(fresh) < len(top), (top, was))
+        self.assertEqual(self.order(block), [(n, n in was) for n in top])
+        self.assertEqual(self.full(block), fresh)
+        whole = route.render(self.h.search(b)[0]).split("\n")
+        self.assertEqual([l for l in block.split("\n") if l.startswith("- ")], [l for l in whole if l[2:].split(": ", 1)[0] in fresh])
+        self.assertLessEqual(len(block.encode("utf-8")), route.CONTEXT_BYTES)
+
+    def test_a_block_that_never_reached_the_model_is_given_again(self):
+        """a prompt whose block Codex never recorded leaves nothing given"""
+        text = "the disk is full, clean it"
+        self.turn(text, delivered=False)
+        self.assertEqual(self.full(self.turn(text)), self.h.names(text))
+
+    def test_compaction_and_rollback_start_over(self):
+        """after a compaction, by the hook's mark or Codex's row, or turns rolled back, every skill is given in full again"""
+        text = "the disk is full, clean it"
+        top = self.h.names(text)
+        resets = [
+            lambda: open(os.path.join(self.h.data, THREAD + plan_path.COMPACTED_SUFFIX), "w").write("2026-11-15T00:00:0%dZ" % self.n),
+            lambda: self.rows({"type": "compacted", "payload": {"message": ""}}),
+            lambda: self.rows({"type": "event_msg", "payload": {"type": "context_compacted"}}),
+            lambda: self.rows({"type": "event_msg", "payload": {"type": "thread_rolled_back", "num_turns": 1}}),
+        ]
+        for reset in resets:
+            self.turn(text)
+            self.assertEqual(self.full(self.turn(text)), [])
+            reset()
+            self.assertEqual(self.full(self.turn(text)), top)
+
+    def test_a_changed_description_is_given_again(self):
+        """a skill whose description changed since it was given is given in full with the new one"""
+        text = "the disk is full, clean it"
+        self.turn(text)
+        name = self.h.names(text)[0]
+        desc = dict(corpus.SKILLS)[name] + " Also covers widgets."
+        self.h.skill(self.h.user_root(), name.replace(":", "-"), desc, name=name)
+        self.h.build()
+        block = self.turn(text)
+        self.assertEqual(self.full(block), [name])
+        self.assertIn("Also covers widgets.", block)
+
+    def test_a_sub_agent_gets_every_skill_in_full(self):
+        """a sub-agent's thread, by its transcript's source or by the event's agent_id, is given every skill in full"""
+        text = "the disk is full, clean it"
+        top = self.h.names(text)
+        self.meta({"id": THREAD, "source": {"subagent": {"thread_spawn": {"parent_thread_id": "p", "depth": 1}}}})
+        self.turn(text)
+        self.assertEqual(self.full(self.turn(text)), top)
+        self.meta({"id": THREAD, "source": "vscode"})
+        self.turn(text)
+        self.assertEqual(self.full(self.turn(text, agent_id="a1")), top)
+
+    def test_without_a_transcript_every_skill_is_given(self):
+        """an event without a transcript gets every skill in full, as before, and nothing is kept"""
+        text = "the disk is full, clean it"
+        for _ in range(2):
+            self.assertEqual(self.h.injected(text), self.h.names(text))
+        self.assertFalse(os.path.exists(os.path.join(self.h.data, THREAD + load_hook().ROUTED_SUFFIX)))
+
+    def test_the_record_holds_no_words_of_the_user(self):
+        """the record beside the plan holds skill names, paths and descriptions, never what the user wrote"""
+        self.turn("zq9MARKERxv7 the disk is full, clean it")
+        with open(os.path.join(self.h.data, THREAD + load_hook().ROUTED_SUFFIX), "rb") as fh:
+            self.assertNotIn(b"zq9MARKERxv7", fh.read())
+
+
+_HOOK = []
+
+
+def load_hook():
+    """route-skills.py as a module, for its constants."""
+    if not _HOOK:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("route_skills_hook", HOOK)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        _HOOK.append(mod)
+    return _HOOK[0]
+
+
 class J_Quality(unittest.TestCase):
     TOP5_FLOOR = 0.85      # of QUERIES, measured 100% when this was written
     BY_NAME_FLOOR = 0.92   # first place for BY_NAME, measured 36 of 36

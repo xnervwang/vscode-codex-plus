@@ -76,6 +76,8 @@ function liveSessions(home = files.codexHome()) {
  *                again after it, and the injection gives the whole plan again
  *   .briefed     what the Stop hook last asked about the brief, so it does not ask it again
  *   .injected    what the plan looked like when the injection hook last showed it, so an unchanged plan is one line
+ *   .routed      which skills the conversation's context holds in full since its last compaction, so the skill search
+ *                names them rather than giving them again (route-skills.py)
  *
  * The row command also moves rows closed for a day to closed/<session id>.json (CLOSED_DIR), deleted with the rest.
  *
@@ -84,7 +86,7 @@ function liveSessions(home = files.codexHome()) {
  * file a writer was killed before renaming is swept from it, once it is a day old.
  */
 const SIDE_SUFFIXES = ['.json', '.offered', '.nudged', '.settled', '.turn', '.watermark', '.tz', '.wakeup', '.woke', '.compacted',
-  '.briefed', '.injected'];
+  '.briefed', '.injected', '.routed'];
 const CLOSED_DIR = 'closed';
 const SIDE_FILE = new RegExp('^[0-9a-f][0-9a-f-]{7,}(?:' + SIDE_SUFFIXES.map((s) => s.replace('.', '\\.')).join('|') + ')$', 'i');
 const PLAN_FILE = /^[0-9a-f][0-9a-f-]{7,}\.json$/i;

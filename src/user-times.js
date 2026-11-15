@@ -57,6 +57,14 @@ const INJECTED = /^\s*<[a-z][a-z0-9_]*>/;
  * "- <name>: <description> (file: <path>)".
  */
 const ROUTE_MARK = 'Skills that may fit this message';
+/*
+ * The line the hook puts right under that first line when some of the turn's skills were given in full earlier in the
+ * conversation: every skill of the turn in order, "<name> (given earlier)" for those, then ORDER_END (ORDER_LINE,
+ * GIVEN_EARLIER and ORDER_END in route-skills.py). The full lines that follow it are the rest, already on it.
+ */
+const ORDER_LINE = 'In order of fit: ';
+const GIVEN_EARLIER = ' (given earlier)';
+const ORDER_END = '. Those given earlier';
 /* The hook gives a turn at most ten skills. */
 const SKILLS_KEPT = 10;
 
@@ -116,7 +124,7 @@ function timesIn(lines, into = [], compactions = [], turns = { byId: new Map(), 
 /*
  * Records the skill names of a routing block on the turn named in the message's metadata, else on the current turn.
  * Only the lines that directly follow the block's first line count, so another hook's text in the same message adds
- * nothing.
+ * nothing; when the first of them is ORDER_LINE, it alone names them all.
  */
 function noteSkills(row, turns) {
   const p = row.type === 'response_item' && row.payload;
@@ -130,7 +138,16 @@ function noteSkills(row, turns) {
     const text = part && typeof part.text === 'string' ? part.text : '';
     const at = text.indexOf(ROUTE_MARK);
     if (at < 0) continue;
-    for (const l of text.slice(at).split('\n').slice(1)) {
+    const below = text.slice(at).split('\n').slice(1);
+    if (below.length && below[0].startsWith(ORDER_LINE)) {
+      const end = below[0].indexOf(ORDER_END);
+      for (const item of below[0].slice(ORDER_LINE.length, end < 0 ? undefined : end).split(', ')) {
+        const name = item.endsWith(GIVEN_EARLIER) ? item.slice(0, -GIVEN_EARLIER.length) : item;
+        if (name && names.length < SKILLS_KEPT) names.push(name.slice(0, 120));
+      }
+      continue;
+    }
+    for (const l of below) {
       const m = /^- ([^\s:][^:]*(?::[^\s:][^:]*)?): /.exec(l);
       if (!m) break;
       if (names.length < SKILLS_KEPT) names.push(m[1].slice(0, 120));
@@ -260,4 +277,4 @@ function userTimes(rollout) {
 
 function forget() { cache.clear(); }
 
-module.exports = { MAX_BYTES, MAX_TIMES, TURNS_SENT, INJECTED, ROUTE_MARK, textOf, wholeLines, timesIn, turnFigures, turnTimes, userTimes, rolloutMarks, forget };
+module.exports = { MAX_BYTES, MAX_TIMES, TURNS_SENT, INJECTED, ROUTE_MARK, ORDER_LINE, GIVEN_EARLIER, ORDER_END, textOf, wholeLines, timesIn, turnFigures, turnTimes, userTimes, rolloutMarks, forget };
