@@ -152,7 +152,7 @@ The tables below show the text Codex Plus adds to what Codex sends the model. Al
 
 | What | When | At most | Turned off by |
 | --- | --- | --- | --- |
-| The work plan | Each message, while the conversation's plan has a row that is not `done` or `dropped`. The whole block, with what the states mean and how to change a row, on the conversation's first message and the first after each compaction; a short head in its place otherwise; one line when no row has changed since the message before | 6,000 characters, the brief included; the one line is about 160 characters and the plan's path | `codexPlus.workPlan` |
+| The work plan | Each message, while the conversation's plan has a row that is not `done` or `dropped`. The whole block, with what the states mean and how to change a row, on the conversation's first message and the first after each compaction; a short head in its place otherwise; one line when no row has changed since the message before | 6,000 characters, the brief included; the one line is about 160 characters and the plan's path, 240 with the brief on | `codexPlus.workPlan` |
 | Skill search | Each message of six characters or more | 15,000 bytes | `codexPlus.skillRouting`; `codexPlus.skillRoutingCount` sets how many skills |
 
 ### Added now and then
@@ -160,7 +160,7 @@ The tables below show the text Codex Plus adds to what Codex sends the model. Al
 | What | When | At most | Turned off by |
 | --- | --- | --- | --- |
 | End-of-turn reminders | At the end of a turn that left rows `doing`, asked you something without putting the question on a row, or changed things without reading or updating the plan | About 2,400 characters and the plan's path four times, with every reminder and both of the brief's requests at once | `codexPlus.workPlan` |
-| The brief's requests | At the end of a turn: the status once per turn, after a turn that did work; the summary when there is none, after a top-level row was added, removed or closed, and after a compaction | Counted in the end-of-turn reminders' row above | `codexPlus.conversationBrief` |
+| The brief's requests | The work plan's text on each message ends with one sentence asking Codex to write the status before its final reply. At the end of a turn: the status once per turn, after a turn that did work and did not write it; the summary when there is none, after a top-level row was added, removed or closed, and after a compaction | The sentence is counted in the work plan's row; the rest in the end-of-turn reminders' row above | `codexPlus.conversationBrief` |
 | No row `doing` | At most once per turn, when the turn has started working and no row is `doing` | About 460 characters and the plan's path | `codexPlus.workPlan` |
 | Before a compaction | At 70% and 85% of where Codex compacts, once each between compactions | About 850 characters and the plan's path | `codexPlus.workPlan` |
 | After a compaction | Once per compaction | About 970 characters, the plan's path, and the path of its closed rows when it has any | `codexPlus.workPlan` |
