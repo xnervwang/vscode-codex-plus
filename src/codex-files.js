@@ -424,9 +424,10 @@ function rolloutState(file, lines = null) {
 /*
  * rolloutState() of a rollout, taken from `cache` while the file is as it was when that state was read: the same file,
  * inode, size, modification time and change time. A rollout is only ever appended to, and Codex compresses one into
- * a new file, so an unchanged file gives the same state. A state is kept only once the file has gone SETTLED_MS
- * without a write: two writes within one tick of the clock the file system stamps them with can leave the same times,
- * and a write after one SETTLED_MS old is sure to carry a later time. The coarsest tick in use is FAT's, two seconds.
+ * a new file, so an unchanged file gives the same state. A state is kept only once the file's change time is
+ * SETTLED_MS old: two changes within one tick of the clock the file system stamps them with can leave the same times,
+ * and a change after that is sure to carry a later change time, which unlike the modification time nothing can set
+ * back. The coarsest tick in use is FAT's, two seconds.
  * `cache` keeps at most STATES_KEPT rollouts, the least recently used going first, and each caller gets a copy of its
  * own.
  */
@@ -445,7 +446,7 @@ function cachedRolloutState(file, cache, now = Date.now()) {
   }
   const state = rolloutState(file);
   cache.delete(file);
-  if (now - s.mtimeMs >= SETTLED_MS) {
+  if (now - Math.max(s.mtimeMs, s.ctimeMs) >= SETTLED_MS) {
     cache.set(file, { key, state: structuredClone(state) });
     while (cache.size > STATES_KEPT) cache.delete(cache.keys().next().value);
   }

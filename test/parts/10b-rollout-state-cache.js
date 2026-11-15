@@ -7,8 +7,8 @@
  * A full snapshot reads again only the rollouts that changed, and the state it keeps for one that did not is the state
  * a fresh read gives, field for field: for a short rollout, for long ones whose latest turn starts beyond one window or
  * beyond the largest, for one appended to, and for a compressed one, which is decompressed once per read rather than
- * once per window. A file written less than SETTLED_MS ago is never kept; the test dates its files back with utimes
- * rather than waiting.
+ * once per window. A file changed less than SETTLED_MS ago is never kept; the test passes a time an hour on rather than
+ * waiting.
  */
 const fs = require('fs');
 const path = require('path');
@@ -48,7 +48,7 @@ module.exports = ({ ok, bad, eq, note, tmp }) => {
     fs.writeFileSync(file, lines.join('\n') + '\n');
     return file;
   };
-  const settle = (file) => { const old = Date.now() / 1000 - 3600; fs.utimesSync(file, old, old); };
+  const later = () => Date.now() + 3600e3;
   const batch = [make('short'), make('beyond-one-window', { filler: 200e3 }), make('beyond-the-largest', { filler: 5e6 }),
     make('running', { running: true, filler: 70e3 })];
   const hasZstd = typeof zlib.zstdCompressSync === 'function';
@@ -58,7 +58,6 @@ module.exports = ({ ok, bad, eq, note, tmp }) => {
     fs.unlinkSync(plain);
     batch.push(plain);
   } else note('no zstd in this Node, so a compressed rollout was not read');
-  for (const f of batch) settle(files.existingRollout(f));
 
   /* Reads of rollout files and decompressions while fn() runs. */
   const reads = (fn) => {
@@ -80,12 +79,12 @@ module.exports = ({ ok, bad, eq, note, tmp }) => {
   eq(fresh.map((s) => [s.turnId, s.working, s.model]), [['last', false, 'gpt-test'], ['last', false, 'gpt-test'], ['last', false, ''],
     ['last', true, 'gpt-test'], ...(hasZstd ? [['last', false, 'gpt-test']] : [])],
   'the made-up rollouts are read as their last turn says, one of them past the largest window');
-  const first = batch.map((f) => files.cachedRolloutState(f, cache));
+  const first = batch.map((f) => files.cachedRolloutState(f, cache, later()));
   eq(first, fresh, 'the first read through the cache gives what a plain read gives');
-  const again = reads(() => batch.map((f) => files.cachedRolloutState(f, cache)));
+  const again = reads(() => batch.map((f) => files.cachedRolloutState(f, cache, later())));
   eq([again.out, again.n, again.unzipped], [fresh, 0, 0], 'a second read of unchanged rollouts reads none of them and gives the same');
   again.out[0].model = 'changed by a caller';
-  eq(files.cachedRolloutState(batch[0], cache).model, 'gpt-test', 'each caller gets a copy, so one that changes it changes nothing kept');
+  eq(files.cachedRolloutState(batch[0], cache, later()).model, 'gpt-test', 'each caller gets a copy, so one that changes it changes nothing kept');
 
   if (hasZstd) {
     const z = reads(() => files.rolloutState(batch[4]));
@@ -93,36 +92,57 @@ module.exports = ({ ok, bad, eq, note, tmp }) => {
   }
 
   fs.appendFileSync(batch[3], row(T + 9e6 + 5, 'event_msg', { type: 'task_complete', turn_id: 'last', duration_ms: 88 }) + '\n');
-  const grown = reads(() => files.cachedRolloutState(batch[3], cache));
+  const grown = reads(() => files.cachedRolloutState(batch[3], cache, later()));
   eq([grown.out, grown.n > 0], [files.rolloutState(batch[3]), true], 'a rollout appended to is read again, and its new state is the one kept');
   eq(grown.out.working, false, 'which shows its turn has ended');
-  eq(reads(() => files.cachedRolloutState(batch[3], cache)).n > 0, true, 'and one written less than SETTLED_MS ago is read again on the next pass too');
-  settle(batch[3]);
-  files.cachedRolloutState(batch[3], cache);
-  eq(reads(() => files.cachedRolloutState(batch[3], cache)).n, 0, 'until it has gone that long without a write');
+  fs.appendFileSync(batch[3], '\n');
+  /* "Now" is the moment of that change, so it is less than SETTLED_MS old whatever the scheduler does. */
+  const changedAt = fs.statSync(batch[3]).ctimeMs;
+  files.cachedRolloutState(batch[3], cache, changedAt);
+  eq(reads(() => files.cachedRolloutState(batch[3], cache, changedAt)).n > 0, true, 'and one changed less than SETTLED_MS ago is read again on the next pass too');
+  files.cachedRolloutState(batch[3], cache, later());
+  eq(reads(() => files.cachedRolloutState(batch[3], cache, later())).n, 0, 'until its change time is that old');
 
-  /* The same size and times on another file in its place: the inode tells them apart. */
-  const swap = batch[0] + '.new';
-  fs.copyFileSync(batch[0], swap);
+  /* The same size and modification time, on another file renamed into its place and on the file itself rewritten. */
   const st = fs.statSync(batch[0]);
-  const lines = fs.readFileSync(swap, 'utf8').replace('"effort":"high"', '"effort":"lowx"');
-  fs.writeFileSync(swap, lines);
+  const swap = batch[0] + '.new';
+  fs.writeFileSync(swap, fs.readFileSync(batch[0], 'utf8').replace('"effort":"high"', '"effort":"lowx"'));
   fs.utimesSync(swap, st.atime, st.mtime);
   fs.renameSync(swap, batch[0]);
-  eq(files.cachedRolloutState(batch[0], cache).effort, 'lowx', 'a file renamed over a kept one, with the same size and times, is read again');
+  eq(files.cachedRolloutState(batch[0], cache, later()).effort, 'lowx', 'a file renamed over a kept one, with the same size and modification time, is read again');
+  /* Rewritten in place, same size, its modification time put back: only the change time tells. The times stat gives
+     for this one file are pinned, so the test does not rest on the two writes falling in different clock ticks. */
+  const pinned = (over, fn) => {
+    const statSync = fs.statSync;
+    fs.statSync = function (p, ...a) { const s = statSync.call(this, p, ...a); return String(p) === batch[0] ? { ...s, ...over } : s; };
+    try { return fn(); } finally { fs.statSync = statSync; }
+  };
+  const P = Date.parse('2026-01-01T00:00:00Z');
+  eq(pinned({ mtimeMs: P, ctimeMs: P }, () => files.cachedRolloutState(batch[0], cache, P + files.SETTLED_MS)).effort, 'lowx', 'a file settled at a given time is read once');
+  fs.writeFileSync(batch[0], fs.readFileSync(batch[0], 'utf8').replace('"effort":"lowx"', '"effort":"lowy"'));
+  eq(pinned({ mtimeMs: P, ctimeMs: P + 1 }, () => files.cachedRolloutState(batch[0], cache, P + 1 + files.SETTLED_MS)).effort, 'lowy',
+    'and read again once it was rewritten in place with its modification time put back, its change time having moved');
+  const young = () => files.cachedRolloutState(batch[0], cache, P + 1 + files.SETTLED_MS);
+  pinned({ mtimeMs: P, ctimeMs: P + 2 }, young);
+  eq(pinned({ mtimeMs: P, ctimeMs: P + 2 }, () => reads(young).n) > 0, true, 'a file whose change time is less than SETTLED_MS old is not kept');
 
   const capped = new Map();
   for (let i = 0; i < files.STATES_KEPT + 3; i++) capped.set(`x${i}`, { key: '', state: {} });
-  files.cachedRolloutState(batch[1], capped);
+  files.cachedRolloutState(batch[1], capped, later());
   eq([capped.size, capped.has('x0'), capped.has(batch[1])], [files.STATES_KEPT, false, true], 'at most STATES_KEPT states are kept, the oldest going first');
 
   /* The worker's snapshot, twice, with the second reading no rollout. */
   const home = tmp('home');
   const now = Date.now();
   const made = fixture.codexHome(home, [{ title: 'A', startMs: now - 600e3, turns: [{}] }, { title: 'B', startMs: now - 500e3, turns: [{}, {}] }]);
-  for (const t of made) settle(t.rollout);
   const worker = require('../../src/codex-worker');
-  const snap = () => worker.ops.snapshot({ home, previous: '', extra: [] });
+  /* An hour on, by the clock the worker reads, so that the rollouts just written count as settled. */
+  const snap = () => {
+    const real = Date.now;
+    const on = real() + 3600e3;
+    Date.now = () => on;
+    try { return worker.ops.snapshot({ home, previous: '', extra: [] }); } finally { Date.now = real; }
+  };
   const one = snap();
   const watch = (fn) => {
     let n = 0;

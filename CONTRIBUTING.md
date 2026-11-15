@@ -80,7 +80,7 @@ What bounds a single pass:
 | `STAMP_WINDOW_MS` (`src/codex-worker.js`) | 1 day | Only rollouts this recent are `stat`ed to build the stamp, the fingerprint a pass compares to see whether anything moved |
 | `COMPRESSED_MAX` (`src/codex-files.js`) | 64 MB | Largest `.jsonl.zst` read at all |
 | `DECOMPRESSED_MAX` (`src/codex-files.js`) | 256 MB | Largest decompressed rollout; a compressed rollout is decompressed once per read, whichever window its latest turn starts in |
-| `STATES_KEPT` (`src/codex-files.js`) | 500 | Rollout states the worker keeps between snapshots; a rollout whose file has not changed since, and had gone `SETTLED_MS` (2 s) without a write when it was read, is not read again |
+| `STATES_KEPT` (`src/codex-files.js`) | 500 | Rollout states the worker keeps between snapshots; a rollout whose file has not changed since, and whose change time was `SETTLED_MS` (2 s) old when it was read, is not read again |
 | `HELD_MAX` (`src/codex-reader.js`) | 200 | Conversation states retained after an on-demand read |
 | `SUBAGENT_WINDOW_MS` (`src/codex-worker.js`) | 2 hours | Sub-agents updated this recently have their rollout read, so their conversation can show one of them still running |
 | `LEFT_EVERY_MS` (`src/left-running.js`) | 10 s | Shortest time between two scans for what conversations left running; each scan reads /proc and Claude Code's session records once, with one read call per stat file, and the environ only of a process not seen before |
