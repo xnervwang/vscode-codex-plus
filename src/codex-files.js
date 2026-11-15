@@ -246,17 +246,23 @@ function existingRollout(file) {
   if (fs.existsSync(file + '.zst')) return file + '.zst';
   return '';
 }
-function compressedLines(file, limit) {
+/* The whole text of a compressed rollout, or null when it cannot be read. */
+function compressedText(file) {
   const zlib = require('zlib');
-  if (typeof zlib.zstdDecompressSync !== 'function') return [];
+  if (typeof zlib.zstdDecompressSync !== 'function') return null;
   try {
-    if (fs.statSync(file).size > COMPRESSED_MAX) return [];
-    const text = zlib.zstdDecompressSync(fs.readFileSync(file), { maxOutputLength: DECOMPRESSED_MAX }).toString('utf8');
-    const cut = Math.max(0, text.length - limit);
-    const tail = cut ? text.slice(text.indexOf('\n', cut) + 1) : text;
-    return tail.split('\n').filter((l) => l.trim()).reverse();
-  } catch (_) { return []; }
+    if (fs.statSync(file).size > COMPRESSED_MAX) return null;
+    return zlib.zstdDecompressSync(fs.readFileSync(file), { maxOutputLength: DECOMPRESSED_MAX }).toString('utf8');
+  } catch (_) { return null; }
 }
+/* The complete lines in the last `limit` characters of a rollout's text, newest first. */
+function textTail(text, limit) {
+  if (text === null) return [];
+  const cut = Math.max(0, text.length - limit);
+  const tail = cut ? text.slice(text.indexOf('\n', cut) + 1) : text;
+  return tail.split('\n').filter((l) => l.trim()).reverse();
+}
+function compressedLines(file, limit) { return textTail(compressedText(file), limit); }
 
 /** The complete lines in the last `limit` bytes of `file`, newest first. A line that starts before that point is left out. */
 function tailLines(file, limit = TAIL_START) {
@@ -317,8 +323,11 @@ const ASYNC_QUESTION = 'request_user_input_async';
 function rolloutState(file, lines = null) {
   if (!lines) {
     const size = fileSize(file);
+    /* A compressed rollout is decompressed once, and each window is cut from that text. */
+    const real = existingRollout(file);
+    const text = real && real.endsWith('.zst') ? compressedText(real) : undefined;
     for (let limit = TAIL_START; ; limit *= 4) {
-      const st = rolloutState(file, tailLines(file, limit));
+      const st = rolloutState(file, text === undefined ? tailLines(file, limit) : textTail(text, limit));
       if ((st.startedMs && st.model) || limit >= size || limit >= TAIL_MAX) return st;
     }
   }
@@ -379,6 +388,36 @@ function rolloutState(file, lines = null) {
   }
   st.openCommands = openCommands(lines);
   return st;
+}
+
+/*
+ * rolloutState() of a rollout, taken from `cache` while the file is as it was when that state was read: the same file,
+ * inode, size, modification time and change time. A rollout is only ever appended to, and Codex compresses one into
+ * a new file, so an unchanged file gives the same state. A state is kept only once the file has gone SETTLED_MS
+ * without a write: two writes within one tick of the clock the file system stamps them with can leave the same times,
+ * and a write after one SETTLED_MS old is sure to carry a later time. `cache` keeps at most STATES_KEPT rollouts, the
+ * least recently used going first, and each caller gets a copy of its own.
+ */
+const SETTLED_MS = 1000;
+const STATES_KEPT = 500;
+function cachedRolloutState(file, cache, now = Date.now()) {
+  const real = existingRollout(file);
+  let s;
+  try { s = fs.statSync(real || file); } catch (_) { cache.delete(file); return rolloutState(file); }
+  const key = [real, s.ino, s.size, s.mtimeMs, s.ctimeMs].join(':');
+  const kept = cache.get(file);
+  if (kept && kept.key === key) {
+    cache.delete(file);
+    cache.set(file, kept);
+    return structuredClone(kept.state);
+  }
+  const state = rolloutState(file);
+  cache.delete(file);
+  if (now - s.mtimeMs >= SETTLED_MS) {
+    cache.set(file, { key, state: structuredClone(state) });
+    while (cache.size > STATES_KEPT) cache.delete(cache.keys().next().value);
+  }
+  return state;
 }
 
 /*
@@ -456,5 +495,5 @@ function rolloutExists(id, home = codexHome()) {
 
 module.exports = {
   existingRollout, THREAD_ID, THREAD_COLUMNS, COMPRESSED_MAX, DECOMPRESSED_MAX, codexHome, setCodexHome, stateDbPath, goalsDbPath, query, listThreads, sourceKind, sections, goals, unreadThreads, tailLines,
-  sessionMeta, rolloutState, rolloutOf, rolloutExists, closeAll, ASYNC_QUESTION,
+  sessionMeta, rolloutState, cachedRolloutState, rolloutOf, rolloutExists, closeAll, ASYNC_QUESTION, SETTLED_MS, STATES_KEPT,
 };

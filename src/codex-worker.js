@@ -28,6 +28,8 @@ const SUBAGENT_WINDOW_MS = 2 * 3600e3;
    and the launcher id each process's environ named. */
 const launchCache = new Map();
 const environs = new Map();
+/* The state of each rollout a snapshot read, kept while the file is unchanged (src/codex-files.js cachedRolloutState). */
+const states = new Map();
 
 let home = '';
 function at(h) {
@@ -66,14 +68,14 @@ const ops = {
     if (previous && stamp === previous) return { stamp, same: true };
     const want = new Set(Array.isArray(extra) ? extra : []);
     const since = Date.now() - STATE_WINDOW_MS, subs = Date.now() - SUBAGENT_WINDOW_MS;
-    const states = {};
+    const found = {};
     for (const t of threads || []) {
       t.present = !t.rollout || !!files.existingRollout(t.rollout);
       /* An older sub-agent's state only when asked for: the extension asks for those of the conversations open in a
          window. */
       if (t.rollout && t.present && (want.has(t.id) || (t.kind === 'user' && t.updatedMs >= since)
         || (t.kind === 'subagent' && t.updatedMs >= subs))) {
-        try { states[t.id] = files.rolloutState(t.rollout); } catch (_) { /* left out */ }
+        try { found[t.id] = files.cachedRolloutState(t.rollout, states); } catch (_) { /* left out */ }
       }
     }
     let plans = [];
@@ -83,7 +85,7 @@ const ops = {
     try { wakeups = require('./wakeup').planned(install.planDir(dir)); } catch (_) { wakeups = []; }
     return {
       stamp, same: false, readable: !!threads, threads: threads || [],
-      unread: [...files.unreadThreads(dir)], sections: [...files.sections(dir)], goals: [...files.goals(dir)], states, plans, wakeups,
+      unread: [...files.unreadThreads(dir)], sections: [...files.sections(dir)], goals: [...files.goals(dir)], states: found, plans, wakeups,
     };
   },
   /* The rows of Session Information for one thread. A worker thread shares the extension host's process id, which is
