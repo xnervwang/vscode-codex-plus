@@ -35,6 +35,7 @@ const fs = require('fs');
 const path = require('path');
 const files = require('./codex-files');
 const install = require('./plugin-install');
+const { SHARE_DIR } = require('./left-running');
 
 const DATA_ROOT = () => path.join(files.codexHome(), 'plugins', 'data');
 const PLAN_DIR = install.DATA_DIR;
@@ -77,6 +78,10 @@ function liveSessions(home = files.codexHome()) {
  *   .injected    what the plan looked like when the injection hook last showed it, so an unchanged plan is one line
  *
  * The row command also moves rows closed for a day to closed/<session id>.json (CLOSED_DIR), deleted with the rest.
+ *
+ * shared/ (SHARE_DIR in src/left-running.js) belongs to no conversation: it holds the scan for work left running that
+ * the windows share, which each one replaces in turn, so nothing in it is deleted with a conversation. Only a temporary
+ * file a writer was killed before renaming is swept from it, once it is a day old.
  */
 const SIDE_SUFFIXES = ['.json', '.offered', '.nudged', '.settled', '.turn', '.watermark', '.tz', '.wakeup', '.woke', '.compacted',
   '.briefed', '.injected'];
@@ -122,7 +127,10 @@ function sweepOrphans(opts = {}) {
   try { names = fs.readdirSync(dir); } catch (_) { names = null; }
   /* Abandoned locks are removed regardless of the rollouts, since each one delays every writer of that plan until it
      times out. rmdir only removes an empty directory. */
-  for (const name of names || []) {
+  /* The scan shared between windows is written as <file>.<pid>.<thread>.tmp first, which TEMP matches. */
+  let shared = [];
+  try { shared = fs.readdirSync(path.join(dir, SHARE_DIR)).filter((n) => TEMP.test(n)).map((n) => path.join(SHARE_DIR, n)); } catch (_) { /* none */ }
+  for (const name of (names || []).concat(shared)) {
     const lock = LOCK.test(name), temp = !lock && TEMP.test(name);
     if (!lock && !temp) continue;
     const file = path.join(dir, name);

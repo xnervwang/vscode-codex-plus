@@ -7,7 +7,7 @@
  * Finds what a conversation started that is still running after its turn ended. It reads /proc, Claude Code's
  * session records, and the rollout of a conversation that launched a `claude --bg` session.
  * Every function here blocks; they run in the worker thread (src/codex-worker.js), at most once every 10 seconds
- * (LEFT_EVERY_MS).
+ * (LEFT_EVERY_MS), and the windows on this machine share one reading of /proc between them (scan()).
  *
  * Codex sets CODEX_THREAD_ID to the thread's id in the environment of every command it runs, and /proc/<pid>/environ
  * keeps the environment a process started with. Whatever such a command starts inherits it, a `codex exec` or a
@@ -60,13 +60,28 @@ const MAX_JOBS = 20;
 
 const read = (file, enc) => { try { return fs.readFileSync(file, enc); } catch (_) { return null; } };
 
+/*
+ * One read call per stat file, into a buffer every call shares: readFileSync takes a second call to see the end of a
+ * file /proc gives as empty. A stat line is a few hundred bytes; one that fills the buffer is read whole instead.
+ */
+const STAT_BUF = Buffer.alloc(4096);
+function readStat(file) {
+  let fd;
+  try { fd = fs.openSync(file, 'r'); } catch (_) { return null; }
+  let n;
+  try { n = fs.readSync(fd, STAT_BUF, 0, STAT_BUF.length, null); } catch (_) { return null; } finally {
+    try { fs.closeSync(fd); } catch (_) { /* closed */ }
+  }
+  return n < STAT_BUF.length ? STAT_BUF.toString('latin1', 0, n) : read(file, 'latin1');
+}
+
 /* pid -> { comm, state, ppid, start } for every process whose stat can be read; start is in clock ticks since boot. */
 function processes(proc = '/proc') {
   const out = new Map();
   let names;
   try { names = fs.readdirSync(proc).filter((n) => /^\d+$/.test(n)); } catch (_) { return out; }
   for (const n of names) {
-    const s = read(path.join(proc, n, 'stat'), 'latin1');
+    const s = readStat(path.join(proc, n, 'stat'));
     if (!s) continue;
     const open = s.indexOf('('), close = s.lastIndexOf(')');
     if (open < 0 || close < open) continue;
@@ -92,8 +107,8 @@ function envValue(env, key) {
  * the processes still alive. With /proc, a record counts only if the process now holding its pid started at the time
  * the record gives, because pids are reused.
  */
-function readRecords(dir = path.join(process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude'), 'sessions'),
-  { proc = '/proc', procs = null } = {}) {
+const sessionsHome = () => path.join(process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude'), 'sessions');
+function readRecords(dir = sessionsHome(), { proc = '/proc', procs = null } = {}) {
   const live = procs || processes(proc);
   const out = [];
   let names;
@@ -137,8 +152,13 @@ function isCodexExec(argv) {
 /*
  * thread id -> Set of kinds, from /proc and the live records (readRecords). `available` is false where /proc could
  * not be read.
+ *
+ * `environs`, kept by the caller from one scan to the next, holds the launcher id read from each process's environ,
+ * by pid with the start time and comm it was read under. The environment a process started with stays what it was
+ * until it execs, and an exec gives it the new program's comm; a pid reused by another process has another start time.
+ * Entries of processes that are gone are dropped.
  */
-function snapshot({ proc = '/proc', records = [], procs = null } = {}) {
+function snapshot({ proc = '/proc', records = [], procs = null, environs = null } = {}) {
   const threads = new Map();
   const all = procs || processes(proc);
   if (!all.size) return { available: false, threads };
@@ -168,8 +188,17 @@ function snapshot({ proc = '/proc', records = [], procs = null } = {}) {
   };
   const envs = new Map();
   const threadOf = (pid) => {
-    if (!envs.has(pid)) envs.set(pid, envValue(read(path.join(proc, String(pid), 'environ')), THREAD_KEY));
-    return envs.get(pid);
+    if (envs.has(pid)) return envs.get(pid);
+    const p = all.get(pid);
+    const kept = environs && p ? environs.get(pid) : null;
+    let id;
+    if (kept && kept.start === p.start && kept.comm === p.comm) id = kept.id;
+    else {
+      id = envValue(read(path.join(proc, String(pid), 'environ')), THREAD_KEY);
+      if (environs && p) environs.set(pid, { start: p.start, comm: p.comm, id });
+    }
+    envs.set(pid, id);
+    return id;
   };
   const argvOf = (pid) => { const a = read(path.join(proc, String(pid), 'cmdline'), 'latin1'); return a ? a.split('\0') : []; };
   for (const [pid, p] of all) {
@@ -192,6 +221,12 @@ function snapshot({ proc = '/proc', records = [], procs = null } = {}) {
     if (!isWorker(r)) continue;
     const id = threadOf(r.pid);
     if (THREAD_ID.test(id)) add(id, 'claudeWorker');
+  }
+  if (environs) {
+    for (const [pid, kept] of environs) {
+      const p = all.get(pid);
+      if (!p || p.start !== kept.start || p.comm !== kept.comm) environs.delete(pid);
+    }
   }
   return { available: true, threads };
 }
@@ -264,17 +299,83 @@ function launches(file, cache) {
 }
 
 /*
- * One scan of `threads`, the recent threads the worker passes in, as [{ id, rollout }].
- * Returns { available, threads: { [thread id]: [kinds] } }. `cache` keeps how far each rollout has been read for
- * launches; rollouts no longer passed in are dropped from it.
+ * Every window of every editor here reads the same /proc for the same answer. The windows share it through SHARE_FILE
+ * in `share`, a folder of the plan directory: a scan written less than SHARE_MS ago is taken as it is, and otherwise
+ * this window scans and writes its own over it, to a temporary file renamed into place. The folder is one of its own
+ * because the plan directory's time is in the snapshot's stamp (src/codex-worker.js stampOf), and every *.json at its
+ * top is a plan to Agent Plus's watcher and to the copy made before an uninstall. A file of another format, timed in
+ * the future, unreadable, or written for another /proc or sessions folder is passed over. A build that knows nothing of
+ * the file scans for itself. The claude --bg launches are not in it: each window reads them from where it left off in
+ * the rollouts.
  */
-function leftRunning({ threads = [], proc = '/proc', sessionsDir, cache = new Map() } = {}) {
+const SHARE_DIR = 'shared';
+const SHARE_FILE = 'left-running.json';
+const SHARE_FORMAT = 1;
+const SHARE_MS = 9000;
+const SCANNED_KINDS = new Set(['command', 'detached', 'codexExec', 'claudeWorker']);
+
+function sharedOf(text, { proc, sessions, now }) {
+  let d;
+  try { d = JSON.parse(text); } catch (_) { return null; }
+  if (!d || d.format !== SHARE_FORMAT || d.proc !== proc || d.sessions !== sessions || typeof d.available !== 'boolean') return null;
+  if (typeof d.at !== 'number' || !(d.at <= now) || now - d.at >= SHARE_MS) return null;
+  if (!d.threads || typeof d.threads !== 'object' || Array.isArray(d.threads) || !Array.isArray(d.jobs)) return null;
+  for (const [id, kinds] of Object.entries(d.threads)) {
+    if (!THREAD_ID.test(id) || !Array.isArray(kinds) || !kinds.every((k) => SCANNED_KINDS.has(k))) return null;
+  }
+  if (!d.jobs.every((j) => typeof j === 'string' && JOB_ID.test(j))) return null;
+  return { available: d.available, threads: d.threads, jobs: d.jobs };
+}
+
+function writeShared(file, text) {
+  const tmp = `${file}.${process.pid}.${require('worker_threads').threadId}.tmp`;
+  try {
+    fs.writeFileSync(tmp, text);
+    fs.renameSync(tmp, file);
+  } catch (_) {
+    try { fs.unlinkSync(tmp); } catch (_) { /* never written */ }
+  }
+}
+
+/*
+ * The /proc part of a scan, { available, threads: { [thread id]: [kinds] }, jobs: [busy claude --bg job ids] }: another
+ * window's when `share` holds one fresh enough at `now`, else this window's own, which it then writes there. Without
+ * `share` nothing is shared.
+ */
+function scan({ proc = '/proc', sessionsDir, share = '', environs = null, now = Date.now() } = {}) {
+  const sessions = path.resolve(sessionsDir || sessionsHome());
+  const file = share ? path.join(share, SHARE_FILE) : '';
+  if (file) {
+    let text = null;
+    try { text = fs.readFileSync(file, 'utf8'); } catch (_) { text = null; }
+    const got = text === null ? null : sharedOf(text, { proc, sessions, now });
+    if (got) return got;
+  }
   const procs = processes(proc);
   const records = readRecords(sessionsDir, { procs });
-  const snap = snapshot({ proc, records, procs });
+  const snap = snapshot({ proc, records, procs, environs });
+  const threads = {};
+  for (const [id, kinds] of snap.threads) threads[id] = [...kinds];
+  const out = { available: snap.available, threads, jobs: [...busyJobs(records)] };
+  if (file) {
+    /* Made only inside a plan directory that is there: without one the plugin is not installed. */
+    try { fs.mkdirSync(share); } catch (_) { /* there already, or no plan directory */ }
+    writeShared(file, JSON.stringify({ format: SHARE_FORMAT, at: Date.now(), proc, sessions, ...out }) + '\n');
+  }
+  return out;
+}
+
+/*
+ * One scan of `threads`, the recent threads the worker passes in, as [{ id, rollout }].
+ * Returns { available, threads: { [thread id]: [kinds] } }. `cache` keeps how far each rollout has been read for
+ * launches; rollouts no longer passed in are dropped from it. `environs`, `share` and `now` are those of snapshot() and
+ * scan().
+ */
+function leftRunning({ threads = [], proc = '/proc', sessionsDir, cache = new Map(), environs = null, share = '', now = Date.now() } = {}) {
+  const found = scan({ proc, sessionsDir, share, environs, now });
   const out = {};
-  for (const [id, kinds] of snap.threads) out[id] = [...kinds];
-  const jobs = busyJobs(records);
+  for (const [id, kinds] of Object.entries(found.threads)) out[id] = [...kinds];
+  const jobs = new Set(found.jobs);
   const keep = new Set();
   if (jobs.size) {
     for (const t of threads) {
@@ -286,8 +387,8 @@ function leftRunning({ threads = [], proc = '/proc', sessionsDir, cache = new Ma
     }
   }
   for (const f of [...cache.keys()]) if (!keep.has(f) && jobs.size) cache.delete(f);
-  return { available: snap.available, threads: out };
+  return { available: found.available, threads: out };
 }
 
-module.exports = { snapshot, processes, readRecords, busyJobs, launches, leftRunning, isCodexExec, envValue, STARTERS, KINDS,
-  LEFT_EVERY_MS, LAUNCH_TAIL };
+module.exports = { snapshot, processes, readRecords, busyJobs, launches, scan, leftRunning, isCodexExec, envValue, STARTERS, KINDS,
+  LEFT_EVERY_MS, LAUNCH_TAIL, SHARE_DIR, SHARE_FILE, SHARE_FORMAT, SHARE_MS };

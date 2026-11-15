@@ -33,7 +33,7 @@ const tabs = require('./codex-tabs');
 const install = require('./plugin-install');
 const { createSeen } = require('./seen');
 const { oncePerDelivery } = require('./core-link');
-const { KINDS, LEFT_EVERY_MS } = require('./left-running');
+const { KINDS, LEFT_EVERY_MS, SHARE_DIR } = require('./left-running');
 
 /* A turn whose rollout has been silent this long is no longer running, whatever its last line says: the process that
    was writing it is gone (a closed window, a crash). Long tool calls write nothing while they run, so this is generous. */
@@ -182,7 +182,8 @@ function threadOfCodexTab(vscode, patching, tab) {
  * has it), trusted() (not in Restricted Mode), seen (src/seen.js) and log. scanLeft() says whether this window scans
  * for what conversations left running after their turn (src/left-running.js): no more often than leftEveryMs, in
  * procDir and in the Claude Code session records under claudeSessions. A window that stands down for a newer build
- * does not scan.
+ * does not scan. On the machine's own /proc, a scan another window wrote a few seconds ago is taken instead
+ * (src/left-running.js scan).
  */
 function createCodexSource(vscode, { log = () => {}, reader, patching = null, enabled = () => true, trusted = () => true,
   briefs = () => true, seen = createSeen(), scanLeft = () => false, leftEveryMs = LEFT_EVERY_MS, procDir = '/proc',
@@ -337,7 +338,9 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
       if (leftSeen) { leftSeen = null; if (leftKey) { leftKey = ''; changed.fire(); } }
       return;
     }
-    leftRun = reader.request('leftRunning', { home: files.codexHome(), proc: procDir, sessionsDir: claudeSessions }).then((r) => {
+    /* Only the machine's own /proc is shared with the other windows, never a made-up one. */
+    const share = procDir === '/proc' ? path.join(install.planDir(files.codexHome()), SHARE_DIR) : '';
+    leftRun = reader.request('leftRunning', { home: files.codexHome(), proc: procDir, sessionsDir: claudeSessions, share }).then((r) => {
       leftSeen = r && r.threads && typeof r.threads === 'object' ? r : null;
       const key = leftKeyOf(leftSeen);
       if (key !== leftKey) { leftKey = key; changed.fire(); }

@@ -24,8 +24,10 @@ const STAMP_WINDOW_MS = 24 * 3600e3;
    A turn silent for longer does not count as running anyway (STALE_WORKING_MS in src/codex-source.js is also two
    hours). */
 const SUBAGENT_WINDOW_MS = 2 * 3600e3;
-/* How far src/left-running.js has read each rollout for claude --bg launches, and what it found, kept between scans. */
+/* How far src/left-running.js has read each rollout for claude --bg launches, and what it found, kept between scans;
+   and the launcher id each process's environ named. */
 const launchCache = new Map();
+const environs = new Map();
 
 let home = '';
 function at(h) {
@@ -106,13 +108,14 @@ const ops = {
     const r = rollout ? require('./user-times').rolloutMarks(rollout) : null;
     return { times: r ? r.times : null, compactions: r ? r.compactions : [], turns: r ? r.turns : {}, turnTimes: r ? r.turnTimes : {} };
   },
-  /* What the recent conversations and sub-agents still have running after their turn ended (src/left-running.js). */
-  leftRunning({ home: h, proc = '/proc', sessionsDir }) {
+  /* What the recent conversations and sub-agents still have running after their turn ended (src/left-running.js).
+     `share` is the folder the windows share a scan through, '' for none. */
+  leftRunning({ home: h, proc = '/proc', sessionsDir, share = '' }) {
     const dir = at(h);
     const since = Date.now() - STATE_WINDOW_MS;
     const threads = (files.listThreads(dir) || []).filter((t) => (t.kind === 'user' || t.kind === 'subagent') && t.updatedMs >= since && t.rollout)
       .map((t) => { const real = files.existingRollout(t.rollout); return { id: t.id, rollout: real && !real.endsWith('.zst') ? real : '' }; });
-    return require('./left-running').leftRunning({ threads, proc, sessionsDir, cache: launchCache });
+    return require('./left-running').leftRunning({ threads, proc, sessionsDir, cache: launchCache, environs, share });
   },
   /* Plans of conversations that are gone (src/workplan.js). */
   sweep({ home: h }) {
