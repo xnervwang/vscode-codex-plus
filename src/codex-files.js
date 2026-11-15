@@ -426,10 +426,11 @@ function rolloutState(file, lines = null) {
  * inode, size, modification time and change time. A rollout is only ever appended to, and Codex compresses one into
  * a new file, so an unchanged file gives the same state. A state is kept only once the file has gone SETTLED_MS
  * without a write: two writes within one tick of the clock the file system stamps them with can leave the same times,
- * and a write after one SETTLED_MS old is sure to carry a later time. `cache` keeps at most STATES_KEPT rollouts, the
- * least recently used going first, and each caller gets a copy of its own.
+ * and a write after one SETTLED_MS old is sure to carry a later time. The coarsest tick in use is FAT's, two seconds.
+ * `cache` keeps at most STATES_KEPT rollouts, the least recently used going first, and each caller gets a copy of its
+ * own.
  */
-const SETTLED_MS = 1000;
+const SETTLED_MS = 2000;
 const STATES_KEPT = 500;
 function cachedRolloutState(file, cache, now = Date.now()) {
   const real = existingRollout(file);
