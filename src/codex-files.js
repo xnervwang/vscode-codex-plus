@@ -71,6 +71,7 @@ const open = new Map();
 function closeAll() {
   for (const db of open.values()) { try { db.close(); } catch (_) { /* already closed */ } }
   open.clear();
+  listed = null;
 }
 
 /*
@@ -134,17 +135,47 @@ const THREAD_COLUMNS = ['id', 'rollout_path', 'created_at', 'updated_at', 'creat
   'archived', 'archived_at', 'is_pinned', 'thread_section_id', 'git_branch', 'cli_version', 'originator'];
 
 /*
+ * The connection a database is read through and its data_version, or null without node:sqlite. SQLite gives a
+ * connection a new data_version whenever another connection has committed to the database since it was last asked, a
+ * process of Codex's included, so while it is the same a query on that connection returns what it returned before.
+ */
+function dataVersion(file) {
+  const lib = nodeSqlite();
+  if (!file || !lib || !lib.DatabaseSync) return null;
+  try {
+    let db = open.get(file);
+    if (!db) { db = new lib.DatabaseSync(file, { readOnly: true }); open.set(file, db); }
+    const r = db.prepare('pragma data_version').get();
+    return r && Number.isFinite(+r.data_version) ? { db, value: +r.data_version } : null;
+  } catch (_) { return null; }
+}
+
+/* The last list listThreads read from the database: the file, the connection and its data_version just before. */
+let listed = null;
+
+/*
  * Every thread, newest first, each with `kind` added (see sourceKind) and times in milliseconds. Null when neither the
  * database nor the index could be read. Columns a given Codex build lacks are left out of the query rather than
- * failing it.
+ * failing it. While the database's data_version on the same connection is unchanged, the list read last is given again,
+ * each thread a copy of its own, since the caller may add to it.
  */
 function listThreads(home = codexHome()) {
+  const file = stateDbPath(home);
+  const version = dataVersion(file);
+  if (version && listed && listed.file === file && listed.db === version.db && listed.value === version.value) {
+    return listed.threads.map((t) => ({ ...t }));
+  }
+  listed = null;
   const info = query("select name from pragma_table_info('threads')", home);
   if (info && info.length) {
     const have = new Set(info.map((r) => r.name));
     const cols = THREAD_COLUMNS.filter((c) => have.has(c));
     const rows = query(`select ${cols.join(', ')} from threads`, home);
-    if (rows) return rows.map(normalizeThread).sort((a, b) => b.updatedMs - a.updatedMs);
+    if (rows) {
+      const threads = rows.map(normalizeThread).sort((a, b) => b.updatedMs - a.updatedMs);
+      if (version && open.get(file) === version.db) listed = { file, db: version.db, value: version.value, threads: threads.map((t) => ({ ...t })) };
+      return threads;
+    }
   }
   return threadsFromIndex(home);
 }
