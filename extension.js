@@ -65,8 +65,13 @@ const runs = (name) => tokenMode.effective(vscode, `${CONFIG}.${name}`);
 const MODE_SWITCHES = tokenMode.SWITCHES.filter((s) => s.key.startsWith(`${CONFIG}.`)).map((s) => s.key);
 
 let toldStale = false;
+/* Asked before every scan for work left running, so the answer is kept while the files it comes from are unchanged. */
+let standingOf = null;
 function standsDown() {
-  const s = uninstallPlan.standing(selfPath, [ID, ...uninstallPlan.FORMER_IDS], loadedStamp);
+  if (!standingOf || standingOf.path !== selfPath || standingOf.stamp !== loadedStamp) {
+    standingOf = { path: selfPath, stamp: loadedStamp, now: uninstallPlan.keptStanding(selfPath, [ID, ...uninstallPlan.FORMER_IDS], loadedStamp) };
+  }
+  const s = standingOf.now();
   if (s && !toldStale && log) {
     toldStale = true;
     const what = s === 'replaced' ? 'no longer the installed one' : 'being uninstalled';

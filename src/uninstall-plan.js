@@ -12,6 +12,7 @@
  * copy, which patched it and patches it again at its next start. One that holds none has nothing left that could take
  * the patch out, so it is put back here.
  */
+const fs = require('fs');
 const path = require('path');
 const copies = require('./installed-copies');
 
@@ -32,6 +33,35 @@ const restoreDirs = (extensionsDir, { id = IDS, home } = {}) => copies.plan(exte
 const lastCopy = (extensionsDir, { id = IDS, home } = {}) => copies.plan(extensionsDir, id, { home }).lastCopy;
 const beingUninstalled = (extensionPath, id = IDS) => copies.beingUninstalled(extensionPath, id);
 const standing = (extensionPath, id = IDS, loadedStamp = 0) => copies.standing(extensionPath, id, loadedStamp);
+/*
+ * standing() for one copy, as a function that reads again only when something standing() reads has changed: the
+ * extensions folder's .obsolete, the folder's own list of copies, and the copy's manifest, each by inode, size,
+ * modification and change time, or by why it could not be read. An answer is kept only once the change times of all
+ * three are SETTLED_MS old: two changes within one tick of the clock the file system stamps them with can leave the
+ * same times, and a change after that is sure to carry a later change time, which unlike the modification time nothing
+ * can set back. The coarsest tick in use is FAT's, two seconds.
+ */
+const SETTLED_MS = 2000;
+function keptStanding(extensionPath, id = IDS, loadedStamp = 0, { now = () => Date.now() } = {}) {
+  let kept = null;
+  return () => {
+    if (!extensionPath) return standing(extensionPath, id, loadedStamp);
+    const own = path.resolve(extensionPath), dir = path.dirname(own);
+    const at = now();
+    let settled = true;
+    const key = [path.join(dir, '.obsolete'), dir, path.join(own, 'package.json')].map((f) => {
+      try {
+        const s = fs.statSync(f);
+        if (at - Math.max(s.mtimeMs, s.ctimeMs) < SETTLED_MS) settled = false;
+        return [s.ino, s.size, s.mtimeMs, s.ctimeMs].join(':');
+      } catch (e) { return String((e && e.code) || 'unreadable'); }
+    }).join('|');
+    if (kept && kept.key === key) return kept.answer;
+    const answer = standing(extensionPath, id, loadedStamp);
+    kept = settled ? { key, answer } : null;
+    return answer;
+  };
+}
 /* The Codex installs in one extensions folder that its editor has not marked for deletion. */
 const codexInstalls = (extensionsDir) => copies.unmarkedInstalls(extensionsDir, 'openai.chatgpt-');
 
@@ -51,4 +81,4 @@ function finishUninstall(extensionPath, id = IDS, spawn = require('child_process
 
 module.exports = { ID, FORMER_IDS, EDITORS: copies.EDITORS, roots: copies.roots, obsolete: copies.obsolete, liveCopies,
   restoreDirs, lastCopy, beingUninstalled, codexInstalls, finishUninstall, installStamp: copies.installStamp,
-  replacedSince: copies.replacedSince, standing };
+  replacedSince: copies.replacedSince, standing, keptStanding, SETTLED_MS };
