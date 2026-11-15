@@ -4,10 +4,9 @@
 
 'use strict';
 /*
- * The line under a reply lists the turn's skills whichever form of the skill search's block the turn was given: every
- * skill in full, or some of them named on the order line because the conversation was given them in full earlier
- * (route-skills.py). Both forms of block give the same names in the same order. The order line's words are the same
- * in the hook and here, and the record the hook keeps beside the plan goes with its conversation.
+ * The skill search's block (route-skills.py) comes in two forms: every skill in full, or an order line that names some
+ * skills given in full earlier in the conversation. The line under a reply must list the turn's skills from either
+ * form. The test also checks that the hook and src/user-times.js use the same words for the order line.
  */
 const fs = require('fs');
 const path = require('path');

@@ -4,11 +4,9 @@
 
 'use strict';
 /*
- * A full snapshot reads again only the rollouts that changed, and the state it keeps for one that did not is the state
- * a fresh read gives, field for field: for a short rollout, for long ones whose latest turn starts beyond one window or
- * beyond the largest, for one appended to, and for a compressed one, which is decompressed once per read rather than
- * once per window. A file changed less than SETTLED_MS ago is never kept; the test passes a time an hour on rather than
- * waiting.
+ * A full snapshot reads again only the rollouts that changed. For each one that did not, the kept state must equal what
+ * a fresh read gives, field for field. A file changed less than SETTLED_MS ago is never kept, so the test passes a time
+ * an hour later instead of waiting.
  */
 const fs = require('fs');
 const path = require('path');
@@ -21,8 +19,8 @@ module.exports = ({ ok, bad, eq, note, tmp }) => {
   const iso = (ms) => new Date(ms).toISOString();
   const T = Date.parse('2026-11-01T00:00:00Z');
   const row = (at, type, payload) => JSON.stringify({ timestamp: iso(at), type, payload });
-  /* Tool output that does not compress to nothing, from a fixed seed, so that a compressed rollout is larger than the
-     first window it is read in. */
+  /* Pseudo-random tool output from a fixed seed, which stays large when compressed, so that a compressed rollout is
+     larger than the first window it is read in. */
   let seed = 0;
   const noise = (n) => {
     let s = '';
@@ -110,8 +108,9 @@ module.exports = ({ ok, bad, eq, note, tmp }) => {
   fs.utimesSync(swap, st.atime, st.mtime);
   fs.renameSync(swap, batch[0]);
   eq(files.cachedRolloutState(batch[0], cache, later()).effort, 'lowx', 'a file renamed over a kept one, with the same size and modification time, is read again');
-  /* Rewritten in place, same size, its modification time put back: only the change time tells. The times stat gives
-     for this one file are pinned, so the test does not rest on the two writes falling in different clock ticks. */
+  /* Rewritten in place, same size, its modification time put back: only the change time differs. The test pins the
+     times stat gives for this one file, so the result does not depend on whether the two writes fall in different
+     clock ticks. */
   const pinned = (over, fn) => {
     const statSync = fs.statSync;
     fs.statSync = function (p, ...a) { const s = statSync.call(this, p, ...a); return String(p) === batch[0] ? { ...s, ...over } : s; };

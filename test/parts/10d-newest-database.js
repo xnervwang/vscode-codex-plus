@@ -4,9 +4,8 @@
 
 'use strict';
 /*
- * Which state and goals database is the newest is read from the Codex home's listing again only once the home has had a
- * file added, removed or renamed, which moves its change time. The times stat gives for the home are pinned, relative to
- * the clock now, so the test does not rest on clock ticks or wait for one.
+ * The Codex home is listed again to find the newest state and goals databases only after a file in it was added,
+ * removed or renamed.
  */
 const fs = require('fs');
 const path = require('path');

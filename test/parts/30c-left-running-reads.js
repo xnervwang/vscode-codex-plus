@@ -4,12 +4,12 @@
 
 'use strict';
 /*
- * What one scan for work left running reads when nothing it finds has changed, and that it finds the same either way:
- * one read call per stat file; a process's environ only when that process is new, has exec'd, or holds a reused pid;
- * and no /proc at all in a window that takes the scan another window wrote less than SHARE_MS ago.
+ * Checks what a scan for work left running reads when nothing it finds has changed, and that it finds the same either
+ * way. It makes one read call per stat file. It reads a process's environ only when the process is new, has exec'd or
+ * reuses an old pid. A window that uses the scan another window wrote less than SHARE_MS ago reads no /proc at all.
  *
- * The /proc and the sessions folder are made up for the test, apart from one link to this test's own process, which
- * is how a file of the real /proc, one that reports its size as 0, gets read. Times are passed in, never waited for.
+ * The /proc and the sessions folder are made up for the test. One entry links to this test's own process, so that a
+ * file of the real /proc, which reports its size as 0, is read too. Times are passed in, so the test does not wait.
  */
 const fs = require('fs');
 const path = require('path');

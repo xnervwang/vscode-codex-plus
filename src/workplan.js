@@ -76,14 +76,14 @@ function liveSessions(home = files.codexHome()) {
  *                again after it, and the injection gives the whole plan again
  *   .briefed     what the Stop hook last asked about the brief, so it does not ask it again
  *   .injected    what the plan looked like when the injection hook last showed it, so an unchanged plan is one line
- *   .routed      which skills the conversation's context holds in full since its last compaction, so the skill search
- *                names them rather than giving them again (route-skills.py)
+ *   .routed      which skills the conversation was given in full since its last compaction, so the skill search only
+ *                names them (route-skills.py)
  *
  * The row command also moves rows closed for a day to closed/<session id>.json (CLOSED_DIR), deleted with the rest.
  *
- * shared/ (SHARE_DIR in src/left-running.js) belongs to no conversation: it holds the scan for work left running that
- * the windows share, which each one replaces in turn, so nothing in it is deleted with a conversation. Only a temporary
- * file a writer was killed before renaming is swept from it, once it is a day old.
+ * shared/ (SHARE_DIR in src/left-running.js) belongs to no conversation. It holds the scan for work left running that
+ * the windows share and each overwrites in turn. The sweep removes only the temporary files there that are a day old,
+ * left by a writer killed before its rename.
  */
 const SIDE_SUFFIXES = ['.json', '.offered', '.nudged', '.settled', '.turn', '.watermark', '.tz', '.wakeup', '.woke', '.compacted',
   '.briefed', '.injected', '.routed'];

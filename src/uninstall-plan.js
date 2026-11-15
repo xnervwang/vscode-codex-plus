@@ -34,12 +34,10 @@ const lastCopy = (extensionsDir, { id = IDS, home } = {}) => copies.plan(extensi
 const beingUninstalled = (extensionPath, id = IDS) => copies.beingUninstalled(extensionPath, id);
 const standing = (extensionPath, id = IDS, loadedStamp = 0) => copies.standing(extensionPath, id, loadedStamp);
 /*
- * standing() for one copy, as a function that reads again only when something standing() reads has changed: the
- * extensions folder's .obsolete, the folder's own list of copies, and the copy's manifest, each by inode, size,
- * modification and change time, or by why it could not be read. An answer is kept only once the change times of all
- * three are SETTLED_MS old: two changes within one tick of the clock the file system stamps them with can leave the
- * same times, and a change after that is sure to carry a later change time, which unlike the modification time nothing
- * can set back. The coarsest tick in use is FAT's, two seconds.
+ * Returns a function that gives standing() for one copy and calls standing() again only after one of the files it
+ * reads has changed: the extensions folder's .obsolete, the folder itself (its list of copies) and the copy's manifest.
+ * An answer is kept only once the change times of all three are SETTLED_MS old, for the reason given at
+ * cachedRolloutState in src/codex-files.js.
  */
 const SETTLED_MS = 2000;
 function keptStanding(extensionPath, id = IDS, loadedStamp = 0, { now = () => Date.now() } = {}) {

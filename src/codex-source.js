@@ -182,8 +182,7 @@ function threadOfCodexTab(vscode, patching, tab) {
  * has it), trusted() (not in Restricted Mode), seen (src/seen.js) and log. scanLeft() says whether this window scans
  * for what conversations left running after their turn (src/left-running.js): no more often than leftEveryMs, in
  * procDir and in the Claude Code session records under claudeSessions. A window that stands down for a newer build
- * does not scan. On the machine's own /proc, a scan another window wrote a few seconds ago is taken instead
- * (src/left-running.js scan).
+ * does not scan.
  */
 function createCodexSource(vscode, { log = () => {}, reader, patching = null, enabled = () => true, trusted = () => true,
   briefs = () => true, seen = createSeen(), scanLeft = () => false, leftEveryMs = LEFT_EVERY_MS, procDir = '/proc',

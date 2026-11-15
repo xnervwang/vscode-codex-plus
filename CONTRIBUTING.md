@@ -5,7 +5,7 @@
 - `extension.js`: activation, settings, commands; wires the parts below together.
 - `src/codex-files.js`: CODEX_HOME, the state database (read-only), rollouts (plain or `.jsonl.zst`), read receipts. Blocking; runs in the worker.
 - `src/codex-worker.js`, `src/codex-reader.js`: the worker thread that reads Codex's files, and the snapshot the extension host reads instead.
-- `src/left-running.js`: finds what a conversation started that is still running after its turn (a background command in Codex, a detached shell, a `codex exec`, `claude -p` or `claude --bg` it started), from /proc, Claude Code's session records and the launching conversation's rollout. Blocking; runs in the worker. The windows share one reading of /proc through `shared/left-running.json` in the plan directory.
+- `src/left-running.js`: finds what a conversation started that is still running after its turn (a background command in Codex, a detached shell, a `codex exec`, `claude -p` or `claude --bg` it started), from /proc, Claude Code's session records and the launching conversation's rollout. Blocking; runs in the worker. The windows share one reading of /proc through `shared/left-running.json` in the plan directory, `$CODEX_HOME/plugins/data/agent-work-plan-codex-extras/`.
 - `src/codex-tabs.js`: Codex conversation tabs (`chatgpt.conversationEditor`, `openai-codex://route/local/<id>`), opening one in a tab. A tab Codex opened with its own New button stays at `/extension/panel/new` and names no conversation; the patch supplies the missing conversation ids (`patching.panelThreads`), from the thread start of the tab's own page.
 - `src/folders.js`: whether a conversation's folder is in this window's workspace, by real path.
 - `src/codex-source.js`: Codex as a source of Agent Plus, protocol 1, defined in Agent Plus's `docs/protocol.md`.
@@ -79,12 +79,12 @@ What bounds a single pass:
 | `STATE_WINDOW_MS` (`src/codex-worker.js`) | 2 days | Only threads touched this recently have their rollout read |
 | `STAMP_WINDOW_MS` (`src/codex-worker.js`) | 1 day | Only rollouts this recent are `stat`ed to build the stamp, the fingerprint a pass compares to see whether anything moved |
 | `COMPRESSED_MAX` (`src/codex-files.js`) | 64 MB | Largest `.jsonl.zst` read at all |
-| `DECOMPRESSED_MAX` (`src/codex-files.js`) | 256 MB | Largest decompressed rollout; a compressed rollout is decompressed once per read, whichever window its latest turn starts in |
-| `STATES_KEPT` (`src/codex-files.js`) | 500 | Rollout states the worker keeps between snapshots; a rollout whose file has not changed since, and whose change time was `SETTLED_MS` (2 s) old when it was read, is not read again |
+| `DECOMPRESSED_MAX` (`src/codex-files.js`) | 256 MB | Largest decompressed rollout; compressed rollouts are decompressed once per read, however far back in the file the latest turn starts |
+| `STATES_KEPT` (`src/codex-files.js`) | 500 | Rollout states the worker keeps between snapshots. The worker skips a rollout file if it has not changed since the last read and its change time was at least `SETTLED_MS` (2 s, the coarsest file-time tick) old at that read |
 | `HELD_MAX` (`src/codex-reader.js`) | 200 | Conversation states retained after an on-demand read |
 | `SUBAGENT_WINDOW_MS` (`src/codex-worker.js`) | 2 hours | Sub-agents updated this recently have their rollout read, so their conversation can show one of them still running |
-| `LEFT_EVERY_MS` (`src/left-running.js`) | 10 s | Shortest time between two scans for what conversations left running; each scan reads /proc and Claude Code's session records once, with one read call per stat file, and the environ only of a process not seen before |
-| `SHARE_MS` (`src/left-running.js`) | 9 s | How old a scan another window wrote may be for this window to take it instead of reading /proc |
+| `LEFT_EVERY_MS` (`src/left-running.js`) | 10 s | Shortest time between two scans for what conversations left running; each scan reads /proc and Claude Code's session records once, with a single read call per stat file, and reads a process's environ the first time it sees that process |
+| `SHARE_MS` (`src/left-running.js`) | 9 s | Maximum age of a scan written by another editor window that can be reused instead of reading /proc |
 | `DAY_MS` (`src/archive-sweep.js`) | 1 day | How often a window tries the pass that deletes old archived conversations, checked on the poll rather than on a timer; the pass reads the snapshot and one small state file, and only the window holding the lock runs it |
 | `RETRY_MS` (`src/archive-sweep.js`) | 1 hour | How soon a window tries that pass again after one it could not run: another window held the lock, or which conversations are open was not known |
 | `LAUNCH_TAIL` (`src/left-running.js`) | 8 MB | How much of a rollout's end the first read for `claude --bg` launches covers; later reads take only what was appended. A rollout is read for this only while such a session is busy |
@@ -92,7 +92,7 @@ What bounds a single pass:
 What a change must not break:
 
 - Do not widen `STATE_WINDOW_MS` or `STAMP_WINDOW_MS` to put a status dot on an old conversation. A conversation whose rollout was not read shows no dot (`STATE_LOOK.unknown`); its state is read only when its group is expanded, and kept afterwards (`SessionsModel.expanded`, `source.wantState`, `reader.held`).
-- Grouping, sorting and filtering are arithmetic over the snapshot. `listThreads` already returns every thread in one query, so grouping by folder costs no I/O; and while nothing has been committed to the state database since its last query (SQLite's `data_version` on the same connection), it gives that query's list again without querying.
+- Grouping, sorting and filtering are arithmetic over the snapshot. `listThreads` already returns every thread in one query, so grouping by folder costs no I/O; when SQLite's `data_version` on the same connection shows no commits to the state database since the last query, `listThreads` returns the cached list without another database read.
 - The poll keeps its cadence and its short circuit: the worker builds the stamp first and returns `same` without parsing a rollout when nothing moved.
 - No new timer and no file watcher. Repeating work goes on the existing poll, and a one-off read forces a single pass (`refresh({ force: true })`) rather than scheduling one.
 - No click, hover, key or expanded group does more than about 100 ms of synchronous work, in the extension host or in a page. Anything that has to be scanned is bounded, incremental and in the worker. A search, a filter or a regrouping works on the snapshot in memory and reads no file; the session list searches titles, branches and ids, never what a conversation says. An action that reads a file or sends a request (Account & usage, moving, renaming or deleting a group) is asynchronous, has a time limit, and says when it failed; the list answers at once and is redrawn when the result is in.

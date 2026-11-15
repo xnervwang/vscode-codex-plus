@@ -4,10 +4,8 @@
 
 'use strict';
 /*
- * The thread list is read from the state database once for as long as nothing has been committed to it, by this
- * process or another: the snapshot's poll, the user's message times and the scan for work left running all get the
- * list the last query returned, and a commit anywhere makes the next call query again. The database is in WAL mode, as
- * Codex keeps it.
+ * listThreads queries the state database again only after a commit to it, from this process or another. Until then,
+ * every caller gets the list from the last query. The database is in WAL mode, as Codex keeps it.
  */
 const cp = require('child_process');
 const path = require('path');

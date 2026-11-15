@@ -61,8 +61,9 @@ const MAX_JOBS = 20;
 const read = (file, enc) => { try { return fs.readFileSync(file, enc); } catch (_) { return null; } };
 
 /*
- * One read call per stat file, into a buffer every call shares: readFileSync takes a second call to see the end of a
- * file /proc gives as empty. A stat line is a few hundred bytes; one that fills the buffer is read whole instead.
+ * Reads a stat file with one read call into a shared buffer. readFileSync needs a second call to find the end of a file
+ * that /proc reports as empty. A stat line is a few hundred bytes; one that fills the buffer is read again with
+ * readFileSync.
  */
 const STAT_BUF = Buffer.alloc(4096);
 function readStat(file) {
@@ -153,10 +154,9 @@ function isCodexExec(argv) {
  * thread id -> Set of kinds, from /proc and the live records (readRecords). `available` is false where /proc could
  * not be read.
  *
- * `environs`, kept by the caller from one scan to the next, holds the launcher id read from each process's environ,
- * by pid with the start time and comm it was read under. The environment a process started with stays what it was
- * until it execs, and an exec gives it the new program's comm; a pid reused by another process has another start time.
- * Entries of processes that are gone are dropped.
+ * `environs`, kept by the caller from one scan to the next, maps each pid to the launcher id read from its environ,
+ * with the start time and comm the process had then. /proc/<pid>/environ does not change until the process execs, and
+ * an exec changes its comm; a reused pid has a different start time.
  */
 function snapshot({ proc = '/proc', records = [], procs = null, environs = null } = {}) {
   const threads = new Map();
@@ -299,14 +299,13 @@ function launches(file, cache) {
 }
 
 /*
- * Every window of every editor here reads the same /proc for the same answer. The windows share it through SHARE_FILE
- * in `share`, a folder of the plan directory: a scan written less than SHARE_MS ago is taken as it is, and otherwise
- * this window scans and writes its own over it, to a temporary file renamed into place. The folder is one of its own
- * because the plan directory's time is in the snapshot's stamp (src/codex-worker.js stampOf), and every *.json at its
- * top is a plan to Agent Plus's watcher and to the copy made before an uninstall. A file of another format, timed in
- * the future, unreadable, or written for another /proc or sessions folder is passed over. A build that knows nothing of
- * the file scans for itself. The claude --bg launches are not in it: each window reads them from where it left off in
- * the rollouts.
+ * All windows on this machine, in any editor, would read the same /proc and get the same answer, so they share one scan
+ * through SHARE_FILE in `share`, a folder in the plan directory. A window uses a scan written less than SHARE_MS ago;
+ * otherwise it scans and writes its result over the file, through a temporary file renamed into place. The file has a
+ * folder of its own because the plan directory's time is part of the snapshot's stamp (src/codex-worker.js stampOf),
+ * and Agent Plus's watcher and the copy made before an uninstall take every *.json at the top of that directory for a
+ * plan. A build that does not know the file scans for itself. The claude --bg launches are not in it: each window
+ * reads them from where it left off in the rollouts.
  */
 const SHARE_DIR = 'shared';
 const SHARE_FILE = 'left-running.json';
@@ -338,9 +337,8 @@ function writeShared(file, text) {
 }
 
 /*
- * The /proc part of a scan, { available, threads: { [thread id]: [kinds] }, jobs: [busy claude --bg job ids] }: another
- * window's when `share` holds one fresh enough at `now`, else this window's own, which it then writes there. Without
- * `share` nothing is shared.
+ * The /proc part of a scan, { available, threads: { [thread id]: [kinds] }, jobs: [busy claude --bg job ids] }. It is
+ * another window's scan when `share` holds one fresh enough at `now`.
  */
 function scan({ proc = '/proc', sessionsDir, share = '', environs = null, now = Date.now() } = {}) {
   const sessions = path.resolve(sessionsDir || sessionsHome());

@@ -10,9 +10,6 @@ model, each with its full description and the path of its SKILL.md. A message un
 whole run, network included, is held to 1.5 seconds, and anything that goes wrong leaves the turn with the keyword
 results or with nothing.
 
-A skill whose description and path the conversation's context already holds, word for word, is named rather than given
-again (given_earlier below).
-
 On Stop it reads the turn back from the rollout and logs which SKILL.md files its tool calls named, so the log shows
 whether the model read the skills it was given.
 """
@@ -34,18 +31,19 @@ import skill_route as route  # noqa: E402
 
 """Skills given earlier in the conversation.
 
-ROUTED_SUFFIX beside the plan keeps which skills the conversation's context holds in full, name -> [path, description],
-read back from its transcript, where Codex writes each routing block as a developer message once the turn it came with
-has started: a block whose prompt never reached the model is not there to be read. Each turn reads on from where the
-last one stopped. A compaction (the compaction hook's COMPACTED_SUFFIX mark, or Codex's own compacted row) or turns
-rolled back (thread_rolled_back) start the record over, since either takes earlier messages out of the context.
+ROUTED_SUFFIX beside the plan records, as name -> [path, description], the skills the conversation was given in full and
+still has in its context. They are read from the transcript, where Codex writes each routing block as a developer
+message when the block's turn starts, so a block whose prompt never reached the model is not there. Each turn reads only
+the part of the transcript added since the previous turn. A compaction (the compaction hook's COMPACTED_SUFFIX mark, or
+Codex's own compacted row) or a rollback (thread_rolled_back) empties the record, since both take earlier messages out
+of the context.
 
-A skill this turn's search found whose name, path and description are in that record is named on ORDER_LINE, which
-lists every skill found in order of fit with those marked GIVEN_EARLIER, instead of being given again; one that is not,
-or whose description has changed since, is given in full as before. A turn with nothing to name gets the block it always
-got, without the line. A sub-agent's thread is not read for this: it is given every skill in full.
+When a skill this turn's search found is in the record with the same path and description, it is not given again.
+ORDER_LINE then lists every skill found, in order of fit, and marks those with GIVEN_EARLIER; the others, including a
+skill whose description has changed, are given in full. A turn that found nothing already given gets no ORDER_LINE, and
+a sub-agent's thread is given every skill in full.
 
-src/user-times.js reads the names off ORDER_LINE for the line under each reply, as it reads them off the full lines.
+src/user-times.js takes the skill names from ORDER_LINE for the line under each reply.
 """
 ROUTED_SUFFIX = ".routed"
 ROUTED_FORMAT = 1
@@ -97,8 +95,8 @@ def blocks_in(row):
 
 
 def given_earlier(plan, transcript):
-    """name -> [path, description] for the skills the context holds in full, brought up to date with the transcript and
-    saved beside the plan."""
+    """The record of ROUTED_SUFFIX, name -> [path, description], updated from the transcript and saved beside the
+    plan."""
     if not plan or not isinstance(transcript, str) or not transcript:
         return {}
     compacted = ""

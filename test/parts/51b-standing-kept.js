@@ -4,11 +4,9 @@
 
 'use strict';
 /*
- * Whether this window stands down is asked before every scan for work left running. The answer is read again only
- * when the extensions folder's .obsolete, the folder's list of copies or this copy's manifest has changed, and it is
- * always the answer reading them afresh gives: after an update beside this copy, after the same version is installed
- * over it, and after a manifest rewritten in place with its old times put back. The test passes a time an hour on
- * rather than waiting for the files to settle.
+ * keptStanding() reads its files again only when the extensions folder's .obsolete, the folder's list of copies or this
+ * copy's manifest has changed, and its answer must match a fresh read. The test passes a time an hour later instead of
+ * waiting for the files to settle.
  */
 const fs = require('fs');
 const path = require('path');
@@ -56,9 +54,9 @@ module.exports = ({ ok, bad, eq, tmp, root }) => {
     eq(kept(), fresh(), 'with the new copy gone and nothing marked, the answer is read again');
     eq(kept(), '', 'and it no longer stands down');
 
-    /* The same version installed over this one: a manifest of the same size with another stamp, its modification
-       time put back, so that only its change time tells. The times stat gives for it are pinned, so the test does not
-       rest on the two writes falling in different clock ticks. */
+    /* The same version installed over this one: a manifest of the same size with another `installedTimestamp`, its
+       modification time put back, so that only its change time differs. The test pins the times stat gives for it, so
+       the result does not depend on whether the two writes fall in different clock ticks. */
     const P = Date.parse('2026-01-01T00:00:00Z');
     const pinned = (over, fn) => {
       const statSync = fs.statSync;

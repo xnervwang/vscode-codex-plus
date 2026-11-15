@@ -44,9 +44,8 @@ function stateDbPath(home = codexHome()) { return newestDb(home, 'state'); }
 /* The database of thread goals, numbered the same way (goals_1.sqlite today). */
 function goalsDbPath(home = codexHome()) { return newestDb(home, 'goals'); }
 /*
- * The newest of each database, by home and stem, kept while the home folder is unchanged: a file added to it, removed
- * from it or renamed in it gives the folder a new change time, while a write inside a file there does not. As with a
- * rollout's state (cachedRolloutState), an answer is kept only once that change time is SETTLED_MS old.
+ * newestDb() answers are kept by home and stem until the home folder's change time moves. Adding, removing or renaming
+ * a file there moves it; writing inside a file does not.
  */
 const newest = new Map();
 function newestDb(home, stem) {
@@ -150,9 +149,9 @@ const THREAD_COLUMNS = ['id', 'rollout_path', 'created_at', 'updated_at', 'creat
   'archived', 'archived_at', 'is_pinned', 'thread_section_id', 'git_branch', 'cli_version', 'originator'];
 
 /*
- * The connection a database is read through and its data_version, or null without node:sqlite. SQLite gives a
- * connection a new data_version whenever another connection has committed to the database since it was last asked, a
- * process of Codex's included, so while it is the same a query on that connection returns what it returned before.
+ * The open connection to `file` and its current data_version, or null when node:sqlite is missing. SQLite reports a new
+ * data_version on a connection once another connection, in any process, has committed to the database since the last
+ * time it asked.
  */
 function dataVersion(file) {
   const lib = nodeSqlite();
@@ -171,8 +170,8 @@ let listed = null;
 /*
  * Every thread, newest first, each with `kind` added (see sourceKind) and times in milliseconds. Null when neither the
  * database nor the index could be read. Columns a given Codex build lacks are left out of the query rather than
- * failing it. While the database's data_version on the same connection is unchanged, the list read last is given again,
- * each thread a copy of its own, since the caller may add to it.
+ * failing it. While the database's data_version on that connection is unchanged, the list read last is returned again.
+ * Each thread in it is a fresh copy, because callers add fields to the threads.
  */
 function listThreads(home = codexHome()) {
   const file = stateDbPath(home);
@@ -437,14 +436,13 @@ function rolloutState(file, lines = null) {
 }
 
 /*
- * rolloutState() of a rollout, taken from `cache` while the file is as it was when that state was read: the same file,
- * inode, size, modification time and change time. A rollout is only ever appended to, and Codex compresses one into
- * a new file, so an unchanged file gives the same state. A state is kept only once the file's change time is
- * SETTLED_MS old: two changes within one tick of the clock the file system stamps them with can leave the same times,
- * and a change after that is sure to carry a later change time, which unlike the modification time nothing can set
- * back. The coarsest tick in use is FAT's, two seconds.
- * `cache` keeps at most STATES_KEPT rollouts, the least recently used going first, and each caller gets a copy of its
- * own.
+ * rolloutState() of a rollout, taken from `cache` while the file has not changed since that state was read: the same
+ * file, inode, size, modification time and change time. A rollout is only ever appended to, and Codex compresses one
+ * into a new file, so an unchanged file gives the same state. A state is kept only once the file's change time is
+ * SETTLED_MS old. File systems stamp times in ticks, so two changes within one tick can leave the same times; a change
+ * made after that tick always gets a later change time, and unlike the modification time the change time cannot be set
+ * back. The coarsest tick in use is FAT's, two seconds. `cache` keeps at most STATES_KEPT rollouts and drops the least
+ * recently used first.
  */
 const SETTLED_MS = 2000;
 const STATES_KEPT = 500;

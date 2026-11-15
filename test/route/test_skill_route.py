@@ -1346,9 +1346,8 @@ class I_SkillSearch(Case):
 
 
 class L_Repeats(Case):
-    """A skill whose description and path the conversation was given in full earlier, and still holds, is named instead
-    of given again. Each turn below runs the hook, then writes the block into the transcript as Codex does: a developer
-    message after the turn's task_started. The hook reads the record back from there."""
+    """A skill given in full earlier in the conversation is only named. Each test turn runs the hook, then appends the
+    block to the transcript as a developer message after task_started."""
 
     def setUp(self):
         super().setUp()
