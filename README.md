@@ -1,5 +1,16 @@
 # Codex Plus
 
+Codex Plus is a VS Code extension that adds features to Codex, OpenAI's VS Code extension (`openai.chatgpt`). It adds a work plan for each Codex conversation alongside your conversations in Agent Plus's views, and a sidebar list of Codex conversations laid out like Claude Code's list. It also adds times, a rail of your own messages, a context meter, chimes and dots on tabs to Codex's conversation page, message box and tabs, plus skill search and wake-ups for Codex itself. It depends on Agent Plus (`xnervwang.agent-plus`), which VS Code installs along with it, and it installs a work plan plugin into Codex and edits Codex's installed files.
+
+## Getting started
+
+1. Install Codex Plus. VS Code installs Agent Plus along with it. To install from `.vsix` files instead, see [Install](#install).
+2. When Codex Plus starts, it installs the work plan plugin into Codex and edits Codex's installed files without asking. This README calls the file edit "the patch". When Codex asks whether to trust the plugin's hooks (scripts Codex runs at set points, such as when you send a message or when Codex has finished working on it), trust them. You can also do this later in Codex: Settings > Hooks. When Codex Plus offers to reload the window, reload it.
+3. After the reload, you see a Codex Plus sidebar listing your Codex sessions. In a Codex conversation, you see the time above every message, a rail of your own messages at the right edge, and an information button, a note button and a context meter in the message box's toolbar. A coloured dot appears on a Codex tab's logo while its conversation is working, has a reply you have not read, or waits for your permission. Your Codex conversations also appear in Agent Plus's Work plan and Conversations views.
+4. To turn things off, `Codex Plus: Turn Off` stops drawing what Codex Plus adds to Codex's page and tabs. Agent Plus's token mode (`agentPlus.tokenMode`) decides which features may add text to what Codex sends the model. Set it to Interface features to stop Codex Plus adding anything to what Codex sends the model. `Codex Plus: Remove the Patch from Codex` puts Codex's own files back. All three are in [Turning it all off](#turning-it-all-off).
+
+`Codex Plus: Show Status` shows what is installed, what is patched and what is registered with Agent Plus.
+
 ## What it looks like
 
 A Codex conversation, with its work plan (the task list the agent keeps for it) on the left, in Agent Plus, the extension installed with this one:
@@ -12,125 +23,299 @@ The Codex sessions list in the Codex Plus sidebar:
 
 ## Features
 
-| Feature | Where | Needs |
-| --- | --- | --- |
-| Codex conversations in the work plan, Conversations and Answer views | Agent Plus's views (its README says what each shows) | Agent Plus (installed with this extension) |
-| Which of the features that add to Codex's context run: Agent Plus's token mode, `agentPlus.tokenMode`, chosen from its entry in the status bar; each feature's own setting, named in this table's Needs column, applies only in Custom. See What it costs in tokens | Codex's context | Agent Plus |
-| Work plan per conversation: rows with states, numbered, kept across turns and compactions | Agent Plus's Work plan view; Codex's context every turn | Work plan plugin (installed into Codex by this extension), its hooks trusted |
-| Plan changes through MCP tools `set_row` / `add_row`, and the brief's through `set_summary` / `set_status`, no sandbox approval | Codex | Work plan plugin |
-| Wake-ups: the model sets one with the MCP tool `set_wakeup` and removes it with `clear_wakeup`; when it is due, its prompt is queued for the conversation and Codex sends it once the conversation is idle. See Wake-ups | Codex conversations open in this window | Work plan plugin; patch (this extension's edit of Codex's installed files); `codexPlus.wakeUps` |
-| The installed skills that best fit your message, put in front of Codex before each turn with their full descriptions; their names on the line under that turn's reply. See Skill search | Codex's context; Codex conversation | Work plan plugin, its hooks trusted; `codexPlus.skillRouting` |
-| End-of-turn reminders: rows left `doing` (in progress), a reply that asks you something without putting the question on a row, a plan not brought up to date | Codex | Work plan plugin |
-| The conversation's brief: at the end of a turn that did work Codex is asked to write where it stands, and a summary when it has none, its plan's top rows changed or the context was compacted; clicking the conversation in Agent Plus's Conversations panel shows it | Codex; Agent Plus's Answer view | Work plan plugin; `codexPlus.conversationBrief` |
-| Reminder to bring `doing` rows up to date before an automatic compaction, at 70% and 85% of where Codex compacts (90% of the model's window, or `model_auto_compact_token_limit` in `config.toml` when that is lower); pointer to the plan after one | Codex | Work plan plugin |
-| Your time zone told to Codex when it runs on another machine, with this machine's zone and the time now; quiet while Codex's own page (its webview, in the sidebar or a tab) has told it the same zone since the last compaction (`<codex_apps_client_time_context>`) | Codex's context | Work plan plugin; the patch; `codexPlus.tellCodexYourTimeZone` |
-| Answer a plan question (a question the agent put on a work plan row) from Agent Plus's Answer view: put in the conversation's message box (only when the box is empty) and sent, as Enter would send it; while a turn runs, Codex queues it or steers with it. The Answer view says whether it was sent, left as a draft, or refused because the box held a draft of yours | Codex tab, or Codex's sidebar when it shows the conversation | Patch; without the patch the answer stays in the Answer view |
-| Account & usage, Recently closed and Open sessions, each with its count, then your groups, Ungrouped and Archived sessions, as Claude Code with Claude Code Plus (this extension's counterpart for Claude Code) lays out its list. Recently closed has the conversation a tab showed when it closed, a tab opened with a New button included. A group you made is shown while empty too; Recently closed, Open sessions, Ungrouped and Archived sessions are left out while empty | Codex sessions view, in the Codex Plus sidebar | Patch, for a tab opened with Codex's own New button |
-| Drawn as Claude Code's list is, in the theme's colours: 28 px rows with an 8 px status dot, the title, and the time at the right, where Rename takes its place on hover; group names with their count in a badge; section labels in capitals; New in tab and New in sidebar side by side | Codex sessions view |  |
-| The filter row: a status filter (Needs input, Working, Completed; Open or Closed tabs, each with its count), Active (needing input, working or unread), search by title, branch or four hex characters of the ID, and New group. Typing in the list starts a search; the arrow keys move through the rows, Enter opens one, Esc clears the search or the selection. Rows dragged onto a group's header move into it, onto Ungrouped out of any group | Codex sessions view |  |
-| Each row's status dot, as Claude Code's list draws it and in Claude Code Plus's colours: running green, waiting for you blue, replied and unread (see under the table) red, a failed last turn red, idle grey while it is open in this window and no dot otherwise; running or waiting in another window, a ring of that colour. A conversation keeps the green dot while something it started is still running after its turn, and the row's hover says what it is: a sub-agent, a background command in Codex, a shell detached with `setsid` or `nohup`, a `codex exec` or `claude -p` worker, or a `claude --bg` session. Detached shells and the two kinds of worker are found through /proc, so only on Linux | Codex sessions view |  |
-| Open sessions covers tabs Codex opened with its own New button, whose URI names no conversation | Codex sessions view | Patch |
-| Open sessions also lists the conversation Codex's sidebar shows while the sidebar is visible; clicking it goes to the sidebar. It is the conversation the sidebar last went to, so on the sidebar's own new-conversation page the conversation shown before it is still listed | Codex sessions view | Patch |
-| New in tab / New in sidebar; Resume in tab / Resume in sidebar, offered only for a conversation not open in this window, as Claude Code Plus does | Codex sessions view | Nothing; the sidebar ones open Codex's own link, `vscode://openai.chatgpt/local/<id>` in this editor's scheme |
-| Account & usage at the top of the list, as Claude Code has it: how Codex is signed in (Amazon Bedrock, an API key, or a ChatGPT account's email and plan), and only when Codex has the figures, for each rate limit the share used and when it resets, and the tokens spent today and in total. Asked of this window's app-server (the background process Codex starts for this window) when the list comes into view, at most once a minute, then kept current from the notifications Codex sends anyway | Codex sessions view | Patch; without it the section is not shown |
-| Group and session ID on hover, as Claude Code Plus writes them | Codex sessions view |  |
-| Time since a conversation was last used, and the first and last day it was used, as `11d · 09/05→09/16`: the time as `now`, `5m`, `3h`, `2d`, `1mo` or `1y`, and a date in another year with its year, as Claude Code's list writes them; title colours (Text Color, below); conversations started by `codex exec`, sub-agents and approval reviews (conversations Codex starts to review an approval request) left out, or listed with the rest, each sub-agent then indented under the conversation that started it (one whose parent is not listed stays among the rest), its hover naming that conversation | Codex sessions view | `codexPlus.hideBackgroundSessions` |
-| Rename (a button on a row when hovered, and in its right-click menu, which this extension draws in the look of Claude Code's own), Text Color and Add to Group (each a submenu opening to the right, as Claude Code Plus's do; Add to Group from a conversation tab's menu is a list at the top of the window), Remove from Group, Mark as Unread or Mark as Read, and Archive, several rows at once where that makes sense; on a group's header Start New Session in This Group, New Group, Rename Group and Delete Group. A conversation started in a group is moved into it once its first message is sent, which is when Codex lists it. The groups are Codex's own sections; their order is kept by this extension, since Codex keeps none, and Codex's built-in Pinned section is never offered as a group to add to. All but Mark as Unread and Mark as Read are sent to this window's Codex app-server on Codex's own connection, or before the patch is in effect to a short-lived one; those two are this extension's own read record | Codex sessions view |  |
-| Archived sessions, the last group, collapsed until you open it: this workspace's conversations archived from this list or from Codex itself, most recently archived first. Archive in a row's right-click menu archives the conversation whether it is open or not, as Claude Code's does; Codex moves its rollout to `archived_sessions/` and archives its sub-agents with it. One that is running, or whose sub-agent is, is left alone, since Codex would stop its turn. An archived row's menu has Resume in Tab, Resume in Sidebar, Text Color, Unarchive and, after a separator, Delete, which no other row has. Delete asks first and says what goes: Codex deletes the conversation's rollout, and those of its sub-agents with it. One open in this window or running is left alone. A conversation archived `codexPlus.deleteArchivedAfterDays` days ago or more (30 unless set; 0 keeps them) is deleted the same way, without asking, once a day by one of your windows, and the output "Codex Plus" lists what went. The days count from when Codex archived it, or, for one archived by a Codex that recorded no time, from when this extension first saw it archived. One open or running is left for the next day | Codex sessions view | `codexPlus.deleteArchivedAfterDays` |
-| A conversation's goal, which Codex works toward on its own, starting another turn each time the conversation is idle until the goal is done, blocked or has used its token budget: Pause Goal, Resume Goal and Clear Goal in a row's right-click menu, and in the command palette for the conversation in front. A row shows its goal's state, as `goal`, `goal paused` or `goal: budget spent`, and its hover what the goal is and how many tokens it has used of its budget. Each change is sent as yours, to this window's app-server on Codex's own connection, or before the patch is in effect to a short-lived one. To set a goal, ask Codex for one in the conversation | Codex sessions view; command palette |  |
-| Rename, Mark as Unread and Add to Group in a Codex conversation tab's own right-click menu, as Claude Code has its three | Codex conversation tab |  |
-| The row of the conversation in front is drawn as the current one, and scrolled to in Open sessions, as Claude Code's list follows it; the focus stays where it was | Codex sessions view |  |
-| Codex button on the tab bar, and New in tab: a new Codex conversation in a tab, in an editor group already holding only Codex tabs, else one holding any Codex tab, else the first group (the main editor area); it never opens a new split. With the patch in effect the tab bar shows this extension's Codex button instead of Codex's: it opens what `codexPlus.tabBarButton` says, and its hover is *New Codex Conversation in a Tab* or *Open Codex Sidebar* to match | Editor title bar; Codex sessions view | `codexPlus.tabBarButton`; the patch, then a reload |
-| Tabs VS Code did not restore after a reconnect are opened again, and the status bar says how many for ten seconds, as Claude Code Plus says it | Editor tabs; status bar | `codexPlus.reopenDroppedTabs` |
-| Ctrl+Shift+T (Cmd+Shift+T on a Mac) reopens the Codex conversation closed last, as Claude Code's shortcut reopens its last session, while the tab closed last was a Codex tab; after any other tab it is VS Code's Reopen Closed Editor | Editor tabs | `codexPlus.reopenClosedSessionShortcut` |
-| Session information: thread ID, the process id of Codex's server for this window, folder, the conversation log Codex writes (its rollout) and its size, how much of the context window is in use, tokens the conversation used, the account and the token mode | The information button in the message box's toolbar, where clicking a value copies it | Patch; `codexPlus.infoButton` |
-| Chimes on or off from the note button beside the information button; struck through while they are off | Codex message box's toolbar, after the permissions button | Patch; `codexPlus.chime`, `codexPlus.chimeButton` |
-| The Agent map, as Claude Code draws it: a pill reading like `2 agents · 1 timer · goal` while the conversation has a wake-up (the timer), a goal or sub-agents, and the dialog it opens, with a section for each of those the conversation has. The wake-up shows its interval, next time, end and prompt, with Remove; the goal its state and tokens, with Pause, Resume and Clear; each sub-agent its status dot and when it was last active, and a click opens it in a tab. Esc or a click outside closes it | Codex message box's toolbar, right of the context meter; in the row this extension adds below the box when the toolbar has no room | Patch |
-| Green / red / blue dot on a Codex tab's logo while working (also while something it started is still running) / replied and unread / stopped for your permission, in Claude Code Plus's colours and size; the tab titled by its conversation, kept in step as Codex names it, including a conversation started in a tab | Editor tabs | Patch |
-| A conversation stopped for your permission shows as waiting in the Conversations view, puts the blue dot on its tab, and chimes | Conversations view; editor tabs; Codex tab | Patch; `codexPlus.chime` |
-| Chime when a turn finishes, the model asks you something and waits for the answer (a blocking input request), or Codex stops for your permission; the three sounds are Claude Code Plus's own: rising for a finished turn, three equal notes for a permission, falling for a question | Codex tab; Codex's sidebar | Patch |
-| The tool call running now, as `exec_command running for 2m55s (since 11:11:18)`, while Codex's own row for that call is out of view; with that row in view Codex already says it | Codex tab, the right end of the row this extension adds below the message box | Patch; `codexPlus.turnFigures` |
-| Commands Codex started that are still running, such as a build or a `sleep` it left in the background: counted at the right end of the row below the message box, and listed with their folder and start time, until Codex reports the process ended. Only this window's Codex is seen, and a window reloaded while one runs learns of it only when it ends | Codex tab, below the message box; `Codex Plus: Show Status` | Patch |
-| Beside each reply's time: that turn's context share, model and effort, as `14:02:11  ctx 33% · gpt-6.1-sol high`, matched to the reply by the turn id Codex puts on it | Codex conversation | Patch; `codexPlus.turnFigures` |
-| After a reply's time, how long its turn took, as `14:02:11  9s · ctx 33% · …`, in a turn where Codex shows no "Worked for" of its own (it draws that only for a turn that did something before its reply) | Codex conversation | Patch; `codexPlus.replyDuration` |
-| Context meter: a ring and the share of the context window in use. Hover: the context window in use and where it came from, tokens in use and free, where Codex compacts and how far off that is, the conversation's input, cached input, output and reasoning tokens, model and effort, and what the work plan has added to the context since the last compaction. Click: compact the conversation now; refused while a turn runs, in Codex's own words | Codex message box's toolbar, left of the model picker | Patch; `codexPlus.contextMeter` |
-| An outline round the context meter once 80% or more of the context window is used, 15 points before Codex compacts (about 94.7% on the meter), as Claude Code Plus outlines its meter 15% before a compaction. When this extension's meter is not drawn, the outline goes on Codex's own, which Codex draws only with its own setting on: in Codex's settings, General, Composer, **Show context window usage** | Codex message box | Patch; `codexPlus.lowContextOutline` |
-| The time above every message and every reply block, in your own time zone, including a message you send while a turn is running; it replaces Codex's own time, under a reply and beside your message | Codex conversation | Patch; `codexPlus.timestamps` |
-| The rail at the right edge: your own messages by time and opening words, and where Codex compacted the context; click to scroll, step with the arrows or `,` and `.`, filter, or jump to the top or bottom. As in Claude Code Plus, the rail's list is 280 px wide with 44 characters a row, resting on a row shows its time and first 220 characters in a box beside the list at once, every button of the rail explains itself in a box of its own, and after a jump the view is held on the message for about a second while Codex's turns still move (a wheel, a touch or a key lets go) | Right edge of a Codex conversation | Patch; `codexPlus.conversationNavigation` |
-| Your own messages picked out by their text colour and a bar down their leading edge, in the theme's focus colour | Codex conversation | Patch; `codexPlus.userMessageColor`, `codexPlus.userMessageEdge` |
-| How long each Codex page (the sidebar or a tab) took to open, and how long its stages took: Codex's page script run, first screen, the conversation or home page shown, restoring the conversation; pages that gave up | `Codex Plus: Show How Long Opening a Codex Page Took`; the last three openings in `Codex Plus: Show Status` | Nothing; it is read from Codex's own log, `Codex.log`, in every window's log folder |
+Most of what Codex Plus draws in Codex's page, message box and tabs needs the patch.
 
-- VS Code takes a tab bar button's hover from its command's title in the extension's `package.json`. The patch adds a condition to Codex's `package.json` that hides its button while this extension's is shown.
-- In Restricted Mode nothing is installed into Codex, Codex is not patched, no file is written, and no archived conversation is deleted.
-- "Replied and unread" means a turn ended after you last had that conversation in front of you in a focused window, in its tab or in Codex's sidebar while the sidebar is visible. Bringing it to the front clears it in every window. Codex's own unread marks are not used: inside VS Code nothing ever marks them read.
-
-## Waiting for your permission
-
-Codex asks its client for an approval as a request, and records it in no file of its own. So it is read from the requests going through this window's extension host, which the patch hands over, and from the approval card on a Codex page.
-
-| | |
+| Feature | Where |
 | --- | --- |
-| What counts as waiting | Only the requests that wait indefinitely: the three `requestApproval` methods (for a command, a file change and permissions), the two older `execCommandApproval` / `applyPatchApproval`, a blocking input request, and a request for input from an MCP server (an elicitation) for which Codex set no countdown |
-| What is not counted | The requests Codex answers by itself when its countdown runs out, usually within 90 seconds: an empty input, or a declined elicitation |
-| What ends a wait | The answer this window sent, or the notification that somebody else answered it. Failing both, two of this extension's polls in a row finding the conversation's turn no longer running |
-| Where the chime can be heard | In a Codex tab of this window, or in Codex's sidebar while it shows the conversation, since the sound is made in that page. A conversation shown in a tab and in the sidebar rings in the tab alone. One shown in neither still shows as waiting in the Conversations view and is counted there; it just makes no sound |
-| What the page adds | One flag: whether an approval card is on its screen. It finds one with Codex's own selector, the same `[data-codex-approval-surface]:not([data-app-shell-active-page="false"] *)` Codex queries to decide whether an approval surface is up |
-| Why the page has a second observer | An approval card is drawn above the message box, outside the element the conversation scrolls, so the observer the timestamps use (see Inside a Codex conversation) cannot see it appear. This one is on a parent element that holds both the conversation and the card, and it keeps running while the page is hidden |
+| Your Codex conversations, with their work plans and the questions in them ([Work plan](#work-plan)) | Agent Plus's Work plan, Conversations and Answer views |
+| A work plan for each conversation, which Codex keeps up to date and is given every turn ([Work plan](#work-plan)) | Agent Plus's Work plan view; Codex's context |
+| Reminders to Codex at the end of a turn and around a compaction to keep the plan current ([Work plan](#work-plan)) | Codex's context |
+| The conversation's brief: its summary and where it stands, written by Codex ([The brief](#the-brief)) | Agent Plus's Answer view |
+| Answers to plan questions, sent from Agent Plus into the conversation ([Answering a plan question](#answering-a-plan-question)) | Agent Plus's Answer view; Codex's message box |
+| Your time zone, told to Codex when it runs on another machine ([Your time zone](#your-time-zone)) | Codex's context |
+| The installed skills that best fit each message, given to Codex before the turn ([Skill search](#skill-search)) | Codex's context; the line under a reply |
+| Wake-ups: prompts the model schedules to keep an idle conversation going ([Wake-ups](#wake-ups)) | Codex conversations open in this window |
+| A list of your Codex conversations laid out like Claude Code's, with groups, search, status dots and account usage ([The session list](#the-session-list)) | Codex sessions view, in the Codex Plus sidebar |
+| Archiving and deleting conversations, and deleting old archived ones ([Archive and delete](#archive-and-delete)) | Codex sessions view |
+| Pausing, resuming and clearing a conversation's goal ([Goals](#goals)) | Codex sessions view; command palette |
+| A Codex button on the tab bar, dropped and closed tabs reopened, and dots and titles on Codex tabs ([Tabs](#tabs)) | Editor tab bar and tabs |
+| A time on every message and reply, a rail of your own messages, and your messages marked ([In a conversation](#in-a-conversation)) | Codex conversation |
+| Each reply's context share, model, effort and duration, and the tool call and commands still running ([In a conversation](#in-a-conversation)) | Codex conversation; the row below the message box |
+| An information button, a chime button, a context meter that compacts on a click, and the Agent map ([The message box's toolbar](#the-message-boxs-toolbar)) | Codex message box's toolbar |
+| Chimes when a turn finishes, a question waits for you, or Codex stops for your permission ([Chimes](#chimes)) | Codex tab; Codex's sidebar |
+| A conversation stopped for your permission, shown as waiting ([Waiting for your permission](#waiting-for-your-permission)) | Agent Plus's Conversations view; editor tabs |
+| What is installed and running, and how long Codex's pages took to open ([Show Status](#show-status)) | Command palette; Codex Plus output channel |
+| The token mode, which decides which of these add to what Codex sends the model ([What it costs in tokens](#what-it-costs-in-tokens)) | Agent Plus's status bar entry |
 
-### What it cannot see
+## Work plan
 
-| Where the conversation is | Why |
-| --- | --- |
-| In another VS Code window | Each window starts its own Codex app-server, so its requests go to that window's extension host. |
-| Started with `codex exec` | It runs in a separate process with no extension host, so nothing in VS Code sees it. It is not in the Conversations list either. |
+Codex conversations appear in Agent Plus's Work plan, Conversations and Answer views. [Agent Plus's README](https://github.com/xnervwang/vscode-agent-plus) says what each view shows. Each conversation can have a work plan: numbered rows, each with a state. Open rows are `discussing`, `todo`, `doing`, `waiting` or `parked`; closed ones are `done` or `dropped`. Codex keeps the plan across turns (one message of yours and Codex's work on it) and compactions (when context fills up and Codex replaces the conversation so far with a summary).
 
-## The message box's toolbar
+Agent Plus's Work plan view shows the plan, which Codex receives with every message. Each conversation's plan is a file, `<conversation ID>.json` (the thread ID the [information button](#the-information-button) shows), in the work plan plugin's data folder, `plugins/data/agent-work-plan-codex-extras/` in Codex's home folder (`~/.codex` unless you set another).
 
-| | |
-| --- | --- |
-| Where the controls go | Into Codex's own toolbar row: the information and note buttons after the permissions button, the context meter left of the model picker, where Codex puts its own meter |
-| How they look | Like Codex's own buttons in that row: each takes the CSS classes of one, read off the page (the add-context button for the two icons, the permissions pill for the meter) |
-| What they leave alone | A press does not take the caret out of the message box, and a click on them reaches nothing else on the page |
-| When the row has no room | All three go to the row below the message box instead, and come back once the row is wider again |
-| Codex's own meter | Hidden while this extension's is drawn, so the row shows one reading; back with `codexPlus.contextMeter` off |
-| Why the two meters can differ | Codex divides the last model call's input and output by the context window. This meter divides the input alone, as the line beside each reply and the work plan plugin's compaction reminders do |
-| How fresh the figures are | Read from the conversation's rollout, every 3 seconds. Codex's own meter follows the app-server live |
-| How the click compacts | `thread/compact/start` on this window's app-server, the request Codex's own `/compact` sends; Codex draws the compaction in the conversation |
-| Why not `/compact` itself | Codex offers `/compact` only on an empty message box. The meter never touches the box, so a draft stays |
-| When it does not compact | While a turn runs or an approval waits, as Codex refuses its own `/compact` then: "Compact is disabled while a chat is in progress" |
-| Where Codex compacts | 90% of the model's full window, or `model_auto_compact_token_limit` in `config.toml` when that is lower |
-| A larger context window | `codexPlus.contextWindow` gives each model you list its own window, up to `1.05M` for the GPT-6 models: the window OpenAI publishes, output included. Codex caps GPT-6.1 Sol's input at 872K. A conversation Codex has already loaded keeps its old window until the VS Code window is reloaded. Without the patch it applies only to the default model, the `model` in `config.toml` |
+The work plan needs the work plan plugin, which Codex Plus installs into Codex, and needs its hooks to be trusted. Codex changes rows with the plugin's `set_row` and `add_row` tools, and changes the brief with `set_summary` and `set_status`. These tools come from the plugin's MCP server, a process the plugin runs that offers Codex tools through the Model Context Protocol. Calling them needs no sandbox approval. If Codex edits the plan file directly, the edit is refused.
 
-## Wake-ups
+At the end of a turn, the plugin reminds Codex about rows left `doing` (in progress), a reply that asks you something without putting the question on a row, and a plan not brought up to date. Before automatic compaction, it reminds Codex to update `doing` rows when the context reaches 70% and 85% of the point where Codex compacts. Codex compacts at 90% of the model's context window, or at `model_auto_compact_token_limit` in Codex's `config.toml` when that is lower. After compaction, the plugin points Codex to the plan. `codexPlus.workPlanQuietWhenReplyMatches`, a regular expression, keeps these reminders quiet when the latest reply matches it, for conversations that relay another model's replies word for word.
 
-| | |
-| --- | --- |
-| What it is for | Claude Code's periodic alarm, for Codex: an idle conversation gets a message every few minutes, so unfinished work goes on without you |
-| How one is set | The model calls `set_wakeup` with a prompt and an interval in minutes (5 by default) when you ask for a wake-up, or before a long stretch of work. One per conversation; setting it again replaces it. The model calls `clear_wakeup` once the work is done, or when only your decisions are left |
-| When it sends | Every interval, to a conversation open in this window, over Codex's own connection: the prompt goes into the conversation's queue (`thread/queue/add`), and Codex sends it when the conversation is idle, after any turn already running. A wake-up still waiting in the queue is not queued again. Each one starts with a line saying the wake-up sent it |
-| When it does not | It does not wake a conversation that no window has open. In a conversation whose turn you stopped, the wake-up is paused and its queued prompt withdrawn until a turn starts in it again. Nothing is sent before the patch has handed Codex's connection over, or with `codexPlus.wakeUps` off. Two windows with the conversation open queue it once |
-| How long | Seven days from when it was set; then it is removed. `Codex Plus: Show Status` lists the ones set, and a conversation's Agent map shows its own, with Remove |
-| Where it is kept | `<thread id>.wakeup` in the work plan plugin's data folder, with `<thread id>.woke` beside it recording when it last fired and whether it is paused. Both are deleted with their conversation |
+If a conversation has no plan, Codex is offered one once, after your third message, in a turn of at least 25 tool calls. `codexPlus.workPlanOfferMinTurns` and `codexPlus.workPlanOfferMinToolCalls` set those two numbers. `codexPlus.workPlan` turns the work plan off.
+
+### The brief
+
+The brief is the conversation's summary and status. The work plan text sent with each message ends with a sentence asking Codex to write the status before its final reply. If a turn did work without writing the status, Codex is asked for it once at the end of that turn.
+
+Codex is also asked for a summary when there is none, after a top-level plan row is added, removed or closed, and after compaction. Clicking the conversation in Agent Plus's Conversations view shows its brief in the Answer view. `codexPlus.conversationBrief` turns off the brief and these requests.
+
+### Answering a plan question
+
+Codex can put questions on rows of its work plan. You answer these plan questions in Agent Plus's Answer view. Your answer goes into the conversation's message box only when the box is empty, and is sent as Enter would send it. While a turn runs, Codex queues the answer or steers the running turn with it.
+
+The answer goes to the conversation's Codex tab, or to Codex's sidebar when the sidebar shows the conversation. The Answer view says whether the answer was sent, left as a draft, or refused because the box held a draft of yours. This needs the patch. Without the patch, the answer stays in the Answer view.
+
+## Your time zone
+
+When Codex runs on another machine, the plugin tells Codex your time zone, that machine's zone and the current time. It says nothing when Codex's own page (the web page Codex draws its conversation in, in the sidebar or a tab) has told Codex the same zone since the last compaction through `<codex_apps_client_time_context>`. This needs the plugin and the patch. `codexPlus.tellCodexYourTimeZone` turns it off.
 
 ## Skill search
 
-| | |
-| --- | --- |
-| What it does | Before each turn, the skills that best fit your message (`codexPlus.skillRoutingCount`, 5 by default) are put in front of Codex with their full descriptions and the path of each `SKILL.md`, under a line asking the model to check that a skill fits before reading it. If a skill was given in full earlier with the same description and path, and the conversation has not been compacted or rolled back since, it is not given again. A line lists every skill found in order and marks those given earlier. A sub-agent always gets every skill in full. Codex's own list cuts every description to about 50 characters once a hundred or so skills are installed, and drops what its budget (see Codex's own list of skills) cannot hold without saying so |
-| Which skills | The folders Codex reads: the repository's `.agents/skills` and `.codex/skills` from the working folder up to the repository's root, `$CODEX_HOME/skills` (`~/.codex/skills` by default), `~/.agents/skills`, Codex's system skills, `/etc/codex/skills`, and the skills of every plugin `config.toml` enables. Also each folder in `codexPlus.skillRoutingExtraFolders` (`~/.claude/skills` by default), and the Claude Code plugins named in `codexPlus.skillRoutingClaudePlugins` (none by default) |
-| Which are left out | A skill turned off in `config.toml`'s `[[skills.config]]`; one whose `agents/openai.yaml` sets `allow_implicit_invocation: false`; one you name with `$name` in the message (Codex injects that skill's whole `SKILL.md` itself). Duplicates by name or description are listed once, the copy Codex reads first. A message under six characters gets nothing |
-| How it searches | BM25 keyword ranking, on this machine, over words, 4-letter word pieces and pairs of Chinese or Japanese characters, with a skill's name weighed above its description. No network, no credentials |
-| What a turn costs | One Python process, which Codex starts for the work plan plugin's hook: it compares the modification times of the skill files it indexed and reads that index, about 1 MB for 250 skills. Measured with 244 skills: 44 ms at the median and 53 ms at the 95th percentile, Python's own start-up not counted. The skills put in front of Codex add roughly 1,300 input tokens when all of them are new to the conversation. The hook checks transcript additions since the previous turn to find skills already given, then saves the result in `<thread id>.routed` beside the plan. The file is deleted with the conversation. On one machine on 2026-11-15, the three longest conversations had 33, 10 and 8 turns. Their skill blocks totaled 48%, 83% and 40% of the characters they would have used if every skill were given in full on each turn |
-| When skills change | The next turn notices, rebuilds the index in the background and uses the old one until then. Rebuilding 244 skills takes about a third of a second |
-| Search by meaning | Off unless `codexPlus.skillRoutingVectorSearch` is on, and then used only while Codex's model provider is Amazon Bedrock. Only the message text, up to 1,500 characters, is sent to `cohere.embed-v4` on the Bedrock account and region Codex uses, signed with the credentials Codex is set up with: the provider's `credential_export` command, its `profile`, or the standard AWS variables. The credentials are never written to disk. Each skill's name and description are sent when the index is built, and again only after they change. `HTTPS_PROXY` is used when it is set |
-| Limits of the search by meaning | A turn waits at most 1.5 seconds for it, network included, and falls back to keywords on any failure. A lasting failure (no credentials, access denied, the model not offered in the region) turns it off for six hours, or until the provider, the region or the setting changes |
-| `skill_search` | A read-only tool of the work plan's MCP server: the same search with words the model chooses, so it can rephrase, try synonyms, or turn a request made in another language into English keywords |
-| What is logged | `skill-route/route.log` in the work plan plugin's data folder: the skills each turn got, which of them in full and which by name only, whether the keyword search or the search by meaning found them, and how long it took; which `SKILL.md` files the turn then read. Never the words of a message. Kept under 256 KB, with one older file |
-| After this extension updates the plugin | The skill search's hook is new, so Codex asks once more to trust the plugin's hooks |
-| Codex's own list of skills | `codexPlus.skillsListBudget` is written into Codex's `config.toml` as `skills.max_context_tokens` when it is not 0: Codex's own default is 2% of the model's context window, about 50 characters a description with a hundred or more skills; 10,000 tokens, the most Codex takes, gives about 195 characters a description. Every turn's context then carries a skills list of up to that many tokens. 0, the default, leaves Codex's setting alone |
-| Skills you never want | `codexPlus.disabledSkills` names skills to turn off, each written as a `[[skills.config]]` entry with `enabled = false`: Codex leaves it out of its list and does not run it when named with `$name`, and the skill search leaves it out too. A plugin's skill is named with its plugin, as `Plugin-name:skill-name`. Removing a name removes only the entry this setting added, and a value you wrote into `config.toml` yourself is never changed |
+Before each turn, Codex Plus puts the installed skills that best fit your message in front of Codex. It includes their full descriptions and the path of each one's `SKILL.md`, under a line asking the model to check that a skill fits before reading it. The names of those skills appear on a line under that turn's reply.
+
+Codex's own list of skills cuts every description to about 50 characters once a hundred or so skills are installed. It silently drops what its budget cannot hold (see "Codex's own list of skills" below).
+
+Codex Plus searches these folders that Codex reads:
+
+- The repository's `.agents/skills` and `.codex/skills`, from the working folder up to the repository's root
+- `$CODEX_HOME/skills` (`~/.codex/skills` by default)
+- `~/.agents/skills`
+- Codex's system skills
+- `/etc/codex/skills`
+- The skills of every plugin that Codex's `config.toml` enables
+
+It also searches each folder in `codexPlus.skillRoutingExtraFolders` (`~/.claude/skills` by default). It searches the Claude Code plugins named in `codexPlus.skillRoutingClaudePlugins` (none by default).
+
+Codex Plus leaves out skills turned off in `config.toml`'s `[[skills.config]]` and skills whose `agents/openai.yaml` sets `allow_implicit_invocation: false`. It also leaves out a skill you name with `$name` in your message, because Codex puts that skill's whole `SKILL.md` in front of the model itself. Skills with the same name or description appear once, using the copy Codex reads first. Messages under six characters get no skills.
+
+The keyword search runs on your machine and uses BM25, a standard formula for ranking text by keywords. It searches words, 4-letter pieces of words, and pairs of Chinese or Japanese characters. A skill's name weighs more than its description. Keyword search uses no network or credentials.
+
+When skills change, the next turn notices and rebuilds the index in the background. It uses the old index until the rebuild finishes. Rebuilding 244 skills takes about a third of a second.
+
+If Codex Plus gave a skill in full earlier in the conversation with the same description and path, it does not give it again unless the conversation has since been compacted or rolled back. In the text given to Codex, a line lists every skill the search found, best fit first, and marks those given earlier. A sub-agent, a conversation Codex starts from another conversation to do part of its work, always gets every skill in full.
+
+To find skills already given, the hook reads what was added since the previous turn to the conversation log, the file Codex writes for each conversation (a rollout). It saves what it found in `<conversation ID>.routed` beside the plan. That file is deleted with the conversation.
+
+Each turn costs one Python process, which Codex starts for the plugin's hook. The process compares modification times of the skill files it indexed and reads that index, about 1 MB for 250 skills. With 244 skills, it took 44 ms at the median and 53 ms at the 95th percentile, not counting Python's own start-up. The skills put in front of Codex add about 1,550 input tokens when all are new to the conversation ([Typical values](#typical-values)).
+
+On 2026-11-16, one machine had nine Codex conversations with more than one turn, totaling 81 turns. Skill blocks used 57% of the characters they would have used if every skill were given in full on each turn.
+
+Skill search needs the work plan plugin with its hooks trusted. `codexPlus.skillRouting` turns it off. `codexPlus.skillRoutingCount` sets how many skills are given (5 by default).
+
+After Codex Plus updates the plugin, Codex asks once more whether to trust the plugin's hooks, because the skill search's hook is new.
+
+### Search by meaning
+
+Search by meaning is off unless `codexPlus.skillRoutingVectorSearch` is on. Even then, it runs only while Codex's model provider is Amazon Bedrock. It sends only your message text, up to 1,500 characters, to `cohere.embed-v4` on the Bedrock account and region Codex uses. Bedrock bills it as embedding, and it adds nothing to the conversation. It signs the request with the credentials Codex is set up with: the provider's `credential_export` command, its `profile`, or the standard AWS variables. The credentials are never written to disk.
+
+Each skill's name and description are sent when the index is built, and again only after they change. Search by meaning uses `HTTPS_PROXY` when it is set. A turn waits at most 1.5 seconds for it, network included, and falls back to keyword search on any failure. A lasting failure (no credentials, access denied, or the model not offered in the region) turns it off for six hours, or until the provider, region, or setting changes.
+
+### The skill_search tool
+
+`skill_search` is a read-only tool of the plugin's MCP server. It runs the same search with words the model chooses, so the model can rephrase, try synonyms, or turn a request made in another language into English keywords.
+
+### What is logged
+
+`skill-route/route.log` in the work plan plugin's data folder records the skills each turn got, which were given in full or by name only, whether keyword search or search by meaning found them, how long it took, and which `SKILL.md` files the turn then read. It never records the words of a message. The log stays under 256 KB, with one older file.
+
+### Codex's own list of skills
+
+When `codexPlus.skillsListBudget` is not 0, Codex Plus writes it into Codex's `config.toml` as `skills.max_context_tokens`. Codex's own default is 2% of the model's context window, about 50 characters per description with a hundred or more skills. At 10,000 tokens, the most Codex takes, each description gets about 195 characters. Every turn's context then carries a skills list of up to that many tokens. The default value, 0, leaves Codex's setting alone.
+
+`codexPlus.disabledSkills` names skills to turn off. Codex Plus writes each as a `[[skills.config]]` entry with `enabled = false`. Codex leaves the skill out of its list and does not run it when you name it with `$name`; skill search leaves it out too. Name a plugin's skill with its plugin, as `Plugin-name:skill-name`. Removing a name removes only the entry this setting added. A value you wrote into `config.toml` yourself is never changed.
+
+## Wake-ups
+
+A wake-up sends a message to an idle conversation every few minutes so unfinished work can continue without you. It works like Claude Code's periodic alarm. The model sets one with the work plan plugin's tool `set_wakeup` when you ask for a wake-up or before a long stretch of work. It gives the tool a prompt of up to 4,000 characters and an interval of 1 to 1,440 minutes, with 5 minutes as the default.
+
+A conversation can have at most one wake-up; setting it again replaces the previous one. The model removes it with `clear_wakeup` when the work is done or only your decisions are left. A wake-up is also removed seven days after it was set.
+
+Every interval, Codex Plus adds the prompt to the conversation's queue (`thread/queue/add`) over Codex's own connection to its app-server (`codex app-server`, the background process Codex starts for each VS Code window). Codex sends it when the conversation is idle, after any turn already running. Each wake-up is a message of its own and starts a whole turn, with a first line saying the wake-up sent it. A wake-up still waiting in the queue is not queued again.
+
+Wake-ups go only to Codex conversations open in this window. A conversation open in no window is not woken; two windows with it open queue it once. If you stop a conversation's turn, its wake-up is paused and its queued prompt withdrawn until another turn starts. Nothing is sent before the patch hands over Codex's connection or while `codexPlus.wakeUps` is off. Wake-ups need the work plan plugin and the patch.
+
+`Codex Plus: Show Status` lists the wake-ups that are set. A conversation's Agent map (see [The message box's toolbar](#the-message-boxs-toolbar)) shows its own wake-up with Remove. The work plan plugin keeps the wake-up as `<conversation ID>.wakeup` in its data folder, with `<conversation ID>.woke` beside it to record when it last fired and whether it is paused. Both files are deleted with the conversation.
+
+## The session list
+
+The Codex sessions view in the Codex Plus sidebar lists your Codex conversations. It follows the layout of Claude Code's list in Claude Code Plus, this extension's counterpart for Claude Code, and uses your theme's colours. `codexPlus.sessionList` hides the view.
+
+### Sections
+
+From top to bottom, the list shows Account & usage, Recently closed and Open sessions, each with its count. Your groups, Ungrouped and Archived sessions follow. A group you made stays visible when empty. Recently closed, Open sessions, Ungrouped and Archived sessions are omitted when empty.
+
+Recently closed contains the conversation a tab showed when it closed, including a tab opened with a New button. It lists up to `codexPlus.recentClosedSessions` conversations. The default is 10; 0 hides the section. Open sessions includes tabs Codex opened with its own New button, whose URI names no conversation. This needs the patch.
+
+Open sessions also lists the conversation in Codex's sidebar while the sidebar is visible. Clicking that row goes to the sidebar. It is the conversation the sidebar last went to, so while the sidebar shows its own new-conversation page, the conversation it showed before is still listed. This needs the patch. As in Claude Code's list, the conversation in front is drawn as current and scrolled to in Open sessions, without moving your focus.
+
+### Rows
+
+Rows are 28 px high, with an 8 px status dot, a title and the time on the right. Rename replaces the time on hover. Group names have count badges, section labels are in capitals, and New in tab and New in sidebar sit side by side.
+
+A row shows how long ago you last used a conversation and the first and last day you used it, as `2d · 11/05→11/09`. The time uses `now`, `5m`, `3h`, `2d`, `1mo` or `1y`; dates in another year include the year, as in Claude Code's list. You can give a title a colour with Text Color (see "Menus and groups"). Hovering shows its group and session ID, as Claude Code Plus writes them.
+
+With `codexPlus.hideBackgroundSessions` on, the default, the list omits conversations started by `codex exec`, sub-agents and approval reviews (conversations Codex starts to review an approval request). Turn it off to list them with the rest. Each sub-agent is indented under the conversation that started it, which its hover names. If that conversation is not listed, the sub-agent stays among the rest.
+
+### Status dots
+
+Each row's dot follows Claude Code's list, using Claude Code Plus's colours. Green means running, blue means waiting for you, and red means an unread reply or a failed last turn. Grey means idle and open in this window; otherwise there is no dot. Running or waiting in another window uses a ring of the same colour instead.
+
+A conversation stays green while something it started is still running after its turn. Hovering names the sub-agent, Codex background command, shell detached with `setsid` or `nohup`, `codex exec` or `claude -p` worker (a one-off Codex or Claude Code run started from a command line), or `claude --bg` session (a Claude Code session started in the background). Detached shells and those workers are found through `/proc`, so detection works only on Linux.
+
+A reply is unread if its turn ended after you last had the conversation in front of you in a focused window, either in its tab or in Codex's visible sidebar. Bringing it to the front clears the unread state in every window. Codex Plus does not use Codex's unread marks because nothing inside VS Code marks them read.
+
+### Searching and moving rows
+
+The filter row offers a status filter (Needs input, Working, Completed, and Open or Closed tabs, each with a count), an Active filter (needing input, working or unread), search by title, branch or four hex characters of the ID, and New group. Typing in the list starts a search. Arrow keys move through rows, Enter opens one, and Esc clears the search or selection.
+
+Drag rows onto a group's header to move them into that group. Drag them onto Ungrouped to remove them from every group.
+
+### Starting and resuming conversations
+
+New in tab and New in sidebar start a Codex conversation. Resume in tab and Resume in sidebar appear only when the conversation is not open in this window, as in Claude Code Plus. The sidebar actions open Codex's own link, `vscode://openai.chatgpt/local/<id>` in this editor's scheme, and need nothing else. [Tabs](#tabs) covers where New in tab opens its tab.
+
+### Account & usage
+
+Account & usage sits at the top, as it does in Claude Code's list. It shows how Codex is signed in: Amazon Bedrock, an API key, or a ChatGPT account's email and plan. Only when Codex provides the figures does it show each rate limit's share used and reset time, and tokens spent today and in total.
+
+When the list comes into view, Codex Plus asks this window's app-server for the information, at most once a minute. It then uses notifications Codex sends anyway to keep it current. This section needs the patch and is hidden without it.
+
+### Menus and groups
+
+Codex Plus draws the row's right-click menu in the look of Claude Code's own. It has Rename (also available on hover), Text Color and Add to Group (submenus opening to the right, as in Claude Code Plus), Remove from Group, Mark as Unread or Mark as Read, and Archive. Every one of them but Rename acts on all the selected rows.
+
+A group's header offers Start New Session in This Group, New Group, Rename Group and Delete Group. A conversation started in a group moves into it after its first message is sent, when Codex lists it. Groups are Codex's own sections, but Codex Plus keeps their order because Codex keeps none. Codex's built-in Pinned section is never offered as a group to add to.
+
+Every action here except Mark as Unread and Mark as Read goes to this window's app-server over Codex's own connection. Before the patch takes effect, it goes to a short-lived app-server Codex Plus starts instead. Mark as Unread and Mark as Read change only Codex Plus's record of what you have read.
+
+### Archive and delete
+
+Archived sessions is the last group and stays collapsed until you open it. It lists this workspace's conversations archived from the list or Codex itself, most recently archived first. Archive works whether the conversation is open or not, as in Claude Code's list. Codex moves its log to `archived_sessions/` and archives its sub-agents with it. A conversation that is running, or has a running sub-agent, is not archived because Codex would stop its turn.
+
+An archived row's menu has Resume in Tab, Resume in Sidebar, Text Color and Unarchive. After a separator it has Delete, which no other row has. Delete asks first and says that Codex will delete the conversation log and its sub-agents' logs. A conversation open in this window or running is not deleted.
+
+Once a day, one of your windows deletes conversations archived at least `codexPlus.deleteArchivedAfterDays` days ago in the same way, without asking. The default is 30 days; 0 keeps them. The output channel "Codex Plus" lists what was deleted. Days count from Codex's archive time, or from when Codex Plus first saw an archived conversation if Codex recorded no time. An open or running conversation is left for the next day.
+
+### Goals
+
+A conversation's goal is something Codex works toward on its own. It starts another turn whenever the conversation is idle, until the goal is done, blocked or out of its token budget. To set one, ask Codex for a goal in the conversation. The row shows `goal`, `goal paused` or `goal: budget spent`; hovering shows the goal and tokens used from its budget.
+
+Pause Goal, Resume Goal and Clear Goal are in the row's right-click menu and in the command palette for the conversation in front. Resume Goal lets the goal start turns again, using Codex's own model calls. Each change is sent as yours to this window's app-server on Codex's own connection. Before the patch takes effect, it goes to a short-lived app-server Codex Plus starts.
+
+### Not in this list
+
+Three things in Claude Code's list are not in this one:
+
+- Usage for an Amazon Bedrock account, and money: for Amazon Bedrock, Codex returns an error to `account/rateLimits/read`, as its own `/status` reports "Rate limit: Unavailable", so Account & usage shows only how Codex is signed in. No price or balance is shown for any account.
+- Local / Web switches between Claude Code's own sessions and cloud sessions. Codex's cloud tasks come from ChatGPT's servers, which this list does not read.
+- Pinning keeps Claude Code's own clean-up from archiving a session idle for 14 days. Codex archives nothing on its own, and Codex Plus deletes only archived conversations. A conversation pinned in Codex's desktop app is in Codex's built-in Pinned section, which this list shows as a group while it holds something.
+
+## Tabs
+
+The Codex button on the editor's tab bar and New in tab in the session list open a new Codex conversation in a tab. They use an editor group holding only Codex tabs if one exists, otherwise a group holding any Codex tab, otherwise the first group (the main editor area). They never open a new split.
+
+With the patch in effect, the tab bar shows Codex Plus's button instead of Codex's own. It opens what `codexPlus.tabBarButton` specifies: `tab` by default, or `sidebar`. Its hover says *New Codex Conversation in a Tab* or *Open Codex Sidebar* to match. VS Code takes that hover from the command's title in the extension's `package.json`, so the patch adds a condition to Codex's `package.json` that hides Codex's button while this extension's is shown. The button appears once the window has been reloaded after the patch is written.
+
+Codex Plus reopens tabs that VS Code did not restore after a reconnect. The status bar reports how many for ten seconds, as Claude Code Plus does. `codexPlus.reopenDroppedTabs` turns this off. Ctrl+Shift+T (Cmd+Shift+T on a Mac) reopens the last closed Codex conversation while the last closed tab was a Codex tab, as Claude Code's shortcut reopens its last session. After any other tab, it runs VS Code's Reopen Closed Editor. `codexPlus.reopenClosedSessionShortcut` turns this off.
+
+A Codex tab's logo gets a dot in Claude Code Plus's colours and size: green while the conversation is working or something it started is still running, red for a reply you have not read, and blue while it waits for your permission. The tab's title follows Codex's conversation name, including for a conversation started in a tab. Its right-click menu has Rename, Mark as Unread and Add to Group, as Claude Code's tab has its three; Add to Group opens a list at the top of the window. The dots, titles and tab bar button need the patch.
+
+## In a conversation
+
+Codex Plus draws these additions into Codex's own page. Each needs the patch and a window reload, because the page keeps running the script it was built with.
+
+The time appears above every message and reply block in your own time zone, including a message you send while a turn runs. It replaces Codex's time below a reply and beside your message. A time read from the conversation log includes seconds (`HH:MM:SS`); one read from the clock Codex shows on its page has only `HH:MM`. Messages from another day start with `MM/DD HH:MM:SS`, or include the year (`YYYY/MM/DD`) if it is not this year. `codexPlus.timestamps` turns the times off.
+
+Beside each reply's time, you see that turn's share of the context window (see [The context meter](#the-context-meter)), model and effort, for example `14:02:11  ctx 33% · gpt-6.1-sol high`. Codex Plus matches them by the turn ID Codex puts on the reply; `codexPlus.turnFigures` turns them off. When Codex shows no "Worked for" of its own, the time also includes the turn's duration, for example `14:02:11  9s · ctx 33% · …`. Codex draws "Worked for" only when a turn did something before its reply. `codexPlus.replyDuration` turns the added duration off.
+
+The rail at the right edge lists your messages by time and opening words, along with where Codex compacted the context. Click a row to scroll to it, step with the arrow keys or `,` and `.`, filter, or jump to the top or bottom. As in Claude Code Plus, the list is 280 px wide and shows 44 characters per row. The opening words are read and shown in the page, not sent anywhere. `codexPlus.conversationNavigation` turns the rail off.
+
+Resting on a rail row shows its time and first 220 characters together in a box beside the list. Every rail button has its own explanatory box. After a jump, the view stays on the message for about a second while Codex's turns still move. A wheel, touch or key releases it.
+
+Your messages have a bar down their leading edge in the theme's focus colour. `codexPlus.userMessageEdge` turns the bar off. `codexPlus.userMessageColor` sets their text colour to a CSS colour such as `#90EE90`, `lightgreen` or `rgb(144,238,144)`. An empty value, the default, keeps Codex's colour.
+
+Codex Plus adds a row below the message box. At its right end, it shows the tool call running now, such as `exec_command running for 2m55s (since 11:11:18)`, while Codex's row for that call is out of view. When Codex's row is in view, it already says this. The same place counts commands Codex started that are still running, such as a build or a `sleep` left in the background, until Codex reports that the process ended.
+
+`Codex Plus: Show Status` lists each still-running command, when it started and which conversation it belongs to. Codex Plus sees only this window's Codex. If you reload the window while a command runs, it learns of that command only when it ends. `codexPlus.turnFigures` turns off the tool-call display and command count too.
+
+How the page script (the script Codex Plus adds to Codex's page) reads the times and what it changes there is in [docs/codex-page.md](docs/codex-page.md#inside-a-codex-conversation).
+
+## The message box's toolbar
+
+Codex Plus puts four controls in Codex's toolbar row in the message box. The information and note buttons follow Codex's permissions button. The context meter sits left of the model picker, where Codex puts its own meter. The Agent map sits right of the context meter. The note button is described under [Chimes](#chimes).
+
+The controls look like Codex's buttons because they take CSS classes read from the page: the two icons use the add-context button's classes, and the meter uses the permissions pill's. Pressing a control leaves the caret in the message box, and its click reaches nothing else on the page. The controls enter the toolbar only after the model picker shows the model's name. If the row is full when Codex lays out that name, Codex draws the picker as a bare icon and keeps it that way.
+
+The controls go to the row Codex Plus adds below the message box (see [In a conversation](#in-a-conversation)) when they do not fit, move the model picker, or hide more of the model's name. They try the toolbar again only when it has room for them plus 24 pixels. This keeps them from moving back and forth when you resize near the edge. Once back in the toolbar, they leave it if room runs out, the picker loses its name, or more of the name becomes hidden than when they entered. They stay in the toolbar when the model picker would cut a long model name just as much if the controls were not there. None moves while your pointer is on a control or a box it opened.
+
+### The information button
+
+The information button shows the conversation's thread ID, this window's Codex app-server process ID, folder, conversation log and its size, context window use, tokens used, account and token mode. Click a value to copy it. `codexPlus.infoButton` hides the button. It needs the patch.
+
+### The context meter
+
+The meter shows a ring and the share of the context window in use. Codex's meter is hidden while this one is drawn, leaving one reading in the row; it returns when `codexPlus.contextMeter` is off. Hover to see which context window it uses and where that figure came from (`codexPlus.contextWindow`, below, can set it), tokens in use and free, where Codex compacts and how far away that is, conversation input, cached input, output and reasoning tokens, and the model and effort. You also see how many times the work plan has added context since the last compaction, how many characters those additions came to, and about what share of the context in use that is. The meter needs the patch.
+
+Codex's meter and this one can differ: Codex divides the last model call's input and output by the context window; this meter divides input alone, as the figures beside replies and the work plan plugin's compaction reminders do. This meter reads figures from the conversation log every 3 seconds, while Codex's follows the app-server live. `codexPlus.contextWindow` gives each listed model its own window, up to `1.05M` for GPT-6 models, using OpenAI's published window including output. Codex caps GPT-6.1 Sol's input at 872K. An already loaded conversation keeps its old window until you reload the VS Code window; without the patch, the setting applies only to the default `model` in `config.toml`.
+
+Clicking the meter starts a compaction now by sending `thread/compact/start` to this window's app-server. Codex's `/compact` sends the same request. The compaction appears in the conversation and counts as one of Codex's own model calls. Codex offers `/compact` only when the message box is empty; the meter does not touch the box, so your draft stays. While a turn runs or an approval waits, the click is refused, as Codex refuses `/compact` then: "Compact is disabled while a chat is in progress".
+
+Codex compacts at 90% of the model's full window, or at `model_auto_compact_token_limit` in `config.toml` if lower. The meter counts against the window Codex reports, which is 95% of the full one, so Codex compacts when the meter reads about 94.7%. Once the meter reads 80% or more, 15 points before that, an outline appears, as Claude Code Plus outlines its meter 15% before compaction. When this extension's meter is not drawn, the outline goes on Codex's meter, which Codex draws only when you turn on General, Composer, Show context window usage in Codex's settings. `codexPlus.lowContextOutline` turns the outline off.
+
+### The Agent map
+
+The Agent map is a pill like Claude Code's, reading for example `2 agents · 1 timer · goal`. It appears while the conversation has a wake-up (the timer), a goal or sub-agents. It needs the patch.
+
+Click it to open a dialog with a section for each. A wake-up shows its interval, next time, end and prompt, with Remove. A goal shows its state and tokens, with Pause, Resume and Clear. Each sub-agent shows a status dot and when it was last active; click it to open it in a tab. Esc or a click outside closes the dialog.
+
+## Chimes
+
+Codex Plus chimes when a turn finishes, when the model asks you something and waits for your answer (a blocking input request), and when Codex stops for your permission. The three sounds are Claude Code Plus's own: rising for a finished turn, falling for a question, and three equal notes for permission. The sound plays in the page showing the conversation: a Codex tab in this window or Codex's sidebar while it shows the conversation. If both show it, only the tab rings.
+
+The note button beside the information button in the message box's toolbar turns chimes on and off. It is struck through while chimes are off. `codexPlus.chime` turns chimes off; `codexPlus.chimeButton` hides the note button without changing `codexPlus.chime`. Chimes need the patch.
+
+## Waiting for your permission
+
+A conversation stopped for your permission shows as waiting in Agent Plus's Conversations view, puts a blue dot on its tab, and chimes. This needs the patch. Codex asks its client for approval in a request but does not save that request in its own files. Codex Plus reads requests passing through this window's extension host (the process VS Code runs extensions in), which the patch hands over, and reads the approval card on a Codex page.
+
+Only requests that wait indefinitely count as waiting. These include the three `requestApproval` methods (for a command, a file change, and permissions), the older `execCommandApproval` and `applyPatchApproval` methods, a blocking input request, and an input request from an MCP server (an elicitation) for which Codex set no countdown. Requests Codex answers itself when a countdown runs out do not count. That usually happens within 90 seconds, with an empty input or a declined elicitation.
+
+A wait ends when this window sends the answer or a notification says somebody else answered it. If neither happens, it ends when two Codex Plus polls in a row find that the conversation's turn is no longer running. A conversation shown in neither a tab nor the sidebar still shows as waiting in the Conversations view and is counted there. It makes no sound.
+
+Codex Plus cannot see requests from:
+
+- Another VS Code window: each window starts its own app-server, and its requests go to that window's extension host.
+- `codex exec` (Codex run from the command line for one task, outside VS Code): it runs in a separate process with no extension host, so nothing in VS Code sees its requests. Its conversation is not in the Conversations list either.
+
+How the page finds the approval card is documented in [docs/codex-page.md](docs/codex-page.md#the-approval-card).
+
+## Show Status
+
+`Codex Plus: Show Status` writes to the Codex Plus output channel and shows:
+
+- What is installed, what is patched, and what is registered with Agent Plus.
+- The token mode and which of the five features that add to Codex's context run (the five are listed under [What it costs in tokens](#what-it-costs-in-tokens)).
+- Whether the additions are turned off, the patch was removed, or the plugin is installed but not loaded.
+- Whether this release was checked against the installed Codex build.
+- Whether Python is missing, and which commands were tried to find it (see [Python](#python)).
+- The wake-ups that are set.
+- Commands Codex started that are still running, when each started, and which conversation it belongs to.
+- The last three times a Codex page opened and how long each took.
+- At the end, what the page script found in the Codex page in front, explained in [docs/codex-page.md](docs/codex-page.md#checking-what-the-page-found).
+
+`Codex Plus: Show How Long Opening a Codex Page Took` shows how long each Codex page, in the sidebar or a tab, took to open. It shows how long it took to run Codex's page script, show the first screen, show the conversation or home page, and restore the conversation. It also shows which pages gave up. This command reads Codex's own log, `Codex.log`, in every window's log folder. It needs nothing else.
 
 ## What it costs in tokens
+
+In an ordinary turn without a work plan, Codex Plus adds about 700 tokens to what Codex sends the model; with a work plan, it adds about 800 to 1,200 tokens. Nearly all of the 700 tokens are skill search. The plan adds about 90 tokens to a message when it has not changed since the previous message, which is about half of all messages, and about 520 tokens (the median) when it has changed. These figures count the text itself; how they were measured is under [Typical values](#typical-values).
+
+A request at the end of a turn (an end-of-turn reminder or one of the brief's requests, under [Added now and then](#added-now-and-then)) has a separate cost: Codex answers it with two more model calls that each send the whole context again, and those calls are not included above. The work plan's text, given at the start of the turn, asks for the status before the final reply, so Codex sends the `set_status` call with the turn's other tool calls.
 
 | Feature | Interface features | Essential features | All features | Custom |
 | --- | --- | --- | --- | --- |
@@ -159,12 +344,12 @@ The tables below show the text Codex Plus adds to what Codex sends the model. Al
 
 | What | When | At most | Turned off by |
 | --- | --- | --- | --- |
-| End-of-turn reminders | At the end of a turn that left rows `doing`, asked you something without putting the question on a row, or changed things without reading or updating the plan | About 2,400 characters and the plan's path four times, with every reminder and both of the brief's requests at once | `codexPlus.workPlan` |
+| End-of-turn reminders | At the end of a turn that left rows `doing`, asked you something without putting the question on a row, or changed things without reading or updating the plan | About 2,400 characters when every reminder and both of the brief's requests come at once, plus the plan's path, which appears four times in that text | `codexPlus.workPlan` |
 | The brief's requests | The work plan's text on each message ends with one sentence asking Codex to write the status before its final reply. At the end of a turn: the status once per turn, after a turn that did work without writing it; the summary when there is none, after a top-level row was added, removed or closed, and after a compaction | The sentence counts toward the work plan's limit; the rest counts toward the end-of-turn reminders' limit above | `codexPlus.conversationBrief` |
 | No row `doing` | At most once per turn, when the turn has started working and no row is `doing` | About 460 characters and the plan's path | `codexPlus.workPlan` |
 | Before a compaction | At 70% and 85% of where Codex compacts, once each between compactions | About 850 characters and the plan's path | `codexPlus.workPlan` |
 | After a compaction | Once per compaction | About 970 characters, the plan's path, and the path of its closed rows when it has any | `codexPlus.workPlan` |
-| The offer of a plan | Once, in a conversation with no plan, after your third message and a turn of 25 tool calls | About 480 characters and the plan's path | `codexPlus.workPlan`; `codexPlus.workPlanOfferMinTurns`, `codexPlus.workPlanOfferMinToolCalls` |
+| The offer of a plan | Once, in a conversation with no plan, after your third message, in a turn of at least 25 tool calls | About 480 characters and the plan's path | `codexPlus.workPlan`; `codexPlus.workPlanOfferMinTurns`, `codexPlus.workPlanOfferMinToolCalls` |
 | A direct write to the plan, refused | When the model edits the plan file instead of using the tools | About 310 characters | `codexPlus.workPlan` |
 | Your time zone | When Codex runs on another machine and its page has not told it the same zone since the last compaction | About 310 characters | `codexPlus.tellCodexYourTimeZone` |
 | A wake-up | Every interval while one is set, as a message of its own, so a whole turn | The prompt the model set, up to 4,000 characters, every 1 to 1,440 minutes, for 7 days | `codexPlus.wakeUps`; `clear_wakeup` |
@@ -183,153 +368,96 @@ The tables below show the text Codex Plus adds to what Codex sends the model. Al
 ### Costing nothing
 
 - Everything Codex Plus and Agent Plus draw in VS Code.
-- Two of them start Codex's own model calls when used: clicking the context meter compacts the conversation, and Resume Goal lets the goal start turns.
+- The exceptions are two actions in VS Code that start Codex's own model calls: clicking the context meter compacts the conversation, and Resume Goal lets the goal start turns.
 - The search by meaning, off by default, sends your message to `cohere.embed-v4` on Bedrock: billed there as embedding, nothing added to the conversation.
 - Hovering the context meter shows, for the conversation in front, how many times the work plan was added since the last compaction, how many characters that came to, and about what share of the context in use.
 
 ### Typical values
 
-Measured on 2026-11-11 on one machine.
+Measured on 2026-11-16 on one machine, with the hooks in this repository. Tokens are estimated: a Chinese, Japanese or Korean character counts as one token, any other character as a quarter of one.
 
 | What | Typical | How it was measured |
 | --- | --- | --- |
-| The work plan, whole block | Median 2,246 characters, 90th percentile 4,720 | The 41 plans written on that machine in the 14 days before; each was copied and put through the work plan plugin's hook that adds the plan to a message, once. All 41 are Claude Code plans, which go through the same hook. The two Codex plans there, not among the 41, gave 2,053 and 3,211 characters measured the same way |
-| The work plan, short head | Median 1,102 characters, 90th percentile 3,576 | The same plans; the two Codex plans gave 583 and 1,741 characters |
-| The work plan, one line | 220 characters with a 60-character path | The same plans |
-| Messages whose plan is unchanged since the message before | 48% | 8,587 messages with the plan in 63 Claude Code conversations over the same 14 days, counted as unchanged when only how long a row had been in its state differed; counted by `build/plan-injection-stats.js` in Agent Plus's repository |
-| Skill search | About 1,300 input tokens per message when the conversation has not received those skills before | 244 skills; see Skill search |
+| The work plan, whole block | Median 3,280 characters, 90th percentile 5,300 | The 46 plans with open rows among the 84 written on that machine in the 14 days before; each was copied and put through the work plan plugin's hook that adds the plan to a message, once. 44 of them are Claude Code plans, which go through the same hook; the two Codex plans gave 2,672 and 3,830 characters |
+| The work plan, short head | Median 1,416 characters (about 520 tokens), 90th percentile 3,584 | The same plans, with one row added; the two Codex plans gave 808 and 1,958 characters |
+| The work plan, one line | 343 characters (about 90 tokens), 102 of them the plan's path | The same plans, with the brief on |
+| Messages whose plan is unchanged since the message before | 50% | 2,773 messages with the plan in 32 Claude Code conversations, from 2026-11-11 22:40 to 2026-11-16 01:12 UTC, counted as unchanged when the hook gave the one line, which it does when the rows differ only in how long each has been in its state (the plan text shows that time) |
+| Skill search, every skill new to the conversation | Median 3,880 characters, about 1,550 tokens | 740 real messages, each as the first of its conversation, of which 700 got skills; 248 skills, keyword search |
+| Skill search, per turn | Median about 690 tokens (1,869 characters); given in full every turn, about 1,290 | The 81 turns of the nine Codex conversations with more than one turn, in order, with skills given earlier named instead of given again |
 
-## Not here
+## CPU and disk
 
-| What Claude Code's session list has | Why Codex's does not |
-| --- | --- |
-| Usage for an Amazon Bedrock account, and money | Codex answers `account/rateLimits/read` for an Amazon Bedrock account with an error, as its own `/status` shows "Rate limit: Unavailable", so Account & usage shows only how Codex is signed in. No price or balance is shown for any account. |
-| Local / Web | Claude Code's switch between its own sessions and those in the cloud. Codex's cloud tasks come from ChatGPT's servers, a source this list does not read. |
-| Pinning | Claude Code Plus pins a session so that Claude Code's own clean-up, which archives a session idle for 14 days, leaves it alone. Codex archives nothing on its own, and this extension deletes only conversations that were archived. A conversation pinned in Codex's desktop app is in Codex's built-in Pinned section, which the list shows as a group while it holds something. |
+In the background, Codex Plus checks every 3 seconds whether Codex's files have changed. About every 12 seconds, it scans the machine's processes (`/proc`, so on Linux) for work a conversation started that is still running after its turn. VS Code windows on one machine share a scan: a window uses one another window wrote less than 9 seconds ago instead of scanning itself. If a conversation log has not changed since the last read, it is skipped.
+
+The table below shows single operations measured in isolated runs on one machine on 2026-11-15. Each result is the median of 12 runs.
+
+| What | How often | CPU | Read |
+| --- | --- | --- | --- |
+| Checking whether Codex's files changed, when none did | Every 3 seconds | 0.23 ms | 105 bytes |
+| Scanning processes for work left running | About every 12 seconds | 38.5 ms; 45 ms when it also writes the shared result | 0.49 MB |
+| Using the scan another window wrote | In place of a scan | 0.07 ms | 258 bytes |
+| Reading the conversations, with the five largest open in tabs | When a file changed | 92 ms the first time, then 0.6 to 1.5 ms while those files do not change | 28.8 MB the first time, then about 100 bytes |
+
+Turning `codexPlus.enabled` off stops the process scan. The 3-second check keeps running because the session list and Agent Plus's views use it. To stop that check too, disable Codex Plus in VS Code's Extensions view.
 
 ## Install
 
-Agent Plus (`xnervwang.agent-plus`) is a dependency. VS Code installs it from the marketplace along with this extension; when it is not on the marketplace, install its `.vsix` first.
+Agent Plus (`xnervwang.agent-plus`) is a dependency. VS Code installs it from the marketplace along with this extension; when it is not on the marketplace, install its `.vsix` first, then build this extension from a clone of this repository and install it:
 
 ```sh
-code --install-extension xnervwang.agent-plus-1.0.0.vsix
+code --install-extension xnervwang.agent-plus-<version>.vsix
 bash build/pack.sh
-code --install-extension build/xnervwang.codex-plus-1.0.0.vsix
+code --install-extension build/xnervwang.codex-plus-<version>.vsix
 ```
 
 - In a Remote SSH window, install both on the remote.
 - At start-up the work plan plugin is installed into Codex and Codex is patched, without asking, as Claude Code Plus does with Claude Code. Trust the plugin's hooks when asked (or in Codex: Settings > Hooks), and reload the window when asked.
-- `Codex Plus: Show Status` shows what is installed, patched and registered with Agent Plus.
+- In Restricted Mode nothing is installed into Codex, Codex is not patched, no file is written, and no archived conversation is deleted.
 
 ### After an update of this extension
 
-- A new build usually changes what the patch writes into Codex, so the copy already in Codex's files is an older one.
-- Codex reads `out/extension.js` and `webview/index.html` when its extension starts and when it builds a page, and VS Code reads Codex's `package.json` when a window loads, so a reload helps only once the new copy is written.
-- A few seconds after this extension starts it writes the new copy over the old one and offers a reload. Clicking that reload is the whole of it.
-- The patch is written once, into the Codex every window of this machine loads. Only the window that wrote it offers the reload; any other window whose Codex was already running offers it once, the next time it gets the focus, since until then it runs Codex's own code, without this extension's additions.
+A new build of Codex Plus usually changes what the patch writes into Codex, leaving an older copy in Codex's files. Codex reads `out/extension.js` and `webview/index.html` when its extension starts and when it builds a page. VS Code reads Codex's `package.json` when a window loads. A reload helps only after the new copy is written. A few seconds after Codex Plus starts, it writes the new copy over the old one and offers a reload. You only need to click that reload.
 
-| State of Codex's files | What happens |
-| --- | --- |
-| This build's patch | Nothing. |
-| An older build's patch | Written over without asking, then a reload is offered. |
-| Codex's own files, never patched | Patched without asking, then a reload is offered. |
-| Codex's own files, after `Remove the Patch from Codex` | Left alone until `Codex Plus: Turn On` or `Toggle On/Off` (see Turning it all off) is run, which puts the patch back; the removal is remembered, as Claude Code Plus remembers its own Remove. |
+The patch is written once, into the Codex that every window on this machine loads. Only the window that wrote it offers a reload. If Codex was already running in another window, that window offers a reload once, the next time it gets focus. Until then, it runs Codex's own code without this extension's additions.
+
+At start-up, what happens depends on the state of Codex's files:
+
+- This build's patch: nothing happens.
+- An older build's patch: it is written over without asking, then a reload is offered.
+- Codex's own files, never patched: they are patched without asking, then a reload is offered.
+- Codex's own files after `Codex Plus: Remove the Patch from Codex`: they stay untouched until you run `Codex Plus: Turn On` or `Codex Plus: Toggle On/Off` to put the patch back. Codex Plus remembers the removal, as Claude Code Plus remembers its own Remove.
+
+Codex ships a new build about every week. `Codex Plus: Show Status` tells you whether this release of Codex Plus was checked against your installed Codex build. An unchecked build is still patched if every place the patch edits is found. If one is not found, the patch leaves Codex untouched and the status says so.
 
 ### Turning it all off
 
-| | |
-| --- | --- |
-| Off, but ready | `Codex Plus: Turn Off`, or `Toggle On/Off`, or the `codexPlus.enabled` setting. None of the additions is drawn (the times, the rail, the colouring, the chimes, the buttons and context meter in the message box's toolbar, the row below the message box, the dots on tab logos), and Codex is not patched or kept patched. An applied patch stays in Codex's files. Each setting keeps its own value, so turning it back on restores your choices. |
-| Codex's own files back | `Codex Plus: Remove the Patch from Codex`. This is the one that restores Codex's `out/extension.js`, `webview/index.html` and `package.json`, and it is also what uninstalling this extension does. Reload the window afterwards. |
-| Nothing added to Codex's context | The Interface features token mode (`agentPlus.tokenMode`, or Agent Plus's token mode entry in the status bar). The work plan, skill search, brief, time zone and wake-ups add nothing, and Codex is set not to load the plugin, as Stop Loading does; any other mode loads it again, unless you stopped loading it yourself. |
-| The plugin left alone | `Codex Plus: Stop Loading the Work Plan Plugin`. Codex keeps the plugin, its marketplace entry and the trust you gave its hooks, and is set not to load it (`enabled = false` under `[plugins."agent-work-plan@codex-extras"]` in `config.toml`). `Install the Work Plan Plugin into Codex` is the way back; the install at start-up does not turn loading back on. Uninstalling this extension instead takes all three away (below). |
-| Uninstalling this extension | Codex's own files are put back, in this editor's extensions folder and in any other editor's that no longer has this extension. Once no editor on the machine has it, the work plan plugin is removed from Codex too, with the plans copied to `agent-work-plan-plans-<time>` under `CODEX_HOME` first. A plugin it could not remove stops doing anything once VS Code has deleted this extension's global storage. |
+`Codex Plus: Turn Off`, `Codex Plus: Toggle On/Off`, and `codexPlus.enabled` stop drawing the times, rail, colouring, chimes, buttons, context meter in the message box's toolbar, row below the message box, and dots on tab logos. Codex is not patched or kept patched, but a patch already applied stays in Codex's files. Turning the additions off does not change their settings. Your choices return when you turn them back on.
 
-- The work plan and the Codex session list are not covered by `Turn Off` and `codexPlus.enabled`. They have their own settings (`codexPlus.workPlan`, `codexPlus.sessionList`).
-- The work plan's own settings (`codexPlus.workPlan`, `codexPlus.workPlanOfferMinTurns`, `codexPlus.workPlanOfferMinToolCalls`, `codexPlus.workPlanQuietWhenReplyMatches`), `codexPlus.conversationBrief` and `codexPlus.tellCodexYourTimeZone` are user settings only. Every window and every `codex` run on the machine reads them from one file under `CODEX_HOME`, so VS Code ignores a value of theirs in workspace or folder settings.
-- Turning the additions on or off shows no notification, as in Claude Code Plus. After `Remove the Patch from Codex`, `Turn On` and `Toggle On/Off` put the patch back, and a reload is offered.
-- `Codex Plus: Show Status` shows each of the first three: additions off, the patch removed, and a plugin that is installed but not loaded.
+`Codex Plus: Remove the Patch from Codex` restores Codex's `out/extension.js`, `webview/index.html` and `package.json`. Uninstalling this extension also restores those files. Reload the window afterwards.
+
+The Interface features token mode, set with `agentPlus.tokenMode` or from Agent Plus's token mode entry in the status bar, makes the work plan, skill search, brief, time zone and wake-ups add nothing. Codex is set not to load the plugin, as with Stop Loading. Any other mode loads it again unless you stopped loading it yourself.
+
+`Codex Plus: Stop Loading the Work Plan Plugin` keeps the plugin, its marketplace entry and the trust you gave its hooks. It sets `enabled = false` under `[plugins."agent-work-plan@codex-extras"]` in `config.toml`, so Codex does not load it. Run `Codex Plus: Install the Work Plan Plugin into Codex` to load it again; the install at start-up does not do that. Uninstalling this extension instead removes all three, as described next.
+
+Uninstalling this extension puts Codex's own files back in this editor's extensions folder and in the extensions folder of any other editor that no longer has this extension. Once no editor on the machine has it, the work plan plugin is removed from Codex too. The plans are first copied to `agent-work-plan-plans-<time>` under `CODEX_HOME` (Codex's home folder, `~/.codex` unless you set it). If Codex Plus could not remove the plugin, the plugin stops doing anything once VS Code has deleted the folder where VS Code keeps this extension's data: on each run the plugin checks whether that folder still exists.
+
+Notes on settings and status:
+
+- The work plan and Codex session list have their own settings, `codexPlus.workPlan` and `codexPlus.sessionList`. `Codex Plus: Turn Off` and `codexPlus.enabled` do not cover them.
+- `codexPlus.workPlan`, `codexPlus.workPlanOfferMinTurns`, `codexPlus.workPlanOfferMinToolCalls`, `codexPlus.workPlanQuietWhenReplyMatches`, `codexPlus.conversationBrief` and `codexPlus.tellCodexYourTimeZone` are user settings only. Every window and every `codex` run reads them from one file under `CODEX_HOME`; VS Code ignores their workspace or folder values.
+- Turning the additions on or off shows no notification, as in Claude Code Plus. After `Codex Plus: Remove the Patch from Codex`, `Codex Plus: Turn On` and `Codex Plus: Toggle On/Off` put the patch back and offer a reload.
+- `Codex Plus: Show Status` shows when additions are off, the patch is removed, or the plugin is installed but not loaded.
 
 ### Python
 
-The work plan's hooks and its MCP server need Python 3.7 or later. `py -3`, `python` and `python3` are tried in that order on Windows, `python3` then `python` elsewhere, and whichever answers first is written into the installed plugin.
+The work plan plugin's hooks and MCP server need Python 3.7 or later. On Windows, the install tries `py -3`, `python` and `python3` in that order; elsewhere, it tries `python3` then `python`. It writes the first one that answers into the installed plugin. Each install starts fresh, so it can find Python if you installed it since the last one.
 
-| | |
-| --- | --- |
-| No Python found | The plugin is installed without its hooks, its MCP server or its skill (the instructions that tell Codex how to use the work plan), so the work plan stays empty rather than putting a failed hook in every turn. A row above the work plan (described below) says so, and which names were tried; so does `Codex Plus: Show Status`. |
-| No Python, on Windows | Clicking that row fetches python.org's embeddable build (11 MB) into this extension's own storage, checks it against a recorded SHA-256, and installs the plugin again; the download is also offered once per version of that build at start-up, as Claude Code Plus offers it. It installs nothing system-wide, and it fetches nothing until you press a button. |
-| No Python, elsewhere | Install Python 3 and click that row, or run `Codex Plus: Install the Work Plan Plugin into Codex`. python.org publishes an embeddable build for Windows only. |
-| The row above the work plan | As Claude Code Plus draws it: the plugin could not be installed (click to try again), there is no Python (click to download it, or to install again), or Codex has not been told to trust the plugin's hooks (click to trust them). The one to fix first is shown, and it goes once that is fixed. |
-| A Python installed later | The next install finds it. Nothing is remembered between installs. |
+If no Python is found, the plugin is installed without its hooks, MCP server or skill (the instructions that tell Codex how to use the work plan). The work plan then stays empty, and no turn runs a hook that would fail. A line above the plan in Agent Plus's Work plan view, and `Codex Plus: Show Status`, report the missing Python and the commands tried. As in Claude Code Plus, that line shows the problem to fix first: an installation failure (click to retry), missing Python (click to download it or install again), or untrusted hooks (click to trust them). The line goes once that problem is fixed.
 
-## Verified Codex builds
+On Windows, clicking that line fetches python.org's embeddable build (11 MB) into this extension's own storage, checks it against a recorded SHA-256, and installs the plugin again. The download is also offered once per version of that build at start-up, as Claude Code Plus offers it. It does not install anything system-wide. It fetches nothing before you press a button.
 
-Everything this extension adds to Codex depends on the exact shape of one build, and Codex ships weekly. The patch matches a fixed set of places in Codex's own bundle and one in its `package.json`, the page script (the script this extension adds to Codex's page) selects elements by Codex's `data-*` attributes, and the conversation list reads columns out of Codex's state database.
+Elsewhere, install Python 3 and click the line, or run `Codex Plus: Install the Work Plan Plugin into Codex`. python.org publishes an embeddable build for Windows only.
 
-- The builds each release was checked against are recorded in `src/supported-versions.json`, with the date and what was checked on each.
-- `Codex Plus: Show Status` says whether the installed build is one of them. An unrecorded build is also noted in one line of the Codex Plus output channel; it does not open a dialog.
-- An unrecorded build is still patched if every place the patch edits is found in it. If one is not, the patch leaves Codex untouched and says so in the status.
+## For developers
 
-## The render check
-
-- `test/render/run.js` draws Codex's real conversation page, from the installed Codex extension, with this repository's page script in it, and checks what can only be seen in a drawn page.
-- It is not part of the main test suite (`test/check.js`) and not in the package.
-
-```sh
-node test/render/run.js [--out <dir>] [--codex <Codex extension folder>] [--only <scenes>]
-```
-
-| | |
-| --- | --- |
-| When to run it | Once for every new Codex build, before adding it to `src/supported-versions.json`, and after a change to how the page script draws |
-| What it draws | A made-up conversation, in eight states: four turns at 1100, 400 and 1600 pixels wide; a turn stopped on an approval; a command still running in the background with Codex's own context meter on; a chime before and after a click in the page; 25 turns over two days; Codex's model menu and conversation menu open. And the session list's own page at a sidebar's width, with made-up conversations, 14, 200 and 1000 of them |
-| What it asserts | The page script finds the conversation and draws a time on every message; nothing of this extension's overlaps Codex's bubbles, buttons, message box, approval card, context meter or tool rows; nothing of Codex's is in the rail's column; the row below the message box is 2 px below the box's frame, with no background, its glyphs no taller than Codex's toolbar icons; Codex's own reply time is hidden where ours is drawn; an approval card is reported; nothing of ours is over Codex's menus. In the session list: Claude Code's sizes, the time at the right edge and Rename in its place on hover, the hover box, a search, the usage bars in Account & usage, and that drawing 1000 rows takes under 300 ms and a keystroke in the search under 100 ms |
-| What it writes | Screenshots in `<out>/shots`, the measurements in `<out>/results.json`, and the page script's layout sample of the drawn page (see Sampling a conversation's layout) in `<out>/layout-sample.json`; the run prints the `data-*` names it does not share with the fixture in `test/fixtures/`. `<out>` is a new folder in the system's temporary folder unless given |
-| What it needs | A headless Chromium (Playwright's `chromium_headless_shell`, or `CHROME`), `unshare -rn` for an unprivileged user, and an installed Codex extension. Without one of them it says which and exits 0 |
-| What leaves the machine | Nothing. The browser fails every request not to `127.0.0.1` and the run prints how many it failed; Codex's app-server runs in a namespace with no network. Codex's installed files are only read |
-| How long | About four minutes: each scene starts Codex's app-server and loads Codex's page afresh. `--only narrow,approval` runs some of them (`conversation`, `narrow`, `wide`, `approval`, `background`, `compact`, `chime`, `long`, `sessions`) |
-
-- A new Codex build may need the stand-ins updated (`test/render/harness/`): they answer the page's host services and its app-server requests the way Codex's host does.
-- The browser keeps its own autoplay rule, as Codex's webview does: an audio context made before anyone clicked or typed in the page stays suspended. The `chime` scene checks that a chime then reports `suspended` to the host and plays nothing, and that after one click (`Input.dispatchMouseEvent`) the next chime runs in a running context and starts its oscillators. With the rule turned off, as it once was, the check before the click could not fail, and a chime nobody hears passed.
-- `test/against-latest.js`, run once a day against the newest Codex in the marketplace, also holds that build to `src/protocol-known.js`: every request its app-server can make of its client, listed by its own `codex app-server generate-json-schema`, and every `request_user_input…` name in its page. Each is marked handled or left alone on purpose, and one marked neither way fails the check, printed by name. A question tool that is not an app-server request, as `request_user_input_async` is, is invisible to a check that knows only the requests.
-- `test/parts/52a-known-protocol.js` checks that what those lists mark handled is recognised by the code they name, and compares them with the installed Codex when there is one.
-
-## Inside a Codex conversation
-
-Timestamps, the rail and the colouring of your own messages are all drawn into Codex's own page. Each needs the patch and then a window reload, since a page runs the script it was built with.
-
-| | |
-| --- | --- |
-| Where a reply's time comes from | The element Codex marks `data-assistant-message-sent-time` in every reply block. The attribute's value is always `true`, so the time is the clock Codex renders as that element's text. A value that does read as an epoch count, a date string or a clock is taken first, for a build that puts a time there. A message from an earlier day has its clock after the day's name, as `Sunday 9:02 AM`: the date is taken from the date divider Codex draws above the turn, and left off when no divider is in the page. Text that fits none of these is left alone, and its shape (length, class of the first character, whether it is all digits) goes to the Codex Plus output channel. |
-| Where your own message's time comes from | First the clock Codex itself renders beside the message, which it shows on hover and which is hidden while this extension's time is on, read as a reply's is. Then, as a second source, the conversation's rollout: the rollout's seconds are used where its minute is the one Codex rendered. The page's messages are matched to the rollout's by the turn id Codex puts on each turn, among that turn's messages of yours when the rollout holds as many of them as the page shows, and failing that by position in the whole conversation when the rollout holds exactly as many messages of yours as the page shows. |
-| Seconds on a reply | Codex renders a reply's time to the minute. The rollout's time for that reply is used instead when it is the only reply of its turn in the minute Codex shows. Where no date divider is in the page for a turn, the minute is compared as a clock, and the rollout's date is the one shown. |
-| Why seconds are sometimes missing | A drawn time is `HH:MM:SS` when its source carried seconds and `HH:MM` when it did not. |
-| A message of another day | Its time starts with the date, `MM/DD HH:MM:SS`, and with the year as well when it is not this year (`YYYY/MM/DD`), as Claude Code Plus writes it. The list of your messages shows the same. |
-| What goes on Codex's elements | Only class names. Two rules of the stylesheet change Codex's layout: while the rail is drawn the conversation keeps clear of the rail's column on the right, 28 px, by padding on the right of what is inside the element it scrolls in, so the scrollbar stays at the page's right edge; while the row below the message box is drawn the box sits 4 px higher, which that row needs. Those class names are styled from one stylesheet of this extension's own, so turning a setting off removes its rules. |
-| What the page watches | One observer for the times, the rail and the colouring, on the element the conversation scrolls, debounced. It is dropped while the page is hidden, and dropped altogether when all three are off. `Codex Plus: Remove the Patch from Codex` clears every mark (those class names) out of the pages still open before restoring Codex's files. The approval card has its own observer, which keeps running while the page is hidden and is not dropped when these three are off. See Waiting for your permission. |
-
-- Which of Codex's attributes these select by is checked against a real sample of a Codex conversation (`test/fixtures/`), so a Codex release that drops one fails a check.
-- The opening words on a row of the rail are read in the page and shown there, and are not sent anywhere.
-- A compaction point is placed by how many of your messages came before it in the conversation's rollout, so it is shown only while the page shows exactly as many messages of yours as the rollout holds.
-
-## Sampling a conversation's layout
-
-- The page script can take a sample of the conversation's layout: tag names, class names, attribute names, depth, child counts and rounded sizes, and for each text node its length with the shape of its first eight characters, never any text or attribute value.
-- There is no command for it. The render check samples the page it draws and compares the drawn page's `data-*` names with the sample in `test/fixtures/`, taken in a real window.
-
-## Checking what the page found
-
-- Everything in Inside a Codex conversation is drawn inside Codex's page, so only the page can tell whether it found what it looks for.
-- The end of `Codex Plus: Show Status` asks the Codex page in front; there is no separate command, as in Claude Code Plus.
-
-| | |
-| --- | --- |
-| What it reports | The page script's own version; how many turns, messages of yours (and how many of those, such as one sent while a turn ran, had no `data-local-conversation-user-anchor`, the attribute Codex puts on a message that starts a turn), reply blocks, sent-time elements and bubbles were recognised; how many timestamps were drawn on replies and on your messages and which source those on your messages came from (see below); the rail's rows and buttons; how many of your messages were coloured and given a bar; whether an approval card is up and which element its watcher is on; whether the row below the message box is drawn; and how many elements this extension added are in the page |
-| What it never sends | Any text of the conversation, any title, any time as a string, and no selector read off the page. Every string in the page's report is one of this extension's own constants, and a test checks this |
-| Needs | The patch (`Codex Plus: Turn On` after a Remove) **and** a window reload after it, plus a Codex conversation tab in front |
-| Where it comes out | The end of `Show Status`, in the Codex Plus output channel |
-
-- The page also speaks up by itself: when a Codex page shows turns and the script has recognised none of the messages in those turns on three checks in a row and for five seconds, one line goes to the Codex Plus output channel and stays in `Show Status`. The page also shows a yellow 16 px "!" at the top right of the conversation, as Claude Code Plus does; hovering over it explains it, and it goes once the messages are found again. The line carries how many turns there were and whether the element the conversation scrolls in was found, and is said only once while the messages stay unfound.
-- A window with no patch, with a page left on an older copy of the script, or with no Codex tab in front gets one line saying which of those it is.
-- The time on your messages has two possible sources and the report names the one used, because the drawn time looks the same either way: `clock` is the one Codex renders beside the message on hover, `rollout` is the conversation's own record.
-- On a hidden page the report also says which of the two observers is running: the one for the times, the rail and the colouring should be gone, and the approval card's should still be there.
+How Codex Plus is checked against each new Codex build, and the render check that draws Codex's real page with this extension's script in it, are in [CONTRIBUTING.md](CONTRIBUTING.md). How the script this extension adds to Codex's page finds what it draws on, and how to see what it found, are in [docs/codex-page.md](docs/codex-page.md).

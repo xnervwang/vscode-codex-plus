@@ -21,7 +21,7 @@
 - `codex-plugin/`: the companion Codex plugin (marketplace `codex-extras`, plugin `agent-work-plan`): hooks, skill, MCP server.
 - `src/edits.js`, `src/host.js`, `src/webview-inject.js`, `src/manifest.js`, `src/adapters.js`, `src/patching.js`, `uninstall.js`, `src/uninstall-plan.js`: the patch to Codex and its use, and which editors' Codex an uninstall puts back.
 - `src/page/codex-extras-page.js`: the script added to Codex's page; it also takes the layout sample (the structure of the conversation's DOM, with none of its text) for the render check, since the page is where Codex's run-time structure exists at all.
-- `test/render/`: the render check (README, The render check): stand-ins for VS Code and Codex's host in the page, an offline app-server, a made-up conversation, and the measurements.
+- `test/render/`: the render check ([The render check](#the-render-check)): stand-ins for VS Code and Codex's host in the page, an offline app-server, a made-up conversation, and the measurements.
 - `test/vscode/`: what the `.github/workflows/vscode.yml` workflow runs: `run.js` (the runner), `ui.js` (the window, driven through Playwright), `suite/` (checks inside VS Code), `helper/` (the vscode API for `ui.js`), `lib/`, `baseline/<platform>/` (the approved crops) and `update-baseline.js`.
 - `src/open-times.js`: how long Codex's pages took to open, from the `app_start` spans Codex writes to its own `Codex.log`.
 - `images/codex-light.svg`, `images/codex-dark.svg`: the tab bar button, the Codex mark from `images/icon.svg`.
@@ -33,7 +33,7 @@
 - `python3 test/route/vector-quality.py <CODEX_HOME>`: the search by meaning against Amazon Bedrock on the made-up catalogue of `test/route/corpus.py`, beside the keyword search; needs a Codex home whose `config.toml` sets the Bedrock provider with credentials, and makes one request at a time.
 - `node test/e2e-codex.js <codex> <CODEX_HOME>`: the work plan against a real codex; needs model credentials.
 - `node test/against-latest.js`: the patch against the newest Codex on the marketplace (`CODEX_EXTRAS_PRERELEASE=1` for pre-releases), and that build's app-server requests and question tool names against `src/protocol-known.js`.
-- `node test/render/run.js [--out <dir>] [--only <scene>]`: Codex's real page with the page script in it, drawn in a headless Chromium against Codex's app-server offline, with what only a drawn page shows asserted; once per new Codex build. Needs a headless Chromium, `unshare -rn` and an installed Codex, and says which is missing otherwise (README, The render check).
+- `node test/render/run.js [--out <dir>] [--only <scene>]`: Codex's real page with the page script in it, drawn in a headless Chromium against Codex's app-server offline, with what only a drawn page shows asserted; once per new Codex build. Needs a headless Chromium, `unshare -rn` and an installed Codex, and says which is missing otherwise ([The render check](#the-render-check)).
 - `node test/vscode/run.js <.vsix> [<Agent Plus .vsix>] [--out <dir>] [--vscode <executable>] [--local]`: runs this extension with the newest VS Code and Codex in a real window, checks what the window shows, and compares crops of this extension's elements with `test/vscode/baseline/<platform>/`. It refuses to run where `CI` is not `true` unless given `--local`; every home folder it uses is a new one under the system's temporary folder. Needs `@vscode/test-electron` and `playwright-core` (`npm install --no-save --no-package-lock`), and on Linux a display. When a change to what the extension draws is intended, `node test/vscode/update-baseline.js <its --out, or a CI artifact>` copies the run's crops over the approved ones; the person merging looks at every crop and diff first.
 - `test/parts/45-core.js`: this extension and Agent Plus together; needs its checkout beside this one, or `AGENT_WORK_PLAN_DIR`.
 - `node test/against-core.js`: the protocol major against the newest Agent Plus on the marketplace.
@@ -55,11 +55,41 @@ Three workflows in `.github/workflows/`. **None has ever run: this repository ha
 
 ## Verified Codex builds
 
-`src/supported-versions.json` records which Codex builds a commit was checked against, the date, and what was checked. Add an entry after checking a build; the suite then keeps that entry in step with the code.
+Everything this extension adds to Codex depends on the exact shape of one build, and Codex ships weekly. The patch matches a fixed set of places in Codex's own bundle and one in its `package.json`, the page script (the script this extension adds to Codex's page) selects elements by Codex's `data-*` attributes, and the conversation list reads columns out of Codex's state database.
+
+- The builds each release was checked against are recorded in `src/supported-versions.json`, with the date and what was checked on each.
+- `Codex Plus: Show Status` says whether the installed build is one of them. An unrecorded build is also noted in one line of the Codex Plus output channel; it does not open a dialog.
+- An unrecorded build is still patched if every place the patch edits is found in it. If one is not, the patch leaves Codex untouched and says so in the status.
+
+Add an entry after checking a build; the suite then keeps that entry in step with the code.
 
 - `test/parts/70-supported.js` compares each entry's three lists against the places they are read from: the patch's own rule names, the columns `src/codex-files.js` queries, and the `data-*` attributes `src/page/codex-extras-page.js` looks for. So a new column or a new attribute fails the suite until some build with it has been checked and recorded.
 - It also fails when the Codex installed here is not in the record, which is how an upgrade gets noticed.
 - Drop a build once it is no longer installed, rather than carrying it forward. `git log -S<version> -- src/supported-versions.json` finds the commits that claimed it. Keep the build that the layout sample in `test/fixtures/` was taken from, though: `test/parts/70-supported.js` fails if the record does not name it.
+
+## The render check
+
+- `test/render/run.js` draws Codex's real conversation page, from the installed Codex extension, with this repository's page script in it, and checks what can only be seen in a drawn page.
+- It is not part of the main test suite (`test/check.js`) and not in the package.
+
+```sh
+node test/render/run.js [--out <dir>] [--codex <Codex extension folder>] [--only <scenes>]
+```
+
+| | |
+| --- | --- |
+| When to run it | Once for every new Codex build, before adding it to `src/supported-versions.json`, and after a change to how the page script draws |
+| What it draws | A made-up conversation, in eight states: four turns at 1100, 400 and 1600 pixels wide; a turn stopped on an approval; a command still running in the background with Codex's own context meter on; a chime before and after a click in the page; 25 turns over two days; Codex's model menu and conversation menu open. And the session list's own page at a sidebar's width, with made-up conversations, 14, 200 and 1000 of them |
+| What it asserts | The page script finds the conversation and draws a time on every message; nothing of this extension's overlaps Codex's bubbles, buttons, message box, approval card, context meter or tool rows; nothing of Codex's is in the rail's column; the row below the message box is 2 px below the box's frame, with no background, its glyphs no taller than Codex's toolbar icons; Codex's own reply time is hidden where ours is drawn; an approval card is reported; nothing of ours is over Codex's menus. In the session list: Claude Code's sizes, the time at the right edge and Rename in its place on hover, the hover box, a search, the usage bars in Account & usage, and that drawing 1000 rows takes under 300 ms and a keystroke in the search under 100 ms |
+| What it writes | Screenshots in `<out>/shots`, the measurements in `<out>/results.json`, and the page script's layout sample of the drawn page (see [Sampling a conversation's layout](docs/codex-page.md#sampling-a-conversations-layout)) in `<out>/layout-sample.json`; the run prints the `data-*` names it does not share with the fixture in `test/fixtures/`. `<out>` is a new folder in the system's temporary folder unless given |
+| What it needs | A headless Chromium (Playwright's `chromium_headless_shell`, or `CHROME`), `unshare -rn` for an unprivileged user, and an installed Codex extension. Without one of them it says which and exits 0 |
+| What leaves the machine | Nothing. The browser fails every request not to `127.0.0.1` and the run prints how many it failed; Codex's app-server runs in a namespace with no network. Codex's installed files are only read |
+| How long | About four minutes: each scene starts Codex's app-server and loads Codex's page afresh. `--only narrow,approval` runs some of them (`conversation`, `narrow`, `wide`, `approval`, `background`, `compact`, `chime`, `long`, `sessions`) |
+
+- A new Codex build may need the stand-ins updated (`test/render/harness/`): they answer the page's host services and its app-server requests the way Codex's host does.
+- The browser keeps its own autoplay rule, as Codex's webview does: an audio context made before anyone clicked or typed in the page stays suspended. The `chime` scene checks that a chime then reports `suspended` to the host and plays nothing, and that after one click (`Input.dispatchMouseEvent`) the next chime runs in a running context and starts its oscillators. With the rule turned off, as it once was, the check before the click could not fail, and a chime nobody hears passed.
+- `test/against-latest.js`, run once a day against the newest Codex in the marketplace, also holds that build to `src/protocol-known.js`: every request its app-server can make of its client, listed by its own `codex app-server generate-json-schema`, and every `request_user_input…` name in its page. Each is marked handled or left alone on purpose, and one marked neither way fails the check, printed by name. A question tool that is not an app-server request, as `request_user_input_async` is, is invisible to a check that knows only the requests.
+- `test/parts/52a-known-protocol.js` checks that what those lists mark handled is recognised by the code they name, and compares them with the installed Codex when there is one.
 
 ## Cost budget
 
