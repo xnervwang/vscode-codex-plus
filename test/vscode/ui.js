@@ -101,10 +101,17 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     return null;
   }, ms, 500);
   /* The crop of `box` (in the window's CSS pixels) as a PNG, with each of its four edges rounded to the nearest pixel, as
-     the page itself snaps them: a size such as 258.5 px rounded alone comes out as 258 in one run and 259 in the next. */
-  const crop = (box) => {
+     the page itself snaps them: a size such as 258.5 px rounded alone comes out as 258 in one run and 259 in the next.
+     It is taken again when the dialog asking to trust the hooks, which dims the whole window, showed meanwhile. */
+  const crop = async (box) => {
     const x = Math.round(box.x), y = Math.round(box.y);
-    return page.screenshot({ animations: 'disabled', clip: { x, y, width: Math.round(box.x + box.width) - x, height: Math.round(box.y + box.height) - y } });
+    const clip = { x, y, width: Math.round(box.x + box.width) - x, height: Math.round(box.y + box.height) - y };
+    for (let tries = 1; ; tries++) {
+      await until(async () => !await trustShown(), 10000, 200);
+      const cancelled = trustCancelled;
+      const png = await page.screenshot({ animations: 'disabled', clip });
+      if (tries >= 4 || (!await trustShown() && trustCancelled === cancelled)) return png;
+    }
   };
   /* Resolves once `loc` has stopped changing: its animations have finished and two readings of its box agree. The list's
      menus scale in over a tenth of a second, and a box measured while they do is a few pixels short. */
@@ -161,10 +168,12 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
   /* Installing the work plan plugin at start-up asks for trust in its hooks with a modal dialog, which takes every click
      and hover in the window until answered. No step here needs the hooks, so the dialog is cancelled whenever it shows. */
   let watchingTrust = true, trustCancelled = 0;
+  const trustDialog = () => page.locator('.monaco-dialog-box').filter({ hasText: 'Trust the work plan hooks in Codex?' }).first();
+  const trustShown = () => trustDialog().isVisible().catch(() => false);
   const trustWatch = (async () => {
     while (watchingTrust) {
       try {
-        const box = page.locator('.monaco-dialog-box').filter({ hasText: 'Trust the work plan hooks in Codex?' }).first();
+        const box = trustDialog();
         if (await box.isVisible()) {
           await box.locator('.dialog-buttons .monaco-button').filter({ hasText: 'Cancel' }).first().dispatchEvent('click');
           trustCancelled++;
