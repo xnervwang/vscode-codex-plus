@@ -709,6 +709,22 @@
     var open = {}, folds = body.querySelectorAll('details[' + MARK + '-key]');
     for (var i = 0; i < folds.length; i++) if (folds[i].hasAttribute('open')) open[folds[i].getAttribute(MARK + '-key')] = true;
     body.replaceChildren.apply(body, mapSections(agentMap, open));
+    snapMap();
+  }
+  /* The overlay's flex box centres the dialog, which leaves it a fraction of a pixel off the grid whenever the room
+     around it is odd, and its lines of text then land a pixel up or down depending on that fraction. Shifting the
+     dialog by the fraction puts it on whole device pixels; it is measured again whenever its content or the window
+     changes size. */
+  function snapMap() {
+    var dlg = mapOpen() && one(mapBox, '[' + MARK + '="map-dialog"]');
+    if (!dlg) return;
+    dlg.style.left = '';
+    dlg.style.top = '';
+    var r = dlg.getBoundingClientRect(), px = globalThis.devicePixelRatio > 0 ? globalThis.devicePixelRatio : 1;
+    if (!r) return;
+    var dx = Math.round((r.left || 0) * px) / px - (r.left || 0), dy = Math.round((r.top || 0) * px) / px - (r.top || 0);
+    if (dx) dlg.style.left = dx + 'px';
+    if (dy) dlg.style.top = dy + 'px';
   }
   function openMap() {
     if (mapOpen()) { closeMap(); return; }
@@ -717,7 +733,7 @@
     var overlay = mk('div', 'position:fixed;inset:0;z-index:' + Z_MAP + ';display:flex;align-items:center;justify-content:center;'
       + 'overflow-y:auto;background-color:#000000bf;');
     overlay.setAttribute(MARK, 'agent-map');
-    var dlg = mk('div', 'box-sizing:border-box;display:flex;flex-direction:column;overflow:hidden;width:fit-content;min-width:min(320px,calc(100vw - 32px));'
+    var dlg = mk('div', 'position:relative;box-sizing:border-box;display:flex;flex-direction:column;overflow:hidden;width:fit-content;min-width:min(320px,calc(100vw - 32px));'
       + 'max-width:min(1200px,calc(100vw - 32px));max-height:calc(100vh - 32px);margin:16px;padding:16px;border-radius:8px;outline:0;'
       + 'user-select:text;' + pageFont(13) + 'color:var(--vscode-foreground,#ccc);'
       + 'background-color:var(--vscode-sideBar-background,var(--vscode-editor-background,#181818));'
@@ -750,6 +766,7 @@
        added to the document once, in the capture phase, so Codex's own Esc handling does not also run. */
     if (!mapKeysWired) {
       mapKeysWired = true;
+      try { globalThis.addEventListener('resize', snapMap); } catch (e) { /* no window events */ }
       document.addEventListener('keydown', function (ev) {
         if (!mapOpen() || !ev || ev.key !== 'Escape') return;
         try { ev.preventDefault(); ev.stopPropagation(); } catch (e) { /* none */ }

@@ -35,7 +35,7 @@ function page(root) {
     location: { pathname: '/index.html', hash: '' }, innerHeight: 760, innerWidth: 1100 };
   vm.runInContext(require(path.join(root, 'src', 'webview-inject.js')).pageScript(), vm.createContext(Object.assign({ globalThis: win }, dom.sandbox)));
   const q = (sel) => dom.document.root.querySelectorAll(sel);
-  return { dom, right, modelSlot, posted, q, send(m) { listeners.message({ data: m }); } };
+  return { dom, win, right, modelSlot, posted, q, send(m) { listeners.message({ data: m }); } };
 }
 
 const MAP = {
@@ -112,4 +112,29 @@ module.exports = async ({ eq, root }) => {
   'empty sections are left out: with no goal the dialog has no goal section and no button that sets one');
   p.send({ type: 'codex-extras-agent-map', shown: false, wakeups: [], goal: null, agents: [] });
   eq([!!pill(), !!dlg()], [false, false], 'once there is nothing to show the pill goes, and an open dialog with it');
+
+  {
+    /* The overlay's flex box can leave the dialog between pixels. The stand-in DOM gives every element made from here on
+       the same box, a fraction of a pixel off on both axes, so the dialog is measured where the overlay put it. */
+    const s = page(root);
+    s.send({ type: 'codex-extras-view', timestamps: true, navigation: false, userColor: '', userEdge: true });
+    s.send(MAP);
+    const make = s.dom.document.createElement.bind(s.dom.document);
+    s.dom.document.createElement = (tag) => {
+      const e = make(tag);
+      e.rect = { top: 100.4, left: 50.75, width: 320, height: 146 };
+      return e;
+    };
+    click(s.q('[data-codex-extras="agents"]')[0]);
+    const d = s.q('[data-codex-extras="map-dialog"]')[0];
+    const at = () => [d.rect.left + parseFloat(d.style.left || '0'), d.rect.top + parseFloat(d.style.top || '0')];
+    const whole = (v, scale) => Math.abs(v * scale - Math.round(v * scale)) < 1e-9;
+    const first = at();
+    s.win.devicePixelRatio = 2;
+    s.send(MAP);
+    const second = at();
+    eq([whole(first[0], 1), whole(first[1], 1), Math.round(first[0]), Math.round(first[1]), whole(second[1], 2), Math.round(second[1] * 2)],
+      [true, true, 51, 100, true, 201],
+      'the dialog is moved by the fraction onto whole pixels, the nearest ones, and onto whole device pixels on a screen with two per pixel');
+  }
 };

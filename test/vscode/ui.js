@@ -522,6 +522,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       const dialog = codex.locator('[data-codex-extras="map-dialog"]').first();
       await still(dialog);
       const dbox = await dialog.boundingBox();
+      check(!!dbox && [dbox.x, dbox.y].every((v) => Math.abs(v - Math.round(v)) < 0.01),
+        'the Agent map sits on whole pixels, so its lines of text are drawn in the same place every time', dbox);
       const times = await dialog.locator('[data-codex-extras="map-wakeups"] summary span:nth-child(2)').boundingBox().catch(() => null);
       if (dbox) base.compare('agent-map-dialog', await crop(dbox), { masks: within(dbox, [times]) });
       await page.keyboard.press('Escape');
