@@ -42,6 +42,7 @@
     "onStartupFinished"
   ],
   "main": "./extension.js",
+  "l10n": "./src/l10n",
   "agentPlus": {
     "protocol": 1
   },

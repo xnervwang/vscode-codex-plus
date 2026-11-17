@@ -67,6 +67,8 @@ function create() {
     StatusBarAlignment: { Left: 1, Right: 2 },
     ConfigurationTarget: { Global: 1, Workspace: 2, WorkspaceFolder: 3 },
     ViewColumn: { Active: -1, Beside: -2, One: 1, Two: 2, Three: 3 },
+    /* The English text with its {0}, {1}, ... filled in, which is what vscode.l10n.t gives when no translation is loaded. */
+    l10n: { t: (message, ...args) => String(message).replace(/\{(\d+)\}/g, (m, i) => (args[i] === undefined ? m : String(args[i]))) },
     window: {
       tabGroups: {
         get all() { return groups; },

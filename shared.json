@@ -1,5 +1,5 @@
 {
-  "core": "41f981e006998edc10e27dfa8863fddd2482a95f",
+  "core": "b75fc4b8238c4f4a3845631aa4fec722eb846212",
   "files": [
     {
       "path": "build/sync-shared.js",
@@ -34,7 +34,7 @@
     {
       "path": "src/edits.js",
       "from": "shared/host/edits.js",
-      "sha256": "fd5718560b9c98eaf3559a2e63c5a4636ce8d39be91de81266542a5c3b74b724"
+      "sha256": "fce412a0633a9c1f8100aa23474520dca8cbea13caa3629621a6d9f5c350f40e"
     },
     {
       "path": "src/patch-target.js",

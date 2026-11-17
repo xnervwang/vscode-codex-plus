@@ -166,6 +166,37 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
       'and with the additions switched off it is left clean too, for that reason');
 
     /*
+     * A Codex build the host patch does not fit is left as it was, and the user is told so in one sentence in the
+     * editor's display language. Which edit did not fit stays in the log and the status; Show Details runs Show Status.
+     */
+    fs.writeFileSync(host.targetFile(stale), '/* a Codex build the host patch does not know */\n');
+    control.answer('does not support Codex', 'Show Details');
+    control.state.said.length = 0;
+    control.state.commands.length = 0;
+    await patching.ensurePatched(vscode, { globalState: memo }, () => {}, 'on');
+    await new Promise((r) => setImmediate(r));
+    const unfit = control.state.said.filter((m) => /does not support/.test(m.message)).map((m) => [m.message, m.buttons]);
+    eq([targets.slice(0, 2).map((t) => t.status(stale)), unfit, control.state.commands.filter(([c]) => c === 'codexPlus.status').length,
+      / - this Codex build is not supported yet/.test(patching._state().reason)],
+      [['clean', 'clean'], [[`Codex Plus does not support Codex ${codexVersion} yet. What it adds inside Codex is paused until Codex Plus `
+        + 'is updated.', ['Show Details']]], 1, true],
+      'a Codex build the host patch does not fit is left unpatched, one plain warning names its version, Show Details runs Show '
+      + 'Status, and the status keeps the edit that did not fit');
+    [...targets].reverse().forEach((t) => t.restore(stale));
+    fs.writeFileSync(host.targetFile(stale), origHost);
+    fs.writeFileSync(manifest.targetFile(stale), origMan);
+    const bundles = fs.readdirSync(path.join(root, 'src', 'l10n')).sort();
+    const keys = [patching.NOT_SUPPORTED_MESSAGE, patching.SHOW_DETAILS].sort();
+    const off = bundles.filter((f) => {
+      const b = JSON.parse(fs.readFileSync(path.join(root, 'src', 'l10n', f), 'utf8'));
+      return JSON.stringify(Object.keys(b).sort()) !== JSON.stringify(keys) || !b[patching.NOT_SUPPORTED_MESSAGE].includes('{0}')
+        || Object.entries(b).some(([k, v]) => typeof v !== 'string' || !v || v === k);
+    });
+    eq([require(path.join(root, 'package.json')).l10n, bundles, off], ['./src/l10n', ['bundle.l10n.zh-cn.json', 'bundle.l10n.zh-tw.json'], []],
+      'the warning is translated for Simplified and Traditional Chinese, each bundle carrying exactly its two strings and the version '
+      + 'placeholder');
+
+    /*
      * The uninstall hook puts back the Codex beside the copy of this extension being uninstalled, and the Codex of any
      * other editor on the machine that holds no copy of this extension any more. An editor that still holds one leaves
      * its Codex to that copy. The editors are laid out under a home of the test's own, which the hook is run with, so

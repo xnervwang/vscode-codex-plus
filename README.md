@@ -427,7 +427,7 @@ At start-up, what happens depends on the state of Codex's files:
 - Codex's own files, never patched: they are patched without asking, then a reload is offered.
 - Codex's own files after `Codex Plus: Remove the Patch from Codex`: they stay untouched until you run `Codex Plus: Turn On` or `Codex Plus: Toggle On/Off` to put the patch back. Codex Plus remembers the removal, as Claude Code Plus remembers its own Remove.
 
-Codex ships a new build about every week. `Codex Plus: Show Status` tells you whether this release of Codex Plus was checked against your installed Codex build. An unchecked build is still patched if every place the patch edits is found. If one is not found, the patch leaves Codex untouched and the status says so.
+Codex ships a new build about every week. `Codex Plus: Show Status` tells you whether this release of Codex Plus was checked against your installed Codex build. An unchecked build is still patched if every place the patch edits is found. If one is not found, the patch leaves Codex untouched and the status says so. A warning also says that this Codex version is not supported yet, in VS Code's display language (English, Simplified Chinese or Traditional Chinese); its Show Details button runs `Codex Plus: Show Status`.
 
 ### Turning it all off
 

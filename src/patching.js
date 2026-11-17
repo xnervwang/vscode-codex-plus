@@ -48,6 +48,7 @@ const fs = require('fs');
 const path = require('path');
 const targets = require('./adapters');
 const { applyAll } = require('./patch-target');
+const { notSupported } = require('./edits');
 const linked = targets.filter((t) => !t.standsAlone);
 const { activeThread } = require('./codex-tabs');
 const { iconsFor } = require('./logo-dot');
@@ -1084,6 +1085,20 @@ function installHooks() {
   }
 }
 
+/* The warning when the patch does not fit the installed Codex. Both are vscode.l10n.t keys, translated in src/l10n/. */
+const NOT_SUPPORTED_MESSAGE = 'Codex Plus does not support Codex {0} yet. What it adds inside Codex is paused until Codex Plus is updated.';
+const SHOW_DETAILS = 'Show Details';
+
+/* Not awaited: a message with a button stays open until it is answered. Show Details runs Show Status. */
+function sayNotSupported(vscode, dir) {
+  const ext = vscode.extensions.getExtension('openai.chatgpt');
+  const version = String(((ext && ext.packageJSON) || {}).version || '') || path.basename(dir);
+  const details = vscode.l10n.t(SHOW_DETAILS);
+  Promise.resolve(vscode.window.showWarningMessage(vscode.l10n.t(NOT_SUPPORTED_MESSAGE, version), details))
+    .then((pick) => (pick === details ? vscode.commands.executeCommand('codexPlus.status') : undefined))
+    .catch(() => { /* dismissed, or the window is closing */ });
+}
+
 /*
  * `mode` is 'on' or 'off' (extension.js settings): off while the master switch is off or after "Remove the Patch from
  * Codex", on otherwise. A Codex that carries an older copy of the patch gets this build's (`refresh`), and a clean one
@@ -1125,6 +1140,7 @@ async function ensurePatched(vscode, context, log, mode) {
   const failed = results.filter(([, r]) => !r.current);
   if (failed.length) {
     state.reason = `not patched: ${failed.map(([n, r]) => `${n}: ${r.message}`).join('; ')}`;
+    if (failed.some(([, r]) => notSupported(r.message))) sayNotSupported(vscode, dir);
     if (tabBar) await offer(TAB_BAR);
     return;
   }
@@ -1210,7 +1226,7 @@ function activate(context, opts) {
 }
 
 module.exports = { activate, ensurePatched, statusLines, openInSidebar, canType, canDeliver, deliver, sidebarThread, panelThreads, shownIn,
-  nowShowing, revealPanel, removePatch,
+  nowShowing, revealPanel, removePatch, NOT_SUPPORTED_MESSAGE, SHOW_DETAILS,
   figuresOf, usageOf, compactThread, hostRequest, safeColor, viewOf, selfCheckPage, selfCheckLines, installHooks, refreshPanels, approvalsOf,
   onApprovalsChanged, offerReloadIfStale, sidebarShowing, onSidebarChanged, onPanelClosed, onAccountNotification, onAppServerNotification, runningCommands, turnEndChime, turnHeard, _state: () => state, _registry: registry, _approvals: approvals,
   TAB_DOTS, ASK_MS, PATCH_REMOVED_KEY };
