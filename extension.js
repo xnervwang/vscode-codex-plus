@@ -1101,6 +1101,11 @@ function registerCommands(context, { source, memory, sessionsModel, sessionsView
     else if (msg.kind === 'newInTab') await vscode.commands.executeCommand('codexPlus.newInTab');
     else if (msg.kind === 'newInSidebar') await vscode.commands.executeCommand('codexPlus.newInSidebar');
     else if (msg.kind === 'newGroup') await newGroup(true);
+    /* A row's own Archive or Unarchive button acts on that row alone, as Claude Code's does, whatever else is chosen. */
+    else if ((msg.kind === 'archive' || msg.kind === 'unarchive') && files.THREAD_ID.test(id)) {
+      await vscode.commands.executeCommand(msg.kind === 'archive' ? 'codexPlus.archiveThread' : 'codexPlus.unarchiveThread',
+        { webviewSection: 'thread', threadId: id, webview: 'codexPlus.sessions' }, [id]);
+    }
     else if (msg.kind === 'rename' && id && typeof msg.title === 'string') {
       const was = (reader.thread(id) || {}).title || '';
       const title = msg.title.replace(/\s+/g, ' ').trim();

@@ -44,13 +44,18 @@
     bolt: ['M9.4 1.1c.3.1.5.4.4.7L9 6.4h3.4c.5 0 .8.6.5 1l-5.6 7.3c-.4.5-1.1.1-1-.5l.8-4.6H3.6c-.5 0-.8-.6-.5-1L8.7 1.3c.2-.2.5-.3.7-.2z'],
     close: ['M4.5 4.5l7 7', 'M11.5 4.5l-7 7'],
     check: ['M12.9 4.1c.3.3.4.8.1 1.1l-5.6 6.6c-.3.3-.8.4-1.1.1L3.2 8.8c-.3-.3-.3-.8 0-1.1.3-.3.8-.3 1.1 0l2.5 2.4 5-5.9c.3-.3.8-.4 1.1-.1z'],
+    archive: ['m20.25 7.5-.625 10.632a2.25 2.25 0 0 1-2.247 2.118H6.622a2.25 2.25 0 0 1-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 '
+      + '1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125Z'],
+    restore: ['M9 15 3 9m0 0 6-6M3 9h12a6 6 0 0 1 0 12h-3'],
   };
+  /* Claude Code's own archive and unarchive icons, drawn on a 24 px grid. */
+  const GRID24 = new Set(['archive', 'restore']);
   /* Drawn filled, as Claude Code draws these three; the others are line drawings. */
   const SOLID = new Set(['funnel', 'bolt', 'check']);
   const icon = (name, cls = 'cp-icon') => {
     const s = document.createElementNS(SVG, 'svg');
-    s.setAttribute('viewBox', '0 0 16 16');
-    s.setAttribute('class', SOLID.has(name) ? `${cls} cp-solid` : cls);
+    s.setAttribute('viewBox', GRID24.has(name) ? '0 0 24 24' : '0 0 16 16');
+    s.setAttribute('class', SOLID.has(name) ? `${cls} cp-solid` : GRID24.has(name) ? `${cls} cp-grid24` : cls);
     s.setAttribute('aria-hidden', 'true');
     for (const d of ICONS[name]) { const p = document.createElementNS(SVG, 'path'); p.setAttribute('d', d); s.appendChild(p); }
     return s;
@@ -134,10 +139,14 @@
     const acts = el('span', 'cp-actions');
     const rename = button('cp-act', 'Rename session', icon('pencil'));
     rename.dataset.act = 'rename';
-    acts.appendChild(rename);
+    const archive = button('cp-act', 'Archive session', icon('archive'));
+    archive.dataset.act = 'archive';
+    const restore = button('cp-act', 'Unarchive session', icon('restore'));
+    restore.dataset.act = 'unarchive';
+    acts.append(rename, archive, restore);
     meta.append(time, acts);
     r.append(dot, title, goal, meta);
-    r._p = { dot, title, time, goal, acts };
+    r._p = { dot, title, time, goal, acts, rename, archive, restore };
     r._sig = '';
     r._mark = '';
     return r;
@@ -153,7 +162,7 @@
     r._place = place;
     const sig = `${row.id}\u0001${row.title}\u0001${row.time}\u0001${row.dot}\u0001${row.color}\u0001${row.grouped}\u0001${row.unread}`
       + `\u0001${row.goal || ''}\u0001${row.goalText || ''}\u0001${row.child ? 1 : 0}\u0001${row.parentTitle || ''}\u0001${row.nickname || ''}`
-      + `\u0001${row.here ? 1 : 0}\u0001${row.running || ''}\u0001${row.archived ? 1 : 0}`;
+      + `\u0001${row.here ? 1 : 0}\u0001${row.running || ''}\u0001${row.archived ? 1 : 0}\u0001${row.archivable ? 1 : 0}`;
     if (sig === r._sig) return;
     r._sig = sig;
     r.dataset.id = row.id;
@@ -165,8 +174,12 @@
     setText(r._p.goal, GOAL_WORD[row.goal] || (row.goal ? 'goal' : ''));
     r._p.goal.classList.toggle('cp-hidden', !row.goal);
     r._p.goal.classList.toggle('cp-goal-active', row.goal === 'active');
-    /* An archived conversation is not renamed or moved into a group, as its menu offers neither. */
-    r._p.acts.classList.toggle('cp-hidden', !!row.archived);
+    /* As in Claude Code's list, a row's buttons are Rename and Archive, and an archived row's is Unarchive: an archived
+       conversation is not renamed or moved into a group, as its menu offers neither. Archive is left off where the menu
+       leaves it off, on a conversation that is running. */
+    r._p.rename.classList.toggle('cp-hidden', !!row.archived);
+    r._p.archive.classList.toggle('cp-hidden', !!row.archived || !row.archivable);
+    r._p.restore.classList.toggle('cp-hidden', !row.archived);
     if (!r._editing) r.draggable = !row.archived;
     /* What the row's right-click menu is chosen by, under the names the when clauses of LIST_MENU use. */
     r._ctx = { webviewSection: 'thread', threadId: row.id, codexPlusGrouped: !!row.grouped, codexPlusUnread: !!row.unread,
@@ -803,7 +816,13 @@
     if (t.closest('.cp-ctx')) return;
     if (!t.closest('.cp-menu') && !t.closest('[data-tool="filter"]')) closeMenu();
     const act = t.closest('.cp-act');
-    if (act) { e.stopPropagation(); const r = act.closest('.cp-row'); if (r && act.dataset.act === 'rename') startRename(r); return; }
+    if (act) {
+      e.stopPropagation();
+      const r = act.closest('.cp-row');
+      if (r && act.dataset.act === 'rename') startRename(r);
+      else if (r && r._row && (act.dataset.act === 'archive' || act.dataset.act === 'unarchive')) send({ kind: act.dataset.act, id: r._row.id });
+      return;
+    }
     const sendBtn = t.closest('[data-send]');
     if (sendBtn) { send({ kind: sendBtn.dataset.send }); return; }
     const tool = t.closest('[data-tool]');

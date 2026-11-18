@@ -126,10 +126,21 @@ module.exports = async ({ eq, tmp, root }) => {
   const running = drawn(rowEl('ungrouped', 3)).filter((x) => /archive/i.test(x));
   eq([twoPlain, withRunning, running], [['Codex Plus: Archive 2 Conversations'], ['Codex Plus: Archive'], []],
     'Archive counts the rows chosen that are not running, and is not offered on a running one alone');
-  const acts = (r) => r.querySelector('.cp-actions');
-  eq([rowEl('archived', 4).draggable, acts(rowEl('archived', 4)).classList.contains('cp-hidden'),
-    rowEl('ungrouped', 1).draggable, acts(rowEl('ungrouped', 1)).classList.contains('cp-hidden')], [false, true, true, false],
-  'an archived row has no Rename button and cannot be dragged onto a group, as its menu has neither Rename nor Add to Group');
+  const shownActs = (r) => [...r.querySelectorAll('.cp-actions .cp-act')].filter((b) => !b.classList.contains('cp-hidden')).map((b) => b.title);
+  eq([rowEl('archived', 4).draggable, shownActs(rowEl('archived', 4)), rowEl('ungrouped', 1).draggable, shownActs(rowEl('ungrouped', 1)),
+    shownActs(rowEl('ungrouped', 3))], [false, ['Unarchive session'], true, ['Rename session', 'Archive session'], ['Rename session']],
+  'as in Claude Code\'s list, a row\'s buttons are Rename and Archive and an archived row\'s is Unarchive; an archived row cannot be dragged '
+    + 'onto a group, and a running one has no Archive, as its menu has none');
+  const clicked = (key, n, title) => {
+    p.posted.length = 0;
+    rowEl(key, n).querySelectorAll('.cp-act').find((b) => b.title === title).bubble('click');
+    return p.posted.filter((m) => m.kind === 'archive' || m.kind === 'unarchive' || m.kind === 'menu');
+  };
+  choose(['ungrouped', 1], ['ungrouped', 2]);
+  eq([clicked('ungrouped', 1, 'Archive session'), clicked('archived', 4, 'Unarchive session')],
+    [[{ kind: 'archive', id: ID(1) }], [{ kind: 'unarchive', id: ID(4) }]],
+    'a click on Archive or Unarchive asks the host for that row, whatever else is chosen');
+  choose();
 
   /* ── the commands ── */
   const home = tmp('home');
@@ -188,6 +199,18 @@ module.exports = async ({ eq, tmp, root }) => {
     eq(await send('unarchiveThread', 24, [24, 25]), [['thread/unarchive', ID(24)], ['thread/unarchive', ID(25)]],
       'Unarchive sends thread/unarchive for each conversation chosen');
     eq(await send('unarchiveThread', 21), [], 'and nothing for one that is not archived');
+    const listView = control.showWebviewView('codexPlus.sessions');
+    const fromRow = async (kind, n) => {
+      requests.length = 0;
+      await listView.fromPage({ kind: 'select', ids: [ID(21), ID(23), ID(24), ID(25)] });
+      await listView.fromPage({ kind, id: ID(n) });
+      await tick();
+      return requests.map((r) => [r.method, r.params && r.params.threadId]);
+    };
+    eq([await fromRow('archive', 21), await fromRow('unarchive', 24), await fromRow('archive', 22)],
+      [[['thread/archive', ID(21)]], [['thread/unarchive', ID(24)]], []],
+      'a row\'s own button archives or unarchives that row alone, with others chosen, and a running one is still left alone');
+    await listView.fromPage({ kind: 'select', ids: [] });
     answer = (r) => ({ id: r.id, error: { code: -32600, message: `no archived rollout found for thread id ${r.params.threadId}` } });
     eq([await send('unarchiveThread', 25), said()], [[['thread/unarchive', ID(25)]], []],
       'one Codex no longer has archived, unarchived from another window say, counts as done');
