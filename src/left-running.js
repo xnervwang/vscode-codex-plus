@@ -29,8 +29,8 @@
  * under `setsid` is asking for a separate job. mfns, which runs demo clusters in namespaces of their own, names its
  * holder processes mfns-holder, not bash.
  *
- * The top process of each detached tree is also listed (`detached` in the scan: thread, pid, start, command). The Agent
- * map shows the list, and src/detached-ends.js tells the conversation when one is gone.
+ * The top process of each detached tree is also listed (`detached` in the scan). The Agent map shows the list, and
+ * src/detached-ends.js tells the conversation when one is gone.
  *
  * Without /proc only the claude --bg launches are found; src/codex-source.js then falls back on what the rollout says
  * of Codex's own background commands.
