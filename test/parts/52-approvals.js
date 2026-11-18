@@ -122,9 +122,10 @@ module.exports = async ({ ok, bad, note, eq, tmp }) => {
   patching.installHooks();
   patching._approvals.clear();
   const context = { subscriptions: [], globalStorageUri: vscode.Uri.file(tmp('gs')), globalState: fake.memento() };
+  const heardFor = [];
   patching.activate(context, {
     vscode, log: () => {}, settings: () => ({ patchCodex: 'off', chime: true, figures: false }),
-    source: { onDidChangeConversations: () => ({ dispose() {} }), _focus: () => {}, logo: null,
+    source: { onDidChangeConversations: () => ({ dispose() {} }), _focus: () => {}, logo: null, _heard: (t) => heardFor.push(t),
       listConversations: async () => conversations },
     context: { globalStorageUri: vscode.Uri.file(tmp('gs2')) },
   });
@@ -250,9 +251,13 @@ module.exports = async ({ ok, bad, note, eq, tmp }) => {
   eq([patching.runningCommands().length, /Commands running in this window's Codex: none/.test(patching.statusLines().join('\n'))], [0, true],
     'its item/completed ends it');
   const heardBefore = patching.heardCommand('call_fg');
+  heardFor.length = 0;
   globalThis.__codexExtrasAppServer('notification', cmd('item/completed', 'call_fg', { source: 'agent' }));
   eq([patching.heardCommand('call_bg1'), heardBefore, patching.heardCommand('call_fg'), patching.heardCommand('call_none')], [true, false, true, false],
     'this window has heard of a command it kept and of one that ended, but not of one of another source until its end');
+  eq(heardFor, [THREAD], 'and the end of one of another source has its conversation drawn again, since its open call in the rollout no longer counts');
+  globalThis.__codexExtrasAppServer('notification', cmd('item/completed', 'call_fg', { source: 'agent' }));
+  eq(heardFor, [THREAD], 'while the same end heard again changes nothing');
 
   /* ── the method names, against the Codex installed here ── */
   const bundles = pristineBundles();

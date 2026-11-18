@@ -663,7 +663,12 @@ const hear = (id) => { heard.delete(id); heard.add(id); while (heard.size > HEAR
 function noteCommand(msg) {
   const method = msg && msg.method, p = (msg && msg.params) || {}, item = p.item || {};
   if ((method !== 'item/started' && method !== 'item/completed') || item.type !== 'commandExecution' || !item.id) return false;
-  if (method === 'item/completed') { hear(item.id); return commands.delete(item.id); }
+  if (method === 'item/completed') {
+    /* The end of one started under another source counts too: until now the rollout's open call kept it working. */
+    const fresh = !heard.has(String(item.id));
+    hear(item.id);
+    return commands.delete(item.id) || fresh;
+  }
   if (item.source !== 'unifiedExecStartup') return false;
   hear(item.id);
   commands.set(item.id, { thread: String(p.threadId || ''), command: String(item.command || ''), cwd: String(item.cwd || ''),
