@@ -2383,11 +2383,11 @@
   }
 
   /*
-   * Images in replies. Codex itself draws a reply's image when the link is a local file or a data: URL. An image at a
-   * web address it loads only after a server-side check that needs a ChatGPT login, and otherwise draws a disabled
-   * placeholder. This script turns those into plain links, so nothing is fetched from them and the address can still be
-   * opened. While codexPlus.replyImages is off (view.replyImages) it also turns the others into "[Image]", with the
-   * path in the hover, as Claude Code's panel does.
+   * Codex itself draws a reply's image when the link is a local file or a data: URL. An image at a web address it loads
+   * only after a server-side check that needs a ChatGPT login, and otherwise draws a disabled placeholder. This script
+   * turns those into plain links, so nothing is fetched from them and the address can still be opened. While
+   * codexPlus.replyImages is off (view.replyImages) it also turns the others into "[Image]", with the path in the
+   * hover, as Claude Code's panel does.
    *
    * The address is not in the page, since the placeholder carries only the alt text. It is read from the props React
    * keeps on the element: the nearest component above it given both `src` and `blockRemoteMedia`, which is Codex's

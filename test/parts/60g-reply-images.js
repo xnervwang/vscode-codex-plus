@@ -4,8 +4,8 @@
 
 'use strict';
 /*
- * What src/page/codex-extras-page.js fixImages does to the images in a reply. An image at a web address becomes a plain
- * link whatever codexPlus.replyImages says, and the other images become "[Image]" while it is off.
+ * An image at a web address becomes a plain link whatever codexPlus.replyImages says, and the other images in a reply
+ * become "[Image]" while it is off (src/page/codex-extras-page.js fixImages).
  *
  * Each media element carries the props React would keep on it, in the shape Codex's markdown media component passes
  * them, since that is where the script reads the address from.
