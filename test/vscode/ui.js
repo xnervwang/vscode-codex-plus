@@ -620,14 +620,21 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         if (await submit.count()) await submit.click();
         check(!!await until(async () => !await card(), 10000, 300), `${name}: and approving it there lets the command run`, await card());
       };
+      /* The command items this window's app-server reports, kept for why() below. */
+      await call(`const mine = vscode.extensions.getExtension('xnervwang.codex-plus');
+        const p = require(require('path').join(mine.extensionPath, 'src', 'patching'));
+        globalThis.__cxpTestCommandNotes = [];
+        p.onAppServerNotification((m, q) => { const it = (q && q.item) || {};
+          if (/^item\\//.test(m) && it.type === 'commandExecution') globalThis.__cxpTestCommandNotes.push([m, it.id, it.source, it.status].join(' ')); });
+        return true;`).catch(() => false);
       /* What this window's host and the rollout say of the conversation's commands, for a green that does not leave. */
       const why = async () => {
         const here = await call(`const mine = vscode.extensions.getExtension('xnervwang.codex-plus');
           const req = (m) => require(require('path').join(mine.extensionPath, 'src', m));
           const files = req('codex-files'), rollout = files.rolloutOf(arg);
           const st = rollout ? files.rolloutState(rollout) : null;
-          return { commands: req('patching').runningCommands(arg).map((c) => c.command.slice(0, 60)), openCommands: st && st.openCommands,
-            working: st && st.working };`, id).catch((e) => String(e));
+          return { commands: req('patching').runningCommands(arg).map((c) => c.command.slice(0, 60)), open: st && st.openCommandIds,
+            working: st && st.working, notes: (globalThis.__cxpTestCommandNotes || []).slice(-8) };`, id).catch((e) => String(e));
         let tail = [];
         try {
           const sessions = path.join(profile.codexHome, 'sessions');
