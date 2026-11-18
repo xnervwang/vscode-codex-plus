@@ -362,6 +362,35 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
   const heardHere = (call) => {
     try { return !!(patching && typeof patching.heardCommand === 'function' && patching.heardCommand(call)); } catch (_) { return false; }
   };
+  /*
+   * Without /proc, the background terminals this window's app-server still runs, per conversation, as asked of it with
+   * thread/backgroundTerminals/list: { ids, at }, where ids is null when it did not answer (a conversation it has not
+   * loaded). Codex on Windows sends no item notifications for a command run after an approval, so for a conversation
+   * loaded here this list is what says such a command has ended. Asked at most every TERMINALS_MS per conversation,
+   * and only for one whose rollout leaves a command open.
+   */
+  const terminals = new Map();
+  const TERMINALS_MS = 5000;
+  const openInRollout = (x) => {
+    const st = reader.state(x);
+    return st && Array.isArray(st.openCommandIds) ? st.openCommandIds.filter((c) => !heardHere(c)) : [];
+  };
+  function askTerminals(ids, now = Date.now()) {
+    if (!patching || typeof patching.hostRequest !== 'function') return;
+    for (const x of ids) {
+      const had = terminals.get(x);
+      if (had && (had.asking || now - had.at < TERMINALS_MS)) continue;
+      terminals.set(x, { ids: had ? had.ids : null, at: now, asking: true });
+      Promise.resolve(patching.hostRequest('thread/backgroundTerminals/list', { threadId: x })).then((r) => {
+        const data = r && r.outcome === 'done' && r.result && Array.isArray(r.result.data) ? r.result.data : null;
+        const next = data ? new Set(data.map((d) => String((d && d.itemId) || ''))) : null;
+        const before = terminals.get(x);
+        terminals.set(x, { ids: next, at: Date.now(), asking: false });
+        if (JSON.stringify(before && before.ids ? [...before.ids] : null) !== JSON.stringify(next ? [...next] : null)) changed.fire();
+      }, () => { terminals.set(x, { ids: null, at: Date.now(), asking: false }); });
+    }
+    for (const x of [...terminals.keys()]) if (!ids.includes(x)) terminals.delete(x);
+  }
   function familyOf(id, kids) {
     const out = [id];
     for (let i = 0; i < out.length && out.length < 200; i++) for (const k of kids.get(out[i]) || []) if (!out.includes(k)) out.push(k);
@@ -384,7 +413,8 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
       if (commandsHere(x)) kinds.add('command');
       if (leftSeen && leftSeen.available === false) {
         const st = reader.state(x), t = reader.thread(x);
-        const open = st && Array.isArray(st.openCommandIds) ? st.openCommandIds.filter((c) => !heardHere(c)) : [];
+        const here = (terminals.get(x) || {}).ids;
+        const open = openInRollout(x).filter((c) => !here || here.has(c));
         if (open.length && now - lastOf(t, st, null) < STALE_WORKING_MS) kinds.add('command');
       }
     }
@@ -392,6 +422,9 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
   }
   function poll({ force = false, tell = false } = {}) {
     pollLeft();
+    if (leftSeen && leftSeen.available === false) {
+      askTerminals((reader.threads() || []).filter((t) => openInRollout(t.id).length).map((t) => t.id));
+    }
     /* Other repeating work is done on this poll rather than on a timer of its own (src/archive-sweep.js tick). */
     try { onPoll(); } catch (e) { log(`codex source: ${(e && e.message) || e}`); }
     const here = openThreads();

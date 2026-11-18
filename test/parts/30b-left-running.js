@@ -212,17 +212,28 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
     const { CodexReader } = require('../../src/codex-reader');
     const { createCodexSource } = require('../../src/codex-source');
     const reader = new CodexReader({ inline: true });
-    let reported = [];
+    let reported = [], terminals = null;
     const patching = { panelThreads: () => [], approvalsOf: () => null, sidebarThread: () => '', runningCommands: () => [],
-      heardCommand: (id) => reported.includes(id) };
+      heardCommand: (id) => reported.includes(id),
+      hostRequest: async (method) => (method === 'thread/backgroundTerminals/list' && terminals
+        ? { outcome: 'done', result: { data: terminals.map((itemId) => ({ itemId })) } } : { outcome: 'failed', reason: 'thread not loaded' }) };
     const source = createCodexSource(vscode, { reader, patching, scanLeft: () => true, leftEveryMs: 0, procDir: tmp('no-proc'), claudeSessions: sessionsDir });
     try {
       const listed = async () => { await source._poll({ force: true }); await source._leftDone(); return (await source.listConversations()).find((c) => c.title === 'Watcher'); };
       const before = await listed();
+      terminals = ['w9'];
+      await listed();
+      const listedHere = await listed();
+      terminals = [];
+      await listed();
+      const goneHere = await new Promise((r) => setTimeout(r, 5100)).then(listed);
+      terminals = null;
       reported = ['w9'];
       const after = await listed();
-      eq([before.state, before.left, after.state, after.left], ['working', ['command'], 'idle', []],
-        'a command the rollout leaves open keeps the conversation working, until this window\'s app-server has reported its end');
+      eq([before.state, before.left, listedHere.left, goneHere.state, goneHere.left, after.state, after.left],
+        ['working', ['command'], ['command'], 'idle', [], 'idle', []],
+        'a command the rollout leaves open keeps the conversation working while this window\'s app-server still lists it as a background '
+          + 'terminal, or does not answer for that conversation, and stops once it is no longer listed, or once its end has been reported');
     } finally { source.dispose(); reader.dispose(); }
   });
 
