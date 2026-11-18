@@ -655,17 +655,17 @@ function compactThread(thread, opts) {
  */
 const COMMANDS_KEPT = 100;
 const commands = new Map();
-/* The ids of the commands this window's app-server has reported starting or ending, the most recent HEARD_KEPT. */
+/* The ids of the commands this window's app-server has reported ending, or starting as one kept in `commands`, the most
+   recent HEARD_KEPT. A command it started under another source is not kept there, so only its end counts. */
 const HEARD_KEPT = 1000;
 const heard = new Set();
+const hear = (id) => { heard.delete(id); heard.add(id); while (heard.size > HEARD_KEPT) heard.delete(heard.values().next().value); };
 function noteCommand(msg) {
   const method = msg && msg.method, p = (msg && msg.params) || {}, item = p.item || {};
   if ((method !== 'item/started' && method !== 'item/completed') || item.type !== 'commandExecution' || !item.id) return false;
-  heard.delete(item.id);
-  heard.add(item.id);
-  while (heard.size > HEARD_KEPT) heard.delete(heard.values().next().value);
-  if (method === 'item/completed') return commands.delete(item.id);
+  if (method === 'item/completed') { hear(item.id); return commands.delete(item.id); }
   if (item.source !== 'unifiedExecStartup') return false;
+  hear(item.id);
   commands.set(item.id, { thread: String(p.threadId || ''), command: String(item.command || ''), cwd: String(item.cwd || ''),
     startedMs: Number.isFinite(+p.startedAtMs) && +p.startedAtMs > 0 ? +p.startedAtMs : Date.now() });
   while (commands.size > COMMANDS_KEPT) commands.delete(commands.keys().next().value);

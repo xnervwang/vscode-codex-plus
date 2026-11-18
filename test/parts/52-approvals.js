@@ -249,6 +249,10 @@ module.exports = async ({ ok, bad, note, eq, tmp }) => {
   globalThis.__codexExtrasAppServer('notification', cmd('item/completed', 'call_bg1', { exitCode: 0, durationMs: 120000 }));
   eq([patching.runningCommands().length, /Commands running in this window's Codex: none/.test(patching.statusLines().join('\n'))], [0, true],
     'its item/completed ends it');
+  const heardBefore = patching.heardCommand('call_fg');
+  globalThis.__codexExtrasAppServer('notification', cmd('item/completed', 'call_fg', { source: 'agent' }));
+  eq([patching.heardCommand('call_bg1'), heardBefore, patching.heardCommand('call_fg'), patching.heardCommand('call_none')], [true, false, true, false],
+    'this window has heard of a command it kept and of one that ended, but not of one of another source until its end');
 
   /* ── the method names, against the Codex installed here ── */
   const bundles = pristineBundles();
