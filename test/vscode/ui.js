@@ -18,8 +18,10 @@
  *   a tab        a conversation resumed in a tab from the list: its title, then the dot on its logo during a turn sent
  *                through fake-model.js, and after the reply arrives while the tab is in the background
  *   left running a conversation stays green, on its tab and in the session list, until what its turn started has ended:
- *                a background command, a sub-agent, and on Linux a detached shell and a codex exec. Those two run
- *                outside Codex's sandbox, so Codex asks first, and the tab shows the blue dot meanwhile
+ *                a background command, a sub-agent, and on Linux a detached shell, a program setsid started and a
+ *                codex exec. Those three run outside Codex's sandbox, so Codex asks first, and the tab shows the blue
+ *                dot meanwhile. The program is listed in the Agent map, and once a detached one is gone the
+ *                conversation is sent a notice saying so
  *   Codex's page what the patch adds there: the time stamps, the rail, the buttons by the message box, the Agent map,
  *                and the Work plan line on the context meter's hover
  *   the brief    a click on the conversation in Agent Plus's Conversations panel shows the brief its plan holds in the
@@ -646,7 +648,10 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         } catch (e) { tail = [String(e)]; }
         return { here, tail };
       };
-      const leftCase = async ({ name, words, steps, ask, end, ms = 45000 }) => {
+      const pillText = () => codex.evaluate(() => ((document.querySelector('[data-codex-extras="agents"]') || {}).textContent || ''))
+        .catch(() => '');
+      const leftCase = async ({ name, words, steps, ask, end, ms = 45000, during, notice }) => {
+        const notices = model.sent('Codex Plus notice');
         model.script(id, steps);
         await send(`Start the ${name} and come back.`);
         /* On Windows Codex asks before it runs even a sandboxed command; elsewhere only a command asked to run outside. */
@@ -663,9 +668,16 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         check(!!after, `${name}: after its turn has ended, the tab's logo and the conversation's row in the session list stay green, and the row's hover says "${words}"`,
           { left: model.left(), ...await now() });
         await shot(`left-${name.replace(/\W+/g, '-')}`);
+        if (during) await during();
         if (end) end();
         const gone = await until(async () => { const g = await now(); return !g.tab && !g.row && !g.running.includes(words) && g; }, ms, 1000);
         check(!!gone, `${name}: once that has finished, the green leaves both`, gone || { ...await now(), ...await why() });
+        if (notice) {
+          const told = await until(() => model.sent('Codex Plus notice') > notices && model.sent(notice) > 0, 60000, 1000);
+          check(!!told, `${name}: and the conversation is sent a notice that it is no longer running, naming it and saying its exit code `
+            + 'cannot be known', { notices: model.sent('Codex Plus notice'), named: model.sent(notice), exitCode: model.sent('exit code cannot be known') });
+          await until(async () => !(await dotsOn(title) || {}).working, 30000, 1000);
+        }
       };
       await leftCase({ name: 'background command', words: 'A background command is still running',
         steps: [{ call: 'exec_command', args: { cmd: process.platform === 'win32' ? 'Start-Sleep -Seconds 25' : 'sleep 25', yield_time_ms: 1000 } },
@@ -677,7 +689,13 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         const outside = (cmd) => ({ call: 'exec_command', args: { cmd, yield_time_ms: 1000, sandbox_permissions: 'require_escalated',
           justification: 'Start the job outside the sandbox.' } });
         await leftCase({ name: 'detached shell', words: 'A command it detached is still running', ask: true, ms: 70000,
-          steps: [outside("setsid nohup bash -c 'sleep 45; true' >/dev/null 2>&1 &"), { reply: 'Started the job.' }] });
+          notice: 'sleep 45; true', steps: [outside("setsid nohup bash -c 'sleep 45; true' >/dev/null 2>&1 &"), { reply: 'Started the job.' }] });
+        await leftCase({ name: 'program setsid started', words: 'A command it detached is still running', ask: true, ms: 70000,
+          notice: 'sleep 47', steps: [outside('setsid sleep 47 >/dev/null 2>&1 < /dev/null &'), { reply: 'Started the job.' }],
+          during: async () => {
+            const pill = await until(async () => { const t = await pillText(); return /\b1 detached\b/.test(t) && t; }, 20000, 500);
+            check(!!pill, 'program setsid started: the Agent map button counts it as detached', await pillText());
+          } });
         const ext = fs.readdirSync(profile.exts).find((d) => d.startsWith('openai.chatgpt-'));
         const bin = ext ? codexBinary(path.join(profile.exts, ext)) : '';
         check(!!bin, 'the codex program of the Codex extension is found, for a codex exec to start', profile.exts);

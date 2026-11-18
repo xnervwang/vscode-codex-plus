@@ -573,10 +573,12 @@
     var dots = m.agents.map(function (a) { return a.dot; });
     return dots.indexOf('prompt') >= 0 ? 'prompt' : dots.indexOf('working') >= 0 ? 'working' : dots.indexOf('failed') >= 0 ? 'failed' : 'idle';
   }
-  /* Its label as Claude Code Plus writes it: "2 agents · 1 timer", and the timers alone when there is no agent. */
+  /* Its label as Claude Code Plus writes it: "2 agents · 1 detached · 1 timer", each part only when there is one. */
+  var jobsOf = function (m) { return Array.isArray(m.detached) ? m.detached : []; };
   function pillText(m) {
     var parts = [];
     if (m.agents.length) parts.push(plural(m.agents.length, 'agent'));
+    if (jobsOf(m).length) parts.push(jobsOf(m).length + ' detached');
     if (m.wakeups.length) parts.push(plural(m.wakeups.length, 'timer'));
     if (m.goal) parts.push(GOAL_SHORT[m.goal.status] || 'goal');
     return parts.join(' · ');
@@ -699,6 +701,20 @@
         list.appendChild(b);
       }
       out.push(section('map-agents', plural(m.agents.length, 'agent') + ' · click an agent to open it in a tab', [list]));
+    }
+    var jobs = jobsOf(m);
+    if (jobs.length) {
+      out.push(section('map-detached', 'Detached commands · started by this conversation and still running after its turn', jobs.map(function (d) {
+        var row = mk('div', 'margin:5px 0;');
+        row.setAttribute(MARK, 'map-job');
+        var cmd = mk('div', 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--vscode-editor-font-family,monospace);'
+          + 'font-size:.92em;', d.cmd.length > 120 ? d.cmd.slice(0, 119) + '…' : d.cmd);
+        cmd.setAttribute('title', d.cmd);
+        row.appendChild(cmd);
+        var age = d.startMs ? kit.age(d.startMs) : '';
+        row.appendChild(dim('pid ' + d.pid + (d.startMs ? ' · started ' + kit.stamp(d.startMs, false) + (age === 'now' ? ', just now' : ', ' + age + ' ago') : '')));
+        return row;
+      })));
     }
     return out;
   }

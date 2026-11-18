@@ -11,7 +11,8 @@ const path = require('path');
 const fake = require('../fake-vscode');
 const fixture = require('../fixture');
 
-const KEYS = ['codexPlus.workPlan', 'codexPlus.tellCodexYourTimeZone', 'codexPlus.conversationBrief', 'codexPlus.skillRouting', 'codexPlus.wakeUps'];
+const KEYS = ['codexPlus.workPlan', 'codexPlus.tellCodexYourTimeZone', 'codexPlus.conversationBrief', 'codexPlus.skillRouting', 'codexPlus.wakeUps',
+  'codexPlus.detachedEndNotices'];
 
 /* A codex program whose app-server acts on the requests as Codex does: plugin/install copies the plugin into its cache,
    and it and config/batchWrite write `enabled` into config.toml. Its one hook is never trusted. Every request is logged
@@ -73,8 +74,8 @@ module.exports = async ({ eq, note, tmp, root }) => {
   const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
   const props = Object.assign({}, ...[].concat(pkg.contributes.configuration).map((c) => c.properties || {}));
   eq(KEYS.filter((k) => !(props[k].markdownDescription || '').endsWith(` ${tm.ONLY_IN_CUSTOM}`)), [],
-    'each of the five settings the token mode decides ends its description saying it is used only in Custom, with a link to the mode');
-  eq(tm.SWITCHES.filter((s) => s.extension === 'xnervwang.codex-plus').map((s) => s.key), KEYS, 'and they are the five src/token-mode.js lists for Codex Plus');
+    'each of the six settings the token mode decides ends its description saying it is used only in Custom, with a link to the mode');
+  eq(tm.SWITCHES.filter((s) => s.extension === 'xnervwang.codex-plus').map((s) => s.key), KEYS, 'and they are the six src/token-mode.js lists for Codex Plus');
   eq(tm.SWITCHES.filter((s) => s.key.startsWith('codexPlus.')).every((s) => props[s.key] && props[s.key].default === s.default), true,
     'with the defaults this extension declares');
   const readme = fs.readFileSync(path.join(root, 'README.md'), 'utf8');
@@ -116,7 +117,8 @@ module.exports = async ({ eq, note, tmp, root }) => {
 
   /* ── What the hooks are given and what the source reports, in each mode ── */
   {
-    const off = { workPlan: false, tellCodexYourTimeZone: false, conversationBrief: false, skillRouting: false, wakeUps: false };
+    const off = { workPlan: false, tellCodexYourTimeZone: false, conversationBrief: false, skillRouting: false, wakeUps: false,
+      detachedEndNotices: false };
     const got = {};
     for (const mode of ['interface', 'essential', 'all', 'custom']) {
       const w = await start({ ...off, 'agentPlus.tokenMode': mode });
@@ -127,10 +129,10 @@ module.exports = async ({ eq, note, tmp, root }) => {
     got.unset = [given(unset.hooks()), unset.source.features];
     unset.close();
     eq(got, {
-      interface: [[false, false, false, false], [], 'Token mode: Interface features (agentPlus.tokenMode); in Codex: work plan off, time-zone note off, conversation brief off, skill suggestions off, wake-ups off'],
-      essential: [[true, true, false, false], [], 'Token mode: Essential features (agentPlus.tokenMode); in Codex: work plan on, time-zone note on, conversation brief off, skill suggestions off, wake-ups off'],
-      all: [[true, true, true, true], ['brief'], 'Token mode: All features (agentPlus.tokenMode); in Codex: work plan on, time-zone note on, conversation brief on, skill suggestions on, wake-ups on'],
-      custom: [[false, false, false, false], [], 'Token mode: Custom (agentPlus.tokenMode); in Codex: work plan off, time-zone note off, conversation brief off, skill suggestions off, wake-ups off'],
+      interface: [[false, false, false, false], [], 'Token mode: Interface features (agentPlus.tokenMode); in Codex: work plan off, time-zone note off, conversation brief off, skill suggestions off, wake-ups off, notices when a detached command stops off'],
+      essential: [[true, true, false, false], [], 'Token mode: Essential features (agentPlus.tokenMode); in Codex: work plan on, time-zone note on, conversation brief off, skill suggestions off, wake-ups off, notices when a detached command stops off'],
+      all: [[true, true, true, true], ['brief'], 'Token mode: All features (agentPlus.tokenMode); in Codex: work plan on, time-zone note on, conversation brief on, skill suggestions on, wake-ups on, notices when a detached command stops on'],
+      custom: [[false, false, false, false], [], 'Token mode: Custom (agentPlus.tokenMode); in Codex: work plan off, time-zone note off, conversation brief off, skill suggestions off, wake-ups off, notices when a detached command stops off'],
       unset: [[true, true, true, true], ['brief']],
     }, 'every setting turned off: each mode decides as its table says, Custom follows the settings, and nothing set is All features');
   }

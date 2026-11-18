@@ -28,10 +28,10 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
 
   /* A made-up /proc: stat, cmdline and environ for each process. */
   const procDir = tmp('proc');
-  const put = (pid, { comm, state = 'S', ppid = 1, start = 100, argv, env = {} }) => {
+  const put = (pid, { comm, state = 'S', ppid = 1, sid = 0, start = 100, argv, env = {} }) => {
     const d = path.join(procDir, String(pid));
     fs.mkdirSync(d, { recursive: true });
-    fs.writeFileSync(path.join(d, 'stat'), `${pid} (${comm}) ${state} ${ppid} ${Array(17).fill(0).join(' ')} ${start} 0 0\n`);
+    fs.writeFileSync(path.join(d, 'stat'), `${pid} (${comm}) ${state} ${ppid} 0 ${sid} ${Array(15).fill(0).join(' ')} ${start} 0 0\n`);
     fs.writeFileSync(path.join(d, 'cmdline'), (argv || [comm]).join('\0') + '\0');
     fs.writeFileSync(path.join(d, 'environ'), Object.entries({ HOME: '/h', ...env }).map(([k, v]) => `${k}=${v}`).join('\0') + '\0');
   };
@@ -58,6 +58,10 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
   put(51, { comm: 'bash', ppid: 50, argv: ['/bin/bash', '-c', 'sleep 9'], env: { CODEX_THREAD_ID: T(6) } });         // its Bash tool's command
   put(52, { comm: 'claude', start: 200, argv: ['claude', '-p', 'go'], env: { CODEX_THREAD_ID: T(7) } });             // a worker waiting for input
   put(60, { comm: 'claude', argv: ['claude', 'bg-spare'] });                                                          // a claude --bg session
+  put(80, { comm: 'python3', sid: 80, argv: ['python3', 'driver.py', '--all'], env: { CODEX_THREAD_ID: T(11) } });   // setsid python3
+  put(81, { comm: 'python3', ppid: 80, sid: 80, argv: ['python3', 'worker.py'], env: { CODEX_THREAD_ID: T(11) } });  // its child
+  put(82, { comm: 'bash', ppid: 80, sid: 80, argv: ['bash', '-c', 'x; y'], env: { CODEX_THREAD_ID: T(11) } });       // a shell under it
+  fs.writeFileSync(path.join(procDir, 'stat'), 'cpu  1 2 3\nbtime 1700000000\n');
   const sessionsDir = tmp('claude-sessions');
   const record = (pid, o) => fs.writeFileSync(path.join(sessionsDir, `${pid}.json`), JSON.stringify({ pid, procStart: '200', ...o }));
   record(50, { sessionId: ID(500), kind: 'interactive', entrypoint: 'sdk-cli', status: 'busy' });
@@ -75,6 +79,11 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
     eq([got[T(4)], got[T(7)]], [undefined, undefined],
       'a forgotten tail -F, a Java server, an mfns holder, a zombie, codex\'s own OpenTelemetry server, Xvfb and a worker waiting for input do not');
     eq(got[ID(999)], ['command'], 'a codex exec\'s own command counts for its own thread, and its helpers not for the conversation that started it');
+    eq(got[T(11)], ['detached'], 'so does a program setsid made the leader of its own session, which a Java server a build left running is not');
+    eq(snap.detached.map((d) => [d.thread, d.pid, d.start, d.startMs, d.cmd]),
+      [[T(2), 20, '100', 1700000001000, 'bash -c make all'], [T(3), 21, '100', 1700000001000, 'timeout 600 make'],
+        [T(11), 80, '100', 1700000001000, 'python3 driver.py --all']],
+      'each detached tree is listed once, by its top process: conversation, pid, start in ticks and in ms from the boot time, and command line');
     eq(Object.keys(got).filter((id) => !/^01a1f0f0/.test(id)), [], 'a process whose launcher id is missing or not an id counts for nobody');
     const none = left.snapshot({ proc: path.join(procDir, 'none'), records: [] });
     eq([none.available, none.threads.size], [false, 0], 'where there is no /proc, nothing is found and that is said');

@@ -186,7 +186,7 @@ function threadOfCodexTab(vscode, patching, tab) {
  */
 function createCodexSource(vscode, { log = () => {}, reader, patching = null, enabled = () => true, trusted = () => true,
   briefs = () => true, seen = createSeen(), scanLeft = () => false, leftEveryMs = LEFT_EVERY_MS, procDir = '/proc',
-  claudeSessions = undefined, onPoll = () => {} } = {}) {
+  claudeSessions = undefined, onPoll = () => {}, onScan = () => {} } = {}) {
   const changed = new vscode.EventEmitter();
   const focused = new vscode.EventEmitter();
   /* The row above the work plan, set by the extension (_setNotice): { title, description, detail, command, arguments }. */
@@ -326,7 +326,8 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
   const leftKeyOf = (seenNow) => {
     if (!seenNow) return '';
     const known = new Set((reader.threads() || []).map((t) => t.id));
-    return JSON.stringify(Object.keys(seenNow.threads).filter((id) => known.has(id)).sort().map((id) => [id, seenNow.threads[id]]));
+    return JSON.stringify([Object.keys(seenNow.threads).filter((id) => known.has(id)).sort().map((id) => [id, seenNow.threads[id]]),
+      (seenNow.detached || []).filter((d) => known.has(d.thread)).map((d) => `${d.thread}.${d.pid}.${d.start}`)]);
   };
   function pollLeft() {
     if (leftRun || Date.now() - leftAt < leftEveryMs) return;
@@ -343,6 +344,7 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
       leftSeen = r && r.threads && typeof r.threads === 'object' ? r : null;
       const key = leftKeyOf(leftSeen);
       if (key !== leftKey) { leftKey = key; changed.fire(); }
+      try { onScan(leftSeen); } catch (e) { log(`work left running: ${(e && e.message) || e}`); }
     }).catch((e) => log(`work left running: ${(e && e.message) || e}`)).finally(() => { leftRun = null; });
   }
   /* The kinds still running for `id` and its sub-agents, in KINDS order. They come from the worker's last scan, from
@@ -501,6 +503,13 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
       const t = reader.thread(id), st = reader.state(id);
       if (!t || !st) return null;
       return conversationOf(t, { unread: new Set(), openHere: new Set(), state: st, waiting: waitingOn(id), heard: heardOf(id), left: leftOf(id) });
+    },
+    /* The detached commands still running for `id` and its sub-agents, as the last scan listed them (src/left-running.js),
+       oldest first. */
+    detachedOf(id) {
+      if (!leftSeen || !Array.isArray(leftSeen.detached) || !id) return [];
+      const family = new Set(familyOf(String(id).toLowerCase(), childIndex()).map((x) => String(x).toLowerCase()));
+      return leftSeen.detached.filter((d) => family.has(d.thread)).sort((a, b) => (a.startMs - b.startMs) || (a.pid - b.pid));
     },
     onDidChangeConversations: changed.event,
     planNotice() { return notice; },

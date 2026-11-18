@@ -15,18 +15,23 @@
  *
  *   command       a child of a codex process: a command Codex still runs for the thread after its turn ended. Codex
  *                 kills these when its app-server exits, so one is never left over from a closed window.
- *   detached      outside every codex and claude process, and a shell or `timeout` by argv[0]: `setsid nohup bash -c`,
- *                 a script, `nohup … &` from a shell that has since exited.
+ *   detached      outside every codex and claude process, and either a shell or `timeout` by argv[0] (`nohup … &` from a
+ *                 shell that has since exited, a script) or the leader of a session of its own (`setsid <program>`,
+ *                 including a `setsid bash -c '<one command>'` that bash replaced with that command).
  *   codexExec     a `codex exec` outside every codex and claude process.
  *   claudeWorker  a `claude -p` whose session record says it is not idle (an idle one waits for input).
  *   claudeBg      a `claude --bg` session whose record says busy (a turn) or shell (a command). It runs in a process
  *                 Claude Code's daemon started beforehand, so it inherits nothing from the launcher; the launch is
  *                 read instead from the output of the command that ran it, in the launcher's rollout.
  *
- * Only shells count among detached processes, because programs that detach themselves stay running long after the work
- * that started them: Brazil's Java server, the OpenTelemetry server `codex` starts, Xvfb, a database server, a
- * `tail -F` nobody stopped. mfns, which runs demo clusters in namespaces of their own, names its holder processes
- * mfns-holder, not bash.
+ * Other programs count among detached processes only as the leader of their own session, because programs that detach
+ * themselves under their parent's session stay running long after the work that started them: Brazil's Java server,
+ * the OpenTelemetry server `codex` starts, Xvfb, a `tail -F` nobody stopped. A command that runs `setsid` asks for a job
+ * of its own, which is what the user wants to see. mfns, which runs demo clusters in namespaces of their own, names
+ * its holder processes mfns-holder, not bash.
+ *
+ * Each detached process at the top of its tree is listed as well (`detached` in the scan: thread, pid, start, command),
+ * for the Agent map and for the notice its conversation gets once it is gone (src/detached-ends.js).
  *
  * Without /proc only the claude --bg launches are found; src/codex-source.js then falls back on what the rollout says
  * of Codex's own background commands.
@@ -76,7 +81,8 @@ function readStat(file) {
   return n < STAT_BUF.length ? STAT_BUF.toString('latin1', 0, n) : read(file, 'latin1');
 }
 
-/* pid -> { comm, state, ppid, start } for every process whose stat can be read; start is in clock ticks since boot. */
+/* pid -> { comm, state, ppid, sid, start } for every process whose stat can be read; sid is its session, start is in
+   clock ticks since boot. */
 function processes(proc = '/proc') {
   const out = new Map();
   let names;
@@ -87,7 +93,7 @@ function processes(proc = '/proc') {
     const open = s.indexOf('('), close = s.lastIndexOf(')');
     if (open < 0 || close < open) continue;
     const f = s.slice(close + 2).split(' ');
-    out.set(Number(n), { comm: s.slice(open + 1, close), state: f[0], ppid: Number(f[1]), start: f[19] });
+    out.set(Number(n), { comm: s.slice(open + 1, close), state: f[0], ppid: Number(f[1]), sid: Number(f[3]), start: f[19] });
   }
   return out;
 }
@@ -161,7 +167,7 @@ function isCodexExec(argv) {
 function snapshot({ proc = '/proc', records = [], procs = null, environs = null } = {}) {
   const threads = new Map();
   const all = procs || processes(proc);
-  if (!all.size) return { available: false, threads };
+  if (!all.size) return { available: false, threads, detached: [] };
   const add = (id, kind) => {
     const key = id.toLowerCase();
     if (!threads.has(key)) threads.set(key, new Set());
@@ -201,6 +207,8 @@ function snapshot({ proc = '/proc', records = [], procs = null, environs = null 
     return id;
   };
   const argvOf = (pid) => { const a = read(path.join(proc, String(pid), 'cmdline'), 'latin1'); return a ? a.split('\0') : []; };
+  /* pid -> thread id of each detached process counted. */
+  const counted = new Map();
   for (const [pid, p] of all) {
     if (p.state === 'Z' || p.state === 'X') continue;
     const self = isAgent(pid);
@@ -213,9 +221,10 @@ function snapshot({ proc = '/proc', records = [], procs = null, environs = null 
     if (!THREAD_ID.test(id)) continue;
     /* A process whose codex parent carries the same id got it from that codex, a `codex exec` worker: a helper. */
     if (kind === 'command' && threadOf(p.ppid).toLowerCase() === id.toLowerCase()) continue;
-    if (kind === 'detached' && !STARTERS.has(path.basename(argvOf(pid)[0] || ''))) continue;
+    if (kind === 'detached' && p.sid !== pid && !STARTERS.has(path.basename(argvOf(pid)[0] || ''))) continue;
     if (kind === 'codexExec' && !isCodexExec(argvOf(pid))) continue;
     add(id, kind);
+    if (kind === 'detached') counted.set(pid, id.toLowerCase());
   }
   for (const r of records) {
     if (!isWorker(r)) continue;
@@ -228,7 +237,40 @@ function snapshot({ proc = '/proc', records = [], procs = null, environs = null 
       if (!p || p.start !== kept.start || p.comm !== kept.comm) environs.delete(pid);
     }
   }
-  return { available: true, threads };
+  return { available: true, threads, detached: topsOf(counted, all, proc, argvOf) };
+}
+
+/* /proc's clock ticks per second (USER_HZ), the unit of a stat file's start time. */
+const TICKS = 100;
+/* When the machine booted, in ms, from /proc/stat's btime, or 0. */
+function bootMs(proc) {
+  const m = /^btime (\d+)$/m.exec(read(path.join(proc, 'stat'), 'latin1') || '');
+  return m ? Number(m[1]) * 1000 : 0;
+}
+/* The longest command line kept for a detached process; the Agent map shows less. */
+const CMD_MAX = 1000;
+/*
+ * The detached processes of `counted` (pid -> thread id) that have no counted ancestor of the same conversation, the
+ * top of each tree, as [{ thread, pid, start, startMs, cmd }], sorted by pid. `start` is the stat file's, kept with the
+ * pid against its reuse.
+ */
+function topsOf(counted, all, proc, argvOf) {
+  const boot = bootMs(proc);
+  const out = [];
+  for (const [pid, id] of counted) {
+    let top = true;
+    for (let q = (all.get(pid) || {}).ppid, hops = 0; q > 1 && hops < MAX_DEPTH; hops++) {
+      if (counted.get(q) === id) { top = false; break; }
+      const info = all.get(q);
+      if (!info) break;
+      q = info.ppid;
+    }
+    if (!top) continue;
+    const p = all.get(pid);
+    out.push({ thread: id, pid, start: String(p.start), startMs: boot ? Math.round(boot + (Number(p.start) / TICKS) * 1000) : 0,
+      cmd: argvOf(pid).filter((a, i, list) => a || i < list.length - 1).join(' ').slice(0, CMD_MAX) });
+  }
+  return out.sort((a, b) => a.pid - b.pid);
 }
 
 /* The text of a tool output as a rollout stores it: a string, or { content } with a string or a list of parts. */
@@ -323,8 +365,13 @@ function sharedOf(text, { proc, sessions, now }) {
     if (!THREAD_ID.test(id) || !Array.isArray(kinds) || !kinds.every((k) => SCANNED_KINDS.has(k))) return null;
   }
   if (!d.jobs.every((j) => typeof j === 'string' && JOB_ID.test(j))) return null;
-  return { available: d.available, threads: d.threads, jobs: d.jobs };
+  /* A file from a build that did not list them has no detached list; it counts as an empty one. */
+  const detached = d.detached === undefined ? [] : d.detached;
+  if (!Array.isArray(detached) || !detached.every(isDetachedEntry)) return null;
+  return { available: d.available, threads: d.threads, jobs: d.jobs, detached };
 }
+const isDetachedEntry = (e) => !!e && THREAD_ID.test(e.thread) && Number.isInteger(e.pid) && e.pid > 0 && typeof e.start === 'string'
+  && Number.isFinite(e.startMs) && typeof e.cmd === 'string';
 
 function writeShared(file, text) {
   const tmp = `${file}.${process.pid}.${require('worker_threads').threadId}.tmp`;
@@ -337,8 +384,9 @@ function writeShared(file, text) {
 }
 
 /*
- * The /proc part of a scan, { available, threads: { [thread id]: [kinds] }, jobs: [busy claude --bg job ids] }. It is
- * another window's scan when `share` holds one fresh enough at `now`.
+ * The /proc part of a scan, { available, threads: { [thread id]: [kinds] }, jobs: [busy claude --bg job ids], detached:
+ * [the top of each detached tree, as snapshot() lists them] }. It is another window's scan when `share` holds one fresh
+ * enough at `now`.
  */
 function scan({ proc = '/proc', sessionsDir, share = '', environs = null, now = Date.now() } = {}) {
   const sessions = path.resolve(sessionsDir || sessionsHome());
@@ -354,7 +402,7 @@ function scan({ proc = '/proc', sessionsDir, share = '', environs = null, now = 
   const snap = snapshot({ proc, records, procs, environs });
   const threads = {};
   for (const [id, kinds] of snap.threads) threads[id] = [...kinds];
-  const out = { available: snap.available, threads, jobs: [...busyJobs(records)] };
+  const out = { available: snap.available, threads, jobs: [...busyJobs(records)], detached: snap.detached || [] };
   if (file) {
     /* Made only inside a plan directory that is there: without one the plugin is not installed. */
     try { fs.mkdirSync(share); } catch (_) { /* there already, or no plan directory */ }
@@ -365,7 +413,7 @@ function scan({ proc = '/proc', sessionsDir, share = '', environs = null, now = 
 
 /*
  * One scan of `threads`, the recent threads the worker passes in, as [{ id, rollout }].
- * Returns { available, threads: { [thread id]: [kinds] } }. `cache` keeps how far each rollout has been read for
+ * Returns { available, threads: { [thread id]: [kinds] }, detached }. `cache` keeps how far each rollout has been read for
  * launches; rollouts no longer passed in are dropped from it. `environs`, `share` and `now` are those of snapshot() and
  * scan().
  */
@@ -385,7 +433,7 @@ function leftRunning({ threads = [], proc = '/proc', sessionsDir, cache = new Ma
     }
   }
   for (const f of [...cache.keys()]) if (!keep.has(f) && jobs.size) cache.delete(f);
-  return { available: found.available, threads: out };
+  return { available: found.available, threads: out, detached: found.detached || [] };
 }
 
 module.exports = { snapshot, processes, readRecords, busyJobs, launches, scan, leftRunning, isCodexExec, envValue, STARTERS, KINDS,

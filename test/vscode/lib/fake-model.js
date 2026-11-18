@@ -13,7 +13,8 @@
  * script(thread, steps) answers the next requests of conversation `thread` with `steps` in order, then with the usual
  * reply: { call, namespace, args } is a tool call, { reply } a message. While a script is set, a request from any other
  * conversation (a sub-agent's, or a codex exec's) is held until releaseOthers(). left() counts the steps not yet sent;
- * script(null) goes back to the usual reply for every conversation.
+ * script(null) goes back to the usual reply for every conversation. sent(text) counts the requests whose body held `text`,
+ * among the last BODIES_KEPT.
  */
 const http = require('http');
 
@@ -30,6 +31,8 @@ function threadOf(body) {
   } catch (_) { return ''; }
 }
 
+const BODIES_KEPT = 40;
+
 function opened() {
   let open;
   const promise = new Promise((r) => { open = r; });
@@ -38,6 +41,7 @@ function opened() {
 
 async function start({ reply = 'Done. The cap is configurable.' } = {}) {
   const seen = [];
+  const bodies = [];
   let gate = null, scripted = null, others = null;
   let n = 0;
   const server = http.createServer((req, res) => {
@@ -46,6 +50,8 @@ async function start({ reply = 'Done. The cap is configurable.' } = {}) {
     req.on('end', async () => {
       const thread = threadOf(body);
       seen.push({ method: req.method, url: req.url, bytes: body.length, thread });
+      bodies.push(body);
+      if (bodies.length > BODIES_KEPT) bodies.shift();
       if (req.method !== 'POST' || !/\/responses$/.test(req.url.replace(/\?.*/, ''))) {
         res.writeHead(404, { 'Content-Type': 'application/json' });
         res.end('{"error":{"message":"not served here"}}');
@@ -87,6 +93,7 @@ async function start({ reply = 'Done. The cap is configurable.' } = {}) {
   const close = () => new Promise((r) => { release(); releaseOthers(); server.close(() => r()); server.closeAllConnections(); setTimeout(r, 2000); });
   return { port: server.address().port, url: `http://127.0.0.1:${server.address().port}/v1`, seen, hold, release, close, script, releaseOthers,
     left: () => (scripted ? scripted.steps.length : 0),
+    sent: (text) => bodies.filter((b) => b.includes(text)).length,
     turns: () => seen.filter((s) => s.method === 'POST' && /\/responses/.test(s.url)).length };
 }
 

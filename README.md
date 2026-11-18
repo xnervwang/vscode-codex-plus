@@ -324,8 +324,9 @@ A request at the end of a turn (an end-of-turn reminder or one of the brief's re
 | Conversation brief | Off | Off | On | `codexPlus.conversationBrief` |
 | Skill search | Off | Off | On | `codexPlus.skillRouting` |
 | Wake-ups | Off | Off | On | `codexPlus.wakeUps` |
+| Detached command notices | Off | Off | On | `codexPlus.detachedEndNotices` |
 
-Codex Plus follows Agent Plus's `agentPlus.tokenMode` setting, which defaults to All features. Outside Custom, the five settings in the table's Custom column have no effect. Changing modes does not change them. Changing one of those settings outside Custom shows a notice with a Switch to Custom button.
+Codex Plus follows Agent Plus's `agentPlus.tokenMode` setting, which defaults to All features. Outside Custom, the six settings in the table's Custom column have no effect. Changing modes does not change them. Changing one of those settings outside Custom shows a notice with a Switch to Custom button.
 
 In Interface features, Codex does not load the work plan plugin, just as when you run `Codex Plus: Stop Loading the Work Plan Plugin`. Choosing another mode loads it again unless you stopped loading it yourself. Changes to plugin loading, the work plan skill in Codex's skill list, and the `work_plan` tools (see Sent with every call) apply only to conversations started after the mode change.
 

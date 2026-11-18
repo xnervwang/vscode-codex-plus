@@ -5,8 +5,9 @@
 'use strict';
 /*
  * Builds the Agent map for one Codex conversation: the dialog Claude Code opens from its "N agents" button, plus the
- * timers Claude Code Plus adds to it. Here it lists the conversation's wake-up (src/wakeup.js), its goal and the
- * sub-agents it started. Everything comes from the in-memory snapshot (src/codex-reader.js); the worker reads the
+ * timers Claude Code Plus adds to it. Here it lists the conversation's wake-up (src/wakeup.js), its goal, the
+ * sub-agents it started and the commands it left running detached (src/left-running.js), so the user can see why its
+ * dot is green. Everything comes from the in-memory snapshot (src/codex-reader.js); the worker reads the
  * wake-up files along with the plan files, so nothing here touches the disk. The page script draws the button and the
  * dialog (src/page/codex-extras-page.js) and shows the button only while `shown` is true.
  */
@@ -17,9 +18,10 @@ const ACTIONS = ['removeWakeup', 'pauseGoal', 'resumeGoal', 'clearGoal', 'openAg
 
 /*
  * `reader` is the snapshot. `stateOf(id)` returns a thread's state as computed by threadState in src/codex-source.js,
- * or null when its rollout has not been read; such a sub-agent is drawn without a dot.
+ * or null when its rollout has not been read; such a sub-agent is drawn without a dot. `detached(id)` lists the
+ * detached commands still running for the conversation and its sub-agents (detachedOf in src/codex-source.js).
  */
-function mapOf(thread, { reader, stateOf = () => null }) {
+function mapOf(thread, { reader, stateOf = () => null, detached = () => [] }) {
   const w = thread ? reader.wakeup(thread) : null;
   const wakeups = w ? [{ everyMinutes: w.everyMinutes, prompt: w.prompt, expiresMs: w.expiresMs, paused: !!w.paused,
     nextMs: w.paused ? 0 : Math.max(w.setMs, w.firedMs || 0) + w.everyMinutes * 60e3 }] : [];
@@ -33,10 +35,12 @@ function mapOf(thread, { reader, stateOf = () => null }) {
       return { id: t.id, name: String(t.nickname || '') || t.title || '(untitled)', title: t.title || '', dot: c ? lookKey(c, true) : 'unknown',
         updatedMs: Math.max(t.updatedMs || 0, (c && c.lastActiveAt) || 0) };
     });
-  return { type: 'codex-extras-agent-map', shown: wakeups.length > 0 || !!goal || agents.length > 0, wakeups, goal, agents };
+  const jobs = (thread ? detached(thread) || [] : []).map((d) => ({ pid: d.pid, startMs: +d.startMs || 0, cmd: String(d.cmd || '') }));
+  return { type: 'codex-extras-agent-map', shown: wakeups.length > 0 || !!goal || agents.length > 0 || jobs.length > 0, wakeups, goal, agents,
+    detached: jobs };
 }
 
 /* What a page is sent while there is nothing to draw, or no conversation. */
-const NO_MAP = { type: 'codex-extras-agent-map', shown: false, wakeups: [], goal: null, agents: [] };
+const NO_MAP = { type: 'codex-extras-agent-map', shown: false, wakeups: [], goal: null, agents: [], detached: [] };
 
 module.exports = { mapOf, ACTIONS, NO_MAP };

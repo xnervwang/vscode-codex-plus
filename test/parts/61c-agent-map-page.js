@@ -104,6 +104,18 @@ module.exports = async ({ eq, root }) => {
   'a running goal says so, with Pause and Clear');
   click(pill());
 
+  const started = Date.now() - 4 * 60e3;
+  const long = 'python3 -I scripts/driver.py --suite nightly ' + 'x'.repeat(120);
+  p.send(Object.assign({}, MAP, { detached: [{ pid: 4100, startMs: started, cmd: long }, { pid: 4200, startMs: 0, cmd: 'make release' }] }));
+  eq(pill().textContent, '2 agents · 2 detached · 1 timer · goal paused', 'detached commands are counted in the pill, after the agents and before the timers');
+  click(pill());
+  const jobRows = p.q('[data-codex-extras="map-detached"] [data-codex-extras="map-job"]');
+  eq([jobRows.length, jobRows[0].childNodes[0].textContent.length, jobRows[0].childNodes[0].getAttribute('title'),
+    /^pid 4100 · started (\d\d\/\d\d )?\d\d:\d\d, 4m ago$/.test(jobRows[0].childNodes[1].textContent), jobRows[1].childNodes[1].textContent],
+  [2, 120, long, true, 'pid 4200'],
+  'the map lists each detached command by its command line, cut to 120 characters with the whole of it on hover, its pid, and when it started');
+  click(pill());
+
   p.send(Object.assign({}, MAP, { goal: null, agents: [], wakeups: MAP.wakeups }));
   eq(pill().textContent, '1 timer', 'with only a wake-up the pill says so, rather than 0 agents');
   click(pill());

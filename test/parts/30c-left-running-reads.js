@@ -57,8 +57,8 @@ module.exports = async ({ ok, bad, eq, note, tmp }) => {
     const whole = r.calls.filter(([n, f]) => n === 'readFileSync' && typeof f === 'string' && f.endsWith('/stat'));
     eq(whole.map(([, f]) => f), [statPath(30)], 'a stat line is read into the shared buffer, and only one longer than it is read whole');
     eq([...r.out.keys()].sort((a, b) => a - b), [10, 11, 20, 21, 30, 40], 'every process is listed');
-    eq([r.out.get(11), r.out.get(30)], [{ comm: 'bash', state: 'S', ppid: 10, start: '100' }, { comm: 'bash', state: 'S', ppid: 1, start: '100' }],
-      'and each line gives the same comm, state, parent and start as read whole');
+    eq([r.out.get(11), r.out.get(30)], [{ comm: 'bash', state: 'S', ppid: 10, sid: 0, start: '100' }, { comm: 'bash', state: 'S', ppid: 1, sid: 0, start: '100' }],
+      'and each line gives the same comm, state, parent, session and start as read whole');
     const self = path.join('/proc', String(process.pid));
     if (!fs.existsSync(path.join(self, 'stat'))) { note('no /proc here, so a real stat file was not read'); return; }
     const real = tmp('real-proc');

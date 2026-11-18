@@ -37,6 +37,8 @@ const openTimes = require('./src/open-times');
 const codexConfig = require('./src/codex-config');
 const uninstallPlan = require('./src/uninstall-plan');
 const wakeup = require('./src/wakeup');
+const detachedEnds = require('./src/detached-ends');
+const { SHARE_DIR } = require('./src/left-running');
 const workplan = require('./src/workplan');
 const agentMaps = require('./src/agent-map');
 const skillsConfig = require('./src/skills-config');
@@ -306,9 +308,19 @@ async function activate(context) {
   context.subscriptions.push(reader);
   /* A conversation is shown as working while something it started is still running (src/left-running.js). A window
      running an older build than the installed one leaves this scan to the windows running the installed build. */
+  /* The notice a conversation gets once a command it left running detached is no longer running (src/detached-ends.js). */
+  const ends = detachedEnds.createDetachedEnds({ dir: () => path.join(install.planDir(files.codexHome()), SHARE_DIR),
+    ask: (m, p) => patching.hostRequest(m, p), log: say, enabled: () => runs('detachedEndNotices') && trusted() && !standsDown() });
+  let delivering = false;
+  const onScan = (scan) => {
+    ends.observe(scan);
+    if (delivering) return;
+    delivering = true;
+    ends.deliver().catch((e) => say(`detached command notices: ${e.message}`)).finally(() => { delivering = false; });
+  };
   const source = createCodexSource(vscode, { log: say, reader, patching, trusted, enabled: () => runs('workPlan'),
     briefs: () => runs('conversationBrief'), seen: createSeen(context.globalState),
-    scanLeft: () => !standsDown() && settings().enabled !== false, onPoll: () => { if (archiveSweeper) archiveSweeper.tick(); } });
+    scanLeft: () => !standsDown() && settings().enabled !== false, onPoll: () => { if (archiveSweeper) archiveSweeper.tick(); }, onScan });
   context.subscriptions.push(source);
   planSource = source;
   /* The user's time zone, as Codex's page reported it through the patch. */
@@ -451,7 +463,7 @@ async function activate(context) {
   }));
   /* The Agent map in each Codex page (src/agent-map.js) is built from the snapshot. Its goal buttons run the commands
      of the same name, and Remove deletes the wake-up through src/wakeup.js. */
-  const agentMap = (thread) => agentMaps.mapOf(thread, { reader, stateOf: (id) => source.threadState(id) });
+  const agentMap = (thread) => agentMaps.mapOf(thread, { reader, stateOf: (id) => source.threadState(id), detached: (id) => source.detachedOf(id) });
   const agentMapAct = async (thread, action, id) => {
     if (action === 'removeWakeup') { await wakes.remove(thread); source._poll(); return; }
     if (action === 'openAgent') {

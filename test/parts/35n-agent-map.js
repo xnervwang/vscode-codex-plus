@@ -52,6 +52,12 @@ module.exports = async ({ eq, tmp, root }) => {
   goals.set(B, { status: 'complete', objective: 'Done', tokensUsed: 9, tokenBudget: 0 });
   wakes.delete(B);
   eq([mapOf(B, { reader }).shown, mapOf(B, { reader }).goal.tokenBudget], [true, 0], 'so is a goal that is not cleared, a finished one too');
+  goals.delete(B);
+  const jobs = [{ thread: B, pid: 4100, start: '41000', startMs: 1794981000000, cmd: 'python3 driver.py --all' }];
+  const withJobs = mapOf(B, { reader, detached: (id) => (id === B ? jobs : []) });
+  eq([mapOf(B, { reader }).shown, withJobs.shown, withJobs.detached, mapOf('', { reader, detached: () => jobs }).detached],
+    [false, true, [{ pid: 4100, startMs: 1794981000000, cmd: 'python3 driver.py --all' }], []],
+    'a detached command still running is enough for the button too, and the map lists it with its pid, start and command line');
   eq(ACTIONS, ['removeWakeup', 'pauseGoal', 'resumeGoal', 'clearGoal', 'openAgent'], 'the dialog\'s buttons ask for one of five things, none of them setting a goal');
 
   /* ── the wake-ups the worker reads, and Remove ── */
