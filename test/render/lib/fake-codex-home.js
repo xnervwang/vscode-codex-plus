@@ -87,7 +87,7 @@ function rollout(turns, sent) {
     const t = sent[i];
     row(t, 'event_msg', { type: 'task_started', turn_id: id, root_turn_id: id, started_at: Math.floor(t / 1000), model_context_window: WINDOW, collaboration_mode_kind: 'default' });
     row(t, 'turn_context', { turn_id: id, root_turn_id: id, cwd: CWD, approval_policy: 'on-request', sandbox_policy: { type: 'workspace-write' },
-      model: MODEL, effort: i % 2 ? 'medium' : 'high', summary: 'auto' });
+      model: MODEL, effort: i % 2 ? 'medium' : 'high', summary: 'auto', multi_agent_version: 'v2' });
     if (i === 0) row(t, 'response_item', { type: 'message', role: 'user', content: [{ type: 'input_text', text: `<environment_context>\n  <cwd>${CWD}</cwd>\n</environment_context>` }] });
     row(t, 'response_item', { type: 'message', id: `msg_u${i}`, role: 'user', content: [{ type: 'input_text', text: turn.user }],
       internal_chat_message_metadata_passthrough: { turn_id: id, create_time: t / 1000 } });

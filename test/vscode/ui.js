@@ -613,10 +613,6 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         return s ? { text: s.innerText.slice(0, 300), buttons: [...s.querySelectorAll('button')].map((b) => b.innerText.trim()).filter(Boolean) } : null;
       }).catch(() => null);
       const approve = async (name) => {
-        const shown = await until(card, 20000, 300);
-        check(!!shown, `${name}: Codex shows its card asking to run the command outside the sandbox`);
-        if (!shown) return;
-        note(`${name}: the card reads ${JSON.stringify(shown)}`);
         const buttons = codex.locator('[data-codex-approval-surface] button');
         const yes = buttons.filter({ hasText: /^(Yes|Allow once|Allow this time|Approve|Run)\b/ }).first();
         if (await yes.count()) await yes.click();
@@ -624,10 +620,33 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         if (await submit.count()) await submit.click();
         check(!!await until(async () => !await card(), 10000, 300), `${name}: and approving it there lets the command run`, await card());
       };
+      /* What this window's host and the rollout say of the conversation's commands, for a green that does not leave. */
+      const why = async () => {
+        const here = await call(`const mine = vscode.extensions.getExtension('xnervwang.codex-plus');
+          const req = (m) => require(require('path').join(mine.extensionPath, 'src', m));
+          const files = req('codex-files'), rollout = files.rolloutOf(arg);
+          const st = rollout ? files.rolloutState(rollout) : null;
+          return { commands: req('patching').runningCommands(arg).map((c) => c.command.slice(0, 60)), openCommands: st && st.openCommands,
+            working: st && st.working };`, id).catch((e) => String(e));
+        let tail = [];
+        try {
+          const sessions = path.join(profile.codexHome, 'sessions');
+          const file = fs.readdirSync(sessions, { recursive: true }).map((r) => path.join(sessions, r)).find((f) => f.endsWith(`${id}.jsonl`));
+          tail = fs.readFileSync(file, 'utf8').trim().split('\n').slice(-8).map((l) => {
+            const r = JSON.parse(l), q = r.payload || {};
+            return [r.type, q.type, q.item ? `${q.item.type} ${q.item.id} ${q.item.status || ''}` : q.call_id || ''].filter(Boolean).join(' ');
+          });
+        } catch (e) { tail = [String(e)]; }
+        return { here, tail };
+      };
       const leftCase = async ({ name, words, steps, ask, end, ms = 45000 }) => {
         model.script(id, steps);
         await send(`Start the ${name} and come back.`);
-        if (ask) {
+        /* On Windows Codex asks before it runs even a sandboxed command; elsewhere only a command asked to run outside. */
+        const shown = await until(async () => (await card()) || (!ask && model.left() === 0 && 'none'), 20000, 300);
+        if (ask) check(!!shown && shown !== 'none', `${name}: Codex shows its card asking to run the command outside the sandbox`);
+        if (shown && shown !== 'none') {
+          note(`${name}: the card reads ${JSON.stringify(shown)}`);
           const blue = await until(async () => { const d = await dotsOn(title); return d && d.prompt >= 6 && d; }, 20000, 500);
           check(!!blue, `${name}: while Codex waits for the approval, the tab's logo carries the blue dot`, await dotsOn(title));
           await shot(`left-${name.replace(/\W+/g, '-')}-approval`);
@@ -639,7 +658,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         await shot(`left-${name.replace(/\W+/g, '-')}`);
         if (end) end();
         const gone = await until(async () => { const g = await now(); return !g.tab && !g.row && !g.running.includes(words) && g; }, ms, 1000);
-        check(!!gone, `${name}: once that has finished, the green leaves both`, await now());
+        check(!!gone, `${name}: once that has finished, the green leaves both`, gone || { ...await now(), ...await why() });
       };
       await leftCase({ name: 'background command', words: 'A background command is still running',
         steps: [{ call: 'exec_command', args: { cmd: process.platform === 'win32' ? 'Start-Sleep -Seconds 25' : 'sleep 25', yield_time_ms: 1000 } },
