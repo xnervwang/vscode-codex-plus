@@ -4,17 +4,17 @@
 
 'use strict';
 /*
- * The notice a conversation gets once a command it left running detached is no longer running.
+ * The notice sent to a conversation when a detached command it started stops.
  *
  * src/left-running.js lists each detached command at the top of its tree, with its pid and start time. Each window
- * remembers the ones its scans have listed; one missing from a later scan that could read /proc is written down once,
- * as a file of its own in DIR under the shared folder, made only if no other window has written it. A window that has
- * the conversation loaded (thread/loaded/list) claims the files by renaming them, and puts one notice in the
- * conversation's queue (thread/queue/add), as wake-ups do (src/wakeup.js), so Codex sends it once the conversation is
- * idle. Ends written within BATCH_MS of the last notice wait and go in the next one. A conversation loaded in no window
- * keeps its ends for KEEP_MS.
+ * remembers the ones its scans have listed. When one is missing from a later scan that could read /proc, the window
+ * writes it down as one file in DIR under the shared folder. A window that has the conversation loaded
+ * (thread/loaded/list) claims the files by renaming them and queues one notice with thread/queue/add, as src/wakeup.js
+ * does for wake-ups, so Codex sends it once the conversation is idle. An end written within BATCH_MS of the last notice
+ * to that conversation waits for the next one. When no window has the conversation loaded, its files wait up to
+ * KEEP_MS.
  *
- * The exit code of a process this extension did not start cannot be read, so the notice says so.
+ * This extension did not start the process, so it cannot read its exit code.
  */
 const fs = require('fs');
 const path = require('path');

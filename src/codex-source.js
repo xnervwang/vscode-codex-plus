@@ -365,11 +365,11 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
     try { return !!(patching && typeof patching.heardCommand === 'function' && patching.heardCommand(call)); } catch (_) { return false; }
   };
   /*
-   * Without /proc, the background terminals this window's app-server still runs, per conversation, as asked of it with
-   * thread/backgroundTerminals/list: { ids, at }, where ids is null when it did not answer (a conversation it has not
-   * loaded). Codex on Windows sends no item notifications for a command run after an approval, so for a conversation
-   * loaded here this list is what says such a command has ended. Asked at most every TERMINALS_MS per conversation,
-   * and only for one whose rollout leaves a command open.
+   * Without /proc, the item ids of the background terminals this window's app-server still runs for each conversation,
+   * kept as { ids, at }. ids is null when the app-server did not answer: it has not loaded the conversation, or this
+   * Codex does not hand over its connection, as on Windows. The rollout records no end for a background command on
+   * macOS and Windows, and a window reloaded while one ran has lost its notifications, so wherever the app-server
+   * answers, its list decides. Each conversation is asked at most once every TERMINALS_MS.
    */
   const terminals = new Map();
   const TERMINALS_MS = 5000;

@@ -17,11 +17,11 @@
  *                cancelled and then accepted, and the rollout gone from the Codex home
  *   a tab        a conversation resumed in a tab from the list: its title, then the dot on its logo during a turn sent
  *                through fake-model.js, and after the reply arrives while the tab is in the background
- *   left running a conversation stays green, on its tab and in the session list, until what its turn started has ended:
- *                a background command, a sub-agent, and on Linux a detached shell, a program setsid started and a
- *                codex exec. Those three run outside Codex's sandbox, so Codex asks first, and the tab shows the blue
- *                dot meanwhile. The program is listed in the Agent map, and once a detached one is gone the
- *                conversation is sent a notice saying so
+ *   left running a conversation stays green, on its tab and in the session list, until the work its turn started is
+ *                done: a background command, a sub-agent, and on Linux a detached shell, a program run under setsid and
+ *                a codex exec. The last three need Codex's approval to run outside its sandbox, and the tab shows the
+ *                blue dot until it is given. The setsid program also appears in the Agent map, and once the shell or
+ *                the program stops, the conversation gets a notice
  *   Codex's page what the patch adds there: the time stamps, the rail, the buttons by the message box, the Agent map,
  *                and the Work plan line on the context meter's hover
  *   the brief    a click on the conversation in Agent Plus's Conversations panel shows the brief its plan holds in the
@@ -650,6 +650,13 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         } catch (e) { tail = [String(e)]; }
         return { here, tail };
       };
+      /* Whether Codex lets this extension make requests on its app-server connection; on Windows it does not. */
+      const handedOver = async () => {
+        const r = await call(`const mine = vscode.extensions.getExtension('xnervwang.codex-plus');
+          const p = require(require('path').join(mine.extensionPath, 'src', 'patching'));
+          return await p.hostRequest('thread/loaded/list', {});`).catch(() => null);
+        return !(r && r.outcome === 'unavailable');
+      };
       const pillText = () => codex.evaluate(() => ((document.querySelector('[data-codex-extras="agents"]') || {}).textContent || ''))
         .catch(() => '');
       const leftCase = async ({ name, words, steps, ask, end, ms = 45000, during, notice }) => {
@@ -673,7 +680,10 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         if (during) await during();
         if (end) end();
         const gone = await until(async () => { const g = await now(); return !g.tab && !g.row && !g.running.includes(words) && g; }, ms, 1000);
-        check(!!gone, `${name}: once that has finished, the green leaves both`, gone || { ...await now(), ...await why() });
+        if (!gone && process.platform === 'win32' && !await handedOver()) {
+          note(`${name}: the green stays after it has finished, because Codex on Windows does not hand over its app-server connection, `
+            + 'so Codex Plus hears no command notifications and cannot ask which background terminals still run, and the rollout records no end');
+        } else check(!!gone, `${name}: once that has finished, the green leaves both`, gone || { ...await now(), ...await why() });
         if (notice) {
           const told = await until(() => model.sent('Codex Plus notice') > notices && model.sent(notice) > 0, 60000, 1000);
           check(!!told, `${name}: and the conversation is sent a notice that it is no longer running, naming it and saying its exit code `
@@ -706,8 +716,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
             steps: [outside(`setsid nohup '${bin}' exec --skip-git-repo-check 'Wait for the job.' >/dev/null 2>&1 &`), { reply: 'Started a worker.' }] });
         }
       } else {
-        note(`a detached shell and a codex exec are found through /proc, which ${process.platform} does not have, so neither is made here,`
-          + ' and neither is the blue dot of a command waiting for approval');
+        note(`a detached shell, a program setsid started and a codex exec are found through /proc, which ${process.platform} does not have, `
+          + 'so none of them is made here' + (process.platform === 'win32' ? '' : ', and no command waits for approval, so the blue dot is not checked'));
       }
       model.script(null);
     });

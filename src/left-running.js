@@ -16,22 +16,21 @@
  *   command       a child of a codex process: a command Codex still runs for the thread after its turn ended. Codex
  *                 kills these when its app-server exits, so one is never left over from a closed window.
  *   detached      outside every codex and claude process, and either a shell or `timeout` by argv[0] (`nohup … &` from a
- *                 shell that has since exited, a script) or the leader of a session of its own (`setsid <program>`,
- *                 including a `setsid bash -c '<one command>'` that bash replaced with that command).
+ *                 shell that has since exited, a script) or the leader of a session of its own (`setsid <program>`;
+ *                 bash given one command with -c replaces itself with it, so `setsid bash -c '<command>'` is one too).
  *   codexExec     a `codex exec` outside every codex and claude process.
  *   claudeWorker  a `claude -p` whose session record says it is not idle (an idle one waits for input).
  *   claudeBg      a `claude --bg` session whose record says busy (a turn) or shell (a command). It runs in a process
  *                 Claude Code's daemon started beforehand, so it inherits nothing from the launcher; the launch is
  *                 read instead from the output of the command that ran it, in the launcher's rollout.
  *
- * Other programs count among detached processes only as the leader of their own session, because programs that detach
- * themselves under their parent's session stay running long after the work that started them: Brazil's Java server,
- * the OpenTelemetry server `codex` starts, Xvfb, a `tail -F` nobody stopped. A command that runs `setsid` asks for a job
- * of its own, which is what the user wants to see. mfns, which runs demo clusters in namespaces of their own, names
- * its holder processes mfns-holder, not bash.
+ * Programs that detach themselves under their parent's session stay running long after the work that started them:
+ * Brazil's Java server, the OpenTelemetry server `codex` starts, Xvfb, a `tail -F` nobody stopped. Running a command
+ * under `setsid` is asking for a separate job. mfns, which runs demo clusters in namespaces of their own, names its
+ * holder processes mfns-holder, not bash.
  *
- * Each detached process at the top of its tree is listed as well (`detached` in the scan: thread, pid, start, command),
- * for the Agent map and for the notice its conversation gets once it is gone (src/detached-ends.js).
+ * The top process of each detached tree is also listed (`detached` in the scan: thread, pid, start, command). The Agent
+ * map shows the list, and src/detached-ends.js tells the conversation when one is gone.
  *
  * Without /proc only the claude --bg launches are found; src/codex-source.js then falls back on what the rollout says
  * of Codex's own background commands.
