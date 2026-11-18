@@ -205,7 +205,7 @@ module.exports = async ({ eq, note, tmp, root }) => {
   eq([patching.usageOf(null).usage, patching.usageOf({ context: null }).usage], [null, null], 'and a conversation with no token count yet has none');
   eq(patching.viewOf({ enabled: true, infoButton: false, chimeButton: true, contextMeter: false }),
     { type: 'codex-extras-view', timestamps: true, navigation: true, userColor: '', userEdge: true, lowContext: true, replyFigures: true, replyDuration: true,
-      buttons: true, chime: true, infoButton: false, chimeButton: true, contextMeter: false },
+      buttons: true, chime: true, infoButton: false, chimeButton: true, contextMeter: false, replyImages: true },
     'the three settings reach the page with the rest');
   const conv = require('../../src/codex-source').conversationOf({ id: THREAD, title: 't', updatedMs: Date.now() },
     { unread: new Set(), openHere: new Set(), state: Object.assign({ working: false, lastActivityMs: Date.now() }, st) });

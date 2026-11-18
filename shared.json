@@ -1,5 +1,5 @@
 {
-  "core": "5f2aa7555b2cfa0641986736835d8f9bc0b25d9d",
+  "core": "daecf7b4a73363ae58e933b68e516353053c4318",
   "files": [
     {
       "path": "build/sync-shared.js",
@@ -89,7 +89,7 @@
     {
       "path": "codex-plugin/agent-work-plan/hooks/plan_common.py",
       "from": "shared/plugin/hooks/plan_common.py",
-      "sha256": "01cd82929f74f81d852130beeb4dab5a25d0738b1e48e45d1a8ee3a373d18d1b"
+      "sha256": "04c95fda86b28629d978d1f9e1ce4925b8b6f4f257ec00bac6af810a74246664"
     },
     {
       "path": "codex-plugin/agent-work-plan/hooks/plan-row.py",
@@ -117,6 +117,11 @@
       "sha256": "5742f560cd7585ba3b747115a216ef4db51a60a3beabe0d2e8f4ccc598ac1cb6"
     },
     {
+      "path": "codex-plugin/agent-work-plan/hooks/tell-reply-images.py",
+      "from": "shared/plugin/hooks/tell-reply-images.py",
+      "sha256": "2d47762f8022936ea8910ff86c351cc8ea6cb2bd9b4c85a6ac426f1c2eecfa5b"
+    },
+    {
       "path": "codex-plugin/agent-work-plan/hooks/nudge-work-plan.py",
       "from": "shared/plugin/hooks/nudge-work-plan.py",
       "sha256": "8ba8895c44e6d66c3e03aa3939a5014aaf1243c530b0c43823fc60b70ddc65d5"
@@ -134,7 +139,7 @@
     {
       "path": "codex-plugin/agent-work-plan/hooks/plan_agent.py",
       "from": "shared/plugin/codex/plan_agent.py",
-      "sha256": "abf82c9af0f73bf5fef78492097def23301c7cebb2b682d85e3b80c38a79842c"
+      "sha256": "e0c48cab2912c2ad27b617558a39a9c7cb5c45634da75512f8bea8f590ca4df3"
     },
     {
       "path": "codex-plugin/agent-work-plan/skills/maintain/SKILL.md",

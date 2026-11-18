@@ -1386,7 +1386,7 @@
   /* What the host last said to show. The defaults are the settings' own defaults, so a page the host has not spoken to
      yet shows what those settings say rather than nothing at all. */
   var view = { timestamps: true, navigation: true, userColor: '', userEdge: true, lowContext: true, replyFigures: true,
-    replyDuration: true, buttons: true, chime: true, infoButton: true, chimeButton: true, contextMeter: true };
+    replyDuration: true, buttons: true, chime: true, infoButton: true, chimeButton: true, contextMeter: true, replyImages: true };
   /* Each turn's model, effort and context as the host read them from the rollout, by turn id: { turnId: text }. They
      are placed by the turn id Codex puts on each turn (data-content-search-turn-key), never by position. */
   var hostTurns = {};
@@ -2317,7 +2317,7 @@
     if (due) { clearTimeout(due); due = 0; }
   }
   function watch() {
-    if (!anythingOn() || typeof MutationObserver !== 'function' || !document.body) { unwatch(); return; }
+    if (!(anythingOn() || view.buttons !== false) || typeof MutationObserver !== 'function' || !document.body) { unwatch(); return; }
     var target = scrollerEl() || document.body;
     if (observer && observed === target) return;
     unwatch();
@@ -2382,11 +2382,102 @@
     if (warn.style.top !== top) warn.style.top = top;
   }
 
+  /*
+   * Images in replies. Codex draws an image a reply links to when it is a local file or a data: URL. An image at a web
+   * address it loads only after a server-side check that needs a ChatGPT login, and otherwise draws a disabled
+   * placeholder. This turns each image at a web address into a plain link, so nothing is fetched from it and the address
+   * can still be opened. While codexPlus.replyImages is off (view.replyImages) it also turns the others into "[Image]",
+   * with the path in the hover, as Claude Code's panel shows an image it does not draw.
+   *
+   * The address is not in the page, since the placeholder carries only the alt text. It is read from the props React
+   * keeps on the element: the nearest component above it given both `src` and `blockRemoteMedia`, which is Codex's
+   * markdown media component. An element whose props cannot be read is left as Codex drew it.
+   */
+  var IMG_HIDDEN = MARK + '-img-hidden', IMG_SRC = MARK + '-img-src', IMG_STAND = 'img-stand', IMG_UP = 16;
+  var REMOTE = /^(?:https?:)?\/\//i;
+  function mediaOf(el) {
+    var key = null;
+    try { for (var k in el) { if (k.indexOf('__reactFiber$') === 0) { key = k; break; } } } catch (e) { return null; }
+    var f = key ? el[key] : null;
+    for (var i = 0; f && i < IMG_UP; i++, f = f.return) {
+      var p = f.memoizedProps;
+      if (p && typeof p === 'object' && typeof p.src === 'string' && p.src && 'blockRemoteMedia' in p) {
+        return { src: p.src, alt: typeof p.alt === 'string' ? p.alt : '' };
+      }
+    }
+    return null;
+  }
+  /* What stands in for the element, as [kind, text, hover], or null to leave Codex's own drawing. */
+  function standFor(media) {
+    if (REMOTE.test(media.src)) return ['link', media.alt || media.src, media.src];
+    if (view.replyImages !== false) return null;
+    return ['image', '[Image]', /^data:/i.test(media.src) ? (media.alt || 'An image written into the reply') : media.src];
+  }
+  function sameStand(n, src, want) {
+    return !!(n && n.getAttribute && n.getAttribute(MARK) === IMG_STAND && n.getAttribute(IMG_SRC) === src
+      && n.textContent === want[1] && n.title === want[2]);
+  }
+  function makeStand(el, src, want) {
+    var link = want[0] === 'link' && !(el.closest && el.closest('a'));
+    var n = document.createElement(link ? 'a' : 'span');
+    n.setAttribute(MARK, IMG_STAND);
+    n.setAttribute(IMG_SRC, src);
+    if (link) n.setAttribute('href', src);
+    n.style.cssText = link ? 'word-break:break-all;' : 'opacity:0.75;';
+    n.textContent = want[1];
+    n.title = want[2];
+    return n;
+  }
+  var imageCounts = { media: 0, links: 0, hidden: 0 };
+  function fixImages() {
+    var on = view.buttons !== false;
+    var counts = { media: 0, links: 0, hidden: 0 };
+    if (on && document.head && !one(document, 'style[' + MARK + '="' + IMG_STAND + '"]')) {
+      var css = document.createElement('style');
+      css.setAttribute(MARK, IMG_STAND);
+      css.textContent = '[' + IMG_HIDDEN + ']{display:none !important;}';
+      document.head.appendChild(css);
+    }
+    var found = on ? all(document, SEL.assistant + ' img,' + SEL.assistant + ' button[disabled]') : [];
+    for (var i = 0; i < found.length; i++) {
+      var el = found[i];
+      if (isOurs(el) || (el.closest && el.closest('[' + MARK + ']'))) continue;
+      var media = mediaOf(el);
+      if (!media) continue;
+      counts.media++;
+      var want = standFor(media), next = el.nextElementSibling;
+      if (!want) {
+        if (el.hasAttribute(IMG_HIDDEN)) el.removeAttribute(IMG_HIDDEN);
+        if (next && next.getAttribute(MARK) === IMG_STAND) next.remove();
+        continue;
+      }
+      if (!sameStand(next, media.src, want)) {
+        if (next && next.getAttribute(MARK) === IMG_STAND) next.remove();
+        el.parentNode.insertBefore(makeStand(el, media.src, want), el.nextSibling);
+      }
+      if (!el.hasAttribute(IMG_HIDDEN)) el.setAttribute(IMG_HIDDEN, '');
+      counts[want[0] === 'link' ? 'links' : 'hidden']++;
+    }
+    var stands = all(document, '[' + MARK + '="' + IMG_STAND + '"]:not(style)');
+    for (var j = 0; j < stands.length; j++) {
+      var before = stands[j].previousElementSibling;
+      if (!on || !before || !before.hasAttribute(IMG_HIDDEN)) stands[j].remove();
+    }
+    if (!on) {
+      var hidden = all(document, '[' + IMG_HIDDEN + ']');
+      for (var h = 0; h < hidden.length; h++) hidden[h].removeAttribute(IMG_HIDDEN);
+      var sheetOf = one(document, 'style[' + MARK + '="' + IMG_STAND + '"]');
+      if (sheetOf) sheetOf.remove();
+    }
+    imageCounts = counts;
+  }
+
   var refreshing = false;
   function refresh() {
     if (refreshing || !document.body) return;
     refreshing = true;
     try {
+      fixImages();
       var list = entries();
       noteMisses(list);
       if (!list) { dropNav(); return; }
@@ -2510,6 +2601,9 @@
         hasText: !!(figures && figures.text), toolRunning: !!(figures && figures.tool) },
       /* Everything this script has in the page, as one count: nothing of its own left behind when all of it is off. */
       marks: { total: all(document, '[' + MARK + ']').length },
+      /* Images in replies: how many of Codex's media elements were read, and how many of them stand behind a link or
+         behind "[Image]". */
+      images: { media: imageCounts.media, links: imageCounts.links, hidden: imageCounts.hidden, setting: view.replyImages !== false },
       page: { hidden: !!document.hidden, marksObserving: !!observer },
     };
   }
@@ -2572,7 +2666,7 @@
         userColor: typeof m.userColor === 'string' ? m.userColor : '', userEdge: m.userEdge !== false,
         lowContext: m.lowContext !== false, replyFigures: m.replyFigures !== false, replyDuration: m.replyDuration !== false, buttons: m.buttons !== false,
         chime: m.chime !== false, infoButton: m.infoButton !== false, chimeButton: m.chimeButton !== false,
-        contextMeter: m.contextMeter !== false };
+        contextMeter: m.contextMeter !== false, replyImages: m.replyImages !== false };
       /* Turned on from this page's own button: one chime, so the user hears at once whether sound comes out. */
       if (chimeAsked) { chimeAsked = false; if (!wasOn && view.chime) chime('done'); }
       if (!anythingOn() && view.buttons === false) showWarn(false);

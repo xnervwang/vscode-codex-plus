@@ -128,6 +128,7 @@ function settings() {
     infoButton: on && c.get('infoButton', true),
     chimeButton: on && c.get('chimeButton', true),
     contextMeter: on && c.get('contextMeter', true),
+    replyImages: on && c.get('replyImages', true),
   };
 }
 
@@ -282,6 +283,8 @@ function writeHookSettings(context) {
       offerMinToolCalls: c.get('workPlanOfferMinToolCalls', 25),
       quietWhenReplyMatches: c.get('workPlanQuietWhenReplyMatches', ''),
       tellTimeZone: runs('tellCodexYourTimeZone'),
+      /* Codex draws the images itself; the note is given only for a build whose page has been checked. */
+      replyImages: settings().replyImages && supported.verified(codexVersion()),
       brief: runs('conversationBrief'),
       compactTokenLimit: codexConfig.compactLimit(files.codexHome()),
       skillRoute: runs('skillRouting'),

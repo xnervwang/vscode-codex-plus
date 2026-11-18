@@ -518,7 +518,7 @@ function viewOf(s = {}) {
   return { type: 'codex-extras-view', timestamps: s.timestamps !== false, navigation: s.conversationNavigation !== false,
     userColor: safeColor(s.userMessageColor), userEdge: s.userMessageEdge !== false, lowContext: s.lowContextOutline !== false,
     replyFigures: s.figures !== false, replyDuration: s.replyDuration !== false, buttons: s.enabled !== false, chime: s.chime !== false, infoButton: s.infoButton !== false,
-    chimeButton: s.chimeButton !== false, contextMeter: s.contextMeter !== false };
+    chimeButton: s.chimeButton !== false, contextMeter: s.contextMeter !== false, replyImages: s.replyImages !== false };
 }
 
 /*

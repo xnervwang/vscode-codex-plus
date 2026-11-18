@@ -85,7 +85,7 @@ module.exports = async ({ eq, note, tmp, root }) => {
     'the README\'s token section, after its opening paragraphs, has a table of the four modes, naming each feature\'s setting under Custom');
 
   /* Activates the extension with `config`, collecting every configuration listener so a change can be told to all. */
-  const start = async (config, { codex = '', globalState } = {}) => {
+  const start = async (config, { codex = '', globalState, codexVersion = '' } = {}) => {
     const { vscode, control } = fake.create();
     const heard = [];
     vscode.workspace.onDidChangeConfiguration = (fn) => { heard.push(fn); return { dispose() {} }; };
@@ -96,6 +96,7 @@ module.exports = async ({ eq, note, tmp, root }) => {
     process.env.CODEX_HOME = home;
     control.state.config = Object.assign({ reopenDroppedTabs: false }, codex ? { cliExecutable: codex } : {}, config);
     const registered = [];
+    if (codexVersion) control.state.extensions.set('openai.chatgpt', { isActive: false, packageJSON: { version: codexVersion }, extensionPath: tmp('codex-ext') });
     control.state.extensions.set('xnervwang.agent-plus', { isActive: true, exports: { agentPlus: { protocol: 1, accepts: [1], features: [],
       registerSource: (s) => { registered.push(s); return { accepted: true, code: '', reason: '', registration: { dispose() {} } }; } } } });
     const ext = require(path.join(root, 'extension.js'));
@@ -226,5 +227,21 @@ module.exports = async ({ eq, note, tmp, root }) => {
     eq([status.length, /not loaded, as the Interface features token mode has it/.test(status.join('\n')), /^Token mode: Interface features/m.test(status.join('\n'))],
       [2, true, true], 'Show Status says the mode, and that the plugin is not loaded because of it');
     w.close();
+  }
+
+  /* ── The note on images in replies: given only with codexPlus.replyImages on and a Codex build this extension has been
+     checked against, whatever the token mode ── */
+  {
+    const supported = require(path.join(root, 'src', 'supported.js'));
+    const checked = supported.versions()[0];
+    const got = [];
+    for (const [config, version] of [[{}, checked], [{ replyImages: false }, checked], [{}, '0.0.1'], [{ enabled: false }, checked],
+      [{ 'agentPlus.tokenMode': 'essential' }, checked]]) {
+      const w = await start(config, { codexVersion: version });
+      got.push(w.hooks().replyImages);
+      w.close();
+    }
+    eq(got, [true, false, false, false, true],
+      'the hooks are told to give the note on images only while the setting is on and the installed Codex is a build checked against, in any token mode');
   }
 };

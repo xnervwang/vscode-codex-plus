@@ -461,6 +461,12 @@
           "default": true,
           "markdownDescription": "When a detached command stops, notify the Codex conversation that started it. On Linux only, Codex Plus reads `/proc` to find processes outside Codex with the conversation ID in their environment. It tracks shells, including `nohup` shells that outlive their parents, and programs that `setsid` made session leaders. Commands that stop within a minute of each other share a notice. It lists each command, PID and start time and says the exit codes are unknown. Codex Plus queues notices in a VS Code window with the conversation open, or waits for the conversation to reopen if no window has it open. Pending notices expire after a day. Each starts a turn when idle. Needs the patch. Used only while `#agentPlus.tokenMode#` is Custom."
         },
+        "codexPlus.replyImages": {
+          "scope": "application",
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Show images in replies in Codex's VS Code panel. On by default. When a conversation starts, the plugin tells the model where to save images and how to link them. It repeats the note after each compaction. Turn this off to show `[Image]`; hover to see the path. If the plugin sent that note, it tells the model in the next message that images are no longer shown. Web images show as links with either setting. The links and `[Image]` need the patch. Has no effect when `codexPlus.enabled` is off."
+        },
         "codexPlus.skillsListBudget": {
           "scope": "application",
           "type": "integer",

@@ -22,6 +22,10 @@
  *                a codex exec. The last three need Codex's approval to run outside its sandbox, and the tab shows the
  *                blue dot until it is given. The setsid program also appears in the Agent map, and once the shell or
  *                the program stops, the conversation gets a notice
+ *   images       a reply's images: a PNG and an SVG by absolute path, a file:// URL and a data: URL drawn, an image at
+ *                a web address shown as a plain link; with codexPlus.replyImages off the others are "[Image]", and
+ *                drawn again once it is back on. What the model is told is left to the hook's own self-test, since
+ *                this window does not trust the plugin's hooks
  *   Codex's page what the patch adds there: the time stamps, the rail, the buttons by the message box, the Agent map,
  *                and the Work plan line on the context meter's hover
  *   the brief    a click on the conversation in Agent Plus's Conversations panel shows the brief its plan holds in the
@@ -719,6 +723,61 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         note(`a detached shell, a program setsid started and a codex exec are found through /proc, which ${process.platform} does not have, `
           + 'so none of them is made here' + (process.platform === 'win32' ? '' : ', and no command waits for approval, so the blue dot is not checked'));
       }
+      model.script(null);
+    });
+
+    await step('images', async () => {
+      if (!codex) throw new Error('the conversation did not open');
+      const id = threads[0].id;
+      const zlib = require('zlib');
+      const crcTable = Array.from({ length: 256 }, (_, n) => { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; return c >>> 0; });
+      const crc = (b) => { let c = 0xffffffff; for (const x of b) c = crcTable[(c ^ x) & 0xff] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; };
+      const chunk = (type, data) => { const len = Buffer.alloc(4); len.writeUInt32BE(data.length); const td = Buffer.concat([Buffer.from(type, 'latin1'), data]);
+        const c = Buffer.alloc(4); c.writeUInt32BE(crc(td)); return Buffer.concat([len, td, c]); };
+      const png = (w, h) => {
+        const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(w, 0); ihdr.writeUInt32BE(h, 4); ihdr[8] = 8; ihdr[9] = 2;
+        const row = Buffer.alloc(1 + w * 3);
+        for (let x = 0; x < w; x++) { row[1 + x * 3] = x < w / 2 ? 220 : 30; row[2 + x * 3] = 60; row[3 + x * 3] = x < w / 2 ? 40 : 200; }
+        return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', ihdr),
+          chunk('IDAT', zlib.deflateSync(Buffer.concat(Array.from({ length: h }, () => row)))), chunk('IEND', Buffer.alloc(0))]);
+      };
+      const fwd = (p) => p.replace(/\\/g, '/');
+      const chart = path.join(profile.folder, 'test-chart.png'), diagram = path.join(profile.folder, 'test-diagram.svg');
+      fs.writeFileSync(chart, png(160, 90));
+      fs.writeFileSync(diagram, '<svg xmlns="http://www.w3.org/2000/svg" width="160" height="90"><rect width="80" height="90" fill="#2a2"/>'
+        + '<rect x="80" width="80" height="90" fill="#a2a"/></svg>');
+      const WEB = 'https://example.com/test-logo.png';
+      const reply = `Chart: ![test chart](${fwd(chart)})\n\nDiagram: ![test diagram](${fwd(diagram)})\n\n`
+        + `Same chart: ![test file url](file://${fwd(chart).replace(/^([A-Za-z]):/, '/$1:')})\n\n`
+        + `Inline: ![test inline](data:image/png;base64,${png(12, 12).toString('base64')})\n\nWeb: ![test web](${WEB})`;
+      const send = async (text) => {
+        await codex.locator('[data-codex-composer-root] [contenteditable="true"]').first().click();
+        await page.keyboard.type(text);
+        await page.keyboard.press('Enter');
+      };
+      const drawn = () => codex.evaluate(() => ({
+        imgs: [...document.querySelectorAll('img')].filter((i) => /^test /.test(i.alt)).map((i) => [i.alt, i.naturalWidth > 0 && i.getBoundingClientRect().height > 0]),
+        stands: [...document.querySelectorAll('[data-codex-extras="img-stand"]:not(style)')].map((n) => [n.tagName.toLowerCase(), n.textContent, n.getAttribute('href') || '']),
+      })).catch((e) => ({ error: String(e) }));
+      const bottom = () => codex.evaluate(() => { const s = document.querySelector('[data-app-action-timeline-scroll]'); if (s) s.scrollTop = s.scrollHeight; }).catch(() => {});
+      model.script(id, [{ reply }]);
+      await send('Show the test images.');
+      const shownOn = await until(async () => { await bottom(); const d = await drawn(); return d.imgs && d.imgs.filter((x) => x[1]).length >= 4 && d; }, 30000, 500);
+      check(!!shownOn && ['test chart', 'test diagram', 'test file url', 'test inline'].every((a) => shownOn.imgs.some((x) => x[0] === a && x[1])),
+        'a PNG and an SVG by absolute path, a file:// URL and a data: URL are drawn in the reply', shownOn || await drawn());
+      const linked = await until(async () => { const d = await drawn(); return d.stands && d.stands.some((x) => x[0] === 'a' && x[1] === 'test web' && x[2] === WEB) && d; }, 15000, 500);
+      check(!!linked && !linked.imgs.some((x) => x[0] === 'test web'), 'and the image at a web address is a plain link named by its alt text, with no image of its own',
+        linked || await drawn());
+      await shot('images-on');
+
+      await setting('replyImages', false);
+      const off = await until(async () => { const d = await drawn(); return d.stands && d.stands.filter((x) => x[1] === '[Image]').length >= 4 && d; }, 15000, 500);
+      check(!!off && !off.imgs.some((x) => x[1]), 'with codexPlus.replyImages off the reply\'s other images are "[Image]", and the web link stays',
+        off || await drawn());
+      await shot('images-off');
+      await setting('replyImages', true);
+      const back = await until(async () => { const d = await drawn(); return d.imgs && d.imgs.filter((x) => x[1]).length >= 4 && d; }, 15000, 500);
+      check(!!back, 'turned back on, the images are drawn again', back || await drawn());
       model.script(null);
     });
 

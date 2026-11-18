@@ -33,6 +33,7 @@ Most of what Codex Plus draws in Codex's page, message box and tabs needs the pa
 | The conversation's brief: its summary and where it stands, written by Codex ([The brief](#the-brief)) | Agent Plus's Answer view |
 | Answers to plan questions, sent from Agent Plus into the conversation ([Answering a plan question](#answering-a-plan-question)) | Agent Plus's Answer view; Codex's message box |
 | Your time zone, told to Codex when it runs on another machine ([Your time zone](#your-time-zone)) | Codex's context |
+| Images in replies: a chart or screenshot the model saves, shown in the reply, and web images shown as links ([Images in replies](#images-in-replies)) | Codex conversation; Codex's context |
 | The installed skills that best fit each message, given to Codex before the turn ([Skill search](#skill-search)) | Codex's context; the line under a reply |
 | Wake-ups: prompts the model schedules to keep an idle conversation going ([Wake-ups](#wake-ups)) | Codex conversations open in this window |
 | A list of your Codex conversations laid out like Claude Code's, with groups, search, status dots and account usage ([The session list](#the-session-list)) | Codex sessions view, in the Codex Plus sidebar |
@@ -74,6 +75,12 @@ The answer goes to the conversation's Codex tab, or to Codex's sidebar when the 
 ## Your time zone
 
 When Codex runs on another machine, the plugin tells Codex your time zone, that machine's zone and the current time. It says nothing when Codex's own page (the web page Codex draws its conversation in, in the sidebar or a tab) has told Codex the same zone since the last compaction through `<codex_apps_client_time_context>`. This needs the plugin and the patch. `codexPlus.tellCodexYourTimeZone` turns it off.
+
+## Images in replies
+
+Codex's VS Code panel shows images linked by absolute local paths, `file://` URLs or `data:` URLs. Relative paths do not display images. When `codexPlus.replyImages` is on (the default), the plugin sends the model a note of about 450 characters explaining that the panel shows images. It asks the model to save a PNG or SVG with an ASCII name in the conversation's folder and link to its absolute path. For a web image, it asks the model to download the file into that folder first. The folder is `$CODEX_HOME/scratch/<working directory>/<conversation ID>/`, with each character other than a letter or digit in the working directory replaced by `-`. The plugin sends the note when a panel conversation starts and after each compaction. It skips `codex exec`, terminal conversations and Codex builds that Codex Plus has not been checked against.
+
+Whether the setting is on or off, the patch shows a web image as a plain link. The link text is the image's alt text, or its address if there is no alt text. Codex Plus does not fetch it. With a ChatGPT login, Codex checks the address with OpenAI's service and can load the image before the patch turns it into a link. Turn `codexPlus.replyImages` off and the patch shows other images as `[Image]`, with the path on hover. If it sent the note earlier in the conversation, it tells the model in the next message that the panel no longer shows images. The setting has no effect when `codexPlus.enabled` is off.
 
 ## Skill search
 
@@ -353,6 +360,7 @@ The tables below show the text Codex Plus adds to what Codex sends the model. Al
 | The offer of a plan | Once, in a conversation with no plan, after your third message, in a turn of at least 25 tool calls | About 480 characters and the plan's path | `codexPlus.workPlan`; `codexPlus.workPlanOfferMinTurns`, `codexPlus.workPlanOfferMinToolCalls` |
 | A direct write to the plan, refused | When the model edits the plan file instead of using the tools | About 310 characters | `codexPlus.workPlan` |
 | Your time zone | When Codex runs on another machine and its page has not told it the same zone since the last compaction | About 310 characters | `codexPlus.tellCodexYourTimeZone` |
+| Images in replies | In Codex's VS Code panel, when a conversation starts and after each compaction, while `codexPlus.replyImages` is on and Codex Plus has been checked against the installed Codex; once on the next message after it is turned off, if the conversation was told | About 450 characters, the conversation's folder included; 68 characters for the sentence after it is turned off | `codexPlus.replyImages` |
 | A wake-up | Every interval while one is set, as a message of its own, so a whole turn | The prompt the model set, up to 4,000 characters, every 1 to 1,440 minutes, for 7 days | `codexPlus.wakeUps`; `clear_wakeup` |
 
 - The work plan, the skill search and the wake-up prompt are cut or refused at those sizes by the plugin. The reminders have no cut: each is fixed text with at most six row titles of 60 characters.

@@ -63,9 +63,11 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
   if (planPath.includes(`PLUGIN_DIR_NAME = "${install.DATA_DIR}"`)) ok('the hooks fall back to the same data directory');
   else bad('plan_path.py names a different data directory');
 
-  // The keys Codex 0.164 listed for this plugin's hooks (hooks/list), which uninstalling removes from config.toml.
+  // The keys Codex lists for this plugin's hooks (hooks/list, in the form Codex 0.164 listed them), which uninstalling
+  // removes from config.toml.
   const listed = ['pre_tool_use:0:0', 'post_tool_use:0:0', 'post_tool_use:0:1', 'session_start:0:0', 'session_start:0:1',
-    'user_prompt_submit:0:0', 'user_prompt_submit:0:1', 'user_prompt_submit:0:2', 'stop:0:0', 'stop:0:1', 'stop:0:2']
+    'session_start:0:2', 'user_prompt_submit:0:0', 'user_prompt_submit:0:1', 'user_prompt_submit:0:2', 'user_prompt_submit:0:3',
+    'stop:0:0', 'stop:0:1', 'stop:0:2']
     .map((k) => `${install.PLUGIN_ID}:hooks/hooks.json:${k}`);
   eq(install.hookKeys().sort(), listed.sort(), 'the hook trust keys computed for uninstalling are the ones Codex lists');
   const hooks = JSON.parse(fs.readFileSync(path.join(hooksDir, 'hooks.json'), 'utf8')).hooks;
@@ -103,7 +105,7 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
 
   const py = python();
   if (!py) { note('no Python 3.7+ here: the plugin\'s self-tests and MCP checks did not run'); return; }
-  for (const script of ['changes.py', 'guard-work-plan.py', 'refresh-work-plan.py', 'resume-work-plan.py', 'tell-time-zone.py']) {
+  for (const script of ['changes.py', 'guard-work-plan.py', 'refresh-work-plan.py', 'resume-work-plan.py', 'tell-time-zone.py', 'tell-reply-images.py']) {
     const r = cp.spawnSync(py, [path.join(hooksDir, script), '--selftest'], { encoding: 'utf8', env: { ...process.env, PYTHONDONTWRITEBYTECODE: '1' } });
     if (r.status === 0 && /all checks pass/.test(r.stdout)) ok(`${script} self-test`);
     else bad(`${script} self-test failed:\n${(r.stdout + r.stderr).split('\n').filter((l) => /FAIL|Error/.test(l)).join('\n')}`);

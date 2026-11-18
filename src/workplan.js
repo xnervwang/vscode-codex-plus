@@ -86,7 +86,7 @@ function liveSessions(home = files.codexHome()) {
  * left by a writer killed before its rename.
  */
 const SIDE_SUFFIXES = ['.json', '.offered', '.nudged', '.settled', '.turn', '.watermark', '.tz', '.wakeup', '.woke', '.compacted',
-  '.briefed', '.injected', '.routed'];
+  '.briefed', '.injected', '.routed', '.images-told'];
 const CLOSED_DIR = 'closed';
 const SIDE_FILE = new RegExp('^[0-9a-f][0-9a-f-]{7,}(?:' + SIDE_SUFFIXES.map((s) => s.replace('.', '\\.')).join('|') + ')$', 'i');
 const PLAN_FILE = /^[0-9a-f][0-9a-f-]{7,}\.json$/i;

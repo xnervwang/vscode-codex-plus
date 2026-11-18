@@ -5,6 +5,7 @@
         "hooks": [
           { "type": "command", "command": "python3 \"$PLUGIN_ROOT/hooks/inject-work-plan.py\" \"$PLUGIN_DATA\"", "timeout": 30 },
           { "type": "command", "command": "python3 \"$PLUGIN_ROOT/hooks/tell-time-zone.py\" \"$PLUGIN_DATA\"", "timeout": 30 },
+          { "type": "command", "command": "python3 \"$PLUGIN_ROOT/hooks/tell-reply-images.py\" \"$PLUGIN_DATA\"", "timeout": 30 },
           { "type": "command", "command": "python3 \"$PLUGIN_ROOT/hooks/route-skills.py\" \"$PLUGIN_DATA\"", "timeout": 10, "additionalContextLimit": 4000 }
         ]
       }
@@ -39,7 +40,8 @@
         "matcher": "compact",
         "hooks": [
           { "type": "command", "command": "python3 \"$PLUGIN_ROOT/hooks/resume-work-plan.py\" \"$PLUGIN_DATA\"", "timeout": 30 },
-          { "type": "command", "command": "python3 \"$PLUGIN_ROOT/hooks/tell-time-zone.py\" \"$PLUGIN_DATA\"", "timeout": 30 }
+          { "type": "command", "command": "python3 \"$PLUGIN_ROOT/hooks/tell-time-zone.py\" \"$PLUGIN_DATA\"", "timeout": 30 },
+          { "type": "command", "command": "python3 \"$PLUGIN_ROOT/hooks/tell-reply-images.py\" \"$PLUGIN_DATA\"", "timeout": 30 }
         ]
       }
     ]
