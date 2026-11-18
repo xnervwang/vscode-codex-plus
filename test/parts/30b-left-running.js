@@ -126,8 +126,8 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
     fs.appendFileSync(f, rows([{ timestamp: at(9), type: 'event_msg', payload: { type: 'item_completed', thread_id: 'x', turn_id: 't1',
       item: { type: 'CommandExecution', id: 'w1', status: 'completed', exit_code: 0 } } }]));
     const closed = files.rolloutState(f);
-    eq([open.working, open.openCommands, closed.openCommands], [false, 1, 0],
-      'a command still running when its turn ended is open until Codex writes its item_completed, which it does after the turn as well');
+    eq([open.working, open.openCommands, open.openCommandIds, closed.openCommands, closed.openCommandIds], [false, 1, ['w1'], 0, []],
+      'a command still running when its turn ended is open, by its call id, until Codex writes its item_completed, which it does after the turn as well');
   });
 
   /* Which state wins, in Claude Code Plus's order: waiting for the user, then running, then unread. */
@@ -193,6 +193,36 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
       by = await listed();
       eq(by.get('Other').state, 'idle', 'a window that must not scan, such as one replaced by a newer build, finds nothing');
       gone(70);
+    } finally { source.dispose(); reader.dispose(); }
+  });
+
+  /* With no /proc, a command the rollout last showed as still running counts as a background command, unless this
+     window's app-server reported its start or its end. On macOS and Windows Codex writes nothing to the rollout when it exits. */
+  await section('the source without /proc', async () => {
+    const home = tmp('home-noproc');
+    const now = Date.now();
+    const [made] = fixture.codexHome(home, [{ title: 'Watcher', startMs: now - 300e3, turns: [{}] }]);
+    fs.appendFileSync(made.rollout, rows([call('w9', 'npm run watch'),
+      { timestamp: new Date().toISOString(), type: 'response_item', payload: { type: 'function_call_output', call_id: 'w9',
+        output: 'Chunk ID: 2\nWall time: 1.0 seconds\nProcess running with session ID 62\nOutput:\n' } },
+      { timestamp: new Date().toISOString(), type: 'event_msg', payload: { type: 'task_complete', turn_id: 'x', completed_at: Math.floor(Date.now() / 1000) } }]));
+    const files = require('../../src/codex-files');
+    files.setCodexHome(home);
+    process.env.CODEX_HOME = home;
+    const { CodexReader } = require('../../src/codex-reader');
+    const { createCodexSource } = require('../../src/codex-source');
+    const reader = new CodexReader({ inline: true });
+    let reported = [];
+    const patching = { panelThreads: () => [], approvalsOf: () => null, sidebarThread: () => '', runningCommands: () => [],
+      heardCommand: (id) => reported.includes(id) };
+    const source = createCodexSource(vscode, { reader, patching, scanLeft: () => true, leftEveryMs: 0, procDir: tmp('no-proc'), claudeSessions: sessionsDir });
+    try {
+      const listed = async () => { await source._poll({ force: true }); await source._leftDone(); return (await source.listConversations()).find((c) => c.title === 'Watcher'); };
+      const before = await listed();
+      reported = ['w9'];
+      const after = await listed();
+      eq([before.state, before.left, after.state, after.left], ['working', ['command'], 'idle', []],
+        'a command the rollout leaves open keeps the conversation working, until this window\'s app-server has reported its end');
     } finally { source.dispose(); reader.dispose(); }
   });
 

@@ -17,9 +17,9 @@
  *                cancelled and then accepted, and the rollout gone from the Codex home
  *   a tab        a conversation resumed in a tab from the list: its title, then the dot on its logo during a turn sent
  *                through fake-model.js, and after the reply arrives while the tab is in the background
- *   left running what a turn leaves running keeps its conversation green, on the tab and in the session list, until it
- *                ends: a background command and a sub-agent, and on Linux a detached shell and a codex exec, each of
- *                which first shows the blue dot while Codex asks to run it outside its sandbox
+ *   left running a conversation stays green, on its tab and in the session list, until what its turn started has ended:
+ *                a background command, a sub-agent, and on Linux a detached shell and a codex exec. Those two run
+ *                outside Codex's sandbox, so Codex asks first, and the tab shows the blue dot meanwhile
  *   Codex's page what the patch adds there: the time stamps, the rail, the buttons by the message box, the Agent map,
  *                and the Work plan line on the context meter's hover
  *   the brief    a click on the conversation in Agent Plus's Conversations panel shows the brief its plan holds in the

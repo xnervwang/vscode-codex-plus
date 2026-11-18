@@ -347,7 +347,8 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
   }
   /* The kinds still running for `id` and its sub-agents, in KINDS order. They come from the worker's last scan, from
      sub-agents with a turn in progress, from commands this window's app-server is still running, and, when /proc
-     could not be read, from commands the rollout shows as not yet finished. */
+     could not be read, from commands the rollout shows as not yet finished that this window's app-server has not
+     reported on. */
   const turnRunning = (id, now) => {
     const t = reader.thread(id), st = reader.state(id);
     if (!t || !st) return false;
@@ -357,6 +358,9 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
   const commandsHere = (id) => {
     if (!patching || typeof patching.runningCommands !== 'function') return false;
     try { return patching.runningCommands(id).length > 0; } catch (_) { return false; }
+  };
+  const heardHere = (call) => {
+    try { return !!(patching && typeof patching.heardCommand === 'function' && patching.heardCommand(call)); } catch (_) { return false; }
   };
   function familyOf(id, kids) {
     const out = [id];
@@ -380,7 +384,8 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
       if (commandsHere(x)) kinds.add('command');
       if (leftSeen && leftSeen.available === false) {
         const st = reader.state(x), t = reader.thread(x);
-        if (st && st.openCommands > 0 && now - lastOf(t, st, null) < STALE_WORKING_MS) kinds.add('command');
+        const open = st && Array.isArray(st.openCommandIds) ? st.openCommandIds.filter((c) => !heardHere(c)) : [];
+        if (open.length && now - lastOf(t, st, null) < STALE_WORKING_MS) kinds.add('command');
       }
     }
     return KINDS.filter((k) => kinds.has(k));

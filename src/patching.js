@@ -655,9 +655,15 @@ function compactThread(thread, opts) {
  */
 const COMMANDS_KEPT = 100;
 const commands = new Map();
+/* The ids of the commands this window's app-server has reported starting or ending, the most recent HEARD_KEPT. */
+const HEARD_KEPT = 1000;
+const heard = new Set();
 function noteCommand(msg) {
   const method = msg && msg.method, p = (msg && msg.params) || {}, item = p.item || {};
   if ((method !== 'item/started' && method !== 'item/completed') || item.type !== 'commandExecution' || !item.id) return false;
+  heard.delete(item.id);
+  heard.add(item.id);
+  while (heard.size > HEARD_KEPT) heard.delete(heard.values().next().value);
   if (method === 'item/completed') return commands.delete(item.id);
   if (item.source !== 'unifiedExecStartup') return false;
   commands.set(item.id, { thread: String(p.threadId || ''), command: String(item.command || ''), cwd: String(item.cwd || ''),
@@ -669,6 +675,8 @@ function noteCommand(msg) {
 function runningCommands(thread) {
   return [...commands.values()].filter((c) => !thread || c.thread === thread).sort((a, b) => a.startedMs - b.startedMs);
 }
+/** Whether this window's app-server has reported on the command whose item id (the rollout's call_id) is `id`. */
+const heardCommand = (id) => heard.has(String(id || ''));
 
 /*
  * The strip's figures: only what is said nowhere else. A turn's duration is Codex's own "Worked for", and the context,
@@ -1228,5 +1236,5 @@ function activate(context, opts) {
 module.exports = { activate, ensurePatched, statusLines, openInSidebar, canType, canDeliver, deliver, sidebarThread, panelThreads, shownIn,
   nowShowing, revealPanel, removePatch, NOT_SUPPORTED_MESSAGE, SHOW_DETAILS,
   figuresOf, usageOf, compactThread, hostRequest, safeColor, viewOf, selfCheckPage, selfCheckLines, installHooks, refreshPanels, approvalsOf,
-  onApprovalsChanged, offerReloadIfStale, sidebarShowing, onSidebarChanged, onPanelClosed, onAccountNotification, onAppServerNotification, runningCommands, turnEndChime, turnHeard, _state: () => state, _registry: registry, _approvals: approvals,
+  onApprovalsChanged, offerReloadIfStale, sidebarShowing, onSidebarChanged, onPanelClosed, onAccountNotification, onAppServerNotification, runningCommands, heardCommand, turnEndChime, turnHeard, _state: () => state, _registry: registry, _approvals: approvals,
   TAB_DOTS, ASK_MS, PATCH_REMOVED_KEY };
