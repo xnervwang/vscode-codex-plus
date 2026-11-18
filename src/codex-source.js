@@ -366,10 +366,10 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
   };
   /*
    * Without /proc, the item ids of the background terminals this window's app-server still runs for each conversation,
-   * kept as { ids, at }. ids is null when the app-server did not answer: it has not loaded the conversation, or this
-   * Codex does not hand over its connection, as on Windows. The rollout records no end for a background command on
-   * macOS and Windows, and a window reloaded while one ran has lost its notifications, so wherever the app-server
-   * answers, its list decides. Each conversation is asked at most once every TERMINALS_MS.
+   * kept as { ids, at }. ids is null when the app-server did not answer, as for a conversation it has not loaded. The
+   * rollout records no end for a background command on macOS and Windows, and a window reloaded while one ran has lost
+   * its notifications, so wherever the app-server answers, its list decides. Each conversation is asked at most once
+   * every TERMINALS_MS.
    */
   const terminals = new Map();
   const TERMINALS_MS = 5000;

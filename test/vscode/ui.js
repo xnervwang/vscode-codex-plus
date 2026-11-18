@@ -56,6 +56,13 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
   let shotNo = 0;
   const w = await win.open({ exe, profile, env, playwright, log: path.join(out, 'vscode-window.log') });
   const { page, call } = w;
+  /* The start of a call that reads the extension's own copy of one of its modules: own('patching'). On Windows the host
+     loaded them under a drive letter of another case than extensionPath gives, and a require by that path loads a
+     second copy that never ran. */
+  const OWN = `const mine = vscode.extensions.getExtension('xnervwang.codex-plus');
+    const own = (m) => { const file = require('path').join(mine.extensionPath, 'src', m + '.js');
+      const k = Object.keys(require.cache).find((x) => x.toLowerCase() === file.toLowerCase());
+      return k ? require.cache[k].exports : require(file); };`;
   const shot = (name) => page.screenshot({ path: path.join(shotsDir, `${String(++shotNo).padStart(2, '0')}-${name}.png`) }).catch(() => {});
   const step = async (name, fn) => {
     console.log(`\n── ${name}`);
@@ -417,8 +424,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         return !!(g && g.querySelector(`.cp-row[data-id="${id}"]`));
       }, threads[1].id), 20000, 500);
       check(!!moved, 'and clicking the group moves the row into it', moved ? undefined : { toasts: await toasts(), codex: await call(`
-        const mine = vscode.extensions.getExtension('xnervwang.codex-plus');
-        const p = require(require('path').join(mine.extensionPath, 'src', 'patching'));
+        ${OWN}
+        const p = own('patching');
         return { sections: await p.hostRequest('threadSection/list', {}),
           thread: await p.hostRequest('thread/read', { threadId: arg }) };`, threads[1].id).catch((e) => e.message) });
       await shot('session-row-grouped');
@@ -627,16 +634,16 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         check(!!await until(async () => !await card(), 10000, 300), `${name}: and approving it there lets the command run`, await card());
       };
       /* The command items this window's app-server reports, kept for why() below. */
-      await call(`const mine = vscode.extensions.getExtension('xnervwang.codex-plus');
-        const p = require(require('path').join(mine.extensionPath, 'src', 'patching'));
+      await call(`${OWN}
+        const p = own('patching');
         globalThis.__cxpTestCommandNotes = [];
         p.onAppServerNotification((m, q) => { const it = (q && q.item) || {};
           if (/^item\\//.test(m) && it.type === 'commandExecution') globalThis.__cxpTestCommandNotes.push([m, it.id, it.source, it.status].join(' ')); });
         return true;`).catch(() => false);
       /* What this window's host and the rollout say of the conversation's commands, for a green that does not leave. */
       const why = async () => {
-        const here = await call(`const mine = vscode.extensions.getExtension('xnervwang.codex-plus');
-          const req = (m) => require(require('path').join(mine.extensionPath, 'src', m));
+        const here = await call(`${OWN}
+          const req = own;
           const files = req('codex-files'), rollout = files.rolloutOf(arg);
           const st = rollout ? files.rolloutState(rollout) : null;
           const bt = await req('patching').hostRequest('thread/backgroundTerminals/list', { threadId: arg });
@@ -653,13 +660,6 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
           });
         } catch (e) { tail = [String(e)]; }
         return { here, tail };
-      };
-      /* Whether Codex lets this extension make requests on its app-server connection; on Windows it does not. */
-      const handedOver = async () => {
-        const r = await call(`const mine = vscode.extensions.getExtension('xnervwang.codex-plus');
-          const p = require(require('path').join(mine.extensionPath, 'src', 'patching'));
-          return await p.hostRequest('thread/loaded/list', {});`).catch(() => null);
-        return !(r && r.outcome === 'unavailable');
       };
       const pillText = () => codex.evaluate(() => ((document.querySelector('[data-codex-extras="agents"]') || {}).textContent || ''))
         .catch(() => '');
@@ -684,10 +684,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         if (during) await during();
         if (end) end();
         const gone = await until(async () => { const g = await now(); return !g.tab && !g.row && !g.running.includes(words) && g; }, ms, 1000);
-        if (!gone && process.platform === 'win32' && !await handedOver()) {
-          note(`${name}: the green stays after it has finished, because Codex on Windows does not hand over its app-server connection, `
-            + 'so Codex Plus hears no command notifications and cannot ask which background terminals still run, and the rollout records no end');
-        } else check(!!gone, `${name}: once that has finished, the green leaves both`, gone || { ...await now(), ...await why() });
+        check(!!gone, `${name}: once that has finished, the green leaves both`, gone || { ...await now(), ...await why() });
         if (notice) {
           const told = await until(() => model.sent('Codex Plus notice') > notices && model.sent(notice) > 0, 60000, 1000);
           check(!!told, `${name}: and the conversation is sent a notice that it is no longer running, naming it and saying its exit code `
