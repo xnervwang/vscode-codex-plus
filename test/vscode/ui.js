@@ -635,8 +635,10 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
           const req = (m) => require(require('path').join(mine.extensionPath, 'src', m));
           const files = req('codex-files'), rollout = files.rolloutOf(arg);
           const st = rollout ? files.rolloutState(rollout) : null;
+          const bt = await req('patching').hostRequest('thread/backgroundTerminals/list', { threadId: arg });
           return { commands: req('patching').runningCommands(arg).map((c) => c.command.slice(0, 60)), open: st && st.openCommandIds,
-            working: st && st.working, notes: (globalThis.__cxpTestCommandNotes || []).slice(-8) };`, id).catch((e) => String(e));
+            working: st && st.working, notes: (globalThis.__cxpTestCommandNotes || []).slice(-8), terminals: JSON.stringify(bt).slice(0, 300) };`, id)
+          .catch((e) => String(e));
         let tail = [];
         try {
           const sessions = path.join(profile.codexHome, 'sessions');

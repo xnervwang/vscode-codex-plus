@@ -459,7 +459,7 @@
           "scope": "application",
           "type": "boolean",
           "default": true,
-          "markdownDescription": "Tell a Codex conversation when a command it left running detached is no longer running: a shell, or a program `setsid` made the leader of its own session, outside Codex, found through /proc on Linux. The notice is put in the conversation's queue in a window that has it open, and Codex sends it once the conversation is idle; it names each command, its pid and when it started, and says that its exit code cannot be known. A conversation open in no window gets its notices when it is next opened, within a day. Needs the patch. Used only while `#agentPlus.tokenMode#` is Custom."
+          "markdownDescription": "When a detached command stops, notify the Codex conversation that started it. On Linux only, Codex Plus reads `/proc` to find processes outside Codex with the conversation ID in their environment. It tracks shells, including `nohup` shells that outlive their parents, and programs that `setsid` made session leaders. Commands that stop within a minute of each other share a notice. It lists each command, PID and start time and says the exit codes are unknown. Codex Plus queues notices in a VS Code window with the conversation open, or waits for the conversation to reopen if no window has it open. Pending notices expire after a day. Each starts a turn when idle. Needs the patch. Used only while `#agentPlus.tokenMode#` is Custom."
         },
         "codexPlus.skillsListBudget": {
           "scope": "application",
