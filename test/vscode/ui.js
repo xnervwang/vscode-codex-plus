@@ -17,6 +17,9 @@
  *                cancelled and then accepted, and the rollout gone from the Codex home
  *   a tab        a conversation resumed in a tab from the list: its title, then the dot on its logo during a turn sent
  *                through fake-model.js, and after the reply arrives while the tab is in the background
+ *   left running what a turn leaves running keeps its conversation green, on the tab and in the session list, until it
+ *                ends: a background command and a sub-agent, and on Linux a detached shell and a codex exec, each of
+ *                which first shows the blue dot while Codex asks to run it outside its sandbox
  *   Codex's page what the patch adds there: the time stamps, the rail, the buttons by the message box, the Agent map,
  *                and the Work plan line on the context meter's hover
  *   the brief    a click on the conversation in Agent Plus's Conversations panel shows the brief its plan holds in the
@@ -31,6 +34,7 @@ const path = require('path');
 const win = require('./lib/window');
 const { baselines } = require('./lib/baseline');
 const pixels = require('./lib/pixels');
+const { codexBinary } = require('../../src/appserver');
 
 const { sleep, until } = win;
 const TITLES = { tab: 'Codex Plus: New Codex Conversation in a Tab', sidebar: 'Codex Plus: Open Codex Sidebar', codex: 'Open Codex Sidebar' };
@@ -586,7 +590,80 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       if (read || inFront) check(!!read, 'and bringing the tab to the front clears it', { dots: await dotsOn(title), windowFocused: inFront });
       else note(`the window does not have the system's focus on ${process.platform}, so the reply stays unread, as it should; clearing the dot was not checked`);
       await shot('tab-dot-read');
-      note('the blue dot of a turn waiting for approval is not made here: the made-up model sends replies only, never a command to approve');
+    });
+
+    await step('work left running after a turn', async () => {
+      if (!codex || !list) throw new Error('the conversation or the session list did not open');
+      const id = threads[0].id;
+      const rowNow = () => list.evaluate((want) => {
+        const r = document.querySelector(`.cp-row[data-id="${want}"]`);
+        return r && r._row ? { dot: String(r._row.dot || ''), running: String(r._row.running || '') } : null;
+      }, id).catch(() => null);
+      const now = async () => {
+        const d = await dotsOn(title), r = await rowNow();
+        return { tab: !!d && d.working >= 6, row: !!r && /^working/.test(r.dot), running: (r && r.running) || '', dots: d, rowDot: r && r.dot };
+      };
+      const send = async (text) => {
+        await codex.locator('[data-codex-composer-root] [contenteditable="true"]').first().click();
+        await page.keyboard.type(text);
+        await page.keyboard.press('Enter');
+      };
+      const card = () => codex.evaluate(() => {
+        const s = document.querySelector('[data-codex-approval-surface]');
+        return s ? { text: s.innerText.slice(0, 300), buttons: [...s.querySelectorAll('button')].map((b) => b.innerText.trim()).filter(Boolean) } : null;
+      }).catch(() => null);
+      const approve = async (name) => {
+        const shown = await until(card, 20000, 300);
+        check(!!shown, `${name}: Codex shows its card asking to run the command outside the sandbox`);
+        if (!shown) return;
+        note(`${name}: the card reads ${JSON.stringify(shown)}`);
+        const buttons = codex.locator('[data-codex-approval-surface] button');
+        const yes = buttons.filter({ hasText: /^(Yes|Allow once|Allow this time|Approve|Run)\b/ }).first();
+        if (await yes.count()) await yes.click();
+        const submit = buttons.filter({ hasText: /^Submit$/ }).first();
+        if (await submit.count()) await submit.click();
+        check(!!await until(async () => !await card(), 10000, 300), `${name}: and approving it there lets the command run`, await card());
+      };
+      const leftCase = async ({ name, words, steps, ask, end, ms = 45000 }) => {
+        model.script(id, steps);
+        await send(`Start the ${name} and come back.`);
+        if (ask) {
+          const blue = await until(async () => { const d = await dotsOn(title); return d && d.prompt >= 6 && d; }, 20000, 500);
+          check(!!blue, `${name}: while Codex waits for the approval, the tab's logo carries the blue dot`, await dotsOn(title));
+          await shot(`left-${name.replace(/\W+/g, '-')}-approval`);
+          await approve(name);
+        }
+        const after = await until(async () => { const g = await now(); return model.left() === 0 && g.running.includes(words) && g.tab && g.row && g; }, 40000, 500);
+        check(!!after, `${name}: after its turn has ended, the tab's logo and the conversation's row in the session list stay green, and the row's hover says "${words}"`,
+          { left: model.left(), ...await now() });
+        await shot(`left-${name.replace(/\W+/g, '-')}`);
+        if (end) end();
+        const gone = await until(async () => { const g = await now(); return !g.tab && !g.row && !g.running.includes(words) && g; }, ms, 1000);
+        check(!!gone, `${name}: once that has finished, the green leaves both`, await now());
+      };
+      await leftCase({ name: 'background command', words: 'A background command is still running',
+        steps: [{ call: 'exec_command', args: { cmd: process.platform === 'win32' ? 'Start-Sleep -Seconds 25' : 'sleep 25', yield_time_ms: 1000 } },
+          { reply: 'Started the job.' }] });
+      await leftCase({ name: 'sub-agent', words: 'A sub-agent is still running', end: () => model.releaseOthers(),
+        steps: [{ call: 'spawn_agent', namespace: 'collaboration', args: { task_name: 'job', message: 'Wait for the job.', fork_turns: 'none' } },
+          { reply: 'Started a helper.' }] });
+      if (process.platform === 'linux') {
+        const outside = (cmd) => ({ call: 'exec_command', args: { cmd, yield_time_ms: 1000, sandbox_permissions: 'require_escalated',
+          justification: 'Start the job outside the sandbox.' } });
+        await leftCase({ name: 'detached shell', words: 'A command it detached is still running', ask: true, ms: 70000,
+          steps: [outside("setsid nohup bash -c 'sleep 45; true' >/dev/null 2>&1 &"), { reply: 'Started the job.' }] });
+        const ext = fs.readdirSync(profile.exts).find((d) => d.startsWith('openai.chatgpt-'));
+        const bin = ext ? codexBinary(path.join(profile.exts, ext)) : '';
+        check(!!bin, 'the codex program of the Codex extension is found, for a codex exec to start', profile.exts);
+        if (bin) {
+          await leftCase({ name: 'codex exec', words: 'A codex exec it started is still running', ask: true, end: () => model.releaseOthers(),
+            steps: [outside(`setsid nohup '${bin}' exec --skip-git-repo-check 'Wait for the job.' >/dev/null 2>&1 &`), { reply: 'Started a worker.' }] });
+        }
+      } else {
+        note(`a detached shell and a codex exec are found through /proc, which ${process.platform} does not have, so neither is made here,`
+          + ' and neither is the blue dot of a command waiting for approval');
+      }
+      model.script(null);
     });
 
     await step('the brief', async () => {
