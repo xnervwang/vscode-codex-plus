@@ -2383,17 +2383,17 @@
   }
 
   /*
-   * Images in replies. Codex draws an image a reply links to when it is a local file or a data: URL. An image at a web
-   * address it loads only after a server-side check that needs a ChatGPT login, and otherwise draws a disabled
-   * placeholder. This turns each image at a web address into a plain link, so nothing is fetched from it and the address
-   * can still be opened. While codexPlus.replyImages is off (view.replyImages) it also turns the others into "[Image]",
-   * with the path in the hover, as Claude Code's panel shows an image it does not draw.
+   * Images in replies. Codex itself draws a reply's image when the link is a local file or a data: URL. An image at a
+   * web address it loads only after a server-side check that needs a ChatGPT login, and otherwise draws a disabled
+   * placeholder. This script turns those into plain links, so nothing is fetched from them and the address can still be
+   * opened. While codexPlus.replyImages is off (view.replyImages) it also turns the others into "[Image]", with the
+   * path in the hover, as Claude Code's panel does.
    *
    * The address is not in the page, since the placeholder carries only the alt text. It is read from the props React
    * keeps on the element: the nearest component above it given both `src` and `blockRemoteMedia`, which is Codex's
-   * markdown media component. An element whose props cannot be read is left as Codex drew it.
+   * markdown media component.
    */
-  var IMG_HIDDEN = MARK + '-img-hidden', IMG_SRC = MARK + '-img-src', IMG_STAND = 'img-stand', IMG_UP = 16;
+  var IMG_HIDDEN = MARK + '-img-hidden', IMG_SRC = MARK + '-img-src', IMG_STAND = 'img-stand', IMG_UP = 60;
   var REMOTE = /^(?:https?:)?\/\//i;
   function mediaOf(el) {
     var key = null;

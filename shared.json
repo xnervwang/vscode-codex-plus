@@ -1,5 +1,5 @@
 {
-  "core": "daecf7b4a73363ae58e933b68e516353053c4318",
+  "core": "99e3fee8466627fa5fde891f71274a6eb3fc16a2",
   "files": [
     {
       "path": "build/sync-shared.js",
@@ -119,7 +119,7 @@
     {
       "path": "codex-plugin/agent-work-plan/hooks/tell-reply-images.py",
       "from": "shared/plugin/hooks/tell-reply-images.py",
-      "sha256": "2d47762f8022936ea8910ff86c351cc8ea6cb2bd9b4c85a6ac426f1c2eecfa5b"
+      "sha256": "947eefd17bf915d6feb4443cafb0b5a384889913d89a93dc2042c066a199f9ef"
     },
     {
       "path": "codex-plugin/agent-work-plan/hooks/nudge-work-plan.py",

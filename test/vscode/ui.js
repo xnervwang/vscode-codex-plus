@@ -758,6 +758,13 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       const drawn = () => codex.evaluate(() => ({
         imgs: [...document.querySelectorAll('img')].filter((i) => /^test /.test(i.alt)).map((i) => [i.alt, i.naturalWidth > 0 && i.getBoundingClientRect().height > 0]),
         stands: [...document.querySelectorAll('[data-codex-extras="img-stand"]:not(style)')].map((n) => [n.tagName.toLowerCase(), n.textContent, n.getAttribute('href') || '']),
+        /* For a check that fails: how far up each image's React fibers the media component is, and whether it sits in a reply. */
+        depth: [...document.querySelectorAll('img')].filter((i) => /^test /.test(i.alt)).map((i) => {
+          const key = Object.keys(i).find((k) => k.startsWith('__reactFiber$'));
+          let f = key ? i[key] : null, n = 0;
+          for (; f && n < 120; n++, f = f.return) { const p = f.memoizedProps; if (p && typeof p === 'object' && typeof p.src === 'string' && 'blockRemoteMedia' in p) break; }
+          return [i.alt, key ? (f ? n : -1) : 'no fiber', !!i.closest('[data-response-annotation-target]')];
+        }),
       })).catch((e) => ({ error: String(e) }));
       const bottom = () => codex.evaluate(() => { const s = document.querySelector('[data-app-action-timeline-scroll]'); if (s) s.scrollTop = s.scrollHeight; }).catch(() => {});
       model.script(id, [{ reply }]);
