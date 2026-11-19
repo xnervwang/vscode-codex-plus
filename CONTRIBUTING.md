@@ -22,7 +22,7 @@
 - `src/edits.js`, `src/host.js`, `src/webview-inject.js`, `src/manifest.js`, `src/adapters.js`, `src/patching.js`, `uninstall.js`, `src/uninstall-plan.js`: the patch to Codex and its use, and which editors' Codex an uninstall puts back.
 - `src/page/codex-extras-page.js`: the script added to Codex's page; it also takes the layout sample (the structure of the conversation's DOM, with none of its text) for the render check, since the page is where Codex's run-time structure exists at all.
 - `test/render/`: the render check ([The render check](#the-render-check)): stand-ins for VS Code and Codex's host in the page, an offline app-server, a made-up conversation, and the measurements.
-- `test/vscode/`: what the `.github/workflows/vscode.yml` workflow runs: `run.js` (the runner), `ui.js` (the window, driven through Playwright), `suite/` (checks inside VS Code), `helper/` (the vscode API for `ui.js`), `lib/`, `baseline/<platform>/` (the approved crops) and `update-baseline.js`.
+- `test/vscode/`: what the `.github/workflows/vscode.yml` workflow runs: `run.js` (the runner), `ui.js` (the window, driven through Playwright), `suite/` (checks inside VS Code), `helper/` (the vscode API for `ui.js`), `lib/`, `baseline/<platform>/` (the approved crops) and `update-baseline.js`; `readme-shots.js`, which takes the README's screenshots and is not run by the workflow.
 - `src/open-times.js`: how long Codex's pages took to open, from the `app_start` spans Codex writes to its own `Codex.log`.
 - `images/codex-light.svg`, `images/codex-dark.svg`: the tab bar button, the Codex mark from `images/icon.svg`.
 
@@ -38,6 +38,7 @@
 - `test/parts/45-core.js`: this extension and Agent Plus together; needs its checkout beside this one, or `AGENT_WORK_PLAN_DIR`.
 - `node test/against-core.js`: the protocol major against the newest Agent Plus on the marketplace.
 - `bash build/pack.sh`: runs the suite and builds the `.vsix`.
+- `xvfb-run -a -s "-screen 0 3200x2000x24" node test/vscode/readme-shots.js --pack <demo pack> --vsix <.vsix> [--core <Agent Plus .vsix>] [--out <dir>] [--cache <dir>] [<shot> ...]`: takes the README's screenshots in `images/shots/` from a demo pack (a demo project and demo Codex conversations, which `pack.json` names), in a VS Code whose homes are all under `/tmp/codex-plus-demo`. Needs `@vscode/test-electron` and `playwright-core`, as `run.js` does. Look at every shot, and check that the copied records under `/tmp/codex-plus-demo` hold no path of your own home, before committing them.
 - `node build/plan-health.js [--days N] [--home <CODEX_HOME>] [--json]`: over the plans written in the last N days (14 by default), how many of their rows are stale (`doing` while the conversation is running no turn) or incomplete (`waiting` without saying on whom). It counts rather than passing or failing, so run it before and after a change with the same `--days`. It stays in `build/`, which `pack.sh` does not copy, because it reads a person's plans.
 
 ### On CI

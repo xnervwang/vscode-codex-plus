@@ -54,6 +54,8 @@ Codex conversations appear in Agent Plus's Work plan, Conversations and Answer v
 
 Agent Plus's Work plan view shows the plan, which Codex receives with every message. Each conversation's plan is a file, `<conversation ID>.json` (the thread ID the [information button](#the-information-button) shows), in the work plan plugin's data folder, `plugins/data/agent-work-plan-codex-extras/` in Codex's home folder (`~/.codex` unless you set another).
 
+![Agent Plus's Work plan view for a Codex conversation, with done, to-do and parked rows](images/shots/work-plan.png)
+
 The work plan needs the work plan plugin, which Codex Plus installs into Codex, and needs its hooks to be trusted. Codex changes rows with the plugin's `set_row` and `add_row` tools, and changes the brief with `set_summary` and `set_status`. These tools come from the plugin's MCP server, a process the plugin runs that offers Codex tools through the Model Context Protocol. Calling them needs no sandbox approval. If Codex edits the plan file directly, the edit is refused.
 
 At the end of a turn, the plugin reminds Codex about rows left `doing` (in progress), a reply that asks you something without putting the question on a row, and a plan not brought up to date. Before automatic compaction, it reminds Codex to update `doing` rows when the context reaches 70% and 85% of the point where Codex compacts. Codex compacts at 90% of the model's context window, or at `model_auto_compact_token_limit` in Codex's `config.toml` when that is lower. After compaction, the plugin points Codex to the plan. `codexPlus.workPlanQuietWhenReplyMatches`, a regular expression, keeps these reminders quiet when the latest reply matches it, for conversations that relay another model's replies word for word.
@@ -79,6 +81,8 @@ When Codex runs on another machine, the plugin tells Codex your time zone, that 
 ## Images in replies
 
 Codex's VS Code panel shows images linked by absolute local paths, `file://` URLs or `data:` URLs. Relative paths do not display images. When `codexPlus.replyImages` is on (the default), the plugin sends the model a note of about 450 characters explaining that the panel shows images. It asks the model to save a PNG or SVG with an ASCII name in the conversation's folder and link to its absolute path. For a web image, it asks the model to download the file into that folder first. The folder is `$CODEX_HOME/scratch/<working directory>/<conversation ID>/`, with each character other than a letter or digit in the working directory replaced by `-`. The plugin sends the note when a panel conversation starts and after each compaction. It skips `codex exec`, terminal conversations and Codex builds that Codex Plus has not been checked against.
+
+![A Codex reply showing a bar chart the model saved as a PNG file](images/shots/images-in-replies.png)
 
 Whether the setting is on or off, the patch shows a web image as a plain link. The link text is the image's alt text, or its address if there is no alt text. Codex Plus does not fetch it. With a ChatGPT login, Codex checks the address with OpenAI's service and can load the image before the patch turns it into a link. Turn `codexPlus.replyImages` off and the patch shows other images as `[Image]`, with the path on hover. If it sent the note earlier in the conversation, it tells the model in the next message that the panel no longer shows images. The setting has no effect when `codexPlus.enabled` is off.
 
@@ -152,6 +156,8 @@ Wake-ups go only to Codex conversations open in this window. A conversation open
 ## The session list
 
 The Codex sessions view in the Codex Plus sidebar lists your Codex conversations. It follows the layout of Claude Code's list in Claude Code Plus, this extension's counterpart for Claude Code, and uses your theme's colours. `codexPlus.sessionList` hides the view.
+
+![The Codex sessions view: the open sessions, the session manager and the Ungrouped group](images/shots/session-list.png)
 
 ### Sections
 
@@ -241,9 +247,13 @@ The time appears above every message and reply block in your own time zone, incl
 
 Beside each reply's time, you see that turn's share of the context window (see [The context meter](#the-context-meter)), model and effort, for example `14:02:11  ctx 33% · gpt-6.1-sol high`. Codex Plus matches them by the turn ID Codex puts on the reply; `codexPlus.turnFigures` turns them off. When Codex shows no "Worked for" of its own, the time also includes the turn's duration, for example `14:02:11  9s · ctx 33% · …`. Codex draws "Worked for" only when a turn did something before its reply. `codexPlus.replyDuration` turns the added duration off.
 
+![A time above each message, and above a reply its context share, model and effort](images/shots/reply-figures.png)
+
 The rail at the right edge lists your messages by time and opening words, along with where Codex compacted the context. Click a row to scroll to it, step with the arrow keys or `,` and `.`, filter, or jump to the top or bottom. As in Claude Code Plus, the list is 280 px wide and shows 44 characters per row. The opening words are read and shown in the page, not sent anywhere. `codexPlus.conversationNavigation` turns the rail off.
 
 Resting on a rail row shows its time and first 220 characters together in a box beside the list. Every rail button has its own explanatory box. After a jump, the view stays on the message for about a second while Codex's turns still move. A wheel, touch or key releases it.
+
+![The rail's list of your messages, with one row's time and text in a box beside it](images/shots/navigation.png)
 
 Your messages have a bar down their leading edge in the theme's focus colour. `codexPlus.userMessageEdge` turns the bar off. `codexPlus.userMessageColor` sets their text colour to a CSS colour such as `#90EE90`, `lightgreen` or `rgb(144,238,144)`. An empty value, the default, keeps Codex's colour.
 
@@ -267,9 +277,13 @@ The controls go to the row Codex Plus adds below the message box (see [In a conv
 
 The information button shows the conversation's thread ID, this window's Codex app-server process ID, folder, conversation log and its size, context window use, tokens used, account and token mode. Click a value to copy it. `codexPlus.infoButton` hides the button. It needs the patch.
 
+![The information box: thread, title, folder, rollout, model, context, tokens, account and token mode](images/shots/session-info.png)
+
 ### The context meter
 
 The meter shows a ring and the share of the context window in use. Codex's meter is hidden while this one is drawn, leaving one reading in the row; it returns when `codexPlus.contextMeter` is off. Hover to see which context window it uses and where that figure came from (`codexPlus.contextWindow`, below, can set it), tokens in use and free, where Codex compacts and how far away that is, conversation input, cached input, output and reasoning tokens, and the model and effort. You also see how many times the work plan has added context since the last compaction, how many characters those additions came to, and about what share of the context in use that is. The meter needs the patch.
+
+![The context meter's hover: the window, what is in it, where Codex compacts, the conversation's tokens and the work plan's share](images/shots/context-meter.png)
 
 Codex's meter and this one can differ: Codex divides the last model call's input and output by the context window; this meter divides input alone, as the figures beside replies and the work plan plugin's compaction reminders do. This meter reads figures from the conversation log every 3 seconds, while Codex's follows the app-server live. `codexPlus.contextWindow` gives each listed model its own window, up to `1.05M` for GPT-6 models, using OpenAI's published window including output. Codex caps GPT-6.1 Sol's input at 872K. An already loaded conversation keeps its old window until you reload the VS Code window; without the patch, the setting applies only to the default `model` in `config.toml`.
 
@@ -282,6 +296,8 @@ Codex compacts at 90% of the model's full window, or at `model_auto_compact_toke
 The Agent map is a pill like Claude Code's, reading for example `2 agents · 1 timer · goal`. It appears while the conversation has a wake-up (the timer), a goal or sub-agents. It needs the patch.
 
 Click it to open a dialog with a section for each. A wake-up shows its interval, next time, end and prompt, with Remove. A goal shows its state and tokens, with Pause, Resume and Clear. Each sub-agent shows a status dot and when it was last active; click it to open it in a tab. Esc or a click outside closes the dialog.
+
+![The Agent map with a wake-up and a detached command](images/shots/agent-map.png)
 
 ## Chimes
 
