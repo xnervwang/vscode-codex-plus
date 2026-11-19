@@ -1814,9 +1814,10 @@
    */
   function colourAll(users) {
     for (var i = 0; i < users.length; i++) {
-      var anchor = users[i].node;
-      flag(anchor, INK_CLASS, !!view.userColor);
-      flag(one(anchor, SEL.bubble) || anchor, EDGE_CLASS, view.userEdge !== false);
+      var anchor = users[i].node, bubble = one(anchor, SEL.bubble);
+      var hook = !!(bubble && bubble.getAttribute(HOOK) !== null);
+      flag(anchor, INK_CLASS, !!view.userColor && !hook);
+      flag(bubble || anchor, EDGE_CLASS, view.userEdge !== false && !hook);
     }
   }
 
@@ -2395,10 +2396,13 @@
    */
   var IMG_HIDDEN = MARK + '-img-hidden', IMG_SRC = MARK + '-img-src', IMG_STAND = 'img-stand', IMG_UP = 60;
   var REMOTE = /^(?:https?:)?\/\//i;
+  /* The React fiber React keeps on a DOM element, or null. */
+  function fiberOf(el) {
+    try { for (var k in el) { if (k.indexOf('__reactFiber$') === 0) return el[k] || null; } } catch (e) { /* not ours to read */ }
+    return null;
+  }
   function mediaOf(el) {
-    var key = null;
-    try { for (var k in el) { if (k.indexOf('__reactFiber$') === 0) { key = k; break; } } } catch (e) { return null; }
-    var f = key ? el[key] : null;
+    var f = fiberOf(el);
     for (var i = 0; f && i < IMG_UP; i++, f = f.return) {
       var p = f.memoizedProps;
       if (p && typeof p === 'object' && typeof p.src === 'string' && p.src && 'blockRemoteMedia' in p) {
@@ -2472,12 +2476,64 @@
     imageCounts = counts;
   }
 
+  /*
+   * A Stop hook keeps a turn going by handing the model a prompt as the next user message, and Codex draws it as one:
+   * the user's bubble, with "Hook feedback" under it. The work plan plugin asks this way, at the end of a turn, for the
+   * plan and the brief to be brought up to date, and its prompt runs to several lines. The script folds that bubble to
+   * one dim line. A click toggles it.
+   *
+   * It folds other hooks' prompts too: after the window reloads, Codex no longer says which hook a prompt came from.
+   */
+  var HOOK = MARK + '-hook', HOOK_UP = 16, HOOK_SHEET = 'hook-fold', HOOK_WIRED = '__codexExtrasHookWired';
+  function hookFed(el) {
+    var f = fiberOf(el);
+    for (var i = 0; f && i < HOOK_UP; i++, f = f.return) {
+      var p = f.memoizedProps, item = p && typeof p === 'object' ? p.item : null;
+      if (item && typeof item === 'object' && item.type === 'user-message') return item.hookFeedback === true;
+    }
+    return false;
+  }
+  function toggleHook(b) {
+    if (b.getAttribute(HOOK) === null) return;
+    try { var sel = globalThis.getSelection && globalThis.getSelection(); if (sel && !sel.isCollapsed) return; } catch (e) { /* none */ }
+    b.setAttribute(HOOK, b.getAttribute(HOOK) === 'open' ? 'fold' : 'open');
+  }
+  var hookCount = 0;
+  function foldHooks() {
+    var on = view.buttons !== false, n = 0;
+    var sheetEl = one(document, 'style[' + MARK + '="' + HOOK_SHEET + '"]');
+    if (on && document.head && !sheetEl) {
+      var css = document.createElement('style');
+      css.setAttribute(MARK, HOOK_SHEET);
+      css.textContent = SEL.bubble + '[' + HOOK + ']{background:transparent !important;box-shadow:none !important;cursor:pointer;'
+        + 'color:var(--vscode-descriptionForeground,#9d9d9d) !important;}'
+        + SEL.bubble + '[' + HOOK + '="fold"] [data-markdown-text-tone]{display:-webkit-box !important;-webkit-box-orient:vertical;'
+        + '-webkit-line-clamp:1;overflow:hidden;}';
+      document.head.appendChild(css);
+    }
+    var bubbles = on ? all(document, SEL.bubble) : [];
+    for (var i = 0; i < bubbles.length; i++) {
+      var b = bubbles[i];
+      if (!hookFed(b)) { if (b.getAttribute(HOOK) !== null) b.removeAttribute(HOOK); continue; }
+      n++;
+      if (b.getAttribute(HOOK) === null) b.setAttribute(HOOK, 'fold');
+      if (!b[HOOK_WIRED]) { b[HOOK_WIRED] = true; b.addEventListener('click', toggleHook.bind(null, b)); }
+    }
+    if (!on) {
+      var marked = all(document, '[' + HOOK + ']');
+      for (var m = 0; m < marked.length; m++) marked[m].removeAttribute(HOOK);
+      if (sheetEl) sheetEl.remove();
+    }
+    hookCount = n;
+  }
+
   var refreshing = false;
   function refresh() {
     if (refreshing || !document.body) return;
     refreshing = true;
     try {
       fixImages();
+      foldHooks();
       var list = entries();
       noteMisses(list);
       if (!list) { dropNav(); return; }
@@ -2604,6 +2660,8 @@
       /* Images in replies: how many of Codex's media elements were read, and how many of them stand behind a link or
          behind "[Image]". */
       images: { media: imageCounts.media, links: imageCounts.links, hidden: imageCounts.hidden, setting: view.replyImages !== false },
+      /* Prompts a Stop hook gave the model, folded to one line. */
+      hookPrompts: { folded: hookCount },
       page: { hidden: !!document.hidden, marksObserving: !!observer },
     };
   }

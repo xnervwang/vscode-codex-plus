@@ -127,6 +127,7 @@
         "data-local-conversation-final-assistant",
         "data-local-conversation-item-target-ids",
         "data-local-conversation-user-anchor",
+        "data-markdown-text-tone",
         "data-request-input-activity-root",
         "data-response-annotation-target",
         "data-turn-key",
