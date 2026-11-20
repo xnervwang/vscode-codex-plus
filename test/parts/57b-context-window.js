@@ -93,14 +93,14 @@ module.exports = async ({ eq, tmp, root }) => {
 
   /* ── where the window a conversation reports comes from ── */
   const from = (model, reported, over = {}) => cw.windowFrom({ model, reported, map: MAP, ...over });
-  eq([from('openai.gpt-6.1-sol', 828400), from('gpt-6-luna', 364800), from('openai.gpt-6.1-sol', 258400, { map: {} }),
+  eq([from('openai.gpt-6.1-sol', 828400), from('gpt-6-luna', 364800), from('openai.gpt-6.1-sol', 475000, { map: {} }),
     from('gpt-6-sol', 828400, { top: 917000, applied: { value: 917000, key: 'gpt-6.1-sol', text: '1.05M' } }),
     from('gpt-6-sol', 475000, { top: 500000 }), from('openai.gpt-6.1-sol', 258400), from('made-up', 190000, { map: {} }),
     from('gpt-5.6-sol', 258400, { top: 917000, applied: { value: 917000, key: 'gpt-6.1-sol', text: '1.05M' } }),
     from('openai.gpt-6.1-sol', 475000, { top: 500000 })],
   [{ kind: 'setting', model: 'gpt-6.1-sol', asked: '1.05M', used: 872000, most: true },
     { kind: 'setting', model: 'gpt-6-luna', asked: '512K', used: 384000, most: false },
-    { kind: 'default', model: 'openai.gpt-6.1-sol', asked: '', used: 272000, most: false },
+    { kind: 'default', model: 'openai.gpt-6.1-sol', asked: '', used: 500000, most: false },
     { kind: 'setting', model: 'gpt-6.1-sol', asked: '1.05M', used: 872000, most: true },
     { kind: 'config', model: 'gpt-6-sol', asked: '', used: 500000, most: false },
     { kind: 'earlier', model: 'openai.gpt-6.1-sol', asked: '', used: 0, most: false },

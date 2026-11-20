@@ -57,7 +57,7 @@ const EDITS = [
   },
   {
     name: 'conversation panels',
-    re: /(let\{conversationId:([\w$]+)\}=([\w$]+),[\s\S]{0,1500}?)(this\.editorPanels\.set\(([\w$]+),\{ready:!1,pendingMessages:\[\],initialRoute:)/g,
+    re: /(let\{conversationId:([\w$]+)\}=([\w$]+)[,;][\s\S]{0,1500}?)(this\.editorPanels\.set\(([\w$]+),\{ready:!1,pendingMessages:\[\],initialRoute:)/g,
     to: (m, before, conv, route, set, panel) => `${before}${call('__codexExtrasPanel', `${panel},${conv},this,${route}.path`)},${set}`,
   },
   {
@@ -81,10 +81,25 @@ const EDITS = [
     re: /deliverMcpResponseToOrigin\(([\w$]+)\)\{let ([\w$]+)=String\(\1\.id\),([\w$]+)=this\.pendingMcpRequests\.get\(\2\);/g,
     to: (m, response, id, webview) => `${m}${call('__codexExtrasPageResponse', `${webview},${response}`)};`,
   },
+  /*
+   * From 26.1117 Codex's host keeps the conversations itself and has no broadcasts between windows. A page that starts
+   * showing a conversation retains it in that store instead, at the moment the older builds broadcast that the window
+   * started following it.
+   */
   {
     name: 'window broadcasts',
-    re: /async sendBroadcast\(([\w$]+),([\w$]+),\{targetClientIds:([\w$]+)\}=\{\}\)\{/g,
-    to: (m, method, params, targets) => `async sendBroadcast(${method},${params},{targetClientIds:${targets}}={}){${call('__codexExtrasBroadcast', `${method},${params}`)};`,
+    shapes: [
+      {
+        re: /retainActiveConversation\(([\w$]+),([\w$]+)\)\{/g,
+        to: (m, id) => `${m}${call('__codexExtrasBroadcast', `"thread-stream-following-changed",{conversationId:${id},following:!0}`)};`,
+        note: 'a page retaining a conversation in the host\'s store (26.1117 on)',
+      },
+      {
+        re: /async sendBroadcast\(([\w$]+),([\w$]+),\{targetClientIds:([\w$]+)\}=\{\}\)\{/g,
+        to: (m, method, params, targets) => `async sendBroadcast(${method},${params},{targetClientIds:${targets}}={}){${call('__codexExtrasBroadcast', `${method},${params}`)};`,
+        note: 'the broadcast between windows (before 26.1117)',
+      },
+    ],
   },
   /* "ready" opens the switch; in 26.1106 it shares its break with "request-app-server-state". */
   {

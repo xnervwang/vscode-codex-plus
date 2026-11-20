@@ -5,7 +5,7 @@
 'use strict';
 /* Codex's minified names change with every build, so its URI parser for conversation tabs is matched by its body. The
    conversation id it returns is `s` in 26.1106 and an expression that accepts /local/ only from 26.1111 on. */
-const PARSER = /function ([\w$]+)\(t\)\{let\{scheme:e,authority:r,path:n\}=t;if\(e!==([\w$]+)\)return null;if\(r!==([\w$]+)\)return null;[\s\S]*?conversationId:[^{}]*\}\}/;
+const PARSER = /function ([\w$]+)\(([\w$]+)\)\{let\{scheme:([\w$]+),authority:([\w$]+),path:[\w$]+\}=\2;if\(\3!==([\w$]+)\)return null;if\(\4!==([\w$]+)\)return null;[\s\S]*?conversationId:[^{}]*\}\}/;
 
 function constant(src, name) {
   const m = new RegExp(`(?:^|[^\\w$])${name.replace(/\$/g, '\\$')}="([^"]+)"`).exec(src);
@@ -16,9 +16,9 @@ function constant(src, name) {
 function uriParser(src) {
   const fn = PARSER.exec(src);
   if (!fn) return null;
-  const scheme = constant(src, fn[2]), authority = constant(src, fn[3]);
+  const scheme = constant(src, fn[5]), authority = constant(src, fn[6]);
   if (!scheme || !authority) return null;
-  return { parse: new Function(fn[2], fn[3], `${fn[0]};return ${fn[1]};`)(scheme, authority), scheme, authority };
+  return { parse: new Function(fn[5], fn[6], `${fn[0]};return ${fn[1]};`)(scheme, authority), scheme, authority };
 }
 
 module.exports = { uriParser };

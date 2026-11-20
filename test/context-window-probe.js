@@ -145,14 +145,14 @@ const MODELS = ['gpt-6.1-sol', 'gpt-6.1-terra', 'gpt-6-luna', 'gpt-5.5', 'made-u
     const h = home(m.url);
     const s = server(h);
     await s.ready;
-    const loaded = await s.start();
+    const loaded = await s.start({ model: 'gpt-6-luna' });
     out.loaded.before = (await s.turn(loaded.id)).window;
     const w = await s.request('config/value/write', { keyPath: 'model_context_window', value: 500000, mergeStrategy: 'upsert' });
     out.loaded.written = w.error ? w.error.message : w.result.status;
     out.loaded.after = (await s.turn(loaded.id)).window;
     await s.request('thread/resume', { threadId: loaded.id, excludeTurns: true, config: { model_context_window: 600000 } });
     out.loaded.resumedWithOverride = (await s.turn(loaded.id)).window;
-    const fresh = await s.start();
+    const fresh = await s.start({ model: 'gpt-6-luna' });
     out.loaded.newConversation = (await s.turn(fresh.id)).window;
     const over = await s.start({ config: { model_context_window: 400000 } });
     out.override.started = (await s.turn(over.id)).window;

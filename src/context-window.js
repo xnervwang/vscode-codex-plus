@@ -40,11 +40,12 @@ const PUBLISHED = [
     source: 'https://developers.openai.com/api/docs/models' },
 ];
 /*
- * [default, maximum] for each model in Codex's own model list, the same in 26.1021.22027 and 26.1106.51428 except that
- * gpt-6.1-terra is listed from 26.1106 on; its Bedrock names map to the same entries.
+ * [default, maximum] for each model in the model list of Codex 26.1117.31558; its Bedrock names map to the same entries.
+ * Up to 26.1111 gpt-6.1-sol's default was 272,000, and gpt-6.2-sol and gpt-6.2-astra were not listed.
  */
 const CODEX = {
-  'gpt-6.1-sol': [272000, 872000], 'gpt-6.1-terra': [500000, 872000], 'gpt-6-astra': [272000, 872000],
+  'gpt-6.2-sol': [500000, 872000], 'gpt-6.2-astra': [272000, 872000],
+  'gpt-6.1-sol': [500000, 872000], 'gpt-6.1-terra': [500000, 872000], 'gpt-6-astra': [272000, 872000],
   'gpt-6-sol': [272000, 872000], 'gpt-6-luna': [272000, 872000],
   'gpt-5.6-sol': [272000, 872000], 'gpt-5.6-terra': [272000, 872000], 'gpt-5.6-luna': [272000, 872000], 'gpt-5.5': [272000, 272000],
 };

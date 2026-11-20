@@ -73,6 +73,22 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
       `${build}'s shape: the page messages edit puts this extension's case ahead of "ready", and Codex's own cases still run`);
   }
 
+  {
+    const r = applyEdits('class S{retainActiveConversation(t,r){let n=this.seen;return n.push(t),()=>{}}}', host.EDITS.filter((e) => e.name === 'window broadcasts'), 'Codex');
+    const got = [];
+    let seen = [];
+    if (!r.error) {
+      const box = vm.createContext({ globalThis: null });
+      box.globalThis = box;
+      box.__codexExtrasBroadcast = (method, params) => got.push([method, params.conversationId, params.following]);
+      const s = vm.runInContext(`${r.out};const s=new S();s.seen=[];s`, box);
+      s.retainActiveConversation('t-1', () => {});
+      seen = s.seen;
+    }
+    eq([r.error || '', got, seen], ['', [['thread-stream-following-changed', 't-1', true]], ['t-1']],
+      'window broadcasts, 26.1117\'s shape: a conversation a page retains is handed over as followed, and Codex still keeps it');
+  }
+
   /* Apply and restore on a copy, never on the installed files. */
   if (installs.length) {
     const copy = tmp('codex-copy');

@@ -1733,9 +1733,9 @@
 
   /* The time on every message, and the words for the list. Returns the user messages in document order. */
   function stampAll(list) {
-    var users = [], inTurn = {};
+    var users = [], inTurn = {}, repliesIn = {};
     for (var i = 0; i < list.length; i++) {
-      if (list[i].kind !== 'user') continue;
+      if (list[i].kind !== 'user') { list[i].nth = repliesIn[list[i].turn] = (repliesIn[list[i].turn] || 0) + 1; continue; }
       list[i].at = users.length;
       users.push(list[i]);
       list[i].nth = inTurn[list[i].turn] = (inTurn[list[i].turn] || 0) + 1;
@@ -1764,6 +1764,10 @@
         if (e.kind === 'user' && tt && tt.u.length === inTurn[e.turn]) {
           var mine = { ms: tt.u[e.nth - 1], secs: true };
           if (!when || agrees(when, mine.ms, e.day !== null)) { when = mine; took = 'rollout'; }
+        } else if (e.kind === 'assistant' && tt && !when && tt.r.length === repliesIn[e.turn]) {
+          /* From 26.1117 Codex draws no time on a reply. It takes the rollout's time for its place in the turn, if the
+             rollout and the page hold the same number of replies in that turn. */
+          when = { ms: tt.r[e.nth - 1], secs: true };
         } else if (e.kind === 'assistant' && tt && when && !when.secs) {
           var hit = null, hits = 0;
           for (var q = 0; q < tt.r.length; q++) if (agrees(when, tt.r[q], e.day !== null)) { hit = tt.r[q]; hits++; }

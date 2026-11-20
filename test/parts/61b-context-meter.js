@@ -72,7 +72,7 @@ function connectionParts(text) {
   const at = text.indexOf('editorPanels=new Map');
   const ctor = at < 0 ? '' : text.slice(text.lastIndexOf('constructor(', at), at);
   return { connection: /this\.codexMcpConnection=[\w$]+;/.test(ctor),
-    registerProvider: /registerProvider\([\w$]+,[\w$]+\)\{if\(this\.providers\.has\([\w$]+\)\)/.test(text),
+    registerProvider: /registerProvider\([\w$]+,[\w$]+\)\{if\((?:[\w$]+===[\w$]+\|\|)?this\.providers\.has\([\w$]+\)\)/.test(text),
     sendRequest: /sendRequest\([\w$]+,[\w$]+,[\w$]+,[\w$]+,[\w$]+=!1\)\{this\.sendProviderRequest\(/.test(text),
     routedByName: /let\[[\w$]+,\.\.\.[\w$]+\]=[\w$]+\.split\(":"\)/.test(text) };
 }
