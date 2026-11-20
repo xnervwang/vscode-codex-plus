@@ -86,6 +86,8 @@ const approvals = createApprovals();
 /* How many answers the user owed at the last redraw, per conversation, so a chime rings on a new one rather than on
    every pass while the same request is still waiting. */
 const owed = new Map();
+/* Whether each conversation was archived at the last redraw. */
+const wasArchived = new Map();
 const onApprovals = new Set();
 
 function codexPath(vscode) {
@@ -753,6 +755,31 @@ const CHIME_STATES = {
   unavailable: 'this page has no audio, so nothing was heard',
 };
 
+/*
+ * From 26.1117 Codex's host stops showing a conversation once it is archived, and a tab or the sidebar on it goes to
+ * Codex's home. Such a page is sent to Codex's read-only view of an archived conversation, the one its Archive page
+ * opens. A tab restored at a reload needs nothing: it still shows the conversation with its message box.
+ */
+function showArchived(now, panels) {
+  const p = state.provider;
+  const to = (thread) => ({ path: `/local/${thread}`, state: { archivedConversationPreview: true } });
+  const turned = (thread) => { const c = now.get(thread); return !!(c && c.archived) && wasArchived.get(thread) === false; };
+  if (p) {
+    for (const [thread, set] of panels) {
+      if (!turned(thread)) continue;
+      const { path, state: route } = to(thread);
+      for (const panel of set) { try { p.sendMessageToPanel(panel, { type: 'navigate-to-route', path, state: route }); } catch (_) { /* the panel is gone */ } }
+    }
+    const side = sidebarShowing();
+    if (side && !panels.has(side) && turned(side) && typeof p.navigateToRoute === 'function') {
+      const { path, state: route } = to(side);
+      try { p.navigateToRoute(path, route); } catch (_) { /* no sidebar */ }
+    }
+  }
+  wasArchived.clear();
+  for (const [id, c] of now) wasArchived.set(id, !!c.archived);
+}
+
 async function refreshPanels() {
   if (!deps || !state.active) return;
   const { vscode, source, context } = deps;
@@ -761,6 +788,7 @@ async function refreshPanels() {
   const now = new Map(list.map((c) => [c.sessionId, c]));
   settle(now);
   const panels = byThread();
+  showArchived(now, panels);
   /* The net under the two signals that end a request. It is weighed against the rollout's own answer rather than
      against `state`, which `prompt` has already won by the time it gets here. */
   if (approvals.prune((t) => { const c = now.get(t); return !!(c && c.working); }).length) approvalsChanged();
