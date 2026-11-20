@@ -31,6 +31,8 @@
  *   the brief    a click on the conversation in Agent Plus's Conversations panel shows the brief its plan holds in the
  *                Answer view; the arrow on its row and the page's button each go back to the conversation's tab
  *   the sidebar  a conversation resumed in Codex's sidebar: each reply's stamp inside its column
+ *   archived     the conversation in the tab archived while open: the tab keeps its turns, read-only, and opening it
+ *                from the list unarchives it and gives the tab its message box back
  *
  * Every step saves a screenshot to <out>/shots, and crops of the parts this extension draws are compared with the
  * approved copies (lib/baseline.js).
@@ -877,6 +879,23 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       check(shown === 'Essential', 'and the entry shows the new mode', shown);
       await shot('token-mode-essential');
       await call('await vscode.workspace.getConfiguration("agentPlus").update("tokenMode", undefined, vscode.ConfigurationTarget.Global); return true;');
+    });
+
+    /* Last, since the conversation the steps above type into is archived here. */
+    await step('a conversation archived while its tab is open', async () => {
+      if (!codex) throw new Error('the conversation did not open');
+      const t = threads[0];
+      const shelvedOnDisk = () => { try { return fs.readdirSync(path.join(profile.codexHome, 'archived_sessions'), { recursive: true }).some((n) => String(n).includes(t.id)); } catch (_) { return false; } };
+      const drawn = (composer) => until(() => codex.evaluate((want) => document.querySelectorAll('[data-turn-key]').length > 0
+        && !!document.querySelector('[data-codex-composer-root]') === want, composer).catch(() => false), 30000, 500);
+      await page.locator('.tabs-container .tab').filter({ hasText: title }).first().click();
+      await exec('codexPlus.archiveThread', { webviewSection: 'thread', threadId: t.id, webview: 'codexPlus.sessions' }, [t.id]);
+      check(!!await until(shelvedOnDisk, 30000, 500), 'Archive moves the rollout of the conversation open in the tab to archived_sessions/');
+      check(!!await drawn(false), 'the tab still shows the conversation\'s turns, read-only, with no message box');
+      await shot('archived-while-open');
+      await exec('codexPlus.openThreadInTab', t.id);
+      check(!!await until(() => !shelvedOnDisk(), 30000, 500), 'opening it from the list unarchives it');
+      check(!!await drawn(true), 'and the tab has its message box again');
     });
   } finally {
     watchingTrust = false;
