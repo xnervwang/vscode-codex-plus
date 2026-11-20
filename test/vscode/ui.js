@@ -573,6 +573,12 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         'the context meter\'s hover says how much the work plan has added to the conversation\'s context', hover);
       await shot('context-meter-hover');
       await page.mouse.move(0, 0);
+      /* A click on the message box in the moment before the hover closes lands on the hover, which stays open and takes
+         every later click. */
+      check(!!await until(() => codex.evaluate(() => {
+        const b = document.querySelector('[data-codex-extras="context"]');
+        return !b || getComputedStyle(b).display === 'none';
+      }), 5000, 200), 'and closes once the pointer leaves the meter');
     });
 
     await step('the dot on a tab', async () => {
