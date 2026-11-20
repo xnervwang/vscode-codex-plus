@@ -711,9 +711,12 @@ function registerCommands(context, { source, memory, sessionsModel, sessionsView
     newConversationInTab(say).catch((e) => say(`new conversation in a tab: ${e.message}`));
     return true;
   };
+  /* Set below, beside Unarchive. */
+  let unarchiveToOpen = async () => {};
   reg('openThreadInTab', async (arg) => {
     const id = threadArg(arg);
     if (!id) return;
+    await unarchiveToOpen(id);
     // A tab already showing it without naming it in its URI: raise that panel, or opening the URI leaves a second tab
     // on the same conversation.
     if (!tabs.codexTabs(vscode).some((t) => t.thread === id) && patching.revealPanel(id)) return;
@@ -728,6 +731,7 @@ function registerCommands(context, { source, memory, sessionsModel, sessionsView
   reg('openThreadInSidebar', async (arg) => {
     const id = threadArg(arg);
     if (!id) return;
+    await unarchiveToOpen(id);
     if (await tabs.openRouteInSidebar(vscode, tabs.threadRoute(id)) || await patching.openInSidebar(id)) return;
     vscode.window.showInformationMessage('Codex did not take the link that opens a conversation in its sidebar, so it was opened in a tab instead.');
     await tabs.openInTab(vscode, id);
@@ -1059,6 +1063,15 @@ function registerCommands(context, { source, memory, sessionsModel, sessionsView
     }
     await sendEach('archive', 'thread/archive', go, /^no rollout found for thread id/);
   });
+  /*
+   * Codex shows no archived conversation: a tab or its sidebar routed to one draws a new conversation instead. So one
+   * opened from here is unarchived first.
+   */
+  unarchiveToOpen = async (id) => {
+    await snapshotIn();
+    if (!(reader.thread(id) || {}).archived || restricted()) return;
+    await sendEach('unarchive', 'thread/unarchive', [id], /^no archived rollout found for thread id/);
+  };
   reg('unarchiveThread', async (arg, selected) => {
     if (!threadArg(arg) || restricted()) return;
     await snapshotIn();

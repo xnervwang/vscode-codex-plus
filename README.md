@@ -211,7 +211,7 @@ Every action here except Mark as Unread and Mark as Read goes to this window's a
 
 Archived sessions is the last group and stays collapsed until you open it. It lists this workspace's conversations archived from the list or Codex itself, most recently archived first. Archive works whether the conversation is open or not, as in Claude Code's list. Codex moves its log to `archived_sessions/` and archives its sub-agents with it. A conversation that is running, or has a running sub-agent, is not archived because Codex would stop its turn.
 
-An archived row's menu has Resume in Tab, Resume in Sidebar, Text Color and Unarchive. After a separator it has Delete, which no other row has. Delete asks first and says that Codex will delete the conversation log and its sub-agents' logs. A conversation open in this window or running is not deleted.
+An archived row's menu has Resume in Tab, Resume in Sidebar, Text Color and Unarchive. Opening an archived conversation, from its row or its menu, unarchives it first, since Codex shows no archived conversation. After a separator it has Delete, which no other row has. Delete asks first and says that Codex will delete the conversation log and its sub-agents' logs. A conversation open in this window or running is not deleted.
 
 Once a day, one of your windows deletes conversations archived at least `codexPlus.deleteArchivedAfterDays` days ago in the same way, without asking. The default is 30 days; 0 keeps them. The output channel "Codex Plus" lists what was deleted. Days count from Codex's archive time, or from when Codex Plus first saw an archived conversation if Codex recorded no time. An open or running conversation is left for the next day.
 

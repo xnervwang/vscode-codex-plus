@@ -199,6 +199,9 @@ module.exports = async ({ eq, tmp, root }) => {
     eq(await send('unarchiveThread', 24, [24, 25]), [['thread/unarchive', ID(24)], ['thread/unarchive', ID(25)]],
       'Unarchive sends thread/unarchive for each conversation chosen');
     eq(await send('unarchiveThread', 21), [], 'and nothing for one that is not archived');
+    eq([await send('openThreadInTab', 24), await send('openThreadInSidebar', 25), await send('openThreadInTab', 21)],
+      [[['thread/unarchive', ID(24)]], [['thread/unarchive', ID(25)]], []],
+      'opening an archived conversation in a tab or the sidebar unarchives it first, since Codex shows none, and one not archived is just opened');
     const listView = control.showWebviewView('codexPlus.sessions');
     const fromRow = async (kind, n) => {
       requests.length = 0;
