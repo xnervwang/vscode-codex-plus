@@ -5,7 +5,8 @@
 'use strict';
 /*
  * An image at a web address becomes a plain link whatever codexPlus.replyImages says, and the other images in a reply
- * become "[Image]" while it is off (src/page/codex-extras-page.js fixImages).
+ * become "[Image]" while it is off, and a reply's image is drawn larger than Codex's thumbnail (src/page/codex-extras-page.js
+ * fixImages).
  *
  * Each media element carries the props React would keep on it, in the shape Codex's markdown media component passes
  * them, since that is where the script reads the address from.
@@ -72,6 +73,10 @@ module.exports = async ({ eq, root }) => {
     + 'becomes a plain link named by its alt text or else its address');
   page.view();
   eq(reply.querySelectorAll('[data-codex-extras="img-stand"]').length, 2, 'another pass adds nothing more');
+  const sheet = dom.document.head.querySelector('style[data-codex-extras="img-stand"]');
+  eq(sheet.textContent.includes('[data-response-annotation-target] img[class*="max-h-["]{max-height:min(480px,70vh) !important;'
+    + 'max-width:min(100%,640px) !important;width:auto !important;height:auto !important;}'), true,
+  "an image Codex draws as a thumbnail in a reply is shown up to 640 by 480 px and 70% of the panel's height, and no larger than it is");
 
   page.view({ replyImages: false });
   eq(read(), [

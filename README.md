@@ -84,6 +84,8 @@ Codex's VS Code panel shows images linked by absolute local paths, `file://` URL
 
 ![A Codex reply showing a bar chart the model saved as a PNG file](images/shots/images-in-replies.png)
 
+In Codex, reply images are thumbnails up to 10rem high. The patch displays each image at its own size, scaling it down as needed to fit within 640 by 480 pixels and 70% of the panel's height.
+
 Whether the setting is on or off, the patch shows a web image as a plain link. The link text is the image's alt text, or its address if there is no alt text. Codex Plus does not fetch it. With a ChatGPT login, Codex checks the address with OpenAI's service and can load the image before the patch turns it into a link. Turn `codexPlus.replyImages` off and the patch shows other images as `[Image]`, with the path on hover. If it sent the note earlier in the conversation, it tells the model in the next message that the panel no longer shows images. The setting has no effect when `codexPlus.enabled` is off.
 
 ## Skill search
