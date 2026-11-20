@@ -572,9 +572,10 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       check(!!hover && /Work plan: injected 1 time since the conversation began: \d+ characters, about \d+ tokens/.test(hover),
         'the context meter\'s hover says how much the work plan has added to the conversation\'s context', hover);
       await shot('context-meter-hover');
-      await page.mouse.move(0, 0);
-      /* A click on the message box in the moment before the hover closes lands on the hover, which stays open and takes
-         every later click. */
+      /* Jumping the pointer from the meter to the window's corner leaves the hover open. The hover takes the click meant
+         for the message box, and every click after it. */
+      const talk = await codex.locator('[data-app-action-timeline-scroll]').first().boundingBox();
+      await page.mouse.move(talk ? talk.x + 30 : 0, talk ? talk.y + talk.height / 2 : 0);
       check(!!await until(() => codex.evaluate(() => {
         const b = document.querySelector('[data-codex-extras="context"]');
         return !b || getComputedStyle(b).display === 'none';
