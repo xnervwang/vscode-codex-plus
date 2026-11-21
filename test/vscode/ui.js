@@ -688,7 +688,9 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         }
         const after = await until(async () => { const g = await now(); return model.left() === 0 && g.running.includes(words) && g.tab && g.row && g; }, 40000, 500);
         check(!!after, `${name}: after its turn has ended, the tab's logo and the conversation's row in the session list stay green, and the row's hover says "${words}"`,
-          { left: model.left(), ...await now() });
+          after || { left: model.left(), ...await now(), held: await call(`${OWN}
+            const a = own('patching')._approvals;
+            return { waiting: a.of(arg), threads: a.threads(), sinceMs: a.since ? a.since(arg) : null };`, id).catch((e) => String(e)) });
         await shot(`left-${name.replace(/\W+/g, '-')}`);
         if (during) await during();
         if (end) end();
