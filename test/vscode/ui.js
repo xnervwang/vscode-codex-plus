@@ -603,6 +603,18 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       model.release();
       const unread = await until(async () => { const d = await dotsOn(title); return d && d.unread >= 6 && d.working === 0 && d; }, 30000, 500);
       check(!!unread, 'once the reply lands with the tab not in front, the dot turns red', await dotsOn(title));
+      const bell = await until(() => page.evaluate(() => {
+        const e = [...document.querySelectorAll('.statusbar-item')].find((x) => x.querySelector('.codicon-bell-dot'));
+        return e ? e.innerText.trim() : '';
+      }), 15000, 500);
+      check(Number(bell) >= 1, 'Agent Plus counts it in the status bar among the conversations that need the user', bell);
+      const toast = () => page.evaluate((t) => {
+        const n = [...document.querySelectorAll('.notification-toast')].find((e) => e.innerText.includes(`"${t}" finished`));
+        return n ? n.innerText : '';
+      }, title);
+      const notified = await focused() ? await until(toast, 15000, 500) : '';
+      if (await focused()) check(!!notified, 'and, the window having the focus, says in a notification that it finished, with a link to open it', notified);
+      else note(`the window does not have the system's focus on ${process.platform}, so Agent Plus showed no notification, as it should`);
       await shot('tab-dot-unread');
       const logo = await logoCrop(title);
       if (logo) base.compare('tab-dot-unread', logo);
@@ -611,6 +623,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       const read = await until(async () => { const d = await dotsOn(title); return d && d.unread === 0 && d.working === 0 && d; }, 20000, 500);
       const inFront = await focused();
       if (read || inFront) check(!!read, 'and bringing the tab to the front clears it', { dots: await dotsOn(title), windowFocused: inFront });
+      if (read && notified) check(!!await until(async () => !(await toast()), 15000, 500), 'and closes the notification that it finished');
       else note(`the window does not have the system's focus on ${process.platform}, so the reply stays unread, as it should; clearing the dot was not checked`);
       await shot('tab-dot-read');
     });
