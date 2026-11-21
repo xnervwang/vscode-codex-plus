@@ -80,7 +80,23 @@ module.exports = ({ ok, bad, eq, tmp, root }) => {
     eq(/if:\s*always\(\)\s*\n\s*with:\s*\n\s*name:\s*vscode-/.test(ui), true, 'and the results are kept as an artifact whether the run passed or not');
   }
 
-  for (const [name, text] of [['check.yml', check], ['against-latest.yml', latest], ['vscode.yml', ui]].filter(([, t]) => t)) {
+  /* ── the one that publishes a release ── */
+  const rel = read('release.yml');
+  eq(!!rel, true, 'the workflow that publishes a release is there');
+  if (rel) {
+    eq([/^on:\s*\n\s+push:\s*\n\s+tags:\s*\['v\*'\]/m.test(rel), /pull_request:|schedule:|workflow_dispatch:|branches:/.test(rel)], [true, false],
+      'only a push of a v<version> tag starts it');
+    eq([/^permissions:\s*\n\s+contents:\s*read\s*\n\S/m.test(rel), (rel.match(/id-token:\s*write/g) || []).length, /id-token:/.test(rel.split('\njobs:')[0])],
+      [true, 1, false], 'the workflow only reads the repository, and the publishing job alone may ask for an OIDC token');
+    eq([/environment:/.test(rel), /secrets\./.test(rel)], [false, false], 'with no environment and no stored token');
+    const order = ['git merge-base --is-ancestor', 'Check the tag and the version against both registries', 'node test/check.js',
+      'node test/against-core.js', 'package --out', 'actions/upload-artifact', 'publish --oidc', '--trusted-publishing'].map((s) => rel.indexOf(s));
+    eq(order.every((at, i) => at >= 0 && (i === 0 || at > order[i - 1])), true,
+      'the tag is on main, the version is new to both registries, and the suite and the check against the Marketplace\'s Agent Plus pass, all before the package is built, kept and published');
+    eq((rel.match(/--skip-duplicate/g) || []).length, 2, 'and each upload skips a registry that already has the version, so a rerun can finish a release');
+  }
+
+  for (const [name, text] of [['check.yml', check], ['against-latest.yml', latest], ['vscode.yml', ui], ['release.yml', rel]].filter(([, t]) => t)) {
     const uses = text.match(/uses:\s*actions\/(?:checkout|setup-node)@\S+/g) || [];
     eq(uses.length > 0 && uses.every((u) => /@v7$/.test(u)), true, `${name} uses checkout and setup-node at v7, as Claude Code Plus's workflow does`);
   }
