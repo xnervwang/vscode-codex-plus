@@ -562,7 +562,10 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       check(!!dbox && [dbox.x, dbox.y].every((v) => Math.abs(v - Math.round(v)) < 0.01),
         'the Agent map sits on whole pixels, so its lines of text are drawn in the same place every time', dbox);
       const times = await dialog.locator('[data-codex-extras="map-wakeups"] summary span:nth-child(2)').boundingBox().catch(() => null);
-      if (dbox) base.compare('agent-map-dialog', await crop(dbox), { masks: within(dbox, [times]) });
+      /* A next wake-up after midnight carries its date, which widens the dialog past the approved copy. */
+      const dated = !!map && /next \d\d\/\d\d/.test(map.text);
+      if (dbox && !dated) base.compare('agent-map-dialog', await crop(dbox), { masks: within(dbox, [times]) });
+      else if (dated) note('the next wake-up falls after midnight, so its date widens the Agent map; its crop was not compared');
       await page.keyboard.press('Escape');
       check(!!await until(() => codex.evaluate(() => !document.querySelector('[data-codex-extras="map-dialog"]')), 5000, 200), 'Esc closes it');
 
