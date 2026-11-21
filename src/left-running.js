@@ -435,5 +435,5 @@ function leftRunning({ threads = [], proc = '/proc', sessionsDir, cache = new Ma
   return { available: found.available, threads: out, detached: found.detached || [] };
 }
 
-module.exports = { snapshot, processes, readRecords, busyJobs, launches, scan, leftRunning, isCodexExec, envValue, STARTERS, KINDS,
+module.exports = { snapshot, processes, readRecords, busyJobs, launches, scan, leftRunning, isCodexExec, envValue, commandOf, STARTERS, KINDS,
   LEFT_EVERY_MS, LAUNCH_TAIL, SHARE_DIR, SHARE_FILE, SHARE_FORMAT, SHARE_MS };

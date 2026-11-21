@@ -15,6 +15,7 @@
  */
 const fs = require('fs');
 const path = require('path');
+const { commandOf } = require('./left-running');
 
 const DIR = 'detached-ends';
 const KEEP_MS = 24 * 3600e3;
@@ -24,6 +25,46 @@ const CLAIM_STALE_MS = 5 * 60e3;
 const ID_PREFIX = 'codex-plus-detached-';
 const THREAD = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const SENDING = /\.\d+\.sending$/;
+/* Launchers and interpreters: the program they run is the word after them. */
+const LAUNCHERS = new Set(['bash', 'sh', 'dash', 'zsh', 'ksh', 'timeout', 'nohup', 'setsid', 'env', 'nice', 'stdbuf',
+  'python', 'python3', 'node', 'perl', 'ruby']);
+/* The bytes read from the end of a rollout. */
+const RAN_BYTES = 2 << 20;
+/* The longest gap between a command and the detached process it starts. */
+const RAN_BEFORE_MS = 30 * 60e3;
+const RAN_SLACK_MS = 5000;
+
+/*
+ * Whether the conversation started a detached process: one of its commands from the half hour before the process
+ * started names the program the process runs. One that a command's tool or a hook leaves detached carries the
+ * conversation's id too, such as the uploader of usage data that Builder Toolbox starts on each run of brazil or ada.
+ * `lines` are the last lines of the conversation's rollout, newest first; null when it has none yet. An empty list
+ * means the rollout could not be read.
+ */
+function ranBy(lines, cmd, startMs = 0) {
+  const words = String(cmd).split(/\s+/).filter((w) => w && !w.startsWith('-') && !/^\d+[smhd]?$/.test(w));
+  const names = [];
+  for (const w of words.slice(0, 4)) {
+    const base = path.basename(w);
+    if (base.length > 1) names.push(base);
+    if (!LAUNCHERS.has(base)) break;
+  }
+  const own = names.filter((n) => !LAUNCHERS.has(n));
+  if (!own.length) return true;
+  if (!lines) return false;
+  if (!lines.length) return true;
+  for (const line of lines) {
+    if (line.indexOf('"function_call"') === -1) continue;
+    let row;
+    try { row = JSON.parse(line); } catch (_) { continue; }
+    const at = Date.parse(row && row.timestamp);
+    if (startMs > 0 && isFinite(at) && (at > startMs + RAN_SLACK_MS || at < startMs - RAN_BEFORE_MS)) continue;
+    const p = row && row.payload;
+    const c = p && p.type === 'function_call' ? commandOf(p.arguments) : '';
+    if (c && own.some((n) => c.includes(n))) return true;
+  }
+  return false;
+}
 
 function readJson(file) {
   try { const v = JSON.parse(fs.readFileSync(file, 'utf8')); return v && typeof v === 'object' ? v : null; } catch (_) { return null; }
@@ -59,9 +100,9 @@ function noticeText(ends) {
 /*
  * `dir()` is the shared folder in the plugin's data folder, `ask(method, params)` a request on Codex's own connection
  * (src/patching.js hostRequest), `enabled()` whether notices are sent (codexPlus.detachedEndNotices through the token
- * mode).
+ * mode), `ran(thread, cmd, startMs)` false for a process the conversation did not start (ranBy).
  */
-function createDetachedEnds({ dir, ask, now = Date.now, enabled = () => true, log = () => {} }) {
+function createDetachedEnds({ dir, ask, now = Date.now, enabled = () => true, ran = () => true, log = () => {} }) {
   const seen = new Map();
   const folder = () => path.join(dir(), DIR);
   const keyOf = (e) => `${String(e.thread).toLowerCase()}.${e.pid}.${e.start}`;
@@ -74,7 +115,7 @@ function createDetachedEnds({ dir, ask, now = Date.now, enabled = () => true, lo
     for (const [k, e] of seen) {
       if (live.has(k)) continue;
       seen.delete(k);
-      if (!enabled()) continue;
+      if (!enabled() || !ran(String(e.thread).toLowerCase(), String(e.cmd || ''), +e.startMs || 0)) continue;
       try {
         if (!fs.existsSync(dir())) continue;
         fs.mkdirSync(folder(), { recursive: true });
@@ -142,4 +183,4 @@ function createDetachedEnds({ dir, ask, now = Date.now, enabled = () => true, lo
   return { observe, deliver, _seen: seen };
 }
 
-module.exports = { createDetachedEnds, noticeText, DIR, KEEP_MS, BATCH_MS, ID_PREFIX };
+module.exports = { createDetachedEnds, noticeText, ranBy, DIR, KEEP_MS, BATCH_MS, ID_PREFIX, RAN_BYTES, RAN_BEFORE_MS };

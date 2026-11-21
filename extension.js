@@ -313,7 +313,11 @@ async function activate(context) {
      running an older build than the installed one leaves this scan to the windows running the installed build. */
   /* The notice a conversation gets once a command it left running detached is no longer running (src/detached-ends.js). */
   const ends = detachedEnds.createDetachedEnds({ dir: () => path.join(install.planDir(files.codexHome()), SHARE_DIR),
-    ask: (m, p) => patching.hostRequest(m, p), log: say, enabled: () => runs('detachedEndNotices') && trusted() && !standsDown() });
+    ask: (m, p) => patching.hostRequest(m, p), log: say, enabled: () => runs('detachedEndNotices') && trusted() && !standsDown(),
+    ran: (thread, cmd, startMs) => {
+      const file = files.existingRollout((reader.thread(thread) || {}).rollout || '');
+      return detachedEnds.ranBy(file ? files.tailLines(file, detachedEnds.RAN_BYTES) : null, cmd, startMs);
+    } });
   let delivering = false;
   const onScan = (scan) => {
     ends.observe(scan);

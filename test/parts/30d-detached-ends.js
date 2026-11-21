@@ -6,7 +6,8 @@
 /*
  * The notice a conversation gets once a command it left running detached is no longer running (src/detached-ends.js):
  * written down once whichever window saw it go, sent by a window that has the conversation loaded, several ends in one
- * notice, kept for a day for a conversation loaded nowhere, and not at all while notices are off.
+ * notice, kept for a day for a conversation loaded nowhere, and not at all while notices are off; and only for a program a
+ * command of the conversation names (ranBy).
  */
 const fs = require('fs');
 const path = require('path');
@@ -86,4 +87,25 @@ module.exports = async ({ eq, tmp, root }) => {
   on = false;
   eq([a.observe(scan([])), written()], [0, []], 'with notices off, an end is not written down');
   on = true;
+
+  /* ranBy reads a rollout's lines newest first, as files.tailLines gives them. */
+  const started = Date.UTC(2026, 10, 18, 7, 0, 0);
+  const call = (cmd, ms) => JSON.stringify({ timestamp: new Date(ms).toISOString(), type: 'response_item',
+    payload: { type: 'function_call', name: 'exec_command', arguments: JSON.stringify({ cmd }), call_id: `c${ms}` } });
+  const meta = JSON.stringify({ timestamp: new Date(started - 3600e3).toISOString(), type: 'session_meta', payload: {} });
+  const lines = [call('brazil-build release', started - 60e3), call('setsid ./serve.sh --port 9000 &', started - 120e3),
+    call('python3 driver.py --all &', started - 40 * 60e3), meta];
+  const telemetry = '/home/u/.toolbox/tools/toolbox/2.1/toolbox-telemetry -t brazilcli --payload x';
+  eq([de.ranBy(lines, telemetry, started), de.ranBy(lines, 'bash ./serve.sh --port 9000', started),
+    de.ranBy(lines, 'setsid -f timeout 300 ./serve.sh', started)], [false, true, true],
+  'a program no command names, such as the usage uploader Builder Toolbox leaves after a brazil command, is not the conversation\'s, '
+    + 'and one a command names is, past launchers and their flags');
+  eq([de.ranBy(lines, 'python3 driver.py --all', started), de.ranBy(lines, 'python3 driver.py --all', 0)], [false, true],
+    'a command from more than half an hour before the program started does not count, unless the start time is unknown');
+  eq([de.ranBy(null, 'sleep 600', started), de.ranBy([], 'sleep 600', started), de.ranBy(lines, 'bash', started)], [false, true, true],
+    'a conversation with no rollout yet has started nothing; one whose rollout cannot be read, or a bare shell, is given the notice');
+
+  const quiet = de.createDetachedEnds({ dir: () => shared, ask, now: () => clock, ran: (thread, cmd) => !cmd.includes('telemetry') });
+  quiet.observe(scan([job(ID(1), 4600, telemetry), job(ID(1), 4700, 'sleep 60')]));
+  eq([quiet.observe(scan([])), written()], [1, [`${ID(1)}.4700.47000.json`]], 'and only an end ranBy accepts is written down');
 };
