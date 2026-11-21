@@ -106,6 +106,15 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
   };
   const toasts = () => page.evaluate(() => [...document.querySelectorAll('.notification-list-item-message')].map((e) => e.innerText));
   const focused = () => call('return vscode.window.state.focused;');
+  /* The number on Agent Plus's bell in the status bar, 0 while the bell is hidden. */
+  const bellCount = () => page.evaluate(() => {
+    const e = [...document.querySelectorAll('.statusbar-item')].find((x) => x.querySelector('.codicon-bell-dot'));
+    return e ? Number(e.innerText.trim()) || 0 : 0;
+  });
+  const toastAbout = (t, words) => page.evaluate(([want, w]) => {
+    const n = [...document.querySelectorAll('.notification-toast')].find((e) => e.innerText.includes(`"${want}" ${w}`));
+    return n ? n.innerText : '';
+  }, [t, words]);
   const visibleNativeMenu = () => page.evaluate(() => !![...document.querySelectorAll('.context-view .monaco-menu, .monaco-menu-container')].find((e) => e.offsetParent));
   const auxiliaryShowsCodex = () => page.evaluate(() => {
     const part = document.getElementById('workbench.parts.auxiliarybar');
@@ -628,6 +637,31 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await shot('tab-dot-read');
     });
 
+    await step('a conversation watched while its turn finishes', async () => {
+      if (!codex) throw new Error('the conversation did not open');
+      if (!await focused()) {
+        note(`the window does not have the system's focus on ${process.platform}, so Agent Plus shows no notification anyway; not checked`);
+        return;
+      }
+      await exec('notifications.clearAll');
+      const counted = await bellCount();
+      model.hold();
+      const turns = model.turns();
+      await codex.locator('[data-codex-composer-root] [contenteditable="true"]').first().click();
+      await page.keyboard.type('Check the build once more.');
+      await page.keyboard.press('Enter');
+      const working = await until(async () => model.turns() > turns && ((await dotsOn(title)) || {}).working >= 6, 20000, 300);
+      check(!!working, 'with its tab in front, a message sent from it starts a turn', await dotsOn(title));
+      model.release();
+      const ended = await until(async () => { const d = await dotsOn(title); return d && d.working === 0 && d; }, 30000, 500);
+      await sleep(5000);
+      const after = { ended: !!ended, dots: await dotsOn(title), counted: await bellCount(), notification: await toastAbout(title, 'finished') };
+      check(after.ended && !!after.dots && after.dots.unread === 0 && after.counted <= counted && !after.notification,
+        'when the reply lands with the tab in front of the focused window, the tab gets no red dot and Agent Plus neither announces nor counts it',
+        { before: counted, ...after });
+      await shot('tab-in-front-finished');
+    });
+
     await step('work left running after a turn', async () => {
       if (!codex || !list) throw new Error('the conversation or the session list did not open');
       const id = threads[0].id;
@@ -688,6 +722,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         .catch(() => '');
       const leftCase = async ({ name, words, steps, ask, end, ms = 45000, during, notice }) => {
         const notices = model.sent('Codex Plus notice');
+        const counted = await bellCount();
         model.script(id, steps);
         await send(`Start the ${name} and come back.`);
         /* On Windows Codex asks before it runs even a sandboxed command; elsewhere only a command asked to run outside. */
@@ -697,6 +732,12 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
           note(`${name}: the card reads ${JSON.stringify(shown)}`);
           const blue = await until(async () => { const d = await dotsOn(title); return d && d.prompt >= 6 && d; }, 20000, 500);
           check(!!blue, `${name}: while Codex waits for the approval, the tab's logo carries the blue dot`, await dotsOn(title));
+          if (await focused()) {
+            await sleep(4000);
+            const held = { counted: await bellCount(), notification: await toastAbout(title, 'is waiting for you') };
+            check(held.counted <= counted && !held.notification,
+              `${name}: and with the tab in front of the focused window, Agent Plus neither announces nor counts it`, { before: counted, ...held });
+          }
           await shot(`left-${name.replace(/\W+/g, '-')}-approval`);
           await approve(name);
         }
