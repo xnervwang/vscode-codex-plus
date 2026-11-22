@@ -1079,7 +1079,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     await look('reply-unread', {
       expect: `With notes.txt in front when the reply lands, the conversation has stopped: its tab\'s Codex logo carries no dot and the tab\'s title reads "${title} ✉️", the envelope once and last; `
         + 'its rows in the list have no dot and an envelope after the title, before the time; Agent Plus\'s bell in the status bar shows a count of 1, '
-        + `and a notification says "${title}" finished, with an "Open" link in its text.`,
+        + `and a notification says "${title}" finished, with two buttons, Open and Dismiss, and no progress bar.`,
     }, async () => {
       await openNotes();
       await sleep(800);
