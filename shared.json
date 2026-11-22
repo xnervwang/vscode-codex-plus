@@ -1,5 +1,5 @@
 {
-  "core": "82dae01d3b1b8a0eee5d467fd1d474a34930e17a",
+  "core": "5774012c47e369cd4928065d04d4807762f2a3df",
   "files": [
     {
       "path": "build/sync-shared.js",
@@ -79,7 +79,7 @@
     {
       "path": "src/token-mode.js",
       "from": "src/token-mode.js",
-      "sha256": "6976e3978111e3bca0eaf116db5ee10ffbf0edb8595f599af11bdf20b10609d9"
+      "sha256": "21900f03eabd49c256e1f7dfa8dbacafe7584554d415401f59d9c6fd3a6ceeda"
     },
     {
       "path": "src/page/kit.js",
