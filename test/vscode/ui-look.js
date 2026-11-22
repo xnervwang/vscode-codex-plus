@@ -1161,7 +1161,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     }, async () => {
       await toBottom();
       if (!await until(() => codex.evaluate((q) => !!document.querySelector(q), hookBubble), 20000, 500)) throw new Error('no Stop hook prompt was found in the conversation');
-      await codex.evaluate((q) => { const b = [...document.querySelectorAll(q)].pop(); b.scrollIntoView({ block: 'center' }); }, hookBubble);
+      await codex.evaluate((q) => { const b = [...document.querySelectorAll(q)].pop(); b.scrollIntoView({ block: 'center', container: 'nearest' }); }, hookBubble);
       await sleep(800);
       const b = await inCodex(`${hookBubble}`);
       return b && { x: b.x - 40, y: b.y - 40, width: b.width + 80, height: b.height + 80 };
@@ -1301,7 +1301,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         await codex.evaluate(() => {
           const web = [...document.querySelectorAll('[data-codex-extras="img-stand"]')].find((x) => x.textContent === 'test web');
           const s = document.querySelector('[data-app-action-timeline-scroll]');
-          if (web && s) { web.scrollIntoView({ block: 'end' }); s.scrollBy(0, 60); }
+          if (web && s) { web.scrollIntoView({ block: 'end', container: 'nearest' }); s.scrollBy(0, 60); }
         });
         await sleep(800);
         return (await imagesBox()) || bottomBox(600);

@@ -70,6 +70,8 @@ module.exports = async ({ eq, root }) => {
   const before = first.scrolledIntoView;
   rows[0].dispatch('click', { stopPropagation() {} });
   eq(first.scrolledIntoView, before + 1, 'a click scrolls to the message');
+  eq(first.scrolledIntoViewWith && first.scrolledIntoViewWith.container, 'nearest',
+    "and scrolls only Codex's own scroller to it, not VS Code's box round the page, which is a few pixels taller than the page");
   first.rect = { ...first.rect, top: 260 };
   dom.runTimers();
   eq(first.scrolledIntoView, before + 2, 'pushed away while its turns are still measured, it is put back');

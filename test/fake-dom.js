@@ -243,7 +243,7 @@ class El {
   querySelector(sel) { return this.querySelectorAll(sel)[0] || null; }
 
   getBoundingClientRect() { return this.rect; }
-  scrollIntoView() { this.scrolledIntoView++; }
+  scrollIntoView(opts) { this.scrolledIntoView++; this.scrolledIntoViewWith = opts; }
   scrollTo(opts) { this.scrolledTo.push(opts); this.scrollTop = (opts && opts.top) || 0; }
 
   addEventListener(type, fn) { (this.listeners[type] = this.listeners[type] || []).push(fn); }

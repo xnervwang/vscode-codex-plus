@@ -2027,10 +2027,12 @@
 
   /*
    * scrollIntoView rather than an arithmetic scrollTop: the container is Codex's own and carries its own scroll padding
-   * for its sticky header, which scrollIntoView honours and a computed position does not.
+   * for its sticky header, which scrollIntoView honours and a computed position does not. Only that container is
+   * scrolled: VS Code's box round a webview is a few pixels taller than the webview, and scrolling it moved the whole
+   * page up under the tab bar.
    */
   function scrollToNode(node) {
-    try { node.scrollIntoView({ block: 'start', behavior: 'auto' }); return; } catch (e) { /* older signature */ }
+    try { node.scrollIntoView({ block: 'start', behavior: 'auto', container: 'nearest' }); return; } catch (e) { /* older signature */ }
     try { node.scrollIntoView(true); } catch (e) { /* gone */ }
   }
   /*

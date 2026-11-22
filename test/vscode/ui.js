@@ -683,6 +683,20 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       }), 5000, 200);
       check(!!rows && rows.length === 4 && rows.every((t) => /^(\d\d\/\d\d )?\d\d:\d\d:\d\d {2}\S/.test(t)), 'the rail\'s handle opens the list of your messages, one row each with its time', rows);
       await shot('conversation-rail-list');
+      /* VS Code's box round a webview is a few pixels taller than the webview, so a jump that scrolled more than Codex's
+         own scroller moved the whole page up under the tab bar. */
+      const host = await codex.parentFrame().frameElement();
+      const placed = async () => ({ top: ((await host.boundingBox()) || {}).y,
+        scrolled: await host.evaluate((e) => { let n = 0; for (let x = e.parentElement; x; x = x.parentElement) n += x.scrollTop; return n; }),
+        others: await page.evaluate(() => [...document.querySelectorAll('.webview-overlay-content')].filter((e) => e.scrollTop)
+          .map((e) => { const f = e.querySelector('iframe'); return `${e.scrollTop} px: ${f ? (f.title || f.name || f.className) : '(no webview)'}`; })) });
+      const placedBefore = await placed();
+      await codex.locator('[data-codex-extras="nav-row"]').nth(2).click();
+      await sleep(1500);
+      const placedAfter = await placed();
+      check(placedAfter.top === placedBefore.top && placedAfter.scrolled === 0,
+        'a jump from the list moves the conversation inside Codex\'s page, and leaves the page where VS Code put it', { before: placedBefore, after: placedAfter });
+      if (placedAfter.others.length) note(`other webviews VS Code has scrolled inside their boxes: ${placedAfter.others.join('; ')}`);
       await codex.locator('.codex-extras-rail-handle').first().click();
 
       await codex.locator('[data-codex-extras="agents"]').first().click();
