@@ -3059,18 +3059,16 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     await step('a tab closed while the extension host was away', async () => {
       const t = threads[1];
       const tabUp = () => page.evaluate((want) => [...document.querySelectorAll('.tabs-container .tab')].some((e) => e.textContent.includes(want)), t.title);
-      /* The extension host is killed, so the tab is closed while nothing in the window records it, and VS Code starts a
-         new host on its own; failing that, the window is asked to through its command palette. */
+      /* The tab is closed the moment the extension host is told to restart, while nothing in it is left to record that.
+         Killing the host instead closes a window started for extension development, as this one is. */
       const dropOnce = async () => {
         await exec('codexPlus.openThreadInTab', t.id);
         if (!await until(tabUp, 20000, 500)) throw new Error(`no tab of "${t.title}" opened`);
         await tabNamed(t.title).click();
         await sleep(3000);
-        const host = await w.hostUp();
         const at = Date.now();
-        let killed = true;
-        try { process.kill(host.pid, 'SIGKILL'); } catch (_) { killed = false; }
-        await sleep(500);
+        call('setTimeout(() => vscode.commands.executeCommand("workbench.action.restartExtensionHost"), 50); return true;', null, 3000).catch(() => {});
+        await until(async () => Date.now() - at > 400, 2000, 50);
         await page.keyboard.press(process.platform === 'darwin' ? 'Meta+W' : 'Control+W');
         let closed = await until(async () => !await tabUp(), 3000, 100);
         if (!closed) {
@@ -3078,25 +3076,18 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
           await tabNamed(t.title).locator('.tab-actions .action-label').first().click({ timeout: 3000 }).catch(() => {});
           closed = await until(async () => !await tabUp(), 3000, 100);
         }
-        let back = await w.hostUp(at).then(() => true, () => false);
-        if (!back) {
-          await page.keyboard.press('F1');
-          await page.keyboard.type('Developer: Restart Extension Host');
-          await sleep(800);
-          await page.keyboard.press('Enter');
-          back = await w.hostUp(at).then(() => true, () => false);
-        }
+        const back = await w.hostUp(at).then(() => true, () => false);
         await until(async () => { const s = await patchState().catch(() => null); return s && s.active; }, 60000, 1000);
-        return { killed, closed: !!closed, back };
+        return { closed: !!closed, back, closedAfterMs: Date.now() - at };
       };
       const first = await dropOnce();
-      check(first.killed && first.closed && first.back, 'the tab is closed while the extension host is down, and a new host starts', first);
+      check(first.closed && first.back, 'the tab is closed as the extension host restarts, and a new host starts', first);
       const back = await until(tabUp, 40000, 1000);
       check(!!back, 'once the host is back, Codex Plus reopens the tab of the conversation that was open, as VS Code did not restore it', await tabs());
       await shot('dropped-tab-reopened');
       await setting('reopenDroppedTabs', false);
       const second = await dropOnce();
-      check(second.killed && second.closed && second.back, 'with codexPlus.reopenDroppedTabs off, the tab is closed the same way', second);
+      check(second.closed && second.back, 'with codexPlus.reopenDroppedTabs off, the tab is closed the same way', second);
       await sleep(20000);
       check(!await tabUp(), 'and it is not reopened', await tabs());
       await setting('reopenDroppedTabs', undefined);
