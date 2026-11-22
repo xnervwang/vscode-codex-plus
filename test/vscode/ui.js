@@ -3208,53 +3208,65 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         fs.writeFileSync(path.join(ends, `${t.id}.${pid}.${pid}.json`), JSON.stringify({ thread: t.id, pid, start: String(pid), startMs: now - 60e3,
           cmd: `sleep ${pid} # window test`, endMs: now }));
       };
-      const tabOf = async (t) => (await tabs()).flatMap((g) => g.tabs).find((x) => bare(x.label) === t.title);
-      /* Clicked rather than revealed by command, so that VS Code remembers it as the tab in front. A click while the
-         dialog asking to trust the hooks shows goes to the dialog, so it is tried again. */
+      /* By URI, since a step above may have left a conversation renamed. */
+      const tabOf = async (t) => (await codexTabsNow()).find((x) => x.route === `/local/${t.id}`);
+      /* Clicked, as a person would. A click while the dialog asking to trust the hooks shows goes to the dialog, so it is
+         tried again. */
       const toFront = async (t) => {
         for (let i = 0; i < 3; i++) {
           await until(async () => !await trustShown(), 10000, 200);
-          await tabNamed(t.title).click().catch(() => {});
-          if (await until(async () => { const x = await tabOf(t); return x && x.active; }, 5000, 250)) return true;
+          const x = await tabOf(t);
+          if (!x) return false;
+          const at = await page.evaluate((want) => [...document.querySelectorAll('.tabs-container .tab')].findIndex((e) => {
+            const n = e.querySelector('.label-name');
+            return String((n ? n.textContent : e.innerText) || '').replace(/\u2709[\uFE0E\uFE0F]?/g, ' ').replace(/\s+/g, ' ').trim() === want;
+          }), bare(x.label));
+          if (at >= 0) await page.locator('.tabs-container .tab').nth(at).click().catch(() => {});
+          if (await until(async () => { const y = await tabOf(t); return y && y.active; }, 5000, 250)) return true;
         }
         return false;
+      };
+      const codexLog = () => {
+        const logs = walk(path.join(profile.user, 'logs')).filter((f) => /Codex Plus\.log$/.test(f)).map((f) => ({ f, at: fs.statSync(f).mtimeMs }))
+          .sort((a, b) => b.at - a.at);
+        try { return logs.length ? fs.readFileSync(logs[0].f, 'utf8') : ''; } catch (_) { return ''; }
       };
       await exec('workbench.action.closeAuxiliaryBar');
       await exec('workbench.action.joinAllGroups');
       for (const t of [pair[1], pair[0]]) {
         await exec('codexPlus.openThreadInTab', t.id);
-        await frameWhere((want) => !!document.querySelector('[data-codex-composer-root]') && document.body.innerText.includes(want), 90000, t.title);
+        await frameWhere((want) => !!document.querySelector('[data-codex-composer-root]') && document.body.innerText.includes(want), 90000, t.title.slice(0, 30));
       }
-      check(!!await toFront(pair[0]), 'two conversations are open in tabs of one group, one in front of the other', await tabs());
+      check(await toFront(pair[0]), 'two conversations are open in tabs of one group, one in front of the other', await tabs());
       note(`before the reload, this window's app-server has loaded ${JSON.stringify(await loadedNow())}`);
 
-      /* The conversations in front and behind as the window came back, which has not always been the order before; after
-         all the steps above another Codex tab came back in front. With neither in front, the first is clicked forward
-         while Codex still draws a page shown that late. */
       let restoredAt = 0;
-      const reloaded = async (what) => {
-        const was = (await tabOf(pair[0]) || {}).active ? pair[0] : pair[1];
+      const reload = async (what) => {
         await exec('notifications.clearAll');
         await w.reload();
         restoredAt = Date.now();
         await until(async () => { const st = await patchState(); return st && st.active; }, 60000, 1000);
-        const both = await until(async () => { const a = await tabOf(pair[0]), b = await tabOf(pair[1]); return a && b && { a, b }; }, 60000, 500);
-        check(!!both, `${what}: after the reload VS Code restores both tabs`, await tabs());
-        await sleep(Math.max(0, restoredAt + 12000 - Date.now()));
+        check(!!await until(async () => (await tabOf(pair[0])) && (await tabOf(pair[1])), 60000, 500), `${what}: after the reload VS Code restores both tabs`, await tabs());
+      };
+      /* The conversations in front and behind as the window came back, which has not always been the order before; after
+         all the steps above another Codex tab came back in front. With neither in front, the first is clicked forward
+         while Codex still draws a page shown that late. */
+      const roles = async (what) => {
         const a = await tabOf(pair[0]), b = await tabOf(pair[1]);
         let front = b && b.active ? pair[1] : pair[0];
         if (!(a && a.active) && !(b && b.active)) {
-          note(`${what}: the window came back with another tab in front, so "${front.title}" is clicked to the front`);
+          note(`${what}: the window came back with another tab in front, so "${bare(a ? a.label : front.title)}" is clicked to the front`);
           check(await toFront(front), `${what}: clicked to the front within 30 seconds of the reload`, await tabs());
         }
         const behind = front === pair[0] ? pair[1] : pair[0];
-        if (front !== was) note(`${what}: VS Code restored "${behind.title}" behind, which was the tab in front before the reload`);
         const up = await until(async () => { const l = await loadedNow(); return Array.isArray(l) && l.includes(front.id) && l; }, 90000, 1000);
         check(!!up, `${what}: the conversation in front is loaded again`, await loadedNow());
         return { front, behind };
       };
       const pid = { front: 4141, behind: 4242 };
-      let { front, behind } = await reloaded('codexPlus.loadRestoredTabs off');
+      await reload('codexPlus.loadRestoredTabs off');
+      await sleep(Math.max(0, restoredAt + 12000 - Date.now()));
+      let { front, behind } = await roles('codexPlus.loadRestoredTabs off');
       end(front, pid.front);
       end(behind, pid.behind);
       const control = await until(() => model.sent(`sleep ${pid.front}`) > 0, 60000, 1000);
@@ -3284,14 +3296,22 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await toFront(front);
       await setting('loadRestoredTabs', true);
       pid.behind += 10;
-      ({ front, behind } = await reloaded('codexPlus.loadRestoredTabs on'));
+      await reload('codexPlus.loadRestoredTabs on');
+      /* Who is in front is read once the tabs have been loaded, since each is in front for a moment meanwhile. */
+      const done = await until(() => (/loaded \d+ Codex tab\(s\) VS Code restored behind another, and put tab (\d+) of editor group (\d+) in front again/
+        .exec(codexLog()) || null), 90000, 1000);
+      check(!!done, 'codexPlus.loadRestoredTabs on: Codex Plus says it has loaded the tabs behind', codexLog().split('\n').slice(-12));
+      if (done) {
+        const g = (await tabs()).find((x) => x.column === Number(done[2]));
+        const t = g && g.tabs[Number(done[1]) - 1];
+        check(!!t && t.active, 'and the tab that was in front is in front again', { said: done[0], tabs: await tabs() });
+      }
+      ({ front, behind } = await roles('codexPlus.loadRestoredTabs on'));
       end(behind, pid.behind);
       const loaded = await until(() => model.sent(`sleep ${pid.behind}`) > 0, 90000, 1000);
       const loadedOn = await loadedNow();
       note(`codexPlus.loadRestoredTabs on: without a click the app-server has loaded ${JSON.stringify(loadedOn)}`);
       check(!!loaded, 'codexPlus.loadRestoredTabs on: the conversation behind gets its notice with its tab never clicked', { sent: model.sent(`sleep ${pid.behind}`), loaded: loadedOn });
-      const after = { front: await tabOf(front), behind: await tabOf(behind) };
-      check(!!after.front && after.front.active && !!after.behind && !after.behind.active, 'and the tab that was in front is in front again', after);
       await sleep(Math.max(0, restoredAt + 40000 - Date.now()));
       await toFront(behind);
       /* Codex's header cuts a long title short. */

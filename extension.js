@@ -567,14 +567,16 @@ async function activate(context) {
    (src/load-tabs.js). Returns how many were. */
 async function loadRestored(say) {
   if (settings().enabled === false || cfg().get('loadRestoredTabs', false) !== true) return 0;
+  const front = vscode.window.tabGroups.activeTabGroup;
+  const at = front ? front.tabs.findIndex((t) => t.isActive) : -1;
   loadingTabs = true;
   let n = 0;
   try {
-    n = await loadTabs.loadAll({ groups: vscode.window.tabGroups.all, front: vscode.window.tabGroups.activeTabGroup,
+    n = await loadTabs.loadAll({ groups: vscode.window.tabGroups.all, front,
       isTab: (t) => tabs.isCodexTab(vscode, t), exec: (...a) => vscode.commands.executeCommand(...a),
       sleep: (ms) => new Promise((r) => setTimeout(r, ms)) });
   } finally { loadingTabs = false; }
-  if (n) say(`loaded ${n} Codex tab(s) VS Code restored behind another`);
+  if (n) say(`loaded ${n} Codex tab(s) VS Code restored behind another, and put tab ${at + 1} of editor group ${front ? front.viewColumn : 0} in front again`);
   return n;
 }
 

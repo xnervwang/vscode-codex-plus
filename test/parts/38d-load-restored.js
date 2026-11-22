@@ -62,7 +62,7 @@ module.exports = async ({ eq, tmp, root }) => {
     eq([await ext._loadRestored((m) => said.push(m)), moves()], [2, ['workbench.action.focusFirstEditorGroup', 'workbench.action.openEditorAtIndex 0',
       'workbench.action.openEditorAtIndex 2', 'workbench.action.openEditorAtIndex 1', 'workbench.action.focusFirstEditorGroup']],
     'on, each Codex tab behind the text file is shown once, and then the text file is in front again');
-    eq(said, ['loaded 2 Codex tab(s) VS Code restored behind another'], 'and the log says how many');
+    eq(said, ['loaded 2 Codex tab(s) VS Code restored behind another, and put tab 2 of editor group 1 in front again'], 'and the log says how many, and which tab is in front again');
     control.state.commands.length = 0;
     control.state.config.enabled = false;
     eq([await ext._loadRestored(() => {}), moves()], [0, []], 'with Codex Plus turned off, nothing is brought forward');
