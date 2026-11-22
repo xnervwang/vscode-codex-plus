@@ -24,7 +24,9 @@ module.exports = async ({ eq }) => {
   const { createSeen, SINCE_KEY } = require('../../src/seen');
 
   let sidebar = '', visible = false;
-  const patching = { sidebarThread: () => sidebar, sidebarShowing: () => (visible ? sidebar : ''), canDeliver: () => false };
+  const sidebarChanged = new fake.EventEmitter();
+  const patching = { sidebarThread: () => sidebar, sidebarShowing: () => (visible ? sidebar : ''), canDeliver: () => false,
+    onSidebarChanged: (fn) => sidebarChanged.event(fn) };
   let endedMs = Date.now() - 60000;
   const rows = [{ id: A, kind: 'user', title: 'In the sidebar', cwd: '/w', updatedMs: Date.now() },
     { id: OTHER, kind: 'user', title: 'In a tab', cwd: '/w', updatedMs: Date.now() }];
@@ -35,7 +37,8 @@ module.exports = async ({ eq }) => {
   const memo = fake.memento();
   await memo.update(SINCE_KEY, 1);
   control.setTabs([control.codexTab(OTHER)], 0);
-  const source = createCodexSource(vscode, { reader, patching, seen: createSeen(memo) });
+  const seen = createSeen(memo);
+  const source = createCodexSource(vscode, { reader, patching, seen });
   const stateOf = async () => (await source.listConversations()).find((c) => c.sessionId === A).state;
   try {
     /* The sidebar is shown and goes to the conversation: it is in front, so what it has is read. */
@@ -52,5 +55,20 @@ module.exports = async ({ eq }) => {
 
     visible = true;
     eq([await stateOf(), source.isFocused(A)], ['idle', true], 'and shown again, it is in front and read');
+
+    /* Hidden, a reply lands, and the sidebar comes back with nothing else happening: no tab change, and nothing that
+       reads the list. */
+    visible = false;
+    sidebarChanged.fire();
+    await new Promise((r) => setTimeout(r, 30));
+    endedMs = Date.now() - 10;
+    eq(await stateOf(), 'unread', 'hidden again, the next reply there is unread');
+    let told = 0;
+    const sub = source.onDidChangeConversations(() => told++);
+    visible = true;
+    sidebarChanged.fire();
+    eq([seen.unread(A, endedMs), told > 0], [false, true],
+      'the sidebar shown again marks its conversation read at once and tells the views, before anything reads the list again');
+    sub.dispose();
   } finally { source.dispose(); }
 };
