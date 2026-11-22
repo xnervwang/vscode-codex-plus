@@ -48,7 +48,7 @@ module.exports = async ({ eq, root }) => {
   const row = (n) => rows.find((r) => r.id === ID(n));
   eq([row(1).child, row(2).child, row(3).child, row(5).child, row(6).child], [false, true, true, false, false],
     'the model marks a sub-agent drawn under its parent');
-  eq([row(2).title, row(3).parentTitle], ['t2', 't1'], 'and names its parent, for the hover');
+  eq([row(2).title, row(3).parentTitle], ['scout', 't1'], 'titles it by its nickname, as the Agent map does, and names its parent, for the hover');
 
   /* The page indents it. */
   const dom = createDom();

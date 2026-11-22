@@ -35,7 +35,7 @@ module.exports = async ({ eq, tmp, root }) => {
   const wakes = new Map([[A, { thread: A, everyMinutes: 10, prompt: 'Keep going.', setMs: 1000, expiresMs: 9e12, firedMs: 61000, paused: false }]]);
   const goals = new Map([[A, { status: 'paused', objective: 'Ship it', tokensUsed: 1200, tokenBudget: 50000 }]]);
   const reader = { threads: () => threads, wakeup: (id) => wakes.get(id) || null, goal: (id) => goals.get(id) || null };
-  const states = { [ID(3)]: { state: 'working', lastActiveAt: 45 } };
+  const states = { [ID(3)]: { state: 'working', activity: 'working', lastActiveAt: 45 } };
   const m = mapOf(A, { reader, stateOf: (id) => states[id] || null });
   eq([m.type, m.shown, m.wakeups, m.goal], ['codex-extras-agent-map', true,
     [{ everyMinutes: 10, prompt: 'Keep going.', expiresMs: 9e12, paused: false, nextMs: 661000 }],

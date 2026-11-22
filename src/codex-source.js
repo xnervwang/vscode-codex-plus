@@ -349,16 +349,17 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
     return (reader.threads() || []).filter((t) => t.kind === 'subagent' && shown.has(t.parent)).map((t) => t.id);
   };
   /*
-   * The worker's last scan for what conversations left running: { available, threads: { [id]: [kinds] } }, or null
-   * before the first one. Scans run from the poll, one at a time and no more often than leftEveryMs, and the views
-   * are told only when the result for a known thread changes.
+   * The worker's last scan for what conversations left running: { available, threads: { [id]: [kinds] }, detached,
+   * running }, or null before the first one. Scans run from the poll, one at a time and no more often than leftEveryMs,
+   * and the views are told only when the result for a known thread changes.
    */
   let leftSeen = null, leftKey = '', leftAt = 0, leftRun = null;
   const leftKeyOf = (seenNow) => {
     if (!seenNow) return '';
     const known = new Set((reader.threads() || []).map((t) => t.id));
     return JSON.stringify([Object.keys(seenNow.threads).filter((id) => known.has(id)).sort().map((id) => [id, seenNow.threads[id]]),
-      (seenNow.detached || []).filter((d) => known.has(d.thread)).map((d) => `${d.thread}.${d.pid}.${d.start}`)]);
+      (seenNow.detached || []).filter((d) => known.has(d.thread)).map((d) => `${d.thread}.${d.pid}.${d.start}`),
+      (seenNow.running || []).filter((d) => known.has(d.thread)).map((d) => `${d.thread}.${d.kind}.${d.pid}.${d.start}.${d.name}`)]);
   };
   function pollLeft() {
     if (leftRun || Date.now() - leftAt < leftEveryMs) return;
@@ -388,10 +389,11 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
     const heard = heardOf(id);
     return turnOf(st, heard, now, lastOf(t, st, heard)).working;
   };
-  const commandsHere = (id) => {
-    if (!patching || typeof patching.runningCommands !== 'function') return false;
-    try { return patching.runningCommands(id).length > 0; } catch (_) { return false; }
+  const commandsOf = (id) => {
+    if (!patching || typeof patching.runningCommands !== 'function') return [];
+    try { return patching.runningCommands(id) || []; } catch (_) { return []; }
   };
+  const commandsHere = (id) => commandsOf(id).length > 0;
   const heardHere = (call) => {
     try { return !!(patching && typeof patching.heardCommand === 'function' && patching.heardCommand(call)); } catch (_) { return false; }
   };
@@ -533,7 +535,31 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
     threadState(id) {
       const t = reader.thread(id), st = reader.state(id);
       if (!t || !st) return null;
-      return conversationOf(t, { unread: new Set(), openHere: new Set(), state: st, waiting: waitingOn(id), heard: heardOf(id), left: leftOf(id) });
+      const unread = new Set(seen.unread(id, endedOf(id)) ? [id] : []);
+      return conversationOf(t, { unread, openHere: new Set(), state: st, waiting: waitingOn(id), heard: heardOf(id), left: leftOf(id) });
+    },
+    /* The kinds still running for `id` and its sub-agents, in KINDS order (src/left-running.js). */
+    leftOf: (id) => (id ? leftOf(id) : []),
+    /*
+     * The work besides sub-agents and detached commands still running for `id` and its sub-agents, oldest first, as
+     * { thread, kind, pid, start, startMs, cmd, name, session, job }. A conversation's background terminals are the ones
+     * this window's Codex reports, by the command the model gave, wherever it reports any; elsewhere the processes the
+     * scan found under Codex. A terminal of this window has no pid.
+     */
+    runningOf(id) {
+      if (!id) return [];
+      const listed = leftSeen && Array.isArray(leftSeen.running) ? leftSeen.running : [];
+      const out = [];
+      for (const x of familyOf(id, childIndex())) {
+        const key = String(x).toLowerCase();
+        const here = commandsOf(x);
+        for (const w of listed) if (w.thread === key && !(here.length && w.kind === 'command')) out.push(w);
+        for (const c of here) {
+          out.push({ thread: key, kind: 'command', pid: 0, start: '', startMs: +c.startedMs || 0, cmd: String(c.command || '').slice(0, 1000),
+            name: '', session: '', job: '' });
+        }
+      }
+      return out.sort((a, b) => (a.startMs - b.startMs) || (a.pid - b.pid));
     },
     /* The detached commands still running for `id` and its sub-agents, as the last scan listed them (src/left-running.js),
        oldest first. */

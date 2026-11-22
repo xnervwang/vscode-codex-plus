@@ -6,22 +6,30 @@
 /*
  * Builds the Agent map for one Codex conversation: the dialog Claude Code opens from its "N agents" button, plus the
  * timers Claude Code Plus adds to it. Here it lists the conversation's wake-up (src/wakeup.js), its goal, the
- * sub-agents it started and the commands it left running detached (src/left-running.js), so the user can see why its
- * dot is green. Everything comes from the in-memory snapshot (src/codex-reader.js); the worker reads the
- * wake-up files along with the plan files, so nothing here touches the disk. The page script draws the button and the
- * dialog (src/page/codex-extras-page.js) and shows the button only while `shown` is true.
+ * sub-agents it started, and everything it or they started that still runs (src/left-running.js): detached commands,
+ * background terminals, codex exec runs, claude -p workers and claude --bg sessions, so the user can see why its dot is
+ * green. Everything comes from the in-memory snapshot (src/codex-reader.js) and the last scan for work left running;
+ * nothing here touches the disk. The page script draws the button and the dialog (src/page/codex-extras-page.js) and
+ * shows the button only while `shown` is true.
+ *
+ * A sub-agent's dot is its own activity, as on the tabs and in the session list: working, background (only work it
+ * started is left), waiting (for the user) or stopped, and unknown while its rollout has not been read. `unseen` marks
+ * a reply the user has not looked at, drawn as `envelope` after its name.
  */
-const { lookKey } = require('./sessions-view');
 
 /* What the dialog's buttons may ask the host to do. */
 const ACTIONS = ['removeWakeup', 'pauseGoal', 'resumeGoal', 'clearGoal', 'openAgent'];
+const DOTS = new Set(['working', 'background', 'waiting']);
+const dotOf = (c) => (!c ? 'unknown' : DOTS.has(c.activity) ? c.activity : 'stopped');
 
 /*
  * `reader` is the snapshot. `stateOf(id)` returns a thread's state as computed by threadState in src/codex-source.js,
- * or null when its rollout has not been read; such a sub-agent is drawn without a dot. `detached(id)` lists the
- * detached commands still running for the conversation and its sub-agents (detachedOf in src/codex-source.js).
+ * or null when its rollout has not been read. For the conversation and its sub-agents, `detached(id)` lists the
+ * detached commands still running (detachedOf), `left(id)` names the kinds of work still running (leftOf) and
+ * `running(id)` lists that work besides the sub-agents and the detached commands (runningOf). `envelope` is the
+ * character src/envelope.js picks for the theme.
  */
-function mapOf(thread, { reader, stateOf = () => null, detached = () => [] }) {
+function mapOf(thread, { reader, stateOf = () => null, detached = () => [], left = () => [], running = () => [], envelope = '' }) {
   const w = thread ? reader.wakeup(thread) : null;
   const wakeups = w ? [{ everyMinutes: w.everyMinutes, prompt: w.prompt, expiresMs: w.expiresMs, paused: !!w.paused,
     nextMs: w.paused ? 0 : Math.max(w.setMs, w.firedMs || 0) + w.everyMinutes * 60e3 }] : [];
@@ -32,15 +40,19 @@ function mapOf(thread, { reader, stateOf = () => null, detached = () => [] }) {
     .sort((a, b) => (a.createdMs - b.createdMs) || a.id.localeCompare(b.id))
     .map((t) => {
       const c = stateOf(t.id);
-      return { id: t.id, name: String(t.nickname || '') || t.title || '(untitled)', title: t.title || '', dot: c ? lookKey(c, true) : 'unknown',
+      return { id: t.id, name: String(t.nickname || '') || t.title || '(untitled)', title: t.title || '', dot: dotOf(c), unseen: !!(c && c.unseen),
         updatedMs: Math.max(t.updatedMs || 0, (c && c.lastActiveAt) || 0) };
     });
   const jobs = (thread ? detached(thread) || [] : []).map((d) => ({ pid: d.pid, startMs: +d.startMs || 0, cmd: String(d.cmd || '') }));
-  return { type: 'codex-extras-agent-map', shown: wakeups.length > 0 || !!goal || agents.length > 0 || jobs.length > 0, wakeups, goal, agents,
-    detached: jobs };
+  const background = (thread ? running(thread) || [] : []).map((x) => ({ kind: String(x.kind || ''), pid: +x.pid || 0, startMs: +x.startMs || 0,
+    cmd: String(x.cmd || ''), name: String(x.name || ''), job: String(x.job || '') }));
+  const kinds = (thread ? left(thread) || [] : []).filter((k) => k !== 'subagent');
+  return { type: 'codex-extras-agent-map',
+    shown: wakeups.length > 0 || !!goal || agents.length > 0 || jobs.length > 0 || background.length > 0 || kinds.length > 0,
+    wakeups, goal, agents, detached: jobs, background, kinds, envelope: String(envelope || '') };
 }
 
 /* What a page is sent while there is nothing to draw, or no conversation. */
-const NO_MAP = { type: 'codex-extras-agent-map', shown: false, wakeups: [], goal: null, agents: [], detached: [] };
+const NO_MAP = { type: 'codex-extras-agent-map', shown: false, wakeups: [], goal: null, agents: [], detached: [], background: [], kinds: [], envelope: '' };
 
 module.exports = { mapOf, ACTIONS, NO_MAP };

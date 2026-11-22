@@ -29,8 +29,9 @@
  * under `setsid` is asking for a separate job. mfns, which runs demo clusters in namespaces of their own, names its
  * holder processes mfns-holder, not bash.
  *
- * The top process of each detached tree is also listed (`detached` in the scan). The Agent map shows the list, and
- * src/detached-ends.js tells the conversation when one is gone.
+ * The top process of each detached tree is also listed (`detached` in the scan), and so is every other process counted
+ * and every busy claude --bg session (`running`), with the name Claude Code's record gives a claude session. The Agent
+ * map shows both lists, and src/detached-ends.js tells the conversation when a detached one is gone.
  *
  * Without /proc only the claude --bg launches are found; src/codex-source.js then falls back on what the rollout says
  * of Codex's own background commands.
@@ -137,10 +138,19 @@ function readRecords(dir = sessionsHome(), { proc = '/proc', procs = null } = {}
 /* A `claude -p` worker's record names an entrypoint starting sdk-; an idle one is waiting for input. */
 const isWorker = (d) => /^sdk-/.test(d.entrypoint || '') && d.kind !== 'bg' && d.status !== 'idle';
 
-/* The job ids of `claude --bg` sessions with a turn or a command running. */
-function busyJobs(records) {
-  return new Set(records.filter((d) => d.kind === 'bg' && (d.status === 'busy' || d.status === 'shell')
-    && typeof d.jobId === 'string' && JOB_ID.test(d.jobId)).map((d) => d.jobId));
+/* What a claude session's record calls it, as the listed work carries it. */
+const recordName = (d) => (typeof d.name === 'string' ? d.name.slice(0, NAME_MAX) : '');
+const recordSession = (d) => (typeof d.sessionId === 'string' && THREAD_ID.test(d.sessionId) ? d.sessionId : '');
+const NAME_MAX = 200;
+
+/* The `claude --bg` sessions with a turn or a command running, as [{ job, pid, start, startMs, name, session }]. */
+function busyBg(records, all, boot) {
+  return records.filter((d) => d.kind === 'bg' && (d.status === 'busy' || d.status === 'shell')
+    && typeof d.jobId === 'string' && JOB_ID.test(d.jobId)).map((d) => {
+    const p = all.get(d.pid);
+    return { job: d.jobId, pid: d.pid, start: p ? String(p.start) : '', startMs: startMsOf(p, boot) || (+d.startedAt > 0 ? +d.startedAt : 0),
+      name: recordName(d), session: recordSession(d) };
+  });
 }
 
 /* Whether argv names the exec subcommand (alias e) of a codex program, past any options before it. */
@@ -206,8 +216,10 @@ function snapshot({ proc = '/proc', records = [], procs = null, environs = null 
     return id;
   };
   const argvOf = (pid) => { const a = read(path.join(proc, String(pid), 'cmdline'), 'latin1'); return a ? a.split('\0') : []; };
-  /* pid -> thread id of each detached process counted. */
+  /* pid -> thread id of each detached process counted, and the other processes counted as [pid, thread id, kind, the
+     claude -p record or null]. */
   const counted = new Map();
+  const others = [];
   for (const [pid, p] of all) {
     if (p.state === 'Z' || p.state === 'X') continue;
     const self = isAgent(pid);
@@ -223,12 +235,14 @@ function snapshot({ proc = '/proc', records = [], procs = null, environs = null 
     if (kind === 'detached' && p.sid !== pid && !STARTERS.has(path.basename(argvOf(pid)[0] || ''))) continue;
     if (kind === 'codexExec' && !isCodexExec(argvOf(pid))) continue;
     add(id, kind);
-    if (kind === 'detached') counted.set(pid, id.toLowerCase());
+    if (kind === 'detached') counted.set(pid, id.toLowerCase()); else others.push([pid, id.toLowerCase(), kind, null]);
   }
   for (const r of records) {
     if (!isWorker(r)) continue;
     const id = threadOf(r.pid);
-    if (THREAD_ID.test(id)) add(id, 'claudeWorker');
+    if (!THREAD_ID.test(id)) continue;
+    add(id, 'claudeWorker');
+    if (all.has(r.pid)) others.push([r.pid, id.toLowerCase(), 'claudeWorker', r]);
   }
   if (environs) {
     for (const [pid, kept] of environs) {
@@ -236,7 +250,10 @@ function snapshot({ proc = '/proc', records = [], procs = null, environs = null 
       if (!p || p.start !== kept.start || p.comm !== kept.comm) environs.delete(pid);
     }
   }
-  return { available: true, threads, detached: topsOf(counted, all, proc, argvOf) };
+  const boot = bootMs(proc);
+  const running = others.map(([pid, id, kind, r]) => ({ thread: id, kind, ...describe(pid, all, boot, argvOf),
+    name: r ? recordName(r) : '', session: r ? recordSession(r) : '', job: '' }));
+  return { available: true, threads, detached: topsOf(counted, all, boot, argvOf), running: running.sort(byStart) };
 }
 
 /* /proc's clock ticks per second (USER_HZ), the unit of a stat file's start time. */
@@ -246,15 +263,22 @@ function bootMs(proc) {
   const m = /^btime (\d+)$/m.exec(read(path.join(proc, 'stat'), 'latin1') || '');
   return m ? Number(m[1]) * 1000 : 0;
 }
-/* The longest command line kept for a detached process; the Agent map shows less. */
+/* The longest command line kept for a process listed; the Agent map shows less. */
 const CMD_MAX = 1000;
+const startMsOf = (p, boot) => (boot && p ? Math.round(boot + (Number(p.start) / TICKS) * 1000) : 0);
+/* A process listed: its pid, the stat file's start (kept with the pid against its reuse), that start in ms, and its
+   command line. */
+function describe(pid, all, boot, argvOf) {
+  const p = all.get(pid);
+  return { pid, start: String(p.start), startMs: startMsOf(p, boot),
+    cmd: argvOf(pid).filter((a, i, list) => a || i < list.length - 1).join(' ').slice(0, CMD_MAX) };
+}
+const byStart = (a, b) => (a.startMs - b.startMs) || (a.pid - b.pid);
 /*
  * The detached processes of `counted` (pid -> thread id) that have no counted ancestor of the same conversation, the
- * top of each tree, as [{ thread, pid, start, startMs, cmd }], sorted by pid. `start` is the stat file's, kept with the
- * pid against its reuse.
+ * top of each tree, as [{ thread, pid, start, startMs, cmd }], sorted by pid.
  */
-function topsOf(counted, all, proc, argvOf) {
-  const boot = bootMs(proc);
+function topsOf(counted, all, boot, argvOf) {
   const out = [];
   for (const [pid, id] of counted) {
     let top = true;
@@ -265,9 +289,7 @@ function topsOf(counted, all, proc, argvOf) {
       q = info.ppid;
     }
     if (!top) continue;
-    const p = all.get(pid);
-    out.push({ thread: id, pid, start: String(p.start), startMs: boot ? Math.round(boot + (Number(p.start) / TICKS) * 1000) : 0,
-      cmd: argvOf(pid).filter((a, i, list) => a || i < list.length - 1).join(' ').slice(0, CMD_MAX) });
+    out.push({ thread: id, ...describe(pid, all, boot, argvOf) });
   }
   return out.sort((a, b) => a.pid - b.pid);
 }
@@ -350,27 +372,32 @@ function launches(file, cache) {
  */
 const SHARE_DIR = 'shared';
 const SHARE_FILE = 'left-running.json';
-const SHARE_FORMAT = 1;
+/* Format 1 listed only the detached commands; a window that reads one scans for itself. */
+const SHARE_FORMAT = 2;
 const SHARE_MS = 9000;
 const SCANNED_KINDS = new Set(['command', 'detached', 'codexExec', 'claudeWorker']);
+const LISTED_KINDS = new Set(['command', 'codexExec', 'claudeWorker']);
 
 function sharedOf(text, { proc, sessions, now }) {
   let d;
   try { d = JSON.parse(text); } catch (_) { return null; }
   if (!d || d.format !== SHARE_FORMAT || d.proc !== proc || d.sessions !== sessions || typeof d.available !== 'boolean') return null;
   if (typeof d.at !== 'number' || !(d.at <= now) || now - d.at >= SHARE_MS) return null;
-  if (!d.threads || typeof d.threads !== 'object' || Array.isArray(d.threads) || !Array.isArray(d.jobs)) return null;
+  if (!d.threads || typeof d.threads !== 'object' || Array.isArray(d.threads)) return null;
   for (const [id, kinds] of Object.entries(d.threads)) {
     if (!THREAD_ID.test(id) || !Array.isArray(kinds) || !kinds.every((k) => SCANNED_KINDS.has(k))) return null;
   }
-  if (!d.jobs.every((j) => typeof j === 'string' && JOB_ID.test(j))) return null;
-  /* A file from a build that did not list them has no detached list; it counts as an empty one. */
-  const detached = d.detached === undefined ? [] : d.detached;
-  if (!Array.isArray(detached) || !detached.every(isDetachedEntry)) return null;
-  return { available: d.available, threads: d.threads, jobs: d.jobs, detached };
+  if (!Array.isArray(d.bg) || !d.bg.every(isBgEntry)) return null;
+  if (!Array.isArray(d.detached) || !d.detached.every(isDetachedEntry)) return null;
+  if (!Array.isArray(d.running) || !d.running.every(isRunningEntry)) return null;
+  return { available: d.available, threads: d.threads, bg: d.bg, detached: d.detached, running: d.running };
 }
-const isDetachedEntry = (e) => !!e && THREAD_ID.test(e.thread) && Number.isInteger(e.pid) && e.pid > 0 && typeof e.start === 'string'
-  && Number.isFinite(e.startMs) && typeof e.cmd === 'string';
+const isProcessEntry = (e) => !!e && Number.isInteger(e.pid) && e.pid > 0 && typeof e.start === 'string' && Number.isFinite(e.startMs);
+const isDetachedEntry = (e) => isProcessEntry(e) && THREAD_ID.test(e.thread) && typeof e.cmd === 'string';
+const isRunningEntry = (e) => isDetachedEntry(e) && LISTED_KINDS.has(e.kind) && typeof e.name === 'string' && typeof e.session === 'string'
+  && typeof e.job === 'string';
+const isBgEntry = (e) => isProcessEntry(e) && typeof e.job === 'string' && JOB_ID.test(e.job) && typeof e.name === 'string'
+  && typeof e.session === 'string';
 
 function writeShared(file, text) {
   const tmp = `${file}.${process.pid}.${require('worker_threads').threadId}.tmp`;
@@ -383,9 +410,9 @@ function writeShared(file, text) {
 }
 
 /*
- * The /proc part of a scan, { available, threads: { [thread id]: [kinds] }, jobs: [busy claude --bg job ids], detached:
- * [the top of each detached tree, as snapshot() lists them] }. It is another window's scan when `share` holds one fresh
- * enough at `now`.
+ * The /proc part of a scan, { available, threads: { [thread id]: [kinds] }, bg: [busy claude --bg sessions, as busyBg()
+ * lists them], detached and running: [as snapshot() lists them] }. It is another window's scan when `share` holds one
+ * fresh enough at `now`.
  */
 function scan({ proc = '/proc', sessionsDir, share = '', environs = null, now = Date.now() } = {}) {
   const sessions = path.resolve(sessionsDir || sessionsHome());
@@ -401,7 +428,8 @@ function scan({ proc = '/proc', sessionsDir, share = '', environs = null, now = 
   const snap = snapshot({ proc, records, procs, environs });
   const threads = {};
   for (const [id, kinds] of snap.threads) threads[id] = [...kinds];
-  const out = { available: snap.available, threads, jobs: [...busyJobs(records)], detached: snap.detached || [] };
+  const out = { available: snap.available, threads, bg: busyBg(records, procs, bootMs(proc)), detached: snap.detached || [],
+    running: snap.running || [] };
   if (file) {
     /* Made only inside a plan directory that is there: without one the plugin is not installed. */
     try { fs.mkdirSync(share); } catch (_) { /* there already, or no plan directory */ }
@@ -412,28 +440,35 @@ function scan({ proc = '/proc', sessionsDir, share = '', environs = null, now = 
 
 /*
  * One scan of `threads`, the recent threads the worker passes in, as [{ id, rollout }].
- * Returns { available, threads: { [thread id]: [kinds] }, detached }. `cache` keeps how far each rollout has been read for
- * launches; rollouts no longer passed in are dropped from it. `environs`, `share` and `now` are those of snapshot() and
- * scan().
+ * Returns { available, threads: { [thread id]: [kinds] }, detached, running }, where `running` adds to the scan's list
+ * each busy claude --bg session under the conversation that launched it. `cache` keeps how far each rollout has been read
+ * for launches; rollouts no longer passed in are dropped from it. `environs`, `share` and `now` are those of snapshot()
+ * and scan().
  */
 function leftRunning({ threads = [], proc = '/proc', sessionsDir, cache = new Map(), environs = null, share = '', now = Date.now() } = {}) {
   const found = scan({ proc, sessionsDir, share, environs, now });
   const out = {};
   for (const [id, kinds] of Object.entries(found.threads)) out[id] = [...kinds];
-  const jobs = new Set(found.jobs);
+  const jobs = new Map((found.bg || []).map((b) => [b.job, b]));
+  const running = (found.running || []).slice();
   const keep = new Set();
   if (jobs.size) {
     for (const t of threads) {
       if (!t || !t.rollout || !THREAD_ID.test(String(t.id || ''))) continue;
       keep.add(t.rollout);
-      if (![...launches(t.rollout, cache)].some((j) => jobs.has(j))) continue;
+      const mine = [...launches(t.rollout, cache)].filter((j) => jobs.has(j));
+      if (!mine.length) continue;
       const id = t.id.toLowerCase();
       out[id] = [...new Set([...(out[id] || []), 'claudeBg'])];
+      for (const j of mine) {
+        const b = jobs.get(j);
+        running.push({ thread: id, kind: 'claudeBg', pid: b.pid, start: b.start, startMs: b.startMs, cmd: '', name: b.name, session: b.session, job: j });
+      }
     }
   }
   for (const f of [...cache.keys()]) if (!keep.has(f) && jobs.size) cache.delete(f);
-  return { available: found.available, threads: out, detached: found.detached || [] };
+  return { available: found.available, threads: out, detached: found.detached || [], running: running.sort(byStart) };
 }
 
-module.exports = { snapshot, processes, readRecords, busyJobs, launches, scan, leftRunning, isCodexExec, envValue, commandOf, STARTERS, KINDS,
+module.exports = { snapshot, processes, readRecords, busyBg, launches, scan, leftRunning, isCodexExec, envValue, commandOf, STARTERS, KINDS,
   LEFT_EVERY_MS, LAUNCH_TAIL, SHARE_DIR, SHARE_FILE, SHARE_FORMAT, SHARE_MS };

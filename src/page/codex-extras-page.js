@@ -541,25 +541,35 @@
 
   /*
    * The Agent map: a copy of Claude Code's dialog of that name and of the "N agents" pill that opens it, with Claude
-   * Code Plus's timers added. It shows this conversation's wake-up, goal and sub-agents, which the host sends
-   * (codex-extras-agent-map, src/agent-map.js) whenever they change. The pill sits in the row with the other controls
-   * while any of the three is non-empty. The dialog is built when it opens and removed when it closes. Each button
-   * posts one of the host's ACTIONS; Open also posts the sub-agent's id.
+   * Code Plus's timers added. It shows this conversation's wake-up, goal and sub-agents, and the work it started that
+   * still runs, which the host sends (codex-extras-agent-map, src/agent-map.js) whenever they change. The pill sits in
+   * the row with the other controls while any of those is there. Its dot is green while any of that work runs, red while
+   * a sub-agent waits for the user, and grey once it has all ended. The dialog is built when it opens and removed when
+   * it closes. Each button posts one of the host's ACTIONS; Open also posts the sub-agent's id.
    */
   var agentMap = null, agentsBtn = null, mapBox = null, mapKeysWired = false;
   var Z_MAP = 28;
   var DIM = 'var(--vscode-descriptionForeground,#9d9d9d)';
   var EDGE = 'var(--vscode-inlineChatInput-border,var(--vscode-input-border,var(--vscode-widget-border,#7f7f7f66)))';
-  /* A sub-agent's dot, by lookKey in src/sessions-view.js. */
-  var DOT_TONE = { working: '#22c55e', prompt: '#3b82f6',
-    unread: '#ef4444', failed: 'var(--vscode-errorForeground,#f85149)', idle: DIM };
+  /* The dots the tabs and the session list draw: green while a turn runs, a green ring once only work it started is
+     left, red while it waits for the user. A stopped sub-agent has none, in a space of the same size, and the pill is
+     grey once everything has ended. */
+  var GREEN = '#22c55e', RED = '#ef4444';
   var GOAL_SHORT = { active: 'goal', paused: 'goal paused', blocked: 'goal blocked', usageLimited: 'goal: usage limit',
     budgetLimited: 'goal: budget spent', complete: 'goal done' };
   var GOAL_STATE = { active: 'in progress', paused: 'paused', blocked: 'blocked', usageLimited: 'stopped at the usage limit',
     budgetLimited: 'budget spent', complete: 'done' };
   var GOAL_RESUMABLE = ['paused', 'blocked', 'usageLimited', 'budgetLimited'];
-  var PILL_TITLE = { prompt: 'An agent is waiting for you · Click to open the agent map', working: 'Agents are working · Click to open the agent map',
-    failed: 'An agent failed · Click to open the agent map', idle: 'Click to open the agent map' };
+  var PILL_TITLE = { waiting: 'An agent is waiting for you · Click to open the agent map',
+    working: 'Work this conversation started is still running · Click to open the agent map', idle: 'Click to open the agent map' };
+  /* The work besides sub-agents and detached commands, in the order the pill counts it: [one, more, in the dialog]. */
+  var WORK = ['command', 'codexExec', 'claudeWorker', 'claudeBg'];
+  var WORK_WORD = { command: ['terminal', 'terminals', 'Background terminal'], codexExec: ['codex exec', 'codex exec', 'codex exec'],
+    claudeWorker: ['claude -p', 'claude -p', 'claude -p'], claudeBg: ['claude --bg', 'claude --bg', 'claude --bg'] };
+  /* What the dialog says for work the host knows runs but could not list, as a window without /proc knows Codex's. */
+  var WORK_BARE = { detached: 'A command it detached is still running', command: 'A background terminal is still running',
+    codexExec: 'A codex exec it started is still running', claudeWorker: 'A claude -p worker it started is still running',
+    claudeBg: 'A claude --bg session it started is still busy' };
   var plural = function (n, one) { return n + ' ' + one + (n === 1 ? '' : 's'); };
   function mk(tag, css, text) {
     var e = document.createElement(tag);
@@ -568,23 +578,37 @@
     return e;
   }
   function dotEl(state, px) {
-    var tone = DOT_TONE[state];
-    var d = mk('span', 'display:inline-block;flex-shrink:0;border-radius:50%;width:' + px + 'px;height:' + px + 'px;'
-      + (tone ? 'background:' + tone + ';' : '') + (state === 'idle' ? 'opacity:.4;' : ''));
+    var css = 'display:inline-block;flex-shrink:0;box-sizing:border-box;border-radius:50%;width:' + px + 'px;height:' + px + 'px;';
+    if (state === 'working') css += 'background:' + GREEN + ';';
+    else if (state === 'background') css += 'border:2px solid ' + GREEN + ';';
+    else if (state === 'waiting') css += 'background:' + RED + ';';
+    else if (state === 'idle') css += 'background:' + DIM + ';opacity:.4;';
+    var d = mk('span', css);
     d.setAttribute(MARK + '-dot', state);
     return d;
   }
-  /* Claude Code's pill: its dot follows the agents, one waiting before one working before one failed. */
+  var jobsOf = function (m) { return Array.isArray(m.detached) ? m.detached : []; };
+  var workOf = function (m) { return Array.isArray(m.background) ? m.background : []; };
+  var kindsOf = function (m) { return Array.isArray(m.kinds) ? m.kinds : []; };
+  var countOf = function (m, kind) { return workOf(m).filter(function (w) { return w.kind === kind; }).length; };
   function pillDot(m) {
     var dots = m.agents.map(function (a) { return a.dot; });
-    return dots.indexOf('prompt') >= 0 ? 'prompt' : dots.indexOf('working') >= 0 ? 'working' : dots.indexOf('failed') >= 0 ? 'failed' : 'idle';
+    if (dots.indexOf('waiting') >= 0) return 'waiting';
+    var busy = dots.indexOf('working') >= 0 || dots.indexOf('background') >= 0 || jobsOf(m).length || workOf(m).length || kindsOf(m).length;
+    return busy ? 'working' : 'idle';
   }
-  /* Its label as Claude Code Plus writes it: "2 agents · 1 detached · 1 timer", each part only when there is one. */
-  var jobsOf = function (m) { return Array.isArray(m.detached) ? m.detached : []; };
+  /* Its label as Claude Code Plus writes it: "2 agents · 1 detached · 1 timer", each part only when there is one, and the
+     running work before the timers. A kind the host knows runs but could not count is named without a number. */
   function pillText(m) {
     var parts = [];
     if (m.agents.length) parts.push(plural(m.agents.length, 'agent'));
     if (jobsOf(m).length) parts.push(jobsOf(m).length + ' detached');
+    else if (kindsOf(m).indexOf('detached') >= 0) parts.push('detached');
+    for (var i = 0; i < WORK.length; i++) {
+      var n = countOf(m, WORK[i]), w = WORK_WORD[WORK[i]];
+      if (n) parts.push(n + ' ' + (n === 1 ? w[0] : w[1]));
+      else if (kindsOf(m).indexOf(WORK[i]) >= 0) parts.push(w[0]);
+    }
     if (m.wakeups.length) parts.push(plural(m.wakeups.length, 'timer'));
     if (m.goal) parts.push(GOAL_SHORT[m.goal.status] || 'goal');
     return parts.join(' · ');
@@ -691,8 +715,16 @@
         b.setAttribute(MARK + '-id', a.id);
         if (a.title && a.title !== a.name) b.setAttribute('title', a.title);
         var head = mk('span', 'display:flex;align-items:center;gap:6px;min-width:0;white-space:nowrap;');
-        if (a.dot !== 'unknown') head.appendChild(dotEl(a.dot, 8)); else head.appendChild(mk('span', 'display:inline-block;flex-shrink:0;width:8px;height:8px;'));
-        head.appendChild(mk('span', 'overflow:hidden;text-overflow:ellipsis;', a.name));
+        head.appendChild(dotEl(a.dot, 8));
+        var name = mk('span', 'overflow:hidden;text-overflow:ellipsis;', a.name);
+        name.setAttribute(MARK + '-name', '');
+        head.appendChild(name);
+        if (a.unseen) {
+          var env = mk('span', 'flex-shrink:0;line-height:1;', m.envelope || '\u2709\uFE0F');
+          env.setAttribute(MARK + '-unseen', '');
+          env.setAttribute('title', 'Has a reply you have not read');
+          head.appendChild(env);
+        }
         b.appendChild(head);
         var age = kit.age(a.updatedMs);
         b.appendChild(mk('span', 'color:' + DIM + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-left:14px;font-size:.85em;',
@@ -713,16 +745,60 @@
       out.push(section('map-detached', 'Detached commands · started by this conversation and still running after its turn', jobs.map(function (d) {
         var row = mk('div', 'margin:5px 0;');
         row.setAttribute(MARK, 'map-job');
-        var cmd = mk('div', 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--vscode-editor-font-family,monospace);'
-          + 'font-size:.92em;', d.cmd.length > 120 ? d.cmd.slice(0, 119) + '…' : d.cmd);
-        cmd.setAttribute('title', d.cmd);
-        row.appendChild(cmd);
-        var age = d.startMs ? kit.age(d.startMs) : '';
-        row.appendChild(dim('pid ' + d.pid + (d.startMs ? ' · started ' + kit.stamp(d.startMs, false) + (age === 'now' ? ', just now' : ', ' + age + ' ago') : '')));
+        var head = mk('div', 'display:flex;align-items:center;gap:6px;min-width:0;');
+        head.appendChild(dotEl('working', 8));
+        head.appendChild(cmdLine(d.cmd, ''));
+        row.appendChild(head);
+        row.appendChild(metaLine(d, []));
         return row;
       })));
     }
+    var work = workOf(m), bare = ['detached'].concat(WORK).filter(function (k) {
+      return kindsOf(m).indexOf(k) >= 0 && !(k === 'detached' ? jobs.length : countOf(m, k));
+    });
+    if (work.length || bare.length) {
+      out.push(section('map-background', 'Background work · started by this conversation and still running', work.map(workRow).concat(bare.map(function (k) {
+        var row = mk('div', 'margin:5px 0;');
+        row.setAttribute(MARK, 'map-bg');
+        row.setAttribute(MARK + '-kind', k);
+        var head = mk('div', 'display:flex;align-items:center;gap:6px;min-width:0;');
+        head.appendChild(dotEl('working', 8));
+        head.appendChild(mk('span', '', WORK_BARE[k] || k));
+        row.appendChild(head);
+        return row;
+      }))));
+    }
     return out;
+  }
+  /* A command line, cut to 120 characters with the whole of it on hover. */
+  function cmdLine(text, indent) {
+    var cmd = mk('div', 'min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--vscode-editor-font-family,monospace);'
+      + 'font-size:.92em;' + indent, text.length > 120 ? text.slice(0, 119) + '…' : text);
+    cmd.setAttribute('title', text);
+    return cmd;
+  }
+  /* Under a row, lined up with the text after its dot: its job id when it has one, its pid when it has one, and when it
+     started. */
+  function metaLine(d, first) {
+    var age = d.startMs ? kit.age(d.startMs) : '';
+    var parts = first.slice();
+    if (d.pid) parts.push('pid ' + d.pid);
+    if (d.startMs) parts.push('started ' + kit.stamp(d.startMs, false) + (age === 'now' ? ', just now' : ', ' + age + ' ago'));
+    return mk('div', 'color:' + DIM + ';padding-left:14px;', parts.join(' · '));
+  }
+  /* One piece of work: what it is, with the name Claude Code gave a claude session, then its command line. */
+  function workRow(w) {
+    var row = mk('div', 'margin:5px 0;');
+    row.setAttribute(MARK, 'map-bg');
+    row.setAttribute(MARK + '-kind', w.kind);
+    var head = mk('div', 'display:flex;align-items:center;gap:6px;min-width:0;');
+    head.appendChild(dotEl('working', 8));
+    head.appendChild(mk('span', 'min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;',
+      ((WORK_WORD[w.kind] || [w.kind, w.kind, w.kind])[2]) + (w.name ? ' · ' + w.name : '')));
+    row.appendChild(head);
+    if (w.cmd) row.appendChild(cmdLine(w.cmd, 'padding-left:14px;'));
+    row.appendChild(metaLine(w, w.job ? ['job ' + w.job] : []));
+    return row;
   }
   function drawMap() {
     if (!mapOpen() || !agentMap) return;

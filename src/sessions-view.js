@@ -36,7 +36,8 @@
  *
  * Threads Codex started by itself - sub-agents, the reviews of approval requests - and `codex exec` runs are left out
  * unless codexPlus.hideBackgroundSessions is off, when they are listed with the rest. A sub-agent whose parent is listed
- * is then drawn indented straight after its parent, in every group that shows the parent.
+ * is then drawn indented straight after its parent, in every group that shows the parent. A sub-agent is titled by its
+ * nickname, else its title, as the Agent map names it, and its dot is its own activity.
  */
 const { folderTest } = require('./folders');
 const { PINNED_SECTION } = require('./session-groups');
@@ -91,37 +92,6 @@ const LIST_MENU = [
   return submenu ? { command, title: title.replace(/\.\.\.$/, ''), group, when, submenu } : { command, title, group, when, ...more };
 });
 const ACTIVITY_DOT = { working: 'working', background: 'background', waiting: 'waiting' };
-/* A sub-agent's dot in the Agent map (src/agent-map.js): green running, blue waiting for you, red replied and unread or
-   last turn failed, grey idle, and a ring in that colour for one running or waiting in another window. */
-const STATE_LOOK = {
-  working: { icon: 'circle-filled', color: 'charts.green', word: 'working' },
-  workingElsewhere: { icon: 'circle-outline', color: 'charts.green', word: 'working in another window' },
-  unread: { icon: 'circle-filled', color: 'charts.red', word: 'replied, not read' },
-  failed: { icon: 'circle-filled', color: 'charts.red', word: 'last turn failed' },
-  idle: { icon: 'circle-filled', color: 'disabledForeground', word: 'idle' },
-  prompt: { icon: 'circle-filled', color: 'charts.blue', word: 'waiting for you' },
-  promptElsewhere: { icon: 'circle-outline', color: 'charts.blue', word: 'waiting for you in another window' },
-  /* No dot: the user has not read this rollout, so whether a turn is running there is not known. */
-  unknown: { icon: 'blank', color: 'descriptionForeground', word: 'not read' },
-};
-
-/*
- * Picks the dot for a conversation from what the source reported. `here` is whether this window shows it, in a tab or
- * in Codex's sidebar. A conversation that is running or waiting, but that this window neither shows nor runs, is in
- * another window. A conversation with an approval counted in this window, or with a turn running on this window's
- * app-server, is always this window's, and so is one that is working only because of something it started (`left`),
- * since that work does not belong to any window.
- */
-function lookKey(conv, here) {
-  const state = (conv && conv.state) || 'idle';
-  const leftOnly = !!(conv && !conv.working && Array.isArray(conv.left) && conv.left.length);
-  const ours = here || leftOnly || !!(conv && (conv.runningHere || conv.decide || conv.soon));
-  if (state === 'working') return ours ? 'working' : 'workingElsewhere';
-  if (state === 'prompt') return ours ? 'prompt' : 'promptElsewhere';
-  if (conv && conv.failed) return 'failed';
-  return STATE_LOOK[state] ? state : 'idle';
-}
-const lookOf = (conv, here) => STATE_LOOK[lookKey(conv, here)];
 /* What a row's hover says still runs after the conversation's turn, for each kind src/left-running.js names. */
 const LEFT_WORDS = {
   subagent: 'A sub-agent is still running',
@@ -219,14 +189,17 @@ function placeOf(t, sections) {
  * Builds the plain-value model the page draws (model()).
  */
 class SessionsModel {
-  constructor(vscode, { memory, memento, settings, stateOf, reader, wantState = () => {}, sidebarShowing = () => '', sections = null,
-    account = () => null, front = () => '', noGroups = () => false, archivedAt = () => 0 }) {
+  constructor(vscode, { memory, memento, settings, stateOf, threadState = () => null, reader, wantState = () => {}, sidebarShowing = () => '',
+    sections = null, account = () => null, front = () => '', noGroups = () => false, archivedAt = () => 0 }) {
     this.vscode = vscode;
     this.reader = reader;
     this.memory = memory;
     this.memento = memento;
     this.settings = settings;
+    /* stateOf(id) answers for the conversations Agent Plus lists, which are the user's own; threadState(id) for the
+       other threads the list shows with codexPlus.hideBackgroundSessions off, sub-agents among them. */
     this.stateOf = stateOf;
+    this.threadState = threadState;
     /* Asks for the rollout state of conversations the user has not read, on the next poll it was going to make
        anyway. Called when a group is expanded, which is the only time those rows are on screen. */
     this.wantState = wantState;
@@ -300,7 +273,7 @@ class SessionsModel {
       const here = open.has(t.id) || t.id === this.sidebarNow;
       /* Without its rollout the activity is unknown rather than stopped, and reading every old rollout just to colour
          dots costs too much. */
-      const conv = this.stateOf(t.id);
+      const conv = this.stateOf(t.id) || (t.kind !== 'user' ? this.threadState(t.id) : null);
       const read = !!this.reader.state(t.id);
       const dot = read ? ACTIVITY_DOT[conv && conv.activity] || 'none' : 'unknown';
       const goal = typeof this.reader.goal === 'function' ? this.reader.goal(t.id) : null;
@@ -309,7 +282,8 @@ class SessionsModel {
          conversation whose turn runs or waits for the user cannot be archived or deleted; one with only background
          work left can. */
       const busy = read && !!conv && (conv.activity === 'working' || conv.activity === 'waiting');
-      return { id: t.id, title: withoutEnvelope(t.title) || '(untitled)', time: dateSpan(t.createdMs, t.updatedMs, now), dot, here: here || where === 'open',
+      const title = (t.kind === 'subagent' && String(t.nickname || '')) || withoutEnvelope(t.title) || '(untitled)';
+      return { id: t.id, title, time: dateSpan(t.createdMs, t.updatedMs, now), dot, here: here || where === 'open',
         archived: !!t.archived, archivable: !t.archived && !busy, deletable: !!t.archived && !here && where !== 'open' && !busy,
         color: COLORS[colors[t.id]] || '', open: open.has(t.id), sidebar: where === 'open' && t.id === this.sidebarNow && !open.has(t.id),
         unread: !!(conv && conv.unseen), running: leftText(conv), grouped: !!(t.section && this.sections.has(t.section)),
@@ -434,5 +408,5 @@ function pageHtml({ js, css, csp, nonce: n }) {
 /* Whether a search string is meant as part of a thread id: four or more characters of hex and hyphens. */
 const looksLikeId = (q) => /^[0-9a-f-]{4,}$/i.test(String(q || '').trim());
 
-module.exports = { SessionsModel, SessionsView, pageHtml, group, drawn, dateSpan, placeOf, looksLikeId, lookOf, lookKey, goalText,
-  chatFont, COLORS, COLOR_NAMES, COLOR_KEY, ACTIVITY_DOT, STATE_LOOK, GOAL_WORD, LEFT_WORDS, PAGE_FILES, LIST_MENU };
+module.exports = { SessionsModel, SessionsView, pageHtml, group, drawn, dateSpan, placeOf, looksLikeId, goalText,
+  chatFont, COLORS, COLOR_NAMES, COLOR_KEY, ACTIVITY_DOT, GOAL_WORD, LEFT_WORDS, PAGE_FILES, LIST_MENU };

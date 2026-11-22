@@ -110,7 +110,8 @@ module.exports = async ({ eq, root }) => {
   eq(pill().textContent, '2 agents · 2 detached · 1 timer · goal paused', 'detached commands are counted in the pill, after the agents and before the timers');
   click(pill());
   const jobRows = p.q('[data-codex-extras="map-detached"] [data-codex-extras="map-job"]');
-  eq([jobRows.length, jobRows[0].childNodes[0].textContent.length, jobRows[0].childNodes[0].getAttribute('title'),
+  const cmdOf = (r) => r.childNodes[0].childNodes[1];
+  eq([jobRows.length, cmdOf(jobRows[0]).textContent.length, cmdOf(jobRows[0]).getAttribute('title'),
     /^pid 4100 · started (\d\d\/\d\d )?\d\d:\d\d, 4m ago$/.test(jobRows[0].childNodes[1].textContent), jobRows[1].childNodes[1].textContent],
   [2, 120, long, true, 'pid 4200'],
   'the map lists each detached command by its command line, cut to 120 characters with the whole of it on hover, its pid, and when it started');

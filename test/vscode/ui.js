@@ -20,10 +20,13 @@
  *                background. After a rename that leaves the envelope in the new name, the tab and the list row each
  *                end with a single envelope. A long title in a narrowed side bar is cut, and its envelope still shows
  *   left running a conversation stays green, on its tab and in the session list, until the work its turn started is
- *                done: a background command, a sub-agent, and on Linux a detached shell, a program run under setsid and
- *                a codex exec, as a green ring. The last three need Codex's approval to run outside its sandbox, and the
- *                tab shows the red dot until it is given. The setsid program also appears in the Agent map, and once the shell or
- *                the program stops, the conversation gets a notice
+ *                done: a background command, a sub-agent, and on Linux a detached shell, a program run under setsid, a
+ *                codex exec, a claude -p worker and a claude --bg session, as a green ring. The ones on Linux need
+ *                Codex's approval to run outside its sandbox, and the tab shows the red dot until it is given. Each one
+ *                gives the Agent map pill a green dot, is counted on it and is listed in its dialog with a green dot. With
+ *                background threads listed, the sub-agent's row has its nickname and its dot. Once the shell or the
+ *                program stops, the conversation gets a notice. The two Claude Code ones are stand-ins that write the
+ *                session record Claude Code writes, since a real one would call a model
  *   images       a reply's images: a PNG and an SVG by absolute path, a file:// URL and a data: URL drawn, an image at
  *                a web address shown as a plain link; with codexPlus.replyImages off the others are "[Image]", and
  *                drawn again once it is back on. What the model is told is left to the hook's own self-test, since
@@ -976,7 +979,27 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       };
       const pillText = () => codex.evaluate(() => ((document.querySelector('[data-codex-extras="agents"]') || {}).textContent || ''))
         .catch(() => '');
-      const leftCase = async ({ name, words, steps, ask, end, ms = 45000, during, notice }) => {
+      /* The Agent map pill's dot and label, and what its dialog lists, read with the dialog opened and closed again. */
+      const pillNow = () => codex.evaluate(() => {
+        const p = document.querySelector('[data-codex-extras="agents"]');
+        const d = p && p.querySelector('[data-codex-extras-dot]');
+        return p ? { dot: d ? d.getAttribute('data-codex-extras-dot') : '', text: p.textContent } : null;
+      }).catch(() => null);
+      const mapRows = async () => {
+        await codex.locator('[data-codex-extras="agents"]').first().click().catch(() => {});
+        await until(() => codex.evaluate(() => !!document.querySelector('[data-codex-extras="map-dialog"]')).catch(() => false), 5000, 200);
+        const rows = await codex.evaluate(() => {
+          const dot = (e) => { const d = e.querySelector('[data-codex-extras-dot]'); return d ? d.getAttribute('data-codex-extras-dot') : ''; };
+          const all = (sel) => [...document.querySelectorAll(`[data-codex-extras="map-dialog"] ${sel}`)];
+          return { agents: all('[data-codex-extras="map-agent"]').map((e) => ({ dot: dot(e), name: (e.querySelector('[data-codex-extras-name]') || {}).textContent || '' })),
+            jobs: all('[data-codex-extras="map-job"]').map((e) => ({ dot: dot(e), text: e.textContent })),
+            work: all('[data-codex-extras="map-bg"]').map((e) => ({ kind: e.getAttribute('data-codex-extras-kind'), dot: dot(e), text: e.textContent })) };
+        }).catch(() => null);
+        await page.keyboard.press('Escape');
+        await until(() => codex.evaluate(() => !document.querySelector('[data-codex-extras="map-dialog"]')).catch(() => true), 3000, 200);
+        return rows;
+      };
+      const leftCase = async ({ name, words, steps, ask, end, ms = 45000, during, notice, map }) => {
         const notices = model.sent('Codex Plus notice');
         const counted = await bellCount();
         model.script(id, steps);
@@ -1005,7 +1028,14 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
             const a = own('patching')._approvals;
             return { waiting: a.of(arg), threads: a.threads(), sinceMs: a.since ? a.since(arg) : null };`, id).catch((e) => String(e)) });
         await shot(`left-${name.replace(/\W+/g, '-')}`);
-        if (during) await during();
+        let listed = null;
+        if (map) {
+          const pill = await until(async () => { const q = await pillNow(); return q && q.dot === 'working' && map.text.test(q.text) && q; }, 20000, 500);
+          check(!!pill, `${name}: the Agent map pill has a green dot and counts it (${map.text})`, await pillNow());
+          listed = await mapRows();
+          check(!!listed && map.listed(listed), `${name}: and the Agent map dialog lists it with a green dot`, listed);
+        }
+        if (during) await during(listed);
         if (end) end();
         const gone = await until(async () => { const g = await now(); return g.green === 0 && !/^(working|background)$/.test(g.rowDot || '') && !g.running.includes(words) && g; }, ms, 1000);
         check(!!gone, `${name}: once that has finished, the green leaves both`, gone || { ...await now(), ...await why() });
@@ -1016,19 +1046,37 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
           await until(async () => !(await dotsOn(title) || {}).working, 30000, 1000);
         }
       };
+      const green = (x) => x.dot === 'working';
       await leftCase({ name: 'background command', words: 'A background command is still running',
         steps: [{ call: 'exec_command', args: { cmd: process.platform === 'win32' ? 'Start-Sleep -Seconds 25' : 'sleep 25', yield_time_ms: 1000 } },
-          { reply: 'Started the job.' }] });
+          { reply: 'Started the job.' }],
+        map: { text: /\b1 terminal\b/, listed: (r) => r.work.some((x) => x.kind === 'command' && green(x) && /Sleep|sleep/.test(x.text)) } });
       await leftCase({ name: 'sub-agent', words: 'A sub-agent is still running', end: () => model.releaseOthers(),
         steps: [{ call: 'spawn_agent', namespace: 'collaboration', args: { task_name: 'job', message: 'Wait for the job.', fork_turns: 'none' } },
-          { reply: 'Started a helper.' }] });
+          { reply: 'Started a helper.' }],
+        map: { text: /\b1 agent\b/, listed: (r) => r.agents.some((a) => a.dot === 'working' || a.dot === 'background') },
+        during: async (listed) => {
+          await setting('hideBackgroundSessions', false);
+          const kid = await until(() => list.evaluate(() => {
+            const r = [...document.querySelectorAll('.cp-row.cp-child')].map((e) => e._row).find(Boolean);
+            return r ? { title: String(r.title || ''), dot: String(r.dot || '') } : null;
+          }).catch(() => null), 20000, 500);
+          const name = ((listed && listed.agents[0]) || {}).name || '';
+          check(!!kid && kid.title === name && kid.title !== '(untitled)' && /^(working|background)$/.test(kid.dot),
+            'sub-agent: with background threads listed, its row under the conversation has the Agent map\'s name for it and a green dot',
+            { row: kid, map: name });
+          await shot('left-sub-agent-row');
+          await setting('hideBackgroundSessions', true);
+        } });
       if (process.platform === 'linux') {
         const outside = (cmd) => ({ call: 'exec_command', args: { cmd, yield_time_ms: 1000, sandbox_permissions: 'require_escalated',
           justification: 'Start the job outside the sandbox.' } });
         await leftCase({ name: 'detached shell', words: 'A command it detached is still running', ask: true, ms: 70000,
-          notice: 'sleep 45; true', steps: [outside("setsid nohup bash -c 'sleep 45; true' >/dev/null 2>&1 &"), { reply: 'Started the job.' }] });
+          notice: 'sleep 45; true', steps: [outside("setsid nohup bash -c 'sleep 45; true' >/dev/null 2>&1 &"), { reply: 'Started the job.' }],
+          map: { text: /\b1 detached\b/, listed: (r) => r.jobs.some((j) => green(j) && /sleep 45/.test(j.text)) } });
         await leftCase({ name: 'program setsid started', words: 'A command it detached is still running', ask: true, ms: 70000,
           notice: 'sleep 47', steps: [outside('setsid sleep 47 >/dev/null 2>&1 < /dev/null &'), { reply: 'Started the job.' }],
+          map: { text: /\b1 detached\b/, listed: (r) => r.jobs.some((j) => green(j) && /sleep 47/.test(j.text)) },
           during: async () => {
             const pill = await until(async () => { const t = await pillText(); return /\b1 detached\b/.test(t) && t; }, 20000, 500);
             check(!!pill, 'program setsid started: the Agent map button counts it as detached', await pillText());
@@ -1038,10 +1086,37 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         check(!!bin, 'the codex program of the Codex extension is found, for a codex exec to start', profile.exts);
         if (bin) {
           await leftCase({ name: 'codex exec', words: 'A codex exec it started is still running', ask: true, end: () => model.releaseOthers(),
-            steps: [outside(`setsid nohup '${bin}' exec --skip-git-repo-check 'Wait for the job.' >/dev/null 2>&1 &`), { reply: 'Started a worker.' }] });
+            steps: [outside(`setsid nohup '${bin}' exec --skip-git-repo-check 'Wait for the job.' >/dev/null 2>&1 &`), { reply: 'Started a worker.' }],
+            map: { text: /\b1 codex exec\b/, listed: (r) => r.work.some((x) => x.kind === 'codexExec' && green(x) && /exec --skip-git-repo-check/.test(x.text)) } });
         }
+        /* Claude Code is not run here, since it would call a model. These stand-ins write the session record Claude Code
+           keeps for a running process, which is what Codex Plus reads, under this window's own HOME. */
+        const fakeBin = path.join(profile.home, 'fake-claude');
+        fs.mkdirSync(fakeBin, { recursive: true });
+        const fakeClaude = path.join(fakeBin, 'claude'), fakeSession = path.join(fakeBin, 'claude-bg-session');
+        fs.writeFileSync(fakeClaude, [
+          '#!/bin/sh',
+          'sessions="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/sessions"',
+          'mkdir -p "$sessions"',
+          'if [ "$1" = "--bg" ]; then',
+          `  env -u CODEX_THREAD_ID setsid '${fakeSession}' "$sessions" < /dev/null > /dev/null 2>&1 &`,
+          "  echo 'backgrounded · 1a2b3c4d'",
+          '  exit 0',
+          'fi',
+          'printf \'{"pid":%s,"sessionId":"0b1c2d3e-0000-4000-8000-0000000000a1","kind":"interactive","entrypoint":"sdk-cli","status":"busy","name":"window test worker"}\\n\' $$ > "$sessions/$$.json"',
+          'sleep 40', ''].join('\n'), { mode: 0o755 });
+        fs.writeFileSync(fakeSession, [
+          '#!/bin/sh',
+          'printf \'{"pid":%s,"sessionId":"0b1c2d3e-0000-4000-8000-0000000000b1","kind":"bg","entrypoint":"cli","status":"busy","jobId":"1a2b3c4d","name":"window test session"}\\n\' $$ > "$1/$$.json"',
+          'sleep 40', ''].join('\n'), { mode: 0o755 });
+        await leftCase({ name: 'claude -p worker', words: 'A claude -p worker it started is still running', ask: true, ms: 70000,
+          steps: [outside(`setsid nohup '${fakeClaude}' -p 'Wait for the job.' >/dev/null 2>&1 < /dev/null &`), { reply: 'Started a worker.' }],
+          map: { text: /\b1 claude -p\b/, listed: (r) => r.work.some((x) => x.kind === 'claudeWorker' && green(x) && /claude -p · window test worker/.test(x.text)) } });
+        await leftCase({ name: 'claude --bg session', words: 'A claude --bg session it started is still busy', ask: true, ms: 70000,
+          steps: [outside(`'${fakeClaude}' --bg 'Run the suite.'`), { reply: 'Started a session.' }],
+          map: { text: /\b1 claude --bg\b/, listed: (r) => r.work.some((x) => x.kind === 'claudeBg' && green(x) && /window test session/.test(x.text) && /job 1a2b3c4d/.test(x.text)) } });
       } else {
-        note(`a detached shell, a program setsid started and a codex exec are found through /proc, which ${process.platform} does not have, `
+        note(`a detached shell, a program setsid started, a codex exec and claude -p and claude --bg sessions are found through /proc, which ${process.platform} does not have, `
           + 'so none of them is made here' + (process.platform === 'win32' ? '' : ', and no command waits for approval, so the red dot is not checked'));
       }
       model.script(null);

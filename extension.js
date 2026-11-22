@@ -47,7 +47,7 @@ const codexManifest = require('./src/manifest');
 const tokenMode = require('./src/token-mode');
 const archiveSweep = require('./src/archive-sweep');
 const { withoutEnvelope } = require('./src/title-marks');
-const { onEnvelopeChange } = require('./src/envelope');
+const { envelope, onEnvelopeChange } = require('./src/envelope');
 
 const CONFIG = 'codexPlus';
 /* This copy's id and folder, kept for deactivate, which runs after the editor's API is gone. */
@@ -371,7 +371,7 @@ async function activate(context) {
     return typeof id === 'string' ? id : patching.sidebarShowing();
   };
   sessionsModel = new SessionsModel(vscode, { memory, memento: context.globalState, settings, reader,
-    stateOf: (id) => lastConversations.get(id), wantState: (ids) => source.wantState(ids),
+    stateOf: (id) => lastConversations.get(id), threadState: (id) => source.threadState(id), wantState: (ids) => source.wantState(ids),
     sidebarShowing: () => patching.sidebarShowing(), sections: () => new Map(groups.list()),
     account: () => account.view(), front: frontNow, noGroups: () => groups.supported() === false,
     archivedAt: (id) => (archiveSweeper ? archiveSweeper.seenAt(id) : 0) });
@@ -470,9 +470,10 @@ async function activate(context) {
     /* A goal changed, by a command here, by the model or by Codex itself: the list reads the goals database again. */
     if (m.startsWith('thread/goal/')) source._poll();
   }));
-  /* The Agent map in each Codex page (src/agent-map.js) is built from the snapshot. Its goal buttons run the commands
-     of the same name, and Remove deletes the wake-up through src/wakeup.js. */
-  const agentMap = (thread) => agentMaps.mapOf(thread, { reader, stateOf: (id) => source.threadState(id), detached: (id) => source.detachedOf(id) });
+  /* The Agent map in each Codex page (src/agent-map.js) is built from the snapshot and the last scan for work left
+     running. Its goal buttons run the commands of the same name, and Remove deletes the wake-up through src/wakeup.js. */
+  const agentMap = (thread) => agentMaps.mapOf(thread, { reader, stateOf: (id) => source.threadState(id), detached: (id) => source.detachedOf(id),
+    left: (id) => source.leftOf(id), running: (id) => source.runningOf(id), envelope: envelope(vscode) });
   const agentMapAct = async (thread, action, id) => {
     if (action === 'removeWakeup') { await wakes.remove(thread); source._poll(); return; }
     if (action === 'openAgent') {

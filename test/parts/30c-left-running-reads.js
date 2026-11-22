@@ -103,15 +103,20 @@ module.exports = async ({ ok, bad, eq, note, tmp }) => {
     eq(first, mine, 'a window with no shared scan to take scans /proc itself');
     let d = null;
     try { d = JSON.parse(fs.readFileSync(file, 'utf8')); } catch (_) { d = null; }
-    eq(d && [d.format, d.proc, d.sessions, d.available, d.threads, d.jobs, typeof d.at],
-      [left.SHARE_FORMAT, procDir, path.resolve(sessionsDir), true, mine.threads, mine.jobs, 'number'], 'and writes what it found for the others');
+    eq(d && [d.format, d.proc, d.sessions, d.available, d.threads, d.bg, d.running, typeof d.at],
+      [left.SHARE_FORMAT, procDir, path.resolve(sessionsDir), true, mine.threads, mine.bg, mine.running, 'number'], 'and writes what it found for the others');
+    eq([left.SHARE_FORMAT, (mine.running || []).map((x) => [x.kind, x.pid])], [2, [['command', 11], ['codexExec', 40]]],
+      'which lists the rest of the work too, so its format is a new one');
     eq(fs.readdirSync(share), [left.SHARE_FILE], 'leaving no temporary file behind');
     const other = { format: left.SHARE_FORMAT, at: T0, proc: procDir, sessions: path.resolve(sessionsDir), available: true,
-      threads: { [ID(42)]: ['detached'] }, jobs: ['abcd1234'] };
+      threads: { [ID(42)]: ['detached'] }, detached: [],
+      bg: [{ job: 'abcd1234', pid: 60, start: '100', startMs: 5, name: 'night suite', session: ID(600) }],
+      running: [{ thread: ID(42), kind: 'command', pid: 77, start: '100', startMs: 0, cmd: 'make', name: '', session: '', job: '' }] };
     const write = (o) => fs.writeFileSync(file, typeof o === 'string' ? o : JSON.stringify(o));
     write(other);
     const taken = counting(['readdirSync', 'readFileSync'], () => left.scan({ proc: procDir, sessionsDir, share, now: T0 + left.SHARE_MS - 1 }));
-    eq([taken.out.threads, taken.out.jobs], [other.threads, other.jobs], 'a scan another window wrote less than SHARE_MS ago is taken as it is');
+    eq([taken.out.threads, taken.out.bg, taken.out.running], [other.threads, other.bg, other.running],
+      'a scan another window wrote less than SHARE_MS ago is taken as it is');
     eq(taken.calls.filter(([, f]) => typeof f === 'string' && f.startsWith(procDir)).length, 0, 'without reading /proc');
     const passed = (why, o, now) => {
       write(o);
@@ -125,6 +130,9 @@ module.exports = async ({ ok, bad, eq, note, tmp }) => {
     passed('one written for another sessions folder is not', { ...other, sessions: '/elsewhere' }, T0 + 1);
     passed('one naming a kind no scan finds is not', { ...other, threads: { [ID(42)]: ['claudeBg'] } }, T0 + 1);
     passed('one with a thread that is not an id is not', { ...other, threads: { 'not-an-id': ['detached'] } }, T0 + 1);
+    passed('one from a build that listed only the detached commands is not', { ...other, format: 1, jobs: ['abcd1234'], bg: undefined, running: undefined }, T0 + 1);
+    passed('one listing work of a kind it cannot be is not', { ...other, running: [{ ...other.running[0], kind: 'subagent' }] }, T0 + 1);
+    passed('one listing a claude --bg session with no job id is not', { ...other, bg: [{ ...other.bg[0], job: 'x' }] }, T0 + 1);
 
     /* A claude --bg launch is still read from this window's rollouts, against the busy jobs the shared scan names. */
     const rollout = path.join(tmp('rollouts'), 'rollout.jsonl');
@@ -135,6 +143,8 @@ module.exports = async ({ ok, bad, eq, note, tmp }) => {
     const r = left.leftRunning({ threads: [{ id: ID(8), rollout }], proc: procDir, sessionsDir, cache: new Map(), share, now: T0 + 1 });
     eq([r.available, r.threads[ID(8)], r.threads[ID(42)]], [true, ['claudeBg'], ['detached']],
       'and a busy claude --bg session the shared scan names counts for the conversation whose rollout launched it');
+    eq((r.running || []).map((x) => [x.thread, x.kind, x.job, x.name]), [[ID(42), 'command', '', ''], [ID(8), 'claudeBg', 'abcd1234', 'night suite']],
+      'and is listed under it by the name the shared scan gives');
 
     const missing = path.join(tmp('no-plugin'), 'plans');
     left.scan({ proc: procDir, sessionsDir, share: path.join(missing, left.SHARE_DIR), now: T0 });

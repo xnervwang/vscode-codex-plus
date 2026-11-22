@@ -98,7 +98,7 @@ module.exports = async ({ eq }) => {
     list = await by();
     eq(pick(list.get(B)), ['background', false, 'working'], 'and so with background work running');
     const sub = source.threadState(C);
-    eq([sub.activity, sub.unseen, sub.lastUserAt], ['stopped', false, T - 30e3], 'threadState carries the same fields, for the Agent map');
+    eq([sub.activity, sub.unseen, sub.lastUserAt], ['stopped', true, T - 30e3], 'threadState carries the same fields, the unread reply included, for the Agent map');
   } finally {
     delete vscode.window.state;
     source.dispose();

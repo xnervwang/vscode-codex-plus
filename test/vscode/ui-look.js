@@ -1265,7 +1265,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     });
     model.script(null);
     await look('subagent-agent-map', {
-      expect: 'After a turn that started a sub-agent, the pill counts it ("1 agent"), and the Agent map lists the sub-agent with a status dot and when it was last active.',
+      expect: 'After a turn that started a sub-agent, the pill has a green dot and counts it ("1 agent"), and the Agent map lists the sub-agent by its name with a solid green dot, since it is still running, and when it was last active.',
     }, async () => {
       model.script(t0.id, [{ call: 'spawn_agent', namespace: 'collaboration', args: { task_name: 'job', message: 'Wait for the job.', fork_turns: 'none' } }, { reply: 'Started a helper.' }]);
       await type('Start a helper and come back.');
@@ -1276,7 +1276,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     });
     await closeMap();
     await look('subagent-row-indented', {
-      expect: 'With codexPlus.hideBackgroundSessions off, the session list also lists the sub-agent, indented under the conversation that started it.',
+      expect: 'With codexPlus.hideBackgroundSessions off, the session list also lists the sub-agent, indented under the conversation that started it, titled by the same name the Agent map gives it rather than "(untitled)", with a green dot while it runs.',
     }, async () => {
       await showList();
       await setting('hideBackgroundSessions', false);
@@ -1288,6 +1288,34 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     await setting('hideBackgroundSessions', true);
     await until(async () => !(((await dotsOn(title)) || {}).working >= 6), 60000, 1000);
     model.script(null);
+
+    /* ═══ work left running besides sub-agents and detached commands: a background terminal and a codex exec ═══ */
+    {
+      const ext = fs.readdirSync(profile.exts).find((d) => d.startsWith('openai.chatgpt-'));
+      const bin = ext && process.platform === 'linux' ? codexBinary(path.join(profile.exts, ext)) : '';
+      await look('background-work-pill', {
+        expect: 'After a turn that left a background terminal ("sleep 60") and a codex exec running, the Agent map pill in the message box\'s toolbar has a solid green dot and reads "1 agent · 1 terminal · 1 codex exec · 1 timer": the sub-agent of the step before, which has stopped, the two pieces of work, and the wake-up.',
+      }, async () => {
+        if (!bin) throw new Error('a codex exec is started only on Linux, with the Codex extension\'s own codex program');
+        model.script(t0.id, [{ call: 'exec_command', args: { cmd: 'sleep 60', yield_time_ms: 1000 } },
+          outside(`setsid nohup '${bin}' exec --skip-git-repo-check 'Wait for the job.' >/dev/null 2>&1 &`), { reply: 'Started the work.' }]);
+        await type('Start the background work and come back.');
+        if (!await until(card, 20000, 300)) throw new Error('Codex showed no approval card');
+        await approve();
+        if (!await until(async () => { const t = await pillText(); return model.left() === 0 && /\bterminal\b/.test(t) && /codex exec/.test(t); }, 40000, 500)) {
+          throw new Error(`the pill read ${JSON.stringify(await pillText())}`);
+        }
+        await sleep(1000);
+        return toolbar();
+      });
+      await look('background-work-agent-map', {
+        expect: 'The Agent map has a "Background work" section listing a Background terminal running "sleep 60" and a codex exec, each by its command line with a solid green dot and when it started; the codex exec also has its pid, the terminal none, since this window\'s Codex reports it without one. Above it the wake-up, and the sub-agent, which has stopped and so has an empty space where its dot was, its name still lined up with where the dot would be, and an envelope after its name for the reply it finished with.',
+      }, async () => { await openMap(); return mapBox(); });
+      await closeMap();
+      model.releaseOthers();
+      await until(async () => !(((await dotsOn(title)) || {}).working >= 6), 90000, 1000);
+      model.script(null);
+    }
 
     /* ═══ images in a reply ═══ */
     {

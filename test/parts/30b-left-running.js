@@ -64,9 +64,9 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
   fs.writeFileSync(path.join(procDir, 'stat'), 'cpu  1 2 3\nbtime 1700000000\n');
   const sessionsDir = tmp('claude-sessions');
   const record = (pid, o) => fs.writeFileSync(path.join(sessionsDir, `${pid}.json`), JSON.stringify({ pid, procStart: '200', ...o }));
-  record(50, { sessionId: ID(500), kind: 'interactive', entrypoint: 'sdk-cli', status: 'busy' });
+  record(50, { sessionId: ID(500), kind: 'interactive', entrypoint: 'sdk-cli', status: 'busy', name: 'night worker' });
   record(52, { sessionId: ID(502), kind: 'interactive', entrypoint: 'sdk-cli', status: 'idle' });
-  record(60, { sessionId: ID(600), kind: 'bg', entrypoint: 'cli', status: 'busy', jobId: 'abcd1234', procStart: '100' });
+  record(60, { sessionId: ID(600), kind: 'bg', entrypoint: 'cli', status: 'busy', jobId: 'abcd1234', procStart: '100', name: 'night suite' });
 
   let left = null;
   await section('the /proc reading', async () => {
@@ -84,6 +84,13 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
       [[T(2), 20, '100', 1700000001000, 'bash -c make all'], [T(3), 21, '100', 1700000001000, 'timeout 600 make'],
         [T(11), 80, '100', 1700000001000, 'python3 driver.py --all']],
       'each detached tree is listed once, by its top process: conversation, pid, start in ticks and in ms from the boot time, and command line');
+    eq((snap.running || []).map((d) => [d.thread, d.kind, d.pid, d.start, d.startMs, d.cmd, d.name, d.session]),
+      [[T(1), 'command', 11, '100', 1700000001000, '/bin/bash -lc npm run watch', '', ''],
+        [T(5), 'codexExec', 40, '100', 1700000001000, 'codex exec --json -', '', ''],
+        [ID(999), 'command', 42, '100', 1700000001000, 'sleep 9', '', ''],
+        [T(6), 'claudeWorker', 50, '200', 1700000002000, 'claude -p go', 'night worker', ID(500)]],
+      'the rest of what it counted is listed too, oldest first: each command under Codex and each codex exec by its command line, '
+        + 'and a claude -p worker with the name and the session its record gives');
     eq(Object.keys(got).filter((id) => !/^01a1f0f0/.test(id)), [], 'a process whose launcher id is missing or not an id counts for nobody');
     const none = left.snapshot({ proc: path.join(procDir, 'none'), records: [] });
     eq([none.available, none.threads.size], [false, 0], 'where there is no /proc, nothing is found and that is said');
@@ -112,10 +119,13 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
     const threads = [{ id: T(8), kind: 'user', rollout: launchFile, updatedMs: Date.now() }, { id: T(1), kind: 'user', rollout: '', updatedMs: Date.now() }];
     const r = left.leftRunning({ threads, proc: procDir, sessionsDir, cache: new Map() });
     eq([r.available, r.threads[T(8)], r.threads[T(1)]], [true, ['claudeBg'], ['command']], 'a busy claude --bg session counts for the conversation whose command launched it');
+    eq((r.running || []).filter((d) => d.kind === 'claudeBg').map((d) => [d.thread, d.pid, d.job, d.name, d.session]),
+      [[T(8), 60, 'abcd1234', 'night suite', ID(600)]], 'and is listed under it with its job id, and the name and the session its record gives');
+    eq((r.running || []).filter((d) => d.kind !== 'claudeBg').map((d) => d.pid), [11, 40, 42, 50], 'along with the rest of the scan\'s list');
     record(60, { sessionId: ID(600), kind: 'bg', entrypoint: 'cli', status: 'idle', jobId: 'abcd1234', procStart: '100' });
     const later = left.leftRunning({ threads, proc: procDir, sessionsDir, cache: new Map() });
     eq(later.threads[T(8)], undefined, 'and stops counting once that session is idle');
-    record(60, { sessionId: ID(600), kind: 'bg', entrypoint: 'cli', status: 'busy', jobId: 'abcd1234', procStart: '100' });
+    record(60, { sessionId: ID(600), kind: 'bg', entrypoint: 'cli', status: 'busy', jobId: 'abcd1234', procStart: '100', name: 'night suite' });
   });
 
   /* Codex's own background commands as the rollout records them, which is all a window without /proc has. */
@@ -246,12 +256,14 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
     } finally { source.dispose(); reader.dispose(); }
   });
 
-  /* The session list draws a green ring for this, and the Agent map a solid green dot. */
+  /* The session list and the Agent map both draw a green ring for this. */
   await section('the session list', async () => {
-    const { SessionsModel, lookKey } = require('../../src/sessions-view');
+    const { SessionsModel } = require('../../src/sessions-view');
     const conv = { sessionId: ID(1), state: 'working', ownState: 'unread', working: false, left: ['command', 'subagent'], activity: 'background', unseen: true };
-    eq([lookKey(conv, false), lookKey({ ...conv, left: [], working: true }, false)], ['working', 'workingElsewhere'],
-      'in the Agent map, work left running is a solid green dot, not a turn running in another window');
+    const { mapOf } = require('../../src/agent-map');
+    const kid = { id: ID(2), title: 'Kid', kind: 'subagent', parent: ID(1), nickname: 'kid', createdMs: 1, updatedMs: 1 };
+    eq(mapOf(ID(1), { reader: { threads: () => [kid], wakeup: () => null, goal: () => null }, stateOf: () => conv }).agents.map((a) => a.dot), ['background'],
+      'in the Agent map, a sub-agent with only work left running has the green ring, not a turn running in another window');
     const threads = [{ id: ID(1), title: 'Busy after its turn', kind: 'user', parent: '', cwd: '/w', section: '', createdMs: 1, updatedMs: 2 }];
     const model = new SessionsModel(vscode, { memory: { openThreads: () => [], recentlyClosed: () => [], frontAt: () => 0 }, memento: fake.memento(),
       reader: { threads: () => threads, sections: () => new Map(), state: () => ({}), thread: () => null },

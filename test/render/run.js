@@ -604,7 +604,7 @@ function selfchecked(r, where, { turns, users, rows, replies = turns }) {
         wakeups: [{ everyMinutes: 10, prompt: 'Keep going with the open rows of the plan.', nextMs: Date.now() + 7 * 60e3, expiresMs: Date.now() + 6 * 86400e3, paused: false }],
         goal: { status: 'active', objective: 'Make the nightly export skip archived rows and report how many it skipped', tokensUsed: 182000, tokenBudget: 1000000 },
         agents: [{ id: ID(3), name: 'scout', title: 'Find where the retry delay is set', dot: 'working', updatedMs: Date.now() - 20e3 },
-          { id: ID(4), name: 'Fix the flaky upload test', title: 'Fix the flaky upload test', dot: 'idle', updatedMs: Date.now() - 12 * 60e3 }] };
+          { id: ID(4), name: 'Fix the flaky upload test', title: 'Fix the flaky upload test', dot: 'stopped', updatedMs: Date.now() - 12 * 60e3 }] };
       await s.toPage(map);
       await sleep(700);
       await scrollTo(s, 'bottom');
