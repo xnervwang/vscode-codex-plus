@@ -1297,19 +1297,34 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         expect: 'After a turn that left a background terminal ("sleep 60") and a codex exec running, the Agent map pill in the message box\'s toolbar has a solid green dot and reads "1 agent · 1 terminal · 1 codex exec · 1 timer": the sub-agent of the step before, which has stopped, the two pieces of work, and the wake-up.',
       }, async () => {
         if (!bin) throw new Error('a codex exec is started only on Linux, with the Codex extension\'s own codex program');
-        model.script(t0.id, [{ call: 'exec_command', args: { cmd: 'sleep 60', yield_time_ms: 1000 } },
-          outside(`setsid nohup '${bin}' exec --skip-git-repo-check 'Wait for the job.' >/dev/null 2>&1 &`), { reply: 'Started the work.' }]);
+        /* A script answers whatever request of the conversation comes next, so the step waits until the conversation has
+           sent none for a few seconds; a request the previous step left in flight would otherwise take the first call. */
+        const asked = () => model.seen.filter((r) => r.thread === t0.id).length;
+        let was = -1;
+        await until(() => { const k = asked(); const still = k === was; was = k; return still; }, 30000, 3000);
+        const from = asked();
+        /* Both run outside the sandbox: in some runs a sandboxed exec_command never ran, or ended as soon as it started. */
+        model.script(t0.id, [outside('sleep 60'), outside(`setsid nohup '${bin}' exec --skip-git-repo-check 'Wait for the job.' >/dev/null 2>&1 &`),
+          { reply: 'Started the work.' }]);
         await type('Start the background work and come back.');
-        if (!await until(card, 20000, 300)) throw new Error('Codex showed no approval card');
-        await approve();
-        if (!await until(async () => { const t = await pillText(); return model.left() === 0 && /\bterminal\b/.test(t) && /codex exec/.test(t); }, 40000, 500)) {
-          throw new Error(`the pill read ${JSON.stringify(await pillText())}`);
+        for (const n of [1, 2]) {
+          if (!await until(card, 20000, 300)) throw new Error(`Codex showed no approval card for command ${n}`);
+          await approve();
+        }
+        const both = async () => { const t = await pillText(); return model.left() === 0 && /\bterminal\b/.test(t) && /codex exec/.test(t); };
+        if (!await until(both, 40000, 500)) {
+          const host = await call(`${OWN}
+            const scan = own('left-running').scan({}), id = String(arg).toLowerCase();
+            return { commands: own('patching').runningCommands(arg).map((c) => c.command.slice(0, 80)), kinds: scan.threads[id] || [],
+              running: (scan.running || []).filter((r) => r.thread === id).map((r) => r.kind + ' ' + r.cmd.slice(0, 80)) };`, t0.id).catch((e) => String(e));
+          throw new Error(`the pill read ${JSON.stringify(await pillText())}; the conversation sent ${asked() - from} requests in this step; `
+            + `the host saw ${JSON.stringify(host)}`);
         }
         await sleep(1000);
         return toolbar();
       });
       await look('background-work-agent-map', {
-        expect: 'The Agent map has a "Background work" section listing a Background terminal running "sleep 60" and a codex exec, each by its command line with a solid green dot and when it started; the codex exec also has its pid, the terminal none, since this window\'s Codex reports it without one. Above it the wake-up, and the sub-agent, which has stopped and so has an empty space where its dot was, its name still lined up with where the dot would be, and an envelope after its name for the reply it finished with.',
+        expect: 'The Agent map has a "Background work" section listing a Background terminal running "sleep 60" and a codex exec, each by its command line with a solid green dot and when it started; the codex exec also has its pid, and the terminal has one when the scan found its process (one only this window\'s Codex reports has none). Above it the wake-up, and the sub-agent, which has stopped and so has an empty space where its dot was, its name still lined up with where the dot would be, and an envelope after its name for the reply it finished with.',
       }, async () => { await openMap(); return mapBox(); });
       await closeMap();
       model.releaseOthers();
