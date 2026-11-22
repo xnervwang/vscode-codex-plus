@@ -3228,7 +3228,9 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       check(!!await toFront(pair[0]), 'two conversations are open in tabs of one group, one in front of the other', await tabs());
       note(`before the reload, this window's app-server has loaded ${JSON.stringify(await loadedNow())}`);
 
-      /* The conversations in front and behind as VS Code restored them, which has not always been the order before. */
+      /* The conversations in front and behind as the window came back, which has not always been the order before; after
+         all the steps above another Codex tab came back in front. With neither in front, the first is clicked forward
+         while Codex still draws a page shown that late. */
       let restoredAt = 0;
       const reloaded = async (what) => {
         const was = (await tabOf(pair[0]) || {}).active ? pair[0] : pair[1];
@@ -3236,9 +3238,16 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         await w.reload();
         restoredAt = Date.now();
         await until(async () => { const st = await patchState(); return st && st.active; }, 60000, 1000);
-        const both = await until(async () => { const a = await tabOf(pair[0]), b = await tabOf(pair[1]); return a && b && (a.active || b.active) && { a, b }; }, 60000, 500);
-        check(!!both, `${what}: after the reload VS Code restores both tabs, one in front of the other`, await tabs());
-        const front = both && both.b.active ? pair[1] : pair[0], behind = front === pair[0] ? pair[1] : pair[0];
+        const both = await until(async () => { const a = await tabOf(pair[0]), b = await tabOf(pair[1]); return a && b && { a, b }; }, 60000, 500);
+        check(!!both, `${what}: after the reload VS Code restores both tabs`, await tabs());
+        await sleep(Math.max(0, restoredAt + 12000 - Date.now()));
+        const a = await tabOf(pair[0]), b = await tabOf(pair[1]);
+        let front = b && b.active ? pair[1] : pair[0];
+        if (!(a && a.active) && !(b && b.active)) {
+          note(`${what}: the window came back with another tab in front, so "${front.title}" is clicked to the front`);
+          check(await toFront(front), `${what}: clicked to the front within 30 seconds of the reload`, await tabs());
+        }
+        const behind = front === pair[0] ? pair[1] : pair[0];
         if (front !== was) note(`${what}: VS Code restored "${behind.title}" behind, which was the tab in front before the reload`);
         const up = await until(async () => { const l = await loadedNow(); return Array.isArray(l) && l.includes(front.id) && l; }, 90000, 1000);
         check(!!up, `${what}: the conversation in front is loaded again`, await loadedNow());
