@@ -82,7 +82,11 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       const k = Object.keys(require.cache).find((x) => x.toLowerCase() === file.toLowerCase());
       return k ? require.cache[k].exports : require(file); };`;
   const shot = (name) => page.screenshot({ path: path.join(shotsDir, `${String(++shotNo).padStart(2, '0')}-${name}.png`) }).catch(() => {});
+  /* CODEX_PLUS_UI_STEPS, a regular expression, runs only the steps whose names match it, for working on a few steps
+     without the whole stage. The steps a later one relies on (the patch, tab bar, session list) have to match too. */
+  const only = process.env.CODEX_PLUS_UI_STEPS ? new RegExp(process.env.CODEX_PLUS_UI_STEPS) : null;
   const step = async (name, fn) => {
+    if (only && !only.test(name)) { note(`${name}: not run, as CODEX_PLUS_UI_STEPS leaves it out`); return; }
     console.log(`\n── ${name}`);
     try { await fn(); } catch (e) { check(false, `${name}: ran to its end`, String((e && e.stack) || e).split('\n').slice(0, 4).join(' | ')); await shot(`${name}-error`); }
   };
@@ -127,11 +131,39 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     const e = [...document.querySelectorAll('.statusbar-item')].find((x) => x.querySelector('.codicon-bell-dot'));
     return e ? Number(e.innerText.trim()) || 0 : 0;
   });
+  /* The number on Agent Plus's bell in the status bar, whichever bell icon it shows: VS Code's own bell at the far end
+     carries no number. */
+  const agentCount = () => page.evaluate(() => Math.max(0, ...[...document.querySelectorAll('.statusbar-item')]
+    .filter((x) => x.querySelector('.codicon-bell, .codicon-bell-dot')).map((x) => Number(x.innerText.trim()) || 0)));
+  /* The number in Agent Plus's "N to decide" in the status bar, 0 while it is not shown. */
+  const toDecide = () => page.evaluate(() => {
+    const e = [...document.querySelectorAll('.statusbar-item')].find((x) => /\d+ to decide/.test(x.innerText));
+    return e ? Number((/(\d+) to decide/.exec(e.innerText) || [])[1]) || 0 : 0;
+  });
   const toastAbout = (t, words) => page.evaluate(([want, w]) => {
     const n = [...document.querySelectorAll('.notification-toast')].find((e) => e.innerText.includes(`"${want}" ${w}`));
     return n ? n.innerText : '';
   }, [t, words]);
   const frontTab = async () => { const g = (await tabs()).find((x) => x.active); return g && g.tabs.find((x) => x.active); };
+  /* Every Codex tab, with the route its URI names and the fragment that tells two New tabs apart. */
+  const codexTabsNow = () => call(`return vscode.window.tabGroups.all.flatMap((g) => g.tabs
+    .filter((t) => t.input && typeof t.input.viewType === 'string' && /conversationEditor$/.test(t.input.viewType) && t.input.uri)
+    .map((t) => ({ label: t.label, route: t.input.uri.path, fragment: t.input.uri.fragment, active: t.isActive && g.isActive, column: g.viewColumn })));`);
+  /* The Codex conversation page VS Code shows: the frame whose webview is visible. Codex keeps the pages of its tabs
+     in the background and of its hidden sidebar. */
+  const frontPage = async () => {
+    for (const f of page.frames()) {
+      try {
+        if (!await f.evaluate(() => !!document.querySelector('[data-codex-composer-root]') && innerWidth > 600)) continue;
+        const host = f.parentFrame() && await f.parentFrame().frameElement();
+        if (host && await host.isVisible()) return f;
+      } catch (_) { /* gone */ }
+    }
+    return null;
+  };
+  const pageSays = (f) => (f ? f.evaluate(() => ({ turns: document.querySelectorAll('[data-turn-key]').length, text: document.body.innerText.slice(0, 200) }))
+    .catch((e) => ({ error: String(e) })) : null);
+  const tabNamed = (label) => page.locator('.tabs-container .tab').filter({ hasText: label }).first();
   /* The conversation Agent Plus last said is in front, as its output channel has it: "codex <id>",
      "codex (no session yet)", "(none)", or '' before it said any. */
   const walk = (d) => { try { return fs.readdirSync(d, { withFileTypes: true }).flatMap((n) => (n.isDirectory() ? walk(path.join(d, n.name)) : [path.join(d, n.name)])); } catch (_) { return []; } };
@@ -381,6 +413,68 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
 
     let list = null;
     const row = (t) => list.locator(`.cp-group .cp-row[data-id="${t.id}"]`).first();
+    /* The session list brought into view and found again: VS Code builds its page anew each time its container is shown
+       after another one. */
+    const showList = async () => {
+      await exec('workbench.view.extension.codexPlus');
+      const f = await frameWhere(() => !!document.querySelector('.cp-root .cp-section[data-key="open"]'), 20000);
+      if (f) list = f;
+      return f;
+    };
+    /* Each row the list draws as the current one, as "<id> <place>": "open" for Open sessions, else its group's key. */
+    const currentRows = async () => {
+      if (!await showList()) return null;
+      return list.evaluate(() => [...document.querySelectorAll('.cp-row.cp-current')].map((r) => {
+        const g = r.closest('.cp-group'), s = r.closest('.cp-section');
+        return `${r.dataset.id} ${g ? g.dataset.key : s ? s.dataset.key : '?'}`;
+      })).catch(() => null);
+    };
+    /* The ids in Open sessions. */
+    const openRows = async () => {
+      if (!await showList()) return null;
+      return list.evaluate(() => [...document.querySelectorAll('.cp-section[data-key="open"] .cp-row')].map((r) => r.dataset.id)).catch(() => null);
+    };
+    /* The conversation in front is drawn current twice, in Open sessions and in its group, and nothing else is; with no
+       conversation in front no row is. */
+    const drawnCurrent = (rows, id) => !!rows && (id ? rows.length === 2 && rows.includes(`${id} open`) && rows.every((r) => r.startsWith(`${id} `))
+      : rows.length === 0);
+    const checkCurrent = async (id, what) => {
+      const got = await until(async () => { const r = await currentRows(); return drawnCurrent(r, id) && r; }, 20000, 500);
+      check(!!got, `${what}: the session list draws ${id ? 'that conversation\'s row in Open sessions and its row in its group' : 'no row'} as the current one, and no other row`,
+        { want: id, rows: got || await currentRows() });
+      return !!got;
+    };
+    /* A work plan of one row for a conversation, which Agent Plus's Work plan view shows while it is in front. */
+    const PLANS = path.join(profile.codexHome, 'plugins', 'data', 'agent-work-plan-codex-extras');
+    const planFor = (id, rowTitle) => {
+      fs.mkdirSync(PLANS, { recursive: true });
+      const at = new Date().toISOString().replace(/\.\d+Z$/, '+00:00');
+      fs.writeFileSync(path.join(PLANS, `${id}.json`), JSON.stringify({ nodes: [{ title: rowTitle, state: 'doing', since: at }] }));
+    };
+    /* The rows of the Work plan view, with Agent Plus's container brought into the side bar for the reading and the
+       session list put back after it, since the steps that read the list's page expect it there. */
+    const planRows = async () => {
+      await exec('workbench.view.extension.agentPlus');
+      const rows = await page.evaluate(() => {
+        const bar = document.getElementById('workbench.parts.sidebar');
+        return bar ? [...bar.querySelectorAll('.monaco-list-row')].filter((r) => r.offsetParent).map((r) => r.innerText.trim()) : [];
+      }).catch(() => []);
+      await showList();
+      return rows;
+    };
+    const planTitle = (id) => `Work plan of ${id}`;
+    /* Writes a conversation's one-row plan, named by its id, and checks the Work plan view shows it. */
+    const planShown = async (id, what) => {
+      planFor(id, planTitle(id));
+      await exec('agentPlus.refreshWorkPlan');
+      return checkPlan(planTitle(id), what);
+    };
+    const checkPlan = async (rowTitle, what) => {
+      /* A row reads "1. <title>" and its times. */
+      const got = await until(async () => { const r = await planRows(); return r.some((x) => x.includes(rowTitle)) && r; }, 20000, 500);
+      check(!!got, `${what}: Agent Plus's Work plan view shows that conversation's plan`, { want: rowTitle, rows: got || await planRows() });
+      return !!got;
+    };
     /*
      * Right-clicks `t`'s row and clicks the menu item labels[0], or, given labels[1], that item of its submenu.
      * The page closes its menu when its window loses focus, like VS Code's own menus, and another webview of the
@@ -650,6 +744,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       }, 90000, title);
       check(!!codex, 'Codex draws the conversation in that tab, every turn of it, with its message box');
       await shot('conversation-tab');
+      await checkCurrent(threads[0].id, 'with the tab Resume in Tab opened in front');
+      await planShown(threads[0].id, 'with the tab Resume in Tab opened in front');
     });
 
     await step('Codex\'s page', async () => {
@@ -997,6 +1093,16 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         await until(() => codex.evaluate(() => !document.querySelector('[data-codex-extras="map-dialog"]')).catch(() => true), 3000, 200);
         return rows;
       };
+      /* Codex runs a sandboxed command under bubblewrap, which on some machines cannot bind the root directory at all;
+         the command then exits with bwrap's message as its output. */
+      const sandboxRefused = () => {
+        try {
+          const sessions = path.join(profile.codexHome, 'sessions');
+          const file = fs.readdirSync(sessions, { recursive: true }).map((r) => path.join(sessions, r)).find((f) => f.endsWith(`${id}.jsonl`));
+          const m = /bwrap: [^"\\]*/.exec(fs.readFileSync(file, 'utf8').split('\n').slice(-30).join('\n'));
+          return m ? m[0] : '';
+        } catch (_) { return ''; }
+      };
       const leftCase = async ({ name, words, steps, ask, end, ms = 45000, during, notice, map }) => {
         const notices = model.sent('Codex Plus notice');
         const counted = await bellCount();
@@ -1021,6 +1127,11 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
           await approve(name);
         }
         const after = await until(async () => { const g = await now(); return model.left() === 0 && g.running.includes(words) && g.tab && g.row && g; }, 40000, 500);
+        const refused = after ? '' : sandboxRefused();
+        if (refused) {
+          note(`${name}: Codex's own sandbox could not start the command on this machine ("${refused}"), so it ended at once and nothing was left running to check`);
+          return;
+        }
         check(!!after, `${name}: after its turn has ended, the tab's logo and the conversation's row in the session list show the green ring, and the row's hover says "${words}"`,
           after || { left: model.left(), ...await now(), held: await call(`${OWN}
             const a = own('patching')._approvals;
@@ -1216,6 +1327,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
 
     await step('a conversation in Codex\'s sidebar', async () => {
       const t = threads[1];
+      /* With a text file in front, nothing but the sidebar can be what the user looks at. */
+      await openNotes();
       /* Resume in Sidebar opens Codex's sidebar through a vscode:// link, and VS Code asks once before an extension
          opens one. */
       await call('vscode.commands.executeCommand("codexPlus.openThreadInSidebar", arg); return true;', t.id);
@@ -1235,6 +1348,37 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       }));
       check(fit.length >= 4 && fit.every((x) => x.past <= 0 && x.over <= 1), 'in Codex\'s sidebar every reply\'s stamp stays inside its column', fit);
       if (fit.length && !fit.some((x) => x.lines >= 2)) note('Codex\'s sidebar was wide enough for every stamp, so none had to wrap');
+
+      const how = 'with Codex\'s sidebar showing the conversation and a text file in front';
+      check(!!await until(() => agentFront() === `codex ${t.id}`, 15000, 500), `${how}, Agent Plus has that conversation in front`, agentFront());
+      await checkCurrent(t.id, how);
+      const listed = await until(async () => { const r = await openRows(); return r && r.includes(t.id) && r; }, 15000, 500);
+      check(!!listed, `${how}, Open sessions lists it`, await openRows());
+      await planShown(t.id, how);
+      /* A reply that lands while the sidebar is closed has not been seen, and opening the sidebar on it again sees it. */
+      const unseen = () => list.evaluate((id) => {
+        const r = document.querySelector(`.cp-group .cp-row[data-id="${id}"]`);
+        return !!r && [...r.querySelectorAll('.cp-unseen')].some((x) => getComputedStyle(x).display !== 'none');
+      }, t.id).catch(() => null);
+      model.hold();
+      const turns = model.turns();
+      await side.locator(COMPOSER).first().click();
+      await page.keyboard.type('Check the export once more.');
+      await page.keyboard.press('Enter');
+      check(!!await until(() => model.turns() > turns, 20000, 300), 'a message sent from Codex\'s sidebar reaches the made-up model', model.seen.slice(-3));
+      const counted = await bellCount();
+      await exec('workbench.action.closeAuxiliaryBar');
+      await sleep(800);
+      model.release();
+      const marked = await until(async () => (await showList()) && (await unseen()), 30000, 1000);
+      check(!!marked, 'once its reply lands with the sidebar closed, its row in the session list carries the envelope', { row: await unseen() });
+      check(!!await until(async () => (await bellCount()) > counted, 10000, 500), 'and Agent Plus counts it', { before: counted, now: await bellCount() });
+      await shot('sidebar-closed-unread');
+      await exec('chatgpt.openSidebar');
+      const read = await until(async () => (await showList()) && (await unseen()) === false, 30000, 1000);
+      const sideNow = await frameWhere(() => innerWidth < 800 && !!document.querySelector('[data-codex-composer-root]'), 10000);
+      check(!!read, 'opening Codex\'s sidebar on it again takes the envelope away', { row: await unseen(), sidebar: await auxiliaryShowsCodex(),
+        sidebarPage: await pageSays(sideNow), patch: await call(`${OWN} const p = own('patching'); return { showing: p.sidebarShowing(), last: p.sidebarThread() };`).catch((e) => String(e)) });
       await exec('workbench.action.closeAuxiliaryBar');
     });
 
@@ -1325,7 +1469,9 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       check(after.ended && after.counted <= counted && !after.notification,
         'when its reply lands with the tab in front of the focused window, Agent Plus neither announces nor counts it', { before: counted, ...after });
       await shot('tab-bar-conversation');
-      if (id && named) begun = { id, label: named.label };
+      if (id) await checkCurrent(id, 'with that tab in front');
+      if (id) await planShown(id, 'with that tab in front');
+      if (id && named) begun = { id, label: named.label, text };
     });
 
     await step('a conversation\'s tab brought back to the front', async () => {
@@ -1335,15 +1481,538 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         const ok = await until(() => agentFront() === want, 15000, 500);
         check(!!ok, `a click on the tab of a conversation whose URI names it, from ${from}, puts that conversation in front for Agent Plus`,
           { want, agentPlus: agentFront(), tab: await frontTab(), patch: await panelTrace() });
+        await checkCurrent(want.replace(/^codex /, ''), `the click from ${from}`);
+        await checkPlan(planTitle(want.replace(/^codex /, '')), `the click from ${from}`);
       };
+      for (const id of [t.id, begun && begun.id].filter(Boolean)) planFor(id, planTitle(id));
+      await exec('agentPlus.refreshWorkPlan');
+      await openNotes();
+      await checkCurrent('', 'with a text file in front and Codex\'s sidebar closed');
       const empty = await newTabPage();
       if (!empty) throw new Error('the tab bar button opened no new conversation page');
       check(!!await until(() => agentFront() === 'codex (no session yet)', 15000, 500), 'a new tab nothing was typed into has no conversation in front for Agent Plus', agentFront());
+      await checkCurrent('', 'with a new tab nothing was typed into in front');
+      const blankPlan = await until(async () => { const r = await planRows(); return !r.some((x) => x.includes('Work plan of ')) && r; }, 15000, 500);
+      check(!!blankPlan, 'with a new tab nothing was typed into in front: the Work plan view shows no conversation\'s plan', await planRows());
       await toFront(title, `codex ${t.id}`, 'a new tab nothing was typed into');
       if (!begun) { note('no conversation was begun in a tab the tab bar button opened, so the switch from one was not checked'); return; }
       await page.locator('.tabs-container .tab').filter({ hasText: begun.label }).first().click();
       check(!!await until(() => agentFront() === `codex ${begun.id}`, 15000, 500), 'the tab of the conversation begun in a new tab puts it in front', agentFront());
+      await checkCurrent(begun.id, 'the click on the tab of the conversation begun in a new tab');
+      await checkPlan(planTitle(begun.id), 'the click on the tab of the conversation begun in a new tab');
       await toFront(title, `codex ${t.id}`, 'the tab of a conversation begun in a new tab');
+    });
+
+    /*
+     * A first message typed into `f`, the page of a tab just opened for a new conversation, checked as a conversation
+     * begun from the tab bar button is: the tab is titled by the conversation during its turn, Agent Plus has it in
+     * front, its reply in front is neither announced nor counted, and the session list lists it in Open sessions and
+     * draws its two rows as the current ones. Resolves to { id, label, text } of the conversation, or null.
+     */
+    const firstMessage = async (f, text, how) => {
+      await exec('notifications.clearAll');
+      const counted = await bellCount();
+      model.hold();
+      const turns = model.turns();
+      await f.locator(COMPOSER).first().click();
+      await page.keyboard.type(text);
+      await page.keyboard.press('Enter');
+      check(!!await until(() => model.turns() > turns, 20000, 300), `${how}: its first message reaches the made-up model`, model.seen.slice(-3));
+      const id = await until(() => rolloutWith(text), 20000, 500);
+      const named = await until(async () => { const t = await frontTab(); return t && bare(t.label).startsWith(text.slice(0, 20)) && t; }, 30000, 500);
+      check(!!id && !!named, `${how}: while that turn runs, the tab is titled by the conversation Codex made of the message`,
+        { thread: id, tab: await frontTab(), patch: await panelTrace() });
+      check(!!id && !!await until(() => agentFront() === `codex ${id}`, 15000, 500), `${how}: and Agent Plus has that conversation in front`, { thread: id, agentPlus: agentFront() });
+      model.release();
+      const ended = await until(() => f.evaluate((r) => document.body.innerText.includes(r), REPLY).catch(() => false), 30000, 500);
+      await sleep(4000);
+      /* Agent Plus counts a conversation while it is unread, which its row's envelope shows; the total can move for other
+         conversations meanwhile. */
+      const after = { ended: !!ended, unread: id ? await rowUnread(id) : null, notification: await toastAbout(named ? bare(named.label) : text, 'finished'),
+        bell: [counted, await bellCount()], unreadRows: await unreadTitles() };
+      check(after.ended && after.unread === false && !after.notification, `${how}: its reply, landing with the tab in front, is neither announced nor left unread to count`, after);
+      if (!id) return null;
+      const open = await until(async () => { const r = await openRows(); return r && r.includes(id) && r; }, 15000, 500);
+      check(!!open, `${how}: Open sessions lists the conversation`, { thread: id, open: await openRows() });
+      await checkCurrent(id, how);
+      return named ? { id, label: named.label, text } : null;
+    };
+    /* Whether `id`'s row in its group carries the unread envelope, and the titles of every row that does. */
+    const rowUnread = async (id) => {
+      if (!await showList()) return null;
+      return list.evaluate((want) => {
+        const r = document.querySelector(`.cp-group .cp-row[data-id="${want}"]`);
+        return r ? [...r.querySelectorAll('.cp-unseen')].some((x) => getComputedStyle(x).display !== 'none') : null;
+      }, id).catch(() => null);
+    };
+    const unreadTitles = () => list.evaluate(() => [...document.querySelectorAll('.cp-group .cp-row')]
+      .filter((r) => [...r.querySelectorAll('.cp-unseen')].some((x) => getComputedStyle(x).display !== 'none')).map((r) => r.querySelector('.cp-title').textContent))
+      .catch(() => null);
+    /* A page that is new in this window and shows a message box and no turns. */
+    const newPageSince = (before) => until(async () => {
+      for (const f of page.frames()) {
+        if (before.has(f)) continue;
+        try { if (await f.evaluate(() => !!document.querySelector('[data-codex-composer-root]') && !document.querySelector('[data-turn-key]') && innerWidth > 600)) return f; } catch (_) { /* gone */ }
+      }
+      return null;
+    }, 90000, 500);
+
+    /*
+     * Codex's own New Codex Agent, the command behind its New button and the + of VS Code's Chat Sessions view. It
+     * opens Codex's New URI with no fragment, in the group of the text editor last focused, where this extension's
+     * button gives each new tab a fragment of its own.
+     */
+    let agentNew = null;
+    await step('a conversation begun in a tab New Codex Agent opened', async () => {
+      await openNotes();
+      const groups = (await tabs()).length;
+      const before = new Set(page.frames());
+      await exec('chatgpt.newCodexPanel');
+      const f = await newPageSince(before);
+      check(!!f, 'New Codex Agent, run with notes.txt in front, opens a new conversation page in a tab');
+      if (!f) return;
+      const where = (await codexTabsNow()).find((x) => x.active);
+      check(!!where && where.route === '/extension/panel/new' && !where.fragment && (await tabs()).length === groups,
+        'on Codex\'s own New URI, which has no fragment, in a group already there', { tab: where, groups: [groups, (await tabs()).length] });
+      if (where) note(`New Codex Agent opened its tab in editor group ${where.column}`);
+      agentNew = await firstMessage(f, 'Write the migration guide for 1.2.', 'a conversation begun in a tab New Codex Agent opened');
+      await shot('new-codex-agent-conversation');
+      /* Codex opens one editor per URI, so a second New Codex Agent brings the same tab forward. */
+      await openNotes();
+      await exec('chatgpt.newCodexPanel');
+      await sleep(3000);
+      const again = await frontTab(), bareTabs = (await codexTabsNow()).filter((x) => x.route === '/extension/panel/new' && !x.fragment);
+      note(`New Codex Agent run again: the tab in front is "${again ? again.label : ''}", and ${bareTabs.length} tab(s) are on Codex's own New URI; `
+        + 'Codex opens its New URI in the editor that already has it');
+      if (agentNew) await checkCurrent(bare(again && again.label) === bare(agentNew.label) ? agentNew.id : '', 'with the tab New Codex Agent brought forward in front');
+    });
+
+    /* Codex's new conversation button in its page, pressed in a tab Resume in Tab opened on another conversation. Where
+       it opens the new one in that same tab, the tab's URI keeps naming the other (src/patching.js nowShowing). */
+    let inTabNew = null;
+    await step('a conversation begun with Codex\'s new conversation button in a tab', async () => {
+      const t = threads[1];
+      await exec('codexPlus.openThreadInTab', t.id);
+      const f = await until(async () => { const x = await frontPage(); const s = await pageSays(x); return s && s.turns >= 1 && s.text.includes(t.title.slice(0, 30)) && x; }, 90000, 1000);
+      check(!!f, 'Resume in Tab opens another conversation in a tab', { page: await pageSays(await frontPage()) });
+      if (!f) return;
+      await checkCurrent(t.id, 'with that tab in front');
+      const button = await f.evaluate(() => {
+        const all = [...document.querySelectorAll('button, [role="button"], a')].filter((b) => b.offsetParent);
+        const name = (b) => (b.getAttribute('aria-label') || b.getAttribute('title') || '').trim();
+        const hits = all.filter((b) => /^new (chat|thread|task|conversation)$/i.test(name(b)));
+        const where = (b) => { const r = b.getBoundingClientRect(); return `${b.tagName.toLowerCase()} "${name(b)}" at ${Math.round(r.left)},${Math.round(r.top)} ${Math.round(r.width)}x${Math.round(r.height)}`; };
+        /* The one in the page's header, nearest the top. */
+        const hit = hits.sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top)[0];
+        if (hit) hit.setAttribute('data-cxp-test', 'new-conversation');
+        return { found: !!hit, label: hit ? name(hit) : '', candidates: hits.map(where), labels: [...new Set(all.map(name).filter(Boolean))].slice(0, 40) };
+      });
+      if (!button.found) { note(`no new conversation button was found in Codex's page by its label; its labelled buttons: ${button.labels.join(' | ')}`); return; }
+      let tabsBefore = [];
+      const press = async () => {
+        const before = new Set(page.frames());
+        tabsBefore = await codexTabsNow();
+        await f.locator('[data-cxp-test="new-conversation"]').first().click();
+        return before;
+      };
+      /* Codex 26.1117 opens the new conversation in a tab on its New URI, and an earlier build in the same tab. With a tab
+         on that URI open already, it brings that one forward, whatever it shows: one editor per URI. */
+      const outcome = (before) => until(async () => {
+        if (await f.evaluate(() => !!document.querySelector('[data-codex-composer-root]') && !document.querySelector('[data-turn-key]')).catch(() => false)) return { f, same: true };
+        for (const x of page.frames()) {
+          if (before.has(x)) continue;
+          try { if (await x.evaluate(() => !!document.querySelector('[data-codex-composer-root]') && !document.querySelector('[data-turn-key]') && innerWidth > 600)) return { f: x, same: false }; } catch (_) { /* gone */ }
+        }
+        const front = (await codexTabsNow()).find((x) => x.active);
+        if (front && front.route !== `/local/${t.id}` && tabsBefore.some((y) => y.route === front.route && y.fragment === front.fragment)) return { existing: front };
+        return null;
+      }, 60000, 500);
+      let target = await outcome(await press());
+      if (target && target.existing) {
+        const was = target.existing;
+        note(`Codex's "${button.label}" button brought forward the tab already open on ${was.route}${was.fragment ? `#${was.fragment}` : ''}, "${was.label}", `
+          + 'rather than a new conversation: Codex opens one editor per URI, and its New URI carries no fragment');
+        if (agentNew && bare(was.label) === bare(agentNew.label)) {
+          await checkCurrent(agentNew.id, 'with the tab Codex brought forward in front');
+          /* That tab is closed to make room, so the reload step does not look for it. */
+          agentNew = null;
+        }
+        await exec('workbench.action.closeActiveEditor');
+        await tabNamed(t.title).click();
+        await until(async () => (await frontPage()) === f, 15000, 500);
+        target = await outcome(await press());
+      }
+      check(!!target && !target.existing, `Codex's "${button.label}" button opens a new conversation page`, { page: await pageSays(f), tabs: await codexTabsNow(), target: target && target.existing });
+      if (!target || target.existing) return;
+      const opened = (await codexTabsNow()).find((x) => x.active);
+      note(`Codex's "${button.label}" button in a tab ${target.same ? 'turned that tab into a new conversation page'
+        : `opened another tab, on ${opened ? opened.route + (opened.fragment ? `#${opened.fragment}` : '') : 'a URI not found'}`}`);
+      await shot('in-tab-new-conversation-clicked');
+      await checkCurrent('', `with the new conversation page Codex's "${button.label}" button opened in front, nothing typed into it yet`);
+      inTabNew = await firstMessage(target.f, 'Plan the cache warm-up for the release.', `a conversation begun from Codex's "${button.label}" button in a tab`);
+      await shot('in-tab-new-conversation');
+    });
+
+    /* The session list's New in tab, which opens what the tab bar button opens. */
+    await step('a conversation begun in a tab the session list\'s New in tab opened', async () => {
+      if (!await showList()) throw new Error('the session list did not open');
+      const before = new Set(page.frames());
+      await list.locator('.cp-new[data-send="newInTab"]').first().click();
+      const f = await newPageSince(before);
+      check(!!f, 'New in tab in the session list opens a new conversation page in a tab');
+      if (!f) return;
+      const where = (await codexTabsNow()).find((x) => x.active);
+      check(!!where && where.route === '/extension/panel/new' && !!where.fragment, 'on a New URI of its own', where);
+      await firstMessage(f, 'Sum up the open review comments.', 'a conversation begun in a tab New in tab opened');
+    });
+
+    /* Start New Session in This Group: the conversation begun in its tab is moved into the group once Codex lists it. */
+    await step('a conversation begun from a group\'s Start New Session in This Group', async () => {
+      if (!await showList()) throw new Error('the session list did not open');
+      const head = list.locator('.cp-group-head').filter({ hasText: 'Release 1.2' }).first();
+      if (!await head.count()) { note('there is no group Release 1.2, so Start New Session in This Group was not tried'); return; }
+      const before = new Set(page.frames());
+      await head.click({ button: 'right' });
+      await list.locator('.cp-ctx-item').filter({ hasText: 'Start New Session in This Group' }).first().click({ timeout: 5000 });
+      const f = await newPageSince(before);
+      check(!!f, 'Start New Session in This Group opens a new conversation page in a tab');
+      if (!f) return;
+      const made = await firstMessage(f, 'List what the release still needs.', 'a conversation begun from Start New Session in This Group');
+      if (!made) return;
+      const grouped = await until(async () => {
+        if (!await showList()) return false;
+        return list.evaluate((id) => {
+          const g = [...document.querySelectorAll('.cp-group')].find((x) => (x.querySelector('.cp-group-name') || {}).textContent === 'Release 1.2');
+          return !!(g && g.querySelector(`.cp-row[data-id="${id}"]`));
+        }, made.id);
+      }, 30000, 1000);
+      check(!!grouped, 'and once its first message is sent, the conversation is moved into the group', { thread: made.id, toasts: await toasts() });
+      await checkCurrent(made.id, 'the conversation moved into its group, with its tab in front');
+    });
+
+    /* The Agent map's row of a sub-agent opens the sub-agent's own conversation in a tab. */
+    await step('a sub-agent opened in a tab from the Agent map', async () => {
+      const parent = threads[0];
+      await page.locator('.tabs-container .tab').filter({ hasText: title }).first().click();
+      const f = await until(async () => { const x = await frontPage(); const s = await pageSays(x); return s && s.text.includes(title.slice(0, 30)) && x; }, 30000, 1000);
+      if (!f) throw new Error('the tab of the conversation with the sub-agent did not come to the front');
+      await f.locator('[data-codex-extras="agents"]').first().click();
+      const agent = await until(() => f.evaluate(() => {
+        const b = document.querySelector('[data-codex-extras="map-agent"]');
+        return b && b.getAttribute('data-codex-extras-id');
+      }).catch(() => null), 10000, 300);
+      if (!agent) { note(`the Agent map of "${title}" lists no sub-agent, so opening one was not tried`); await page.keyboard.press('Escape'); return; }
+      await f.locator('[data-codex-extras="map-agent"]').first().click();
+      const opened = await until(async () => { const x = (await codexTabsNow()).find((y) => y.active); return x && x.route === `/local/${agent}` && x; }, 20000, 500);
+      check(!!opened, 'a click on a sub-agent in the Agent map opens its conversation in a tab, in front', { agent, tabs: await codexTabsNow() });
+      check(!!await until(() => agentFront() === `codex ${agent}`, 15000, 500), 'and Agent Plus has the sub-agent in front', { agent, agentPlus: agentFront(), parent: parent.id });
+      await shot('sub-agent-tab');
+    });
+
+    /*
+     * The tabs VS Code restores at a reload, as after an update of the patch or a Remote SSH reconnection: the tab
+     * Resume in Tab opened, whose URI names its conversation, and the tab the tab bar button opened, whose URI names
+     * none, left in front. README says a Codex tab is titled by its conversation.
+     */
+    let restored = null;
+    await step('tabs restored at a reload', async () => {
+      if (!begun) throw new Error('no conversation was begun in a New tab, so there is none to restore');
+      const t = threads[0];
+      const plans = { [t.id]: `Plan of "${title}"`, [begun.id]: 'Plan of the conversation begun in a New tab' };
+      for (const [id, rowTitle] of Object.entries(plans)) planFor(id, rowTitle);
+      await exec('agentPlus.refreshWorkPlan');
+      await page.locator('.tabs-container .tab').filter({ hasText: begun.label }).first().click();
+      await until(() => agentFront() === `codex ${begun.id}`, 15000, 500);
+      const before = await codexTabsNow();
+      const mine = before.find((x) => x.active);
+      if (!mine || mine.route !== '/extension/panel/new') throw new Error(`the tab in front is not the New tab: ${JSON.stringify(before)}`);
+      await exec('notifications.clearAll');
+      await w.reload();
+      await until(async () => { const s = await patchState(); return s && s.active; }, 60000, 1000);
+      const same = (x) => x.route === mine.route && x.fragment === mine.fragment;
+      check(!!await until(async () => (await codexTabsNow()).some(same), 60000, 500), 'after the reload VS Code restores the New tab, on the same URI', await codexTabsNow());
+      /* Long enough for the extension to have reopened any conversation it took to be dropped (src/tab-memory.js). */
+      await sleep(10000);
+      const after = await codexTabsNow();
+      const own = after.find(same);
+      /* Codex opens one editor per URI, so opening a tab's own URI again brings that tab to the front. */
+      const revealTab = (x) => call(`await vscode.commands.executeCommand('vscode.openWith', vscode.Uri.from({ scheme: 'openai-codex', authority: 'route',
+        path: arg.route, fragment: arg.fragment }), 'chatgpt.conversationEditor', { viewColumn: arg.column, preview: false }); return true;`, x);
+      if (own && !own.active) await revealTab(own);
+      const shownPage = await until(async () => { const f = await frontPage(); const s = await pageSays(f); return s && s.turns >= 1 && s.text.includes(begun.text) && f; }, 60000, 1000);
+      check(!!shownPage, 'the restored New tab shows its conversation again, with its message box', { tab: own, inFrontBeforeTheCheck: own && own.active, page: await pageSays(await frontPage()) });
+      check(!!own && bare(own.label) === bare(begun.label), 'and is titled by that conversation, as README says a Codex tab is', { tab: own, tabs: after, patch: await panelTrace() });
+      const twins = after.filter((x) => bare(x.label) === bare(begun.label));
+      check(twins.length === 1 && after.length === before.length, 'and no second tab is opened on that conversation: the window has the Codex tabs it had',
+        { before, after });
+      const both = await labelOf(title);
+      check(!!both, 'the tab Resume in Tab opened is back too, titled by its conversation', await tabs());
+      const inFront = await until(() => agentFront() === `codex ${begun.id}`, 20000, 500);
+      check(!!inFront, 'the restored New tab, in front, puts its conversation in front for Agent Plus', { want: begun.id, agentPlus: agentFront(), tab: await frontTab(), patch: await panelTrace() });
+      await checkCurrent(begun.id, 'the restored New tab in front');
+      const open = await until(async () => { const r = await openRows(); return r && [t.id, begun.id].every((id) => r.includes(id)) && r; }, 20000, 500);
+      check(!!open, 'Open sessions lists the conversations of both restored tabs', { want: [t.id, begun.id], open: open || await openRows() });
+      await checkPlan(plans[begun.id], 'the restored New tab in front');
+      await shot('restored-new-tab');
+
+      await page.locator('.tabs-container .tab').filter({ hasText: title }).first().click();
+      check(!!await until(() => agentFront() === `codex ${t.id}`, 15000, 500), 'a click on the restored tab Resume in Tab opened puts its conversation in front', agentFront());
+      await checkCurrent(t.id, 'the restored tab Resume in Tab opened in front');
+      await checkPlan(plans[t.id], 'the restored tab Resume in Tab opened in front');
+      const back = await labelOf(bare(begun.label));
+      await page.locator('.tabs-container .tab').filter({ hasText: bare(begun.label) }).first().click();
+      check(!!await until(() => agentFront() === `codex ${begun.id}`, 15000, 500), 'and a click back on the restored New tab puts its conversation in front again', { agentPlus: agentFront(), label: back });
+      await checkCurrent(begun.id, 'the restored New tab brought back to the front');
+      await checkPlan(plans[begun.id], 'the restored New tab brought back to the front');
+      if (shownPage) restored = { page: shownPage, label: bare(begun.label) };
+
+      /* The other tabs whose URI does not name the conversation they showed, each brought to the front by its URI. */
+      const others = [agentNew && { what: 'the tab New Codex Agent opened', made: agentNew },
+        inTabNew && { what: 'the tab of the conversation begun from Codex\'s New chat button', made: inTabNew }].filter(Boolean);
+      for (const o of others) {
+        const was = before.find((x) => bare(x.label) === bare(o.made.label));
+        if (!was) { check(false, `${o.what} was open before the reload`, before); continue; }
+        const at = (x) => x.route === was.route && x.fragment === was.fragment;
+        const now = (await codexTabsNow()).find(at);
+        if (now) await revealTab(now);
+        const p = await until(async () => { const f = await frontPage(); const s = await pageSays(f); return s && s.turns >= 1 && s.text.includes(o.made.text) && f; }, 60000, 1000);
+        const tabsAfter = await codexTabsNow();
+        const it = tabsAfter.find(at);
+        check(!!p && !!it && bare(it.label) === bare(o.made.label) && tabsAfter.filter((x) => bare(x.label) === bare(o.made.label)).length === 1,
+          `${o.what} is restored showing the conversation begun in it and titled by it, with no second tab on that conversation`,
+          { before: was, after: it, page: await pageSays(await frontPage()), tabs: tabsAfter });
+        if (p) {
+          check(!!await until(() => agentFront() === `codex ${o.made.id}`, 15000, 500), `${o.what}, restored and in front, puts its conversation in front for Agent Plus`, agentFront());
+          await checkCurrent(o.made.id, `${o.what}, restored, in front`);
+        }
+      }
+      const final = await codexTabsNow();
+      check(final.length === before.length, 'after all that the window still has the Codex tabs it had before the reload, and no more', { before, after: final });
+    });
+
+    /* A turn in the restored New tab, sent from it and finished with it in the background. */
+    await step('a turn in a restored New tab', async () => {
+      if (!restored) throw new Error('the New tab was not restored with its conversation');
+      const label = restored.label;
+      await page.locator('.tabs-container .tab').filter({ hasText: label }).first().click();
+      await until(async () => (await frontPage()) === restored.page, 15000, 500);
+      model.hold();
+      const turns = model.turns();
+      await restored.page.locator(COMPOSER).first().click();
+      await page.keyboard.type('Add the upgrade notes too.');
+      await page.keyboard.press('Enter');
+      check(!!await until(() => model.turns() > turns, 20000, 300), 'a message sent from the restored New tab reaches the made-up model', model.seen.slice(-3));
+      const working = await until(async () => { const d = await dotsOn(label); return d && d.working >= 6 && d; }, 20000, 500);
+      check(!!working, 'while its turn runs the restored New tab\'s logo carries the green dot', { dots: await dotsOn(label), patch: await panelTrace() });
+      await openNotes();
+      await sleep(800);
+      model.release();
+      const unread = await until(async () => { const l = await labelOf(label); return l === `${label} ${ENVELOPE}` && l; }, 30000, 500);
+      check(!!unread, 'and once the reply lands with the tab in the background, its title ends in the envelope', { label: await labelOf(label), tabs: await tabs() });
+      await shot('restored-new-tab-unread');
+      await page.locator('.tabs-container .tab').filter({ hasText: label }).first().click();
+      check(!!await until(async () => (await labelOf(label)) === label, 20000, 500), 'and bringing it to the front takes the envelope away', await labelOf(label));
+    });
+
+    /* The key of the newest turn the page in front draws, '' with none. Codex draws only the turns near the bottom of a
+       long conversation, so their number says little. */
+    const newestInFront = async () => { const f = await frontPage(); return f ? f.evaluate(() => { const all = document.querySelectorAll('[data-turn-key]');
+      return all.length ? all[all.length - 1].getAttribute('data-turn-key') : ''; }).catch(() => '') : ''; };
+    const REOPEN = process.platform === 'darwin' ? 'Meta+Shift+T' : 'Control+Shift+T';
+    /* A conversation whose tab is closed, and how it comes back: from Recently closed, with Ctrl+Shift+T, and, for one
+       still open, from Open sessions. */
+    await step('a closed conversation brought back', async () => {
+      const t = threads[0];
+      await tabNamed(title).click();
+      const had = await until(newestInFront, 30000, 1000);
+      if (!had) throw new Error(`the tab of "${title}" did not come to the front with its turns`);
+      const closedIds = () => list.evaluate(() => [...document.querySelectorAll('.cp-section[data-key="closed"] .cp-row')].map((r) => r.dataset.id)).catch(() => null);
+      const firstClosed = (id) => until(async () => { if (!await showList()) return null; const r = await closedIds(); return r && r[0] === id && r; }, 20000, 500);
+      const cameBack = (label, turn) => until(async () => { const x = await frontTab(); return x && bare(x.label) === label && (await newestInFront()) === turn && x; }, 60000, 1000);
+      await exec('workbench.action.closeActiveEditor');
+      check(!!await firstClosed(t.id), 'closing the tab of a conversation puts it first in Recently closed', await closedIds());
+      if (!await list.evaluate(() => document.querySelector('.cp-section[data-key="closed"]').classList.contains('cp-open'))) {
+        await list.locator('.cp-section[data-key="closed"] .cp-section-head').first().click();
+      }
+      await list.locator(`.cp-section[data-key="closed"] .cp-row[data-id="${t.id}"]`).first().click();
+      check(!!await cameBack(title, had), 'a click on it there opens it in a tab again, in front, titled by it and drawn down to its newest turn',
+        { tab: await frontTab(), newest: await newestInFront(), had });
+      await checkCurrent(t.id, 'the conversation opened again from Recently closed');
+      await shot('reopened-from-recently-closed');
+      await exec('workbench.action.closeActiveEditor');
+      await firstClosed(t.id);
+      await page.keyboard.press(REOPEN);
+      check(!!await cameBack(title, had), `closed again, ${REOPEN} opens it again the same way`, { tab: await frontTab(), newest: await newestInFront(), had });
+      await checkCurrent(t.id, `the conversation opened again with ${REOPEN}`);
+      if (restored) {
+        /* The New tab's URI names no conversation, so what it showed comes from its panel (src/tab-memory.js). */
+        await tabNamed(restored.label).click();
+        const turn = await until(newestInFront, 30000, 1000);
+        await exec('workbench.action.closeActiveEditor');
+        check(!!await firstClosed(begun.id), 'closing the New tab a conversation was begun in puts that conversation first in Recently closed', await closedIds());
+        await page.keyboard.press(REOPEN);
+        check(!!await cameBack(restored.label, turn), `and ${REOPEN} opens that conversation again, titled by it and drawn down to its newest turn`,
+          { tab: await frontTab(), newest: await newestInFront(), had: turn });
+        await checkCurrent(begun.id, `the conversation of a New tab opened again with ${REOPEN}`);
+      }
+      /* A click on a row in Open sessions brings that conversation's tab to the front. */
+      if (!await showList()) return;
+      const other = begun ? begun.id : null;
+      if (!other) return;
+      await tabNamed(title).click();
+      await until(() => agentFront() === `codex ${t.id}`, 15000, 500);
+      if (!await showList()) return;
+      await list.locator(`.cp-section[data-key="open"] .cp-row[data-id="${other}"]`).first().click();
+      check(!!await until(() => agentFront() === `codex ${other}`, 15000, 500), 'a click on another conversation\'s row in Open sessions brings its tab to the front',
+        { want: other, agentPlus: agentFront(), tab: await frontTab() });
+      await checkCurrent(other, 'the conversation clicked in Open sessions');
+    });
+
+    /* A conversation stopped on a question for the user while its tab is in the background. */
+    await step('a conversation waiting for you in the background', async () => {
+      if (process.platform !== 'linux') {
+        note(`the request to run a command outside the sandbox is made only on Linux in this run, so waiting in the background was not checked on ${process.platform}`);
+        return;
+      }
+      if (!await focused()) { note(`the window does not have the system's focus on ${process.platform}, so Agent Plus shows no notification anyway; not checked`); return; }
+      const t = threads[0];
+      await tabNamed(title).click();
+      const f = await until(async () => { const x = await frontPage(); const s = await pageSays(x); return s && s.turns >= 1 && s.text.includes(title.slice(0, 30)) && x; }, 30000, 1000);
+      if (!f) throw new Error(`the tab of "${title}" did not come to the front`);
+      await exec('notifications.clearAll');
+      const counted = await agentCount();
+      const rowDot = () => list.evaluate((id) => { const r = document.querySelector(`.cp-group .cp-row[data-id="${id}"]`); return r && r._row ? String(r._row.dot || '') : null; }, t.id).catch(() => null);
+      model.script(t.id, [{ call: 'exec_command', args: { cmd: 'true', yield_time_ms: 1000, sandbox_permissions: 'require_escalated',
+        justification: 'Check the build outside the sandbox.' } }, { reply: 'Checked.' }]);
+      model.hold();
+      const turns = model.turns();
+      await f.locator(COMPOSER).first().click();
+      await page.keyboard.type('Check the build outside the sandbox.');
+      await page.keyboard.press('Enter');
+      check(!!await until(() => model.turns() > turns, 20000, 300), 'a message sent from the tab reaches the made-up model', model.seen.slice(-3));
+      await openNotes();
+      await sleep(800);
+      model.release();
+      const red = await until(async () => { const d = await dotsOn(title); return d && d.waiting >= 6 && d; }, 30000, 500);
+      check(!!red, 'when Codex stops to ask for the user\'s approval with the tab in the background, the tab\'s logo carries the red dot', await dotsOn(title));
+      const told = await until(() => toastAbout(title, 'is waiting for you'), 20000, 500);
+      check(!!told, 'Agent Plus says in a notification that the conversation is waiting for you', await toasts());
+      check(!!await until(async () => (await agentCount()) > counted, 10000, 500), 'and counts it in the status bar', { before: counted, now: await agentCount(), decide: await toDecide() });
+      if (await showList()) check(!!await until(async () => (await rowDot()) === 'waiting', 10000, 500), 'and its row in the session list carries the red dot too', await rowDot());
+      await shot('waiting-in-background');
+      if (told) {
+        await page.locator('.notification-toast').filter({ hasText: `"${title}" is waiting for you` }).locator('a').filter({ hasText: 'Open' }).first().click();
+        const front = await until(async () => { const x = await frontTab(); return x && bare(x.label) === title && x; }, 15000, 500);
+        check(!!front, 'the notification\'s Open brings the conversation\'s tab to the front', await frontTab());
+        check(!!await until(async () => !await toastAbout(title, 'is waiting for you'), 15000, 500), 'and the notification closes', await toasts());
+      }
+      const page2 = await frontPage();
+      const buttons = page2 && page2.locator('[data-codex-approval-surface] button');
+      if (buttons && await buttons.count()) {
+        const yes = buttons.filter({ hasText: /^(Yes|Allow once|Allow this time|Approve|Run)\b/ }).first();
+        if (await yes.count()) await yes.click();
+      }
+      check(!!await until(async () => { const d = await dotsOn(title); return d && d.waiting === 0 && model.left() === 0 && d; }, 30000, 500),
+        'approving it in the tab takes the red dot away and the turn goes on', await dotsOn(title));
+      model.script(null);
+    });
+
+    /* Rename, Mark as Unread and Add to Group where the user reaches them: the list row's pencil and right-click menu,
+       and the menu of the conversation's tab. */
+    await step('a conversation renamed, marked unread and grouped where the user does it', async () => {
+      const t = threads[0];
+      const stored = () => call(`${OWN} const x = (own('codex-files').listThreads() || []).find((y) => y.id === arg); return x ? x.title : null;`, t.id).catch(() => null);
+      const rowTitle = () => list.evaluate((id) => { const r = document.querySelector(`.cp-group .cp-row[data-id="${id}"] .cp-title`); return r ? r.textContent : null; }, t.id).catch(() => null);
+      /* Each row of the conversation, with whether its title is drawn from its first letter: an edited title left
+         scrolled sideways shows its end, or nothing. */
+      const rowsDrawn = () => list.evaluate((id) => [...document.querySelectorAll(`.cp-row[data-id="${id}"]`)].map((r) => {
+        const span = r.querySelector('.cp-title'), box = span.getBoundingClientRect();
+        const range = document.createRange();
+        if (span.firstChild) range.setStart(span.firstChild, 0), range.setEnd(span.firstChild, Math.min(1, span.firstChild.length || 0));
+        const first = span.firstChild ? range.getBoundingClientRect() : null;
+        return { place: (r.closest('.cp-group') || r.closest('.cp-section') || {}).dataset.key, text: span.textContent, scrollLeft: span.scrollLeft,
+          drawn: !!first && first.width > 0 && first.left >= box.left - 1 && first.right <= box.right + 1 };
+      }), t.id).catch(() => null);
+      const renamedTo = async (name, how) => {
+        const ok = await until(async () => (await labelOf(name)) && (await stored()) === name && (await showList()) && (await rowTitle()) === name, 30000, 1000);
+        check(!!ok, `${how}: the tab, the name saved in Codex and the list row all take the new name`,
+          { tab: await labelOf(name), stored: await stored(), row: await rowTitle() });
+        await page.mouse.move(5, 880);
+        const drawn = await until(async () => { const r = await rowsDrawn(); return r && r.length && r.every((x) => x.text === name && x.drawn && x.scrollLeft === 0) && r; }, 10000, 500);
+        check(!!drawn, `${how}: every row of the conversation draws the new title from its first letter`, await rowsDrawn());
+      };
+      const typeInRow = async (name) => {
+        await until(() => list.evaluate(() => !!document.querySelector('.cp-title.cp-editing')), 5000, 200);
+        await page.keyboard.type(name);
+        await page.keyboard.press('Enter');
+      };
+      await tabNamed(title).click();
+      await until(() => agentFront() === `codex ${t.id}`, 15000, 500);
+      if (!await showList()) throw new Error('the session list did not open');
+      /* The pencil on the row. */
+      const first = `${title} (pencil)`;
+      await row(t).hover();
+      await row(t).locator('.cp-act[data-act="rename"]').first().click();
+      await typeInRow(first);
+      await renamedTo(first, 'renamed with the pencil on its row');
+      /* Rename in the row's right-click menu. */
+      const second = `${title} (row menu)`;
+      retried(await pick(t, ['Codex Plus: Rename']), 'Rename');
+      await typeInRow(second);
+      await renamedTo(second, 'renamed from its row\'s right-click menu');
+      /* The menu of the conversation's tab, or of its page where the tab's has no item of this extension's. */
+      const vsMenu = () => page.evaluate(() => { const m = [...document.querySelectorAll('.context-view .monaco-menu')].find((e) => e.offsetParent); return m ? m.innerText : ''; });
+      const menuWith = (item) => until(async () => { const t = await vsMenu(); return t.includes(item) && t; }, 5000, 200);
+      const tabMenu = async (name, item) => {
+        if (!await labelOf(name)) throw new Error(`no tab is titled "${name}": ${JSON.stringify(await tabs())}`);
+        await tabNamed(name).click();
+        await tabNamed(name).click({ button: 'right' });
+        let where = await menuWith(item);
+        if (!where) {
+          await page.keyboard.press('Escape');
+          const f = await frontPage();
+          /* The newest turn is the one in view. Playwright gives a box inside a frame in the window's own coordinates. */
+          const talk = f && await f.locator('[data-turn-key]').last().boundingBox();
+          if (talk) await page.mouse.click(talk.x + talk.width / 2, talk.y + Math.min(20, talk.height / 2), { button: 'right' });
+          where = await menuWith(item);
+        }
+        if (!where) throw new Error(`no menu offered "${item}": ${JSON.stringify((await vsMenu()).slice(0, 200))}`);
+        await sleep(400);
+        /* The menu item's own element takes the click; the label inside it reads as covered to Playwright. */
+        await page.locator('.context-view .monaco-menu .action-menu-item').filter({ hasText: item }).first().click({ timeout: 5000, force: true });
+        return where;
+      };
+      const third = `${title} (tab menu)`;
+      const menuText = await tabMenu(second, 'Codex Plus: Rename');
+      const box = page.locator('.quick-input-widget input').first();
+      if (await box.waitFor({ state: 'visible', timeout: 10000 }).then(() => true, () => false)) {
+        await box.fill(third);
+        await box.press('Enter');
+        await renamedTo(third, 'renamed from its tab\'s menu');
+      } else check(false, 'Rename in the tab\'s menu asks for the new name', menuText);
+      await tabMenu(third, 'Codex Plus: Mark as Unread');
+      const unread = await until(async () => { const l = await labelOf(third); return l === `${third} ${ENVELOPE}` && l; }, 15000, 500);
+      check(!!unread, 'Mark as Unread in the tab\'s menu puts the envelope after the tab\'s title, though the tab is in front', await labelOf(third));
+      await openNotes();
+      await tabNamed(third).click();
+      check(!!await until(async () => (await labelOf(third)) === third, 20000, 500), 'and going to it again after leaving it takes the envelope away', await labelOf(third));
+      await tabMenu(third, 'Codex Plus: Add to Group');
+      const pickBox = page.locator('.quick-input-widget .quick-input-list .monaco-list-row').filter({ hasText: 'Release 1.2' }).first();
+      if (await pickBox.waitFor({ state: 'visible', timeout: 10000 }).then(() => true, () => false)) {
+        await pickBox.click();
+        const grouped = await until(async () => {
+          if (!await showList()) return false;
+          return list.evaluate((id) => {
+            const g = [...document.querySelectorAll('.cp-group')].find((x) => (x.querySelector('.cp-group-name') || {}).textContent === 'Release 1.2');
+            return !!(g && g.querySelector(`.cp-row[data-id="${id}"]`));
+          }, t.id);
+        }, 30000, 1000);
+        check(!!grouped, 'Add to Group in the tab\'s menu lists the groups, and choosing one moves the conversation into it', { toasts: await toasts() });
+        await checkCurrent(t.id, 'the conversation moved into a group with its tab in front');
+      } else note('Add to Group in the tab\'s menu offered no group Release 1.2, so moving was not checked');
+      await call('vscode.commands.executeCommand(\'codexPlus.renameThread\', arg); return true;', t.id);
+      const back = page.locator('.quick-input-widget input').first();
+      if (await back.waitFor({ state: 'visible', timeout: 10000 }).then(() => true, () => false)) { await back.fill(title); await back.press('Enter'); }
     });
   } finally {
     watchingTrust = false;
