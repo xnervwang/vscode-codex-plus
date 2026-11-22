@@ -52,6 +52,13 @@ module.exports = async ({ eq, root }) => {
   eq(state(), [[null, true], ['fold', false]],
     "the hook's prompt is folded and has no user edge, and the user's own message is left as it is with its edge");
   eq(sheets(), 1, 'one stylesheet does the folding');
+  /* Codex's markdown root inside the bubble sets a colour of its own, so a colour given only to the bubble never reaches
+     the text. Which elements the sheet's colour rules select is what decides it. */
+  const sheet = dom.document.head.querySelector('style[data-codex-extras="hook-fold"]').textContent;
+  const colourRules = sheet.split('}').map((r) => r.split('{')).filter(([sel, body]) => sel && /(^|;)color:/.test(body || '')).map(([sel]) => sel);
+  const coloured = (bubble) => { const text = bubble.querySelector('[data-markdown-text-tone]'); return colourRules.some((sel) => text.matches(sel)); };
+  eq([coloured(hook.bubble), coloured(asked.bubble)], [true, false],
+    "the dim colour is given to the prompt's text itself, inside Codex's markdown, and not to the user's own message");
 
   hook.bubble.dispatch('click', {});
   eq(hook.bubble.getAttribute('data-codex-extras-hook'), 'open', 'a click shows the whole prompt');

@@ -2546,8 +2546,9 @@
     if (on && document.head && !sheetEl) {
       var css = document.createElement('style');
       css.setAttribute(MARK, HOOK_SHEET);
-      css.textContent = SEL.bubble + '[' + HOOK + ']{background:transparent !important;box-shadow:none !important;cursor:pointer;'
-        + 'color:var(--vscode-descriptionForeground,#9d9d9d) !important;}'
+      /* The colour goes to every element inside as well: Codex's markdown root in the bubble sets its own. */
+      css.textContent = SEL.bubble + '[' + HOOK + ']{background:transparent !important;box-shadow:none !important;cursor:pointer;}'
+        + SEL.bubble + '[' + HOOK + '],' + SEL.bubble + '[' + HOOK + '] *{color:var(--vscode-descriptionForeground,#9d9d9d) !important;}'
         + SEL.bubble + '[' + HOOK + '="fold"] [data-markdown-text-tone]{display:-webkit-box !important;-webkit-box-orient:vertical;'
         + '-webkit-line-clamp:1;overflow:hidden;}';
       document.head.appendChild(css);
