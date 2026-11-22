@@ -1666,16 +1666,17 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
             const a = own('patching')._approvals;
             return { waiting: a.of(arg), threads: a.threads(), sinceMs: a.since ? a.since(arg) : null };`, id).catch((e) => String(e)) });
         await shot(`left-${name.replace(/\W+/g, '-')}`);
-        if (panel) {
-          const p = await panelSays(title, 'background', null);
-          check(p.ok, `${name}: and its row in Agent Plus's Conversations panel a green ring`, p.row);
-        }
         let listed = null;
         if (map) {
           const pill = await until(async () => { const q = await pillNow(); return q && q.dot === 'working' && map.text.test(q.text) && q; }, 20000, 500);
           check(!!pill, `${name}: the Agent map pill has a green dot and counts it (${map.text})`, await pillNow());
           listed = await mapRows();
           check(!!listed && map.listed(listed), `${name}: and the Agent map dialog lists it with a green dot`, listed);
+        }
+        /* After the map, which has to be read while the work still runs. */
+        if (panel) {
+          const p = await panelSays(title, 'background', null, 10000);
+          check(p.ok, `${name}: and its row in Agent Plus's Conversations panel a green ring`, { panel: p.row, still: await now() });
         }
         if (during) await during(listed);
         if (end) end();
