@@ -11,7 +11,8 @@
  * hold() keeps the next turns' replies back until release() is called, so a turn can be watched while it runs.
  *
  * script(thread, steps) answers the next requests of conversation `thread` with `steps` in order, then with the usual
- * reply: { call, namespace, args } is a tool call, { reply } a message. While a script is set, a request from any other
+ * reply: { call, namespace, args } is a tool call, { reply } a message; either may give inputTokens, the input the
+ * response reports using (1200 otherwise). While a script is set, a request from any other
  * conversation (a sub-agent's, or a codex exec's) is held until releaseOthers(). left() counts the steps not yet sent;
  * script(null) goes back to the usual reply for every conversation. sent(text) counts the requests whose body held `text`,
  * among the last BODIES_KEPT.
@@ -76,8 +77,9 @@ async function start({ reply = 'Done. The cap is configurable.' } = {}) {
         sse(res, 'response.output_text.delta', { item_id: item, output_index: 0, content_index: 0, delta: text });
         sse(res, 'response.output_item.done', { output_index: 0, item: message });
       }
-      sse(res, 'response.completed', { response: { id, usage: { input_tokens: 1200, input_tokens_details: { cached_tokens: 0 },
-        output_tokens: 40, output_tokens_details: { reasoning_tokens: 0 }, total_tokens: 1240 } } });
+      const input = (step && step.inputTokens) || 1200;
+      sse(res, 'response.completed', { response: { id, usage: { input_tokens: input, input_tokens_details: { cached_tokens: 0 },
+        output_tokens: 40, output_tokens_details: { reasoning_tokens: 0 }, total_tokens: input + 40 } } });
       res.end();
     });
   });

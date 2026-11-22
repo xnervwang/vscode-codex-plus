@@ -4,7 +4,7 @@
 
 'use strict';
 /*
- * Usage: node test/vscode/run.js <Codex Plus .vsix> [<Agent Plus .vsix>] [--out <dir>] [--vscode <executable>] [--local]
+ * Usage: node test/vscode/run.js <Codex Plus .vsix> [<Agent Plus .vsix>] [--out <dir>] [--vscode <executable>] [--local] [--look]
  *
  * Downloads the newest stable VS Code (unless --vscode names one), installs the newest Codex, Agent Plus and the .vsix
  * into a profile of its own, and runs two stages against that install: ui.js, which drives the window and checks what
@@ -19,6 +19,9 @@
  * namespace with loopback only (unshare -rn, then as-user.py to run as the caller rather than as root); when that is not
  * possible the run says so, and fails if CODEX_PLUS_UI_OFFLINE=require. The child's processes are also given a proxy
  * that does not exist, which on macOS and Windows is the only thing between them and the network.
+ *
+ * With --look the window stage is ui-look.js instead of ui.js, and the suite is not run: it walks every feature in
+ * test/vscode/ui-look-features.json and writes the screenshots and look.json that ui-look.js describes. Local only.
  *
  * Needs @vscode/test-electron and playwright-core, which the workflow installs; on Linux a display (xvfb-run).
  */
@@ -103,7 +106,7 @@ async function fetchStage() {
   const listed = code(['--list-extensions', '--show-versions', ...profile], env);
   console.log('installed:\n' + listed.out);
 
-  const argv = [process.execPath, __filename, '--stage', 'test', '--root', root, '--exe', exe, '--out', out];
+  const argv = [process.execPath, __filename, '--stage', 'test', '--root', root, '--exe', exe, '--out', out, ...(LOOK ? ['--look'] : [])];
   const off = offlineWrapper(argv);
   let prog = process.execPath, rest = argv.slice(1), offline = 'namespace';
   if (off.prog) { prog = off.prog; rest = off.args; } else {
@@ -125,6 +128,9 @@ async function testStage() {
   const playwright = require('playwright-core');
   const fakeModel = require('./lib/fake-model');
   const fakeHome = require('./lib/fake-home');
+  /* ui-look.js changes how VS Code is started before lib/window.js is loaded, so it is required before anything else
+     that loads that module. */
+  const ui = require(LOOK ? './ui-look' : './ui');
   const proxy = { HTTP_PROXY: NO_PROXY_TO, HTTPS_PROXY: NO_PROXY_TO, ALL_PROXY: NO_PROXY_TO, http_proxy: NO_PROXY_TO, https_proxy: NO_PROXY_TO,
     NO_PROXY: '127.0.0.1,localhost', no_proxy: '127.0.0.1,localhost' };
   const env = cleanEnv(root, proxy);
@@ -160,14 +166,21 @@ async function testStage() {
     /* Draw modal dialogs, such as Delete's confirmation, inside the window so Playwright can read them and click their
        buttons. VS Code's default is the system dialog on every platform. */
     'window.dialogStyle': 'custom',
+    ...(LOOK ? ui.LOOK_SETTINGS : {}),
   }, null, 2));
 
   try {
-    await require('./ui').run({ exe, profile: p, env, playwright, model, threads: made.threads, out, check, note });
+    await ui.run({ exe, profile: p, env, playwright, model, threads: made.threads, out, check, note });
   } catch (e) {
     check(false, 'the window stage ran to its end', (e && e.stack) || String(e));
   }
   await model.close();
+  if (LOOK) {
+    keepLogs(p.user, path.join(out, 'logs'));
+    console.log(`\nlook run: ${passed} passed, ${failed} failed, ${notes} notes; steps in ${path.join(out, 'look.json')}`);
+    process.exitCode = failed ? 1 : 0;
+    return;
+  }
 
   console.log('\n── inside VS Code');
   try {
@@ -199,6 +212,7 @@ const STAGE = flag('--stage');
 const OUT = flag('--out');
 const VSCODE = flag('--vscode');
 const LOCAL = has('--local');
+const LOOK = has('--look');
 (async () => {
   if (STAGE === 'test') return testStage();
   /* Every home is a temporary one, but on someone's own machine the runner still asks to be told it is meant to run. */
