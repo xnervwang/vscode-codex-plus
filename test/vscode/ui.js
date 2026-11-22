@@ -967,6 +967,9 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
           const all = [...document.querySelectorAll(q)].map((e) => e.getBoundingClientRect()).filter((b) => b.width > 0);
           return all.length ? { x0: Math.min(...all.map((b) => b.left)), y0: Math.min(...all.map((b) => b.top)), x1: Math.max(...all.map((b) => b.right)), y1: Math.max(...all.map((b) => b.bottom)) } : null;
         }, sel);
+        await clearToasts();
+        const left = (await toasts()).filter(Boolean);
+        if (left.length) note(`${name}: notifications still on screen before its crop: ${JSON.stringify(left).slice(0, 300)}`);
         if (r && frameBox) base.compare(name, await crop({ x: frameBox.x + r.x0 - 2, y: frameBox.y + r.y0 - 2, width: r.x1 - r.x0 + 4, height: r.y1 - r.y0 + 4 }));
       }
 
@@ -3066,9 +3069,13 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         if (!await until(tabUp, 20000, 500)) throw new Error(`no tab of "${t.title}" opened`);
         await tabNamed(t.title).click();
         await sleep(3000);
+        const pidNow = () => call('return process.pid;', null, 300).catch(() => 0);
+        const was = await pidNow();
         const at = Date.now();
         call('setTimeout(() => vscode.commands.executeCommand("workbench.action.restartExtensionHost"), 50); return true;', null, 3000).catch(() => {});
-        await until(async () => Date.now() - at > 400, 2000, 50);
+        /* The moment no host answers, between the old one going and the new one coming up. */
+        let gap = false;
+        await until(async () => { const p = await pidNow(); if (!p) { gap = true; return true; } return p !== was; }, 20000, 100);
         await page.keyboard.press(process.platform === 'darwin' ? 'Meta+W' : 'Control+W');
         let closed = await until(async () => !await tabUp(), 3000, 100);
         if (!closed) {
@@ -3078,18 +3085,24 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         }
         const back = await w.hostUp(at).then(() => true, () => false);
         await until(async () => { const s = await patchState().catch(() => null); return s && s.active; }, 60000, 1000);
-        return { closed: !!closed, back, closedAfterMs: Date.now() - at };
+        return { closed: !!closed, back, gap, closedAfterMs: Date.now() - at };
       };
+      /* Without a moment with no host, the close may have been recorded, and what follows says nothing. */
+      const unmet = (r) => { if (r.gap) return false; note(`no moment without an extension host was seen on ${process.platform} while it restarted (${JSON.stringify(r)}), so the tab may have been closed under a host that recorded it; not checked`); return true; };
       const first = await dropOnce();
       check(first.closed && first.back, 'the tab is closed as the extension host restarts, and a new host starts', first);
-      const back = await until(tabUp, 40000, 1000);
-      check(!!back, 'once the host is back, Codex Plus reopens the tab of the conversation that was open, as VS Code did not restore it', await tabs());
-      await shot('dropped-tab-reopened');
+      if (!unmet(first)) {
+        const back = await until(tabUp, 40000, 1000);
+        check(!!back, 'once the host is back, Codex Plus reopens the tab of the conversation that was open, as VS Code did not restore it', { tabs: await tabs(), first });
+        await shot('dropped-tab-reopened');
+      }
       await setting('reopenDroppedTabs', false);
       const second = await dropOnce();
       check(second.closed && second.back, 'with codexPlus.reopenDroppedTabs off, the tab is closed the same way', second);
-      await sleep(20000);
-      check(!await tabUp(), 'and it is not reopened', await tabs());
+      if (!unmet(second)) {
+        await sleep(20000);
+        check(!await tabUp(), 'and it is not reopened', await tabs());
+      }
       await setting('reopenDroppedTabs', undefined);
     });
   } finally {
