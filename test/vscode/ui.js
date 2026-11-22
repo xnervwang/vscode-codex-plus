@@ -2186,6 +2186,25 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       const openFromB = (t) => inB('await vscode.commands.executeCommand("agentPlus.openConversation", arg); return true;',
         { sourceId: 'codex', sessionId: t.id, title: t.title, cwd: profile.folder }, 30000).catch((e) => e.message);
       const OPENS = path.join(profile.home, '.agent-work-plan', 'open');
+      /* What every window's Agent Plus reports of a conversation to the others (<shared home>/attention): its activities. */
+      const reported = (id) => {
+        const dir = path.join(profile.home, '.agent-work-plan', 'attention');
+        let names = [];
+        try { names = fs.readdirSync(dir).filter((n) => n.endsWith('.json')); } catch (_) { return []; }
+        return names.flatMap((n) => { try { return JSON.parse(fs.readFileSync(path.join(dir, n), 'utf8')).items || []; } catch (_) { return []; } })
+          .filter((it) => it && it.sessionId === id).map((it) => it.activity);
+      };
+      /* Whether the rollout's newest turn has ended: a task_complete or turn_aborted after its last task_started. */
+      const turnEnded = (id) => {
+        const f = rolloutOf(id);
+        if (!f) return false;
+        let started = -1, ended = -1;
+        fs.readFileSync(f, 'utf8').split('\n').forEach((l, i) => {
+          try { const r = JSON.parse(l); const t = r.type === 'event_msg' && r.payload && r.payload.type;
+            if (t === 'task_started') started = i; else if (t === 'task_complete' || t === 'turn_aborted') ended = i; } catch (_) { /* a line being written */ }
+        });
+        return ended > started;
+      };
       /* Each request another window took: who asked, who took it, and whether it was brought forward. */
       const taken = () => {
         let names = [];
@@ -2294,8 +2313,10 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
             { status: r.status, stdout: r.stdout, stderr: r.stderr, marks: marks() });
           const red = await until(async () => (await rowDot()) === 'waiting', 20000, 500);
           check(!!red, 'this window\'s session list then shows the conversation the second window runs with the red dot', await rowDot());
-          check(!!await until(async () => (await agentCount()) > counted, 15000, 500), 'and Agent Plus counts it in the status bar',
-            { before: counted, now: await agentCount() });
+          /* A conversation already counted for an unread reply stays one item when it comes to wait. */
+          const countedNow = await until(async () => (await agentCount()) > counted
+            || (counted > 0 && reported(T.id).includes('waiting')), 15000, 500);
+          check(!!countedNow, 'and Agent Plus counts it in the status bar', { before: counted, now: await agentCount(), reported: reported(T.id) });
           /* Agent Plus shows its notification in the focused window. In this run both windows can count as focused, under
              xvfb-run and on the CI runners alike, and then which one shows it, and whether only one does, tests nothing. */
           const focusA = await focused(), focusB = await inB('return vscode.window.state.focused;').catch(() => null);
@@ -2361,11 +2382,17 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         }
 
         /* ── Delete and the daily pass while the second window shows it ── */
+        /* Archive leaves a running conversation alone, so its turn there has to have ended. */
+        await until(() => turnEnded(T.id), 60000, 500);
         await until(async () => (await rowDot()) !== 'working', 30000, 500);
-        await inB('await vscode.commands.executeCommand("codexPlus.archiveThread", arg, [arg.threadId]); return true;',
-          { webviewSection: 'thread', threadId: T.id, webview: 'codexPlus.sessions' });
         const archivedOnDisk = () => !!rolloutOf(T.id) && rolloutOf(T.id).includes(`${path.sep}archived_sessions${path.sep}`);
-        check(!!await until(archivedOnDisk, 30000, 500), 'archived in the second window, its rollout moves to archived_sessions/', rolloutOf(T.id));
+        for (let n = 0; n < 3 && !archivedOnDisk(); n++) {
+          await inB('await vscode.commands.executeCommand("codexPlus.archiveThread", arg, [arg.threadId]); return true;',
+            { webviewSection: 'thread', threadId: T.id, webview: 'codexPlus.sessions' });
+          if (await until(archivedOnDisk, 10000, 500)) break;
+        }
+        check(archivedOnDisk(), 'archived in the second window, its rollout moves to archived_sessions/',
+          { rollout: rolloutOf(T.id), ended: turnEnded(T.id), toastsB: await toastsIn(pageB) });
         check(!!await until(shelved, 30000, 500), 'and this window\'s list puts it in Archived sessions', null);
         const stillB = await until(() => { const e = entryOf(folderB); return e && e.sessions.includes(T.id); }, 15000, 500);
         check(!!stillB, 'the second window keeps it in its tab, read-only, and its entry still lists it', entryOf(folderB));
