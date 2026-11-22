@@ -1848,6 +1848,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await shot('reopened-from-recently-closed');
       await exec('workbench.action.closeActiveEditor');
       await firstClosed(t.id);
+      /* The keys go to the editor area, as a user's would, not to the session list's page that firstClosed showed. */
+      await exec('workbench.action.focusActiveEditorGroup');
       await page.keyboard.press(REOPEN);
       check(!!await cameBack(title, had), `closed again, ${REOPEN} opens it again the same way`, { tab: await frontTab(), newest: await newestInFront(), had });
       await checkCurrent(t.id, `the conversation opened again with ${REOPEN}`);
@@ -1857,6 +1859,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         const turn = await until(newestInFront, 30000, 1000);
         await exec('workbench.action.closeActiveEditor');
         check(!!await firstClosed(begun.id), 'closing the New tab a conversation was begun in puts that conversation first in Recently closed', await closedIds());
+        await exec('workbench.action.focusActiveEditorGroup');
         await page.keyboard.press(REOPEN);
         check(!!await cameBack(restored.label, turn), `and ${REOPEN} opens that conversation again, titled by it and drawn down to its newest turn`,
           { tab: await frontTab(), newest: await newestInFront(), had: turn });
