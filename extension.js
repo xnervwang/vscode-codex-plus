@@ -714,8 +714,9 @@ function registerCommands(context, { source, memory, sessionsModel, sessionsView
     } catch (e) { vscode.window.showErrorMessage(`Could not change whether Codex loads the plugin: ${e.message}`); }
   });
   reg('newInTab', () => newConversationInTab(say));
+  /* The patch first: VS Code hands Codex's link to the window it last saw focused, which may be another one. */
   reg('newInSidebar', async () => {
-    if (await tabs.openRouteInSidebar(vscode, '/')) return;
+    if (await patching.openSidebarRoute('/') || await tabs.openRouteInSidebar(vscode, '/')) return;
     await vscode.commands.executeCommand('chatgpt.openSidebar');
     try { await vscode.commands.executeCommand('chatgpt.newChat'); } catch (_) { /* the shortcut is not enabled in every build */ }
   });
@@ -761,7 +762,7 @@ function registerCommands(context, { source, memory, sessionsModel, sessionsView
     const id = threadArg(arg);
     if (!id) return;
     await unarchiveToOpen(id);
-    if (await tabs.openRouteInSidebar(vscode, tabs.threadRoute(id)) || await patching.openInSidebar(id)) return;
+    if (await patching.openInSidebar(id) || await tabs.openRouteInSidebar(vscode, tabs.threadRoute(id))) return;
     vscode.window.showInformationMessage('Codex did not take the link that opens a conversation in its sidebar, so it was opened in a tab instead.');
     await tabs.openInTab(vscode, id);
   });

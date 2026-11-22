@@ -460,15 +460,16 @@ async function deliver(thread, text, { waitMs = ANSWER_WAIT_MS } = {}) {
   return ANSWER_OUTCOMES[await seen] || { outcome: 'uncertain' };
 }
 
-async function openInSidebar(thread) {
+async function openSidebarRoute(route) {
   const p = state.provider;
   if (!state.active || !p || typeof p.navigateToRoute !== 'function') return false;
   try {
-    p.navigateToRoute(`/local/${thread}`);
+    p.navigateToRoute(route);
     await deps.vscode.commands.executeCommand('chatgpt.openSidebar');
     return true;
   } catch (_) { return false; }
 }
+const openInSidebar = (thread) => openSidebarRoute(`/local/${thread}`);
 
 /*
  * The question the page in front can be asked, answered once (src/page/codex-extras-page.js): how much of Codex's tree
@@ -1440,7 +1441,7 @@ function activate(context, opts) {
   return state;
 }
 
-module.exports = { activate, ensurePatched, statusLines, openInSidebar, canType, canDeliver, deliver, sidebarThread, panelThreads, shownIn, newPanelThreadsTitled,
+module.exports = { activate, ensurePatched, statusLines, openInSidebar, openSidebarRoute, canType, canDeliver, deliver, sidebarThread, panelThreads, shownIn, newPanelThreadsTitled,
   nowShowing, revealPanel, threadOfTabUri, shownByTabs, SHOWN_KEY, removePatch, NOT_SUPPORTED_MESSAGE, SHOW_DETAILS,
   figuresOf, usageOf, compactThread, hostRequest, safeColor, viewOf, selfCheckPage, selfCheckLines, installHooks, refreshPanels, approvalsOf,
   onApprovalsChanged, offerReloadIfStale, sidebarShowing, onSidebarChanged, onPanelClosed, onAccountNotification, onAppServerNotification, runningCommands, heardCommand, turnEndChime, turnHeard, _state: () => state, _registry: registry, _approvals: approvals,

@@ -1334,8 +1334,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       const t = threads[1];
       /* With a text file in front, the sidebar is the only Codex page the user can be looking at. */
       await openNotes();
-      /* Resume in Sidebar opens Codex's sidebar through a vscode:// link, and VS Code asks once before an extension
-         opens one. */
+      /* With the patch Resume in Sidebar navigates the sidebar itself; without it, it opens a vscode:// link, and VS
+         Code asks once before an extension opens one. */
       await call('vscode.commands.executeCommand("codexPlus.openThreadInSidebar", arg); return true;', t.id);
       const allow = page.locator('.monaco-dialog-box').filter({ hasText: 'open this URI' }).first();
       if (await allow.waitFor({ state: 'visible', timeout: 15000 }).then(() => true, () => false)) {
