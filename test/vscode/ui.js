@@ -2190,6 +2190,10 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
           { entry: entryOf(folderB), entries: entries() });
         const nameB = (shownB && shownB.name) || path.basename(folderB);
         const pageReady = await until(() => inB(`${OWN} return own('patching').canDeliver(arg);`, T.id), 60000, 1000);
+        await until(async () => {
+          for (const f of pageB.frames()) { try { if (await f.evaluate(() => document.querySelectorAll('[data-turn-key]').length > 0)) return true; } catch (_) { /* gone */ } }
+          return false;
+        }, 30000, 500);
         await shotB('second-window');
 
         /* ── an approval asked for in the second window ── */
@@ -2217,11 +2221,14 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
           check(!!red, 'this window\'s session list then shows the conversation the second window runs with the red dot', await rowDot());
           check(!!await until(async () => (await agentCount()) > counted, 15000, 500), 'and Agent Plus counts it in the status bar',
             { before: counted, now: await agentCount() });
+          /* Under xvfb-run both windows can count as focused; Agent Plus shows its notification in one of them. */
           const focusA = await focused(), focusB = await inB('return vscode.window.state.focused;').catch(() => null);
           if (focusA || focusB) {
-            const told = await until(async () => (await toastIn(page)) || (await toastIn(pageB)), 15000, 500);
-            check(!!told, `and says in a notification, in the window that has the focus (${focusA ? 'this one' : 'the second'}), that it is waiting for you`,
-              { here: await toasts(), focusA, focusB });
+            const told = await until(async () => ((await toastIn(page)) || (await toastIn(pageB))) && true, 15000, 500);
+            await sleep(2000);
+            const inA = !!await toastIn(page), inBNow = !!await toastIn(pageB);
+            check(!!told && inA !== inBNow, `and says in a notification that it is waiting for you, in one window only (${inA ? 'this one' : inBNow ? 'the second' : 'neither'})`,
+              { here: await toasts(), focusA, focusB, inA, inB: inBNow });
           } else note(`neither window has the system's focus on ${process.platform}, so Agent Plus shows no notification; not checked`);
           await shot('waiting-in-another-window');
           await shotB('second-window-waiting');
