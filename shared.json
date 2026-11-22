@@ -1,5 +1,5 @@
 {
-  "core": "caef4945da313a363ed9ffa11f5064d275edad1d",
+  "core": "6e78b55afd70aa5119e63d0e3e4843a0dfba3c3b",
   "files": [
     {
       "path": "build/sync-shared.js",
@@ -25,6 +25,11 @@
       "path": "test/shared-copies.js",
       "from": "shared/test/shared-copies.js",
       "sha256": "c1e6d4ef34defee5f79a698adffb4bce53b421a7bc4859fb2a935b2cd9a969b7"
+    },
+    {
+      "path": "test/vscode/LOOK.md",
+      "from": "shared/test/vscode/LOOK.md",
+      "sha256": "266561d992fca465a05e4d152d45b711dd3ea4d991099f4cd0c2f425817a1970"
     },
     {
       "path": "src/files.js",

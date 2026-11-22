@@ -13,13 +13,16 @@
  *
  *   name, features   the step and the ids of the features that list it in ui-look-features.json
  *   expect           what the step should show, in words
- *   unchanged        what the step should not have changed
+ *   unchanged        what the step should not have changed, or null
  *   image, full      paths of those two PNGs, relative to <out>
  *   previous         the previous step's whole window, or null
+ *   width, height    the close view's size in pixels
  *   log              new lines since the step before in the extension host's log and in the Codex Plus and Agent Plus
  *                    output channels, the notifications on screen, and the step's own failures, marked [ui-look]
+ *   note             only on a step whose actions failed: why
  *
- * Notifications stay on screen, since an error notification is one of the things the reader looks for.
+ * Notifications stay on screen, since an error notification is one of the things the reader looks for. LOOK.md beside
+ * this file is what the reader is given; it comes from Agent Plus with the other shared files (build/sync-shared.js).
  *
  * Unlike ui.js, it trusts the work plan plugin's hooks when asked, so the skill search, the plan's injection and its
  * Stop hook run.
@@ -228,11 +231,17 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
    * One step: `act` does what the step needs and returns the box (window CSS pixels) of what it is about, or null for
    * the whole window. Its failure is logged and the screenshots are taken all the same.
    */
+  const pngSize = (file) => {
+    try {
+      const b = fs.readFileSync(file);
+      return b.toString('ascii', 12, 16) === 'IHDR' ? { width: b.readUInt32BE(16), height: b.readUInt32BE(20) } : null;
+    } catch (_) { return null; }
+  };
   const look = async (name, spec, act) => {
     console.log(`\n── ${name}`);
     const said = [];
     told = [];
-    let box = null;
+    let box = null, note = '';
     /* A tab that was closed and opened again has a new page; the steps after it work on that one. */
     if (codex && codex.isDetached()) {
       codex = await frameWhere((want) => !!document.querySelector('[data-turn-key]') && document.body.innerText.includes(want) && innerWidth > 600, 30000, title);
@@ -242,7 +251,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       box = await act();
     } catch (e) {
       const why = String((e && e.stack) || e).split('\n').slice(0, 3).join(' | ');
-      said.push(`[ui-look] the step's actions failed: ${why}`);
+      note = `the step's actions failed: ${why}`;
+      said.push(`[ui-look] ${note}`);
       said.push(`[ui-look] the tabs then: ${JSON.stringify(await tabs().catch((x) => String(x))).slice(0, 600)}`);
       check(false, `${name}: its actions ran`, why);
     }
@@ -265,7 +275,9 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       try { fs.copyFileSync(path.join(out, full), path.join(out, image)); } catch (_) { /* no full either */ }
     }
     const log = [...said, ...told, ...newLogLines(), ...await toastLines()];
-    entries.push({ name, features: featuresOf(name), expect: spec.expect, unchanged: spec.unchanged || '', image, full, previous, log });
+    const size = pngSize(path.join(out, image));
+    entries.push({ name, features: featuresOf(name), expect: spec.expect, unchanged: spec.unchanged || null, image, full, previous,
+      width: size ? size.width : null, height: size ? size.height : null, log, ...(note ? { note } : {}) });
     previous = full;
     fs.writeFileSync(path.join(out, 'look.json'), JSON.stringify(entries, null, 2));
   };
