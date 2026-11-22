@@ -175,7 +175,7 @@ Rows are 28 px high, with an 8 px status dot, a title, an envelope for a reply y
 
 A row shows how long ago you last used a conversation and the first and last day you used it, as `2d · 11/05→11/09`. The time uses `now`, `5m`, `3h`, `2d`, `1mo` or `1y`; dates in another year include the year, as in Claude Code's list. You can give a title a colour with Text Color (see "Menus and groups"). Hovering shows its group and session ID, as Claude Code Plus writes them.
 
-With `codexPlus.hideBackgroundSessions` on, the default, the list omits conversations started by `codex exec`, sub-agents and approval reviews (conversations Codex starts to review an approval request). Turn it off to list them with the rest. Each sub-agent is indented under the conversation that started it, which its hover names. It is titled by its nickname, as in the Agent map, and has its own status dot. If that conversation is not listed, the sub-agent stays among the rest.
+`codexPlus.hideBackgroundSessions` is on by default. The session list hides conversations started by `codex exec`, sub-agents and approval reviews (conversations Codex starts to check whether to allow a requested action). Turning the setting off lists them with the rest. Each sub-agent's row shows its nickname, as in the Agent map, and has its own status dot. The row is indented under the conversation that started the sub-agent and shows that conversation's name on hover. The sub-agent's row stays unindented if its parent is missing from the list.
 
 ### Status dots
 
@@ -295,9 +295,9 @@ Codex compacts at 90% of the model's full window, or at `model_auto_compact_toke
 
 ### The Agent map
 
-The Agent map is a pill like Claude Code's, reading for example `2 agents · 1 detached · 1 terminal · 1 timer · goal`. It appears while the conversation has a wake-up (the timer), a goal, sub-agents, or work it started that is still running: a detached command, a background terminal, a `codex exec` run, a `claude -p` worker or a `claude --bg` session. Its dot is green while any of that work runs, red while a sub-agent waits for you, and grey once it has all ended. It needs the patch.
+The Agent map requires the patch. It appears as a pill like Claude Code's, for example `2 agents · 1 detached · 1 terminal · 1 timer · goal`. A conversation with a wake-up (the timer), a goal or sub-agents shows the pill. The pill also appears while any work the conversation started is still running: detached commands, background terminals, `codex exec` runs, `claude -p` workers or `claude --bg` sessions. The pill's dot is green while work runs and turns grey once all the work has ended. A red dot means a sub-agent is waiting for you.
 
-Click it to open a dialog with a section for each. A wake-up shows its interval, next time, end and prompt, with Remove. A goal shows its state and tokens, with Pause, Resume and Clear. Each sub-agent shows its status dot, as in the session list, an envelope for a reply you have not read, and when it was last active; click it to open it in a tab. The work still running is listed with a green dot each: a detached command, background terminal or `codex exec` by its command line, a `claude -p` worker or `claude --bg` session by the name Claude Code gave it. Esc or a click outside closes the dialog.
+Clicking the pill opens a dialog with a section for each kind of item. The wake-up section lists the interval, next wake-up time, end and prompt alongside a Remove button. The goal section shows its state and tokens alongside the Pause, Resume and Clear controls. Each sub-agent shows when it was last active and has a status dot with the same four states as in the session list. An envelope beside a sub-agent marks an unread reply, and clicking the sub-agent opens it in a tab. Each running item has a green dot. The dialog shows command lines for detached commands, background terminals and `codex exec` runs, while `claude -p` workers and `claude --bg` sessions appear under the names Claude Code gives them. Pressing Esc or clicking outside the dialog closes it.
 
 ![The Agent map with a wake-up and a detached command](images/shots/agent-map.png)
 
