@@ -344,8 +344,9 @@ async function activate(context) {
   const memory = new TabMemory(vscode, context.workspaceState, {
     titleOf: (id) => (reader.thread(id) || {}).title || '',
     exists: (id) => reader.present(id),
-    // Tabs Codex opened with its own New button do not name their conversation in their URI; the patch does.
-    alsoOpen: () => patching.panelThreads(),
+    // Tabs Codex opened with its own New button do not name their conversation in their URI; the patch does, for a
+    // restored tab whose panel Codex has not built yet too.
+    alsoOpen: () => patching.panelThreads().concat(patching.shownByTabs()),
     nowShowing: (id) => patching.nowShowing(id),
   });
   context.subscriptions.push(memory, patching.onPanelClosed((thread, opened) => memory.panelClosed(thread, opened)));
@@ -511,6 +512,8 @@ async function activate(context) {
     }, 60000);
     try {
       patching.activate(context, { vscode, log: say, codexProgram, source, context, settings, onTimeZone: reportTimeZone,
+        /* A restored tab is sent back to a conversation that still exists; before Codex's list is first read, every one does. */
+        present: (id) => !reader.threads() || reader.present(id),
         userTimes, sessionInfo: (id) => sessionInfoRows(id), compactLimit: compactLimitNow, agentMap, agentMapAct,
         planLine: (id) => (runs('workPlan') ? reader.request('plan', { home: files.codexHome(), id }) : Promise.resolve('')),
         adjustRequest: windowOverride(context, say), contextWindowFrom: windowSource(context),

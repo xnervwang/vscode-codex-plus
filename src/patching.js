@@ -76,6 +76,7 @@ let state = { active: false, reason: 'not checked yet', provider: null };
  *   started   threads its page started that are not in Codex's list yet, oldest first
  *   titled    the title this extension gave the panel for its conversation, or ''
  *   turn      the id of the newest turn its page said it shows, or ''
+ *   uri       its tab's URI, fragment included, as the host patch kept it, or '' with an older patch
  * }
  * A page outside this map is one of the sidebar's: Codex opens every editor panel through one of the two places the
  * patch hands panels over from.
@@ -269,6 +270,90 @@ function revealPanel(thread) {
   const panel = panelsOf(thread)[0];
   if (!panel) return false;
   try { panel.reveal(undefined, false); return true; } catch (_) { return false; }
+}
+
+/*
+ * What each Codex tab showed that its URI does not name, by the tab's URI: a conversation begun in a New tab, or one
+ * begun in a tab opened on another. VS Code restores a tab on its URI, and Codex draws it from the route in that URI,
+ * so after a reload such a tab is a new conversation page, or the conversation the URI names. The record, kept in the
+ * workspace's memento, sends it back to what it showed (restoreShown) and names that conversation for a restored tab
+ * whose panel Codex has not built yet. A tab's entry goes when the tab is closed.
+ */
+const SHOWN_KEY = 'codexPlus.tabShows';
+const SHOWN_KEPT = 50;
+const shownRecord = () => {
+  const m = deps && deps.context && deps.context.workspaceState;
+  const v = m ? m.get(SHOWN_KEY) : null;
+  return v && typeof v === 'object' && !Array.isArray(v) ? v : {};
+};
+const writeShown = (next) => {
+  const m = deps && deps.context && deps.context.workspaceState;
+  if (!m || JSON.stringify(next) === JSON.stringify(shownRecord())) return;
+  const keys = Object.keys(next);
+  for (const k of keys.slice(0, Math.max(0, keys.length - SHOWN_KEPT))) delete next[k];
+  Promise.resolve(m.update(SHOWN_KEY, next)).catch(() => { /* kept on the next change */ });
+};
+/* The conversation a tab's URI names itself, '' for a New tab's. */
+const namedBy = (uri) => { const m = /^openai-codex:\/\/route\/local\/([^/?#]+)/i.exec(uri || ''); return m ? m[1].toLowerCase() : ''; };
+function rememberShown() {
+  const next = { ...shownRecord() };
+  for (const rec of registry.values()) {
+    if (!rec.uri) continue;
+    if (rec.thread && rec.thread !== namedBy(rec.uri)) { delete next[rec.uri]; next[rec.uri] = rec.thread; } else delete next[rec.uri];
+  }
+  writeShown(next);
+}
+function forgetShown(uris) {
+  const next = { ...shownRecord() };
+  let gone = false;
+  for (const u of uris) if (u in next) { delete next[u]; gone = true; }
+  if (gone) writeShown(next);
+}
+/* The kept URI of a panel Codex resolved (src/host.js "conversation panel URIs"). */
+function uriOfPanel(panel) {
+  try { const u = globalThis.__codexExtrasPanelUris && globalThis.__codexExtrasPanelUris.get(panel); return typeof u === 'string' ? u : ''; } catch (_) { return ''; }
+}
+/*
+ * A restored tab's page goes back to the conversation the tab showed. Codex adds the panel to its own map only after
+ * handing it over, and holds a message for a page that is not ready yet, so the message is sent on the next turn of
+ * the event loop.
+ */
+function restoreShown(panel, rec) {
+  const want = rec.uri ? shownRecord()[rec.uri] : '';
+  if (!want || want === rec.thread || (rec.thread && rec.thread !== rec.opened)) return;
+  if (deps && typeof deps.present === 'function') { try { if (!deps.present(want)) return; } catch (_) { return; } }
+  rec.thread = want;
+  rec.titled = '';
+  setTimeout(() => {
+    const p = state.provider;
+    if (!p || typeof p.sendMessageToPanel !== 'function' || registry.get(panel) !== rec || rec.thread !== want) return;
+    try { p.sendMessageToPanel(panel, { type: 'navigate-to-route', path: `/local/${want}` }); } catch (_) { /* the panel is gone */ }
+  }, 0);
+}
+/*
+ * The conversation the Codex tab on `uri` shows: its panel's, else the one the record says it showed, for a restored
+ * tab Codex has not built a panel for yet. null when neither is known, as with an older patch, which kept no URIs.
+ */
+function threadOfTabUri(uri) {
+  if (!uri) return null;
+  for (const rec of registry.values()) if (rec.uri === uri) return rec.thread;
+  const kept = shownRecord()[uri];
+  return typeof kept === 'string' && kept ? kept : null;
+}
+/* The conversations the Codex tabs of this window show by threadOfTabUri, for the record of open tabs. */
+function shownByTabs() {
+  const out = new Set();
+  const vscode = deps && deps.vscode;
+  const groups = (vscode && vscode.window.tabGroups && vscode.window.tabGroups.all) || [];
+  for (const g of groups) {
+    for (const t of g.tabs || []) {
+      const input = t && t.input;
+      if (!input || !input.uri || input.uri.scheme !== 'openai-codex') continue;
+      const id = threadOfTabUri(String(input.uri));
+      if (id) out.add(id);
+    }
+  }
+  return [...out];
 }
 
 /* What the information box of each page was last sent, so a value is copied from this side's own copy. */
@@ -790,6 +875,7 @@ function settle(now) {
       break;
     }
   }
+  rememberShown();
 }
 
 /*
@@ -972,7 +1058,9 @@ function adoptPanel(panel, thread, provider, route) {
   if (provider) state.provider = provider;
   if (!panel || registry.has(panel)) return;
   const id = thread ? String(thread) : '';
-  registry.set(panel, { thread: id, opened: id, route: typeof route === 'string' ? route : '', starts: new Set(), started: [], titled: '', turn: '' });
+  const rec = { thread: id, opened: id, route: typeof route === 'string' ? route : '', starts: new Set(), started: [], titled: '', turn: '', uri: uriOfPanel(panel) };
+  registry.set(panel, rec);
+  restoreShown(panel, rec);
   state.active = true;
   state.reason = 'Codex handed over its panels';
   /* A page that is gone cannot say its card went with it (leave). */
@@ -1323,6 +1411,12 @@ function activate(context, opts) {
   context.subscriptions.push(onEnvelopeChange(opts.vscode, () => { refreshPanels().catch(() => { /* the next poll draws it */ }); }));
   /* Redrawn when the sidebar is shown or hidden, since its page is sent updates only while it is visible. */
   context.subscriptions.push(onSidebarChanged(() => { refreshPanels().catch(() => { /* the next poll draws it */ }); }));
+  const tabGroups = opts.vscode.window.tabGroups;
+  if (tabGroups && typeof tabGroups.onDidChangeTabs === 'function') {
+    context.subscriptions.push(tabGroups.onDidChangeTabs((e) => {
+      forgetShown(((e && e.closed) || []).map((t) => (t && t.input && t.input.uri ? String(t.input.uri) : '')).filter(Boolean));
+    }));
+  }
   if (typeof opts.vscode.window.onDidChangeWindowState === 'function') {
     context.subscriptions.push(opts.vscode.window.onDidChangeWindowState((w) => {
       if (w && w.focused) offerReloadIfStale().catch((e) => opts.log(`patch: ${e.message}`));
@@ -1347,7 +1441,7 @@ function activate(context, opts) {
 }
 
 module.exports = { activate, ensurePatched, statusLines, openInSidebar, canType, canDeliver, deliver, sidebarThread, panelThreads, shownIn, newPanelThreadsTitled,
-  nowShowing, revealPanel, removePatch, NOT_SUPPORTED_MESSAGE, SHOW_DETAILS,
+  nowShowing, revealPanel, threadOfTabUri, shownByTabs, SHOWN_KEY, removePatch, NOT_SUPPORTED_MESSAGE, SHOW_DETAILS,
   figuresOf, usageOf, compactThread, hostRequest, safeColor, viewOf, selfCheckPage, selfCheckLines, installHooks, refreshPanels, approvalsOf,
   onApprovalsChanged, offerReloadIfStale, sidebarShowing, onSidebarChanged, onPanelClosed, onAccountNotification, onAppServerNotification, runningCommands, heardCommand, turnEndChime, turnHeard, _state: () => state, _registry: registry, _approvals: approvals,
   TAB_DOTS, ASK_MS, PATCH_REMOVED_KEY };

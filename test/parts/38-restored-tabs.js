@@ -74,7 +74,7 @@ module.exports = async ({ eq, note }) => {
     eq(rec(tab), [ID, ID, `/local/${ID}`],
       'a conversation tab Codex resolved before the hooks existed is taken from Codex\'s own panels, with the conversation its route names');
     eq(patching.canDeliver(ID), true, 'so it can take an answer, as a tab opened after start-up can');
-    eq(rec(blank), ['', '', '/extension/panel/new'], 'a restored New tab is kept with no conversation, as the live hook keeps one');
+    eq(rec(blank), ['', '', '/extension/panel/new'], 'a restored New tab nothing is remembered for is kept with no conversation, as the live hook keeps one (38c has one that showed a conversation)');
     eq(rec(plain), ['', '', `/local/${OTHER}`],
       'and a panel that is not one of Codex\'s custom editors names no conversation, as the live hook hands it over');
     const size = patching._registry.size;

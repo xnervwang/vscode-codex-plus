@@ -30,7 +30,7 @@ class Uri {
   static joinPath(base, ...parts) { return new Uri({ ...base, path: path.posix.join(base.path, ...parts) }); }
   get fsPath() { return this.path; }
   with(change) { return new Uri({ ...this, ...change }); }
-  toString() { return `${this.scheme}://${this.authority}${this.path}${this.query ? '?' + this.query : ''}`; }
+  toString() { return `${this.scheme}://${this.authority}${this.path}${this.query ? '?' + this.query : ''}${this.fragment ? '#' + this.fragment : ''}`; }
 }
 
 class TabInputCustom { constructor(uri, viewType) { this.uri = uri; this.viewType = viewType; } }

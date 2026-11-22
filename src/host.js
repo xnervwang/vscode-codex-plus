@@ -15,6 +15,9 @@
  *   conversation panels     each conversation tab's WebviewPanel as Codex opens it, with the thread id its URI names
  *                           (none for a tab opened on /extension/panel/new) and the route it opened on: for the dot on
  *                           the tab's logo and for putting text in that conversation's message box
+ *   panel URIs              the full URI of each conversation tab's panel, fragment included, kept in a map Codex writes
+ *                           whether or not this extension is running yet, so a New tab restored at a reload can be told
+ *                           apart from another New tab
  *   other panels            the panels Codex opens without a conversation URI (its diff, plan and settings panels, and
  *                           the one it makes when it has no sidebar), so that every page outside the sidebar is known
  *   page requests           a page's request to the app-server, with the webview that sent it, at the moment it is
@@ -59,6 +62,15 @@ const EDITS = [
     name: 'conversation panels',
     re: /(let\{conversationId:([\w$]+)\}=([\w$]+)[,;][\s\S]{0,1500}?)(this\.editorPanels\.set\(([\w$]+),\{ready:!1,pendingMessages:\[\],initialRoute:)/g,
     to: (m, before, conv, route, set, panel) => `${before}${call('__codexExtrasPanel', `${panel},${conv},this,${route}.path`)},${set}`,
+  },
+  /*
+   * A tab restored at a reload is resolved before this extension starts, when no hook is there to call, so its URI is
+   * kept on Codex's side for this extension to read later. Two New tabs differ only in their URI's fragment.
+   */
+  {
+    name: 'conversation panel URIs',
+    re: /async resolveCustomEditor\(([\w$]+),([\w$]+),[\w$]+\)\{/g,
+    to: (m, doc, panel) => `${m}(()=>{try{(globalThis.__codexExtrasPanelUris||(globalThis.__codexExtrasPanelUris=new WeakMap)).set(${panel},String(${doc}.uri))}catch(_cx){}})();`,
   },
   {
     name: 'other panels',

@@ -191,6 +191,10 @@ const ask = (patching, name, args, none) => {
  */
 function threadOfCodexTab(vscode, patching, tab) {
   const named = tabs.threadOfTab(vscode, tab);
+  /* The patch knows a panel by its tab's whole URI, and a restored tab by what it showed (src/patching.js threadOfTabUri). */
+  const input = tab && tab.input;
+  const byUri = (named || tabs.isCodexTab(vscode, tab)) && input && input.uri ? ask(patching, 'threadOfTabUri', [String(input.uri)], null) : null;
+  if (typeof byUri === 'string') return byUri;
   if (named) return namedNow(patching, named);
   if (!tabs.isCodexTab(vscode, tab)) return '';
   const label = typeof tab.label === 'string' ? tab.label : '';

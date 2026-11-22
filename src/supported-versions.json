@@ -202,10 +202,11 @@
       ]
     },
     "26.1117.41037": {
-      "checked": "2026-11-21",
+      "checked": "2026-11-22",
       "hostEdits": [
         "provider instance",
         "conversation panels",
+        "conversation panel URIs",
         "other panels",
         "page requests",
         "page responses",
