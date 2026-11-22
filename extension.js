@@ -46,6 +46,7 @@ const contextWindow = require('./src/context-window');
 const codexManifest = require('./src/manifest');
 const tokenMode = require('./src/token-mode');
 const archiveSweep = require('./src/archive-sweep');
+const windowEntries = require('./src/window-entries');
 const { withoutEnvelope } = require('./src/title-marks');
 const { envelope, onEnvelopeChange } = require('./src/envelope');
 
@@ -60,6 +61,8 @@ let reader = null;
 let memento = null;
 /* Deletes conversations archived longer than codexPlus.deleteArchivedAfterDays (src/archive-sweep.js). */
 let archiveSweeper = null;
+/* Writes this window's entry among the windows (src/window-entries.js), once activation has what it shows. */
+let publishWindow = () => {};
 
 function cfg() { return vscode.workspace.getConfiguration(CONFIG); }
 /* Whether a feature that adds to Codex's context runs: its own setting in the Custom token mode, the mode's table in the
@@ -329,7 +332,7 @@ async function activate(context) {
   };
   const source = createCodexSource(vscode, { log: say, reader, patching, trusted, enabled: () => runs('workPlan'),
     briefs: () => runs('conversationBrief'), seen: createSeen(context.globalState),
-    scanLeft: () => !standsDown() && settings().enabled !== false, onPoll: () => { if (archiveSweeper) archiveSweeper.tick(); }, onScan });
+    scanLeft: () => !standsDown() && settings().enabled !== false, onPoll: () => { publishWindow(); if (archiveSweeper) archiveSweeper.tick(); }, onScan });
   context.subscriptions.push(source);
   planSource = source;
   /* The user's time zone, as Codex's page reported it through the patch. */
@@ -400,7 +403,21 @@ async function activate(context) {
       else source._poll();
     }).catch(() => { /* left where Codex put it */ });
   };
-  const relist = () => { sessionsModel.refresh(); probeGroups(); place(); };
+  /*
+   * This window's entry among the windows (src/window-entries.js): the conversations its tabs and Codex's sidebar show.
+   * The other windows leave those alone when they delete. Written at once, on the source's poll and when the tabs change.
+   */
+  const shownHere = () => [...new Set([...memory.openThreads(), patching.sidebarShowing()].filter(Boolean))];
+  let published = false;
+  const writeEntry = windowEntries.publisher(install.planDir(files.codexHome()), () => ({ name: vscode.workspace.name || '',
+    folders: (vscode.workspace.workspaceFolders || []).map((f) => f.uri.fsPath), sessions: shownHere() }), { log: say });
+  publishWindow = () => { if (trusted() && standsDown() !== 'uninstalling' && writeEntry()) published = true; };
+  context.subscriptions.push({ dispose: () => {
+    publishWindow = () => {};
+    if (published) windowEntries.withdraw(install.planDir(files.codexHome()));
+  } });
+  publishWindow();
+  const relist = () => { sessionsModel.refresh(); probeGroups(); place(); publishWindow(); };
   const redrawSessions = async () => {
     try { lastConversations = new Map((await source.listConversations()).map((c) => [c.sessionId, c])); } catch (_) { /* the last one stays */ }
     relist();
@@ -409,7 +426,7 @@ async function activate(context) {
   const follow = () => sessionsModel.refresh();
   context.subscriptions.push(source.onDidChangeConversations(redrawSessions), memory.onDidChange(relist), patching.onSidebarChanged(relist),
     source.onDidFocus(() => follow()), onEnvelopeChange(vscode, () => sessionsModel.refresh()));
-  if (typeof vscode.window.tabGroups.onDidChangeTabs === 'function') context.subscriptions.push(vscode.window.tabGroups.onDidChangeTabs(() => follow()));
+  if (typeof vscode.window.tabGroups.onDidChangeTabs === 'function') context.subscriptions.push(vscode.window.tabGroups.onDidChangeTabs(() => { follow(); publishWindow(); }));
 
   /* ── Agent Plus draws the rest ── */
   const link = await hostLink.link(vscode, source, { log: say, memento: context.globalState });
@@ -923,6 +940,9 @@ function registerCommands(context, { source, memory, sessionsModel, sessionsView
     if (!patching.canType() && codex && codex.isActive) return null;
     try { return new Set([...memory.openThreads(), patching.sidebarShowing()].filter(Boolean)); } catch (_) { return null; }
   };
+  /* The conversations other windows show, as id -> the names of those windows, from their entries (src/window-entries.js). */
+  const elsewhereNow = () => { try { return windowEntries.shownElsewhere(install.planDir(files.codexHome())); } catch (_) { return new Map(); } };
+  const windowNames = (names) => `the VS Code window${names.length === 1 ? '' : 's'} ${names.map((n) => `"${n}"`).join(', ')}`;
   const subAgentsOf = (id) => {
     const all = reader.threads() || [];
     const out = [];
@@ -973,6 +993,12 @@ function registerCommands(context, { source, memory, sessionsModel, sessionsView
     return stuck;
   };
   const named = (list) => list.map((b) => `"${b.title}"${b.by ? ` (its sub-agent "${b.by}")` : ''}`).join(', ');
+  /* Why each of `busy` is left alone: open or running here, or open in another window, which is named. */
+  const whyLeft = (busy) => {
+    const here = busy.filter((b) => !b.windows), away = busy.filter((b) => b.windows);
+    return [here.length ? `${named(here)} ${here.length === 1 ? 'is' : 'are'} open or running` : '',
+      ...away.map((b) => `${named([b])} is open in ${windowNames(b.windows)}`)].filter(Boolean).join('; ');
+  };
   /* Only an archived conversation is deleted, as in Claude Code Plus, where Delete is in the Archived sessions menu. */
   reg('deleteThread', async (arg, selected) => {
     if (!threadArg(arg) || restricted()) return;
@@ -985,24 +1011,27 @@ function registerCommands(context, { source, memory, sessionsModel, sessionsView
     }
     await readNow([...new Set(want.flatMap((id) => [id, ...subAgentsOf(id)]))]);
     const open = openNow() || new Set(want);
-    const blocker = (id) => [id, ...subAgentsOf(id)].find((x) => open.has(x) || busyNow(x)) || '';
+    const elsewhere = elsewhereNow();
+    const here = (x) => open.has(x) || busyNow(x);
+    const blocker = (id) => [id, ...subAgentsOf(id)].find(here) || [id, ...subAgentsOf(id)].find((x) => elsewhere.has(x)) || '';
     const busy = [], go = [];
     let gone = 0;
     for (const id of want) {
       const by = blocker(id);
-      if (by) busy.push({ id, title: nameOf(id), by: by === id ? '' : nameOf(by) });
+      if (by) busy.push({ id, title: nameOf(id), by: by === id ? '' : nameOf(by), windows: here(by) ? null : elsewhere.get(by) });
       else if (!reader.thread(id) || !reader.present(id)) gone++;
       else { const subs = subAgentsOf(id); go.push({ id, title: nameOf(id), subs, what: describe(id, subs) }); }
     }
     if (!go.length) {
-      vscode.window.showInformationMessage(busy.length ? `Not deleted: ${named(busy)} ${busy.length === 1 ? 'is' : 'are'} open or running.`
+      vscode.window.showInformationMessage(busy.length ? `Not deleted: ${whyLeft(busy)}.`
         : `Nothing of ${gone > 1 ? 'those conversations' : 'that conversation'} is left on disk.`);
       return;
     }
     const lines = go.map((g) => `"${g.title}": ${g.what}`);
     lines.push('', `Codex deletes ${go.length === 1 ? 'its' : 'each one\'s'} rollout file, its row in Codex's state database, its title and its goal, `
       + 'and the same for every sub-agent it started.');
-    if (busy.length) lines.push('', `Left alone, open or running: ${named(busy)}`);
+    if (busy.some((b) => !b.windows)) lines.push('', `Left alone, open or running: ${named(busy.filter((b) => !b.windows))}`);
+    for (const b of busy.filter((x) => x.windows)) lines.push('', `Left alone: ${named([b])} is open in ${windowNames(b.windows)}`);
     lines.push('', 'This cannot be undone.');
     const pick = await vscode.window.showWarningMessage(
       go.length === 1 ? `Delete "${go[0].title}" from disk?` : `Delete ${go.length} conversations from disk?`,
@@ -1010,8 +1039,8 @@ function registerCommands(context, { source, memory, sessionsModel, sessionsView
     if (pick !== 'Delete') return;
     /* Checked again after Delete is pressed: a conversation opened or started meanwhile is left alone. */
     await readNow([...new Set(go.flatMap((g) => [g.id, ...g.subs]))]);
-    const openAfter = openNow();
-    const late = go.filter((g) => !openAfter || [g.id, ...g.subs, ...subAgentsOf(g.id)].some((x) => openAfter.has(x) || busyNow(x)));
+    const openAfter = openNow(), elsewhereAfter = elsewhereNow();
+    const late = go.filter((g) => !openAfter || [g.id, ...g.subs, ...subAgentsOf(g.id)].some((x) => openAfter.has(x) || busyNow(x) || elsewhereAfter.has(x)));
     if (late.length) {
       vscode.window.showWarningMessage(`Not deleted: ${late.map((g) => `"${g.title}"`).join(', ')} ${late.length === 1 ? 'was' : 'were'} opened or started meanwhile.`);
     }
@@ -1104,8 +1133,14 @@ function registerCommands(context, { source, memory, sessionsModel, sessionsView
     hold: async (ids) => {
       if (!openNow()) return null;
       await readNow([...new Set(ids.flatMap((id) => [id, ...subAgentsOf(id)]))]);
-      const open = openNow();
-      return open ? new Set(ids.filter((id) => [id, ...subAgentsOf(id)].some((x) => open.has(x) || busyNow(x)))) : null;
+      const open = openNow(), elsewhere = elsewhereNow();
+      if (!open) return null;
+      const away = ids.filter((id) => ![id, ...subAgentsOf(id)].some((x) => open.has(x) || busyNow(x)) && [id, ...subAgentsOf(id)].some((x) => elsewhere.has(x)));
+      for (const id of away) {
+        const by = [id, ...subAgentsOf(id)].find((x) => elsewhere.has(x));
+        say(`left for the next pass "${nameOf(id)}" (${id}), archived long enough to be deleted: ${by === id ? 'it' : `its sub-agent "${nameOf(by)}"`} is open in ${windowNames(elsewhere.get(by))}`);
+      }
+      return new Set(ids.filter((id) => away.includes(id) || [id, ...subAgentsOf(id)].some((x) => open.has(x) || busyNow(x))));
     },
     remove: async (list) => {
       const subs = new Map(list.map((t) => [t.id, subAgentsOf(t.id)]));

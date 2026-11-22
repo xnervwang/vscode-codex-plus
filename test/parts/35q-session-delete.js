@@ -7,6 +7,7 @@
  * Delete in the menu of a row in Archived sessions. Only an archived conversation is deleted, as in Claude Code Plus;
  * test/parts/35t-session-archive.js checks that a conversation that is not archived is left alone.
  */
+const cp = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const fake = require('../fake-vscode');
@@ -81,6 +82,10 @@ module.exports = async ({ eq, tmp, root }) => {
     { id: ID(9), title: 'Late', cwd: home, turns: [{}] },
     { id: ID(10), title: 'Refused', cwd: home, turns: [{}] },
     { id: ID(11), title: 'Gone already', cwd: home, turns: [{}] },
+    { id: ID(12), title: 'Elsewhere', cwd: home, turns: [{}] },
+    { id: ID(13), title: 'Watcher', cwd: home, turns: [{}] },
+    { id: ID(14), title: 'Sentry', cwd: home, threadSource: 'subagent', source: spawn(ID(13), 'Sentry'), turns: [{}] },
+    { id: ID(15), title: 'Free', cwd: home, turns: [{}] },
   ].map((t) => ({ ...t, archived: true })));
   const planDir = path.join(home, 'plugins', 'data', 'agent-work-plan-codex-extras');
   fs.mkdirSync(planDir, { recursive: true });
@@ -90,6 +95,8 @@ module.exports = async ({ eq, tmp, root }) => {
   control.state.config = { reopenDroppedTabs: false };
   control.state.extensions.set('xnervwang.agent-plus', { isActive: true, exports: { agentPlus: { protocol: 1, accepts: [1], features: [],
     registerSource: (s) => { control.state.source = s; return { accepted: true, code: '', reason: '', registration: { dispose() {} } }; } } } });
+  vscode.workspace.name = 'Window A';
+  vscode.workspace.workspaceFolders = [{ uri: vscode.Uri.file(path.join(home, 'a')), name: 'a', index: 0 }];
   const ext = require(path.join(root, 'extension.js'));
   const subs = [];
   const colors = { [ID(1)]: 'red', [ID(2)]: 'green', [ID(6)]: 'blue', [ID(10)]: 'pink' };
@@ -195,6 +202,52 @@ module.exports = async ({ eq, tmp, root }) => {
       'after Delete is pressed, open and running are looked at again, and one opened meanwhile is left alone');
     control.setTabs([control.codexTab(ID(3)), control.codexTab(ID(8))], 0);
 
+    /* ── open in another window ── */
+    const windowsDir = path.join(planDir, 'windows');
+    const ownEntry = () => { try { return JSON.parse(fs.readFileSync(path.join(windowsDir, `${process.pid}.json`), 'utf8')); } catch (_) { return null; } };
+    await tick(3500);
+    const own = ownEntry();
+    eq(own && [own.name, own.folders, [ID(3), ID(8)].every((x) => own.sessions.includes(x)), own.sessions.includes(ID(12))],
+      ['Window A', [path.join(home, 'a')], true, false],
+      'this window writes its entry among the windows: its name, its folders and the conversations its tabs show');
+    /* Another window, alive, whose entry lists conversations: the test's parent process stands in for it. */
+    const other = process.ppid;
+    const entry = (pid, sessions, extra = {}) => {
+      fs.mkdirSync(windowsDir, { recursive: true });
+      fs.writeFileSync(path.join(windowsDir, `${pid}.json`), JSON.stringify({ pid, at: Date.now(), name: 'Window B', folders: ['/b'], sessions, ...extra }));
+    };
+    entry(other, [ID(12), ID(14)]);
+    eq([await run(12, null, 'Delete'), dialogs().length, said()], [[], 0, ['Not deleted: "Elsewhere" is open in the VS Code window "Window B".']],
+      'one open in another window is not deleted, and the message names that window');
+    eq([await run(13, null, 'Delete'), said()], [[], ['Not deleted: "Watcher" (its sub-agent "Sentry") is open in the VS Code window "Window B".']],
+      'nor one whose sub-agent is open in another window');
+    eq([await run(15, [15, 12, 3], 'Delete'), dialogs().map((d) => detail(d).filter((l) => /^Left alone/.test(l)))],
+      [[ID(15)], [['Left alone, open or running: "Open here"', 'Left alone: "Elsewhere" is open in the VS Code window "Window B"']]],
+      'of a selection, the others go, and the confirmation says which are open here and which in which other window');
+    entry(other, [ID(12)], { name: '' });
+    eq([await run(12, null, 'Delete'), said()], [[], ['Not deleted: "Elsewhere" is open in the VS Code window "untitled".']],
+      'a window with no name is called untitled');
+    entry(other, [ID(12)], { at: Date.now() - 5 * 60e3 });
+    eq(await run(12, null, undefined), [], 'an entry not written for minutes is of a window that is gone, so the conversation is offered for deletion');
+    eq(dialogs().map((d) => d.message), ['Delete "Elsewhere" from disk?'], 'and the confirmation asks about it');
+    fs.rmSync(path.join(windowsDir, `${other}.json`), { force: true });
+    const dead = cp.spawnSync(process.execPath, ['-e', '']).pid;
+    entry(dead, [ID(12)]);
+    eq((await run(12, null, undefined), dialogs().map((d) => d.message)), ['Delete "Elsewhere" from disk?'],
+      'and so is an entry whose window process has ended');
+    fs.rmSync(path.join(windowsDir, `${dead}.json`), { force: true });
+    control.state.answers.length = 0;
+    requests.length = 0;
+    control.state.said.length = 0;
+    control.answer('from disk?', () => { entry(other, [ID(12)]); return 'Delete'; });
+    await control.state.handlers['codexPlus.deleteThread'](row(12));
+    await tick();
+    eq([requests.filter((r) => r.method === 'thread/delete').length, said().filter((m) => /meanwhile/.test(m))],
+      [0, ['Not deleted: "Elsewhere" was opened or started meanwhile.']],
+      'after Delete is pressed the other windows are read again, and one opened in another of them meanwhile is left alone');
+    fs.rmSync(path.join(windowsDir, `${other}.json`), { force: true });
+    eq(await run(12, null, 'Delete'), [ID(12)], 'once that window no longer shows it, it is deleted');
+
     /* ── Codex refusing ── */
     answer = (r) => ({ id: r.id, error: { code: -32600, message: r.params.threadId === ID(11) ? `no rollout found for thread id ${ID(11)}` : 'busy' } });
     eq(await run(10, [10, 11], 'Delete'), [ID(10), ID(11)], 'two chosen are two requests');
@@ -218,4 +271,5 @@ module.exports = async ({ eq, tmp, root }) => {
     for (const d of subs) { try { d.dispose(); } catch (_) { /* gone */ } }
     ext.deactivate();
   }
+  eq(fs.existsSync(path.join(planDir, 'windows', `${process.pid}.json`)), false, 'once the extension stops, its window entry is taken away');
 };

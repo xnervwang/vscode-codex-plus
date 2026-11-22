@@ -124,6 +124,7 @@ module.exports = async ({ eq, tmp, root }) => {
     { id: ID(3), title: 'Old, open', cwd: home, archived: true, archivedAt: sec(real - 40 * DAY), turns: [{}] },
     { id: ID(4), title: 'No time', cwd: home, archived: true, archivedAt: null, turns: [{}] },
     { id: ID(5), title: 'Kept', cwd: home, turns: [{}] },
+    { id: ID(6), title: 'Old, open elsewhere', cwd: home, archived: true, archivedAt: sec(real - 40 * DAY), turns: [{}] },
   ]);
   process.env.CODEX_HOME = home;
   control.state.config = { reopenDroppedTabs: false };
@@ -134,8 +135,15 @@ module.exports = async ({ eq, tmp, root }) => {
   stamp(5000);
   const ext = require(path.join(root, 'extension.js'));
   const subs = [];
+  const storage = tmp('gs');
   await ext.activate({ subscriptions: subs, workspaceState: fake.memento(), globalState: fake.memento({ 'codexPlus.patchRemoved': true }),
-    globalStorageUri: vscode.Uri.file(tmp('gs')), extensionPath: self });
+    globalStorageUri: vscode.Uri.file(storage), extensionPath: self });
+  /* Another window, alive (the test's parent process stands in for it), shows the one archived 40 days ago that is open
+     elsewhere. */
+  const windowsDir = path.join(home, 'plugins', 'data', 'agent-work-plan-codex-extras', 'windows');
+  const otherEntry = path.join(windowsDir, `${process.ppid}.json`);
+  fs.mkdirSync(windowsDir, { recursive: true });
+  fs.writeFileSync(otherEntry, JSON.stringify({ pid: process.ppid, at: Date.now(), name: 'Window B', folders: ['/b'], sessions: [ID(6)] }));
   await tick(300);
   const requests = [];
   let handler = null;
@@ -171,7 +179,17 @@ module.exports = async ({ eq, tmp, root }) => {
       'otherwise the pass deletes the one archived 40 days ago, leaves the one open here, the recent one and the one with no archive time, '
         + 'and shows no notification');
     eq(control.state.log.some((l) => /deleted 1 conversation archived 30 or more days ago: "Old"/.test(l)), true, 'it says so in the output');
+    eq(control.state.log.some((l) => l.includes(`left for the next pass "Old, open elsewhere" (${ID(6)}), archived long enough to be deleted: it is open in the VS Code window "Window B"`)),
+      true, 'one as old that another window shows is left for the next pass, and the output names that window');
     eq(await pass(), [], 'and the next pass the same day deletes nothing');
+    fs.rmSync(otherEntry, { force: true });
+    const stateDir = path.join(storage, 'archive-sweep');
+    for (const n of fs.readdirSync(stateDir).filter((x) => x.endsWith('.json'))) {
+      const st = JSON.parse(fs.readFileSync(path.join(stateDir, n), 'utf8'));
+      fs.writeFileSync(path.join(stateDir, n), JSON.stringify({ ...st, lastRunMs: 0 }));
+    }
+    /* The made-up app-server answers thread/delete without deleting, so "Old" is due again too. */
+    eq((await pass()).includes('06'), true, 'the next pass, once that window no longer shows it, deletes it');
   } finally {
     for (const d of subs) { try { d.dispose(); } catch (_) { /* gone */ } }
     ext.deactivate();
