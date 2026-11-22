@@ -19,9 +19,9 @@
  *                through fake-model.js, and the envelope after its title once the reply arrives while the tab is in the
  *                background. After a rename that leaves the envelope in the new name, the tab and the list row each
  *                end with a single envelope. A long title in a narrowed side bar is cut, and its envelope still shows
- *   left running a conversation stays green, on its tab and in the session list, until the work its turn started is
- *                done: a background command, a sub-agent, and on Linux a detached shell, a program run under setsid, a
- *                codex exec, a claude -p worker and a claude --bg session, as a green ring. The ones on Linux need
+ *   left running a conversation shows a green ring, on its tab and in the session list, until the work its turn
+ *                started is done: a background command, a sub-agent, and on Linux a detached shell, a program run under
+ *                setsid, a codex exec, a claude -p worker and a claude --bg session. The ones on Linux need
  *                Codex's approval to run outside its sandbox, and the tab shows the red dot until it is given. With
  *                background threads listed, the sub-agent's row has its nickname and its dot. Once the shell or the
  *                program stops, the conversation gets a notice. The two Claude Code ones are stand-ins, since a real
@@ -1159,7 +1159,9 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await leftCase({ name: 'background command', words: 'A background command is still running',
         steps: [{ call: 'exec_command', args: { cmd: process.platform === 'win32' ? 'Start-Sleep -Seconds 25' : 'sleep 25', yield_time_ms: 1000 } },
           { reply: 'Started the job.' }],
-        map: { text: /\b1 terminal\b/, listed: (r) => r.work.some((x) => x.kind === 'command' && green(x) && /Sleep|sleep/.test(x.text)) } });
+        /* Without /proc or this window's app-server (Windows) the host knows a terminal runs but cannot count or list it. */
+        map: { text: /\b(1 )?terminal\b/, listed: (r) => r.work.some((x) => x.kind === 'command' && green(x)
+          && /Sleep|sleep|A background terminal is still running/.test(x.text)) } });
       await leftCase({ name: 'sub-agent', words: 'A sub-agent is still running', end: () => model.releaseOthers(),
         steps: [{ call: 'spawn_agent', namespace: 'collaboration', args: { task_name: 'job', message: 'Wait for the job.', fork_turns: 'none' } },
           { reply: 'Started a helper.' }],
@@ -1196,7 +1198,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         if (bin) {
           await leftCase({ name: 'codex exec', words: 'A codex exec it started is still running', ask: true, end: () => model.releaseOthers(),
             steps: [outside(`setsid nohup '${bin}' exec --skip-git-repo-check 'Wait for the job.' >/dev/null 2>&1 &`), { reply: 'Started a worker.' }],
-            map: { text: /\b1 codex exec\b/, listed: (r) => r.work.some((x) => x.kind === 'codexExec' && green(x) && /exec --skip-git-repo-check/.test(x.text)) } });
+            map: { text: /\b1 codex exec\b/, listed: (r) => r.work.some((x) => x.kind === 'codexExec' && green(x) && /^codex exec/.test(x.text)) } });
         }
         /* The stand-ins write the session record Claude Code keeps for a running process, which is what Codex Plus
            reads, under this window's own HOME. */
