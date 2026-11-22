@@ -1762,7 +1762,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
           map: { text: /\b1 claude --bg\b/, listed: (r) => r.work.some((x) => x.kind === 'claudeBg' && green(x) && /window test session/.test(x.text) && /job 1a2b3c4d/.test(x.text)) } });
       } else {
         note(`a detached shell, a program setsid started, a codex exec and claude -p and claude --bg sessions are found through /proc, which ${process.platform} does not have, `
-          + 'so none of them is made here' + (process.platform === 'win32' ? '' : ', and no command waits for approval, so the red dot is not checked'));
+          + 'so none of them is made here; the red dot is checked in the step on a conversation waiting for you');
       }
       model.script(null);
     });
