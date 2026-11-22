@@ -193,7 +193,7 @@ Drag rows onto a group's header to move them into that group. Drag them onto Ung
 
 ### Starting and resuming conversations
 
-New in tab and New in sidebar start a Codex conversation. Resume in tab and Resume in sidebar appear only when the conversation is not open in this window, as in Claude Code Plus. The sidebar actions open Codex's own link, `vscode://openai.chatgpt/local/<id>` in this editor's scheme, and need nothing else. [Tabs](#tabs) covers where New in tab opens its tab.
+New in tab and New in sidebar start a Codex conversation. Resume in tab and Resume in sidebar appear only when the conversation is not open in this window, as in Claude Code Plus. With the patch connected, Resume in Sidebar and New in Sidebar navigate Codex's sidebar directly in this window. Without the patch, they open Codex's own link, `vscode://openai.chatgpt/local/<id>` in this editor's scheme. VS Code sends the link to the window it last saw focused, which can be another window. [Tabs](#tabs) covers where New in tab opens its tab.
 
 ### Account & usage
 
@@ -213,9 +213,9 @@ Every action here except Mark as Unread and Mark as Read goes to this window's a
 
 Archived sessions is the last group and stays collapsed until you open it. It lists this workspace's conversations archived from the list or Codex itself, most recently archived first. Archive works whether the conversation is open or not, as in Claude Code's list. Starting with Codex 26.1117, archiving a conversation open in a Codex tab or sidebar takes you to the home page. With Codex Plus, the transcript stays on screen in the same read-only view you get when you open a conversation from Codex's Archive page. Open the conversation from its row in Archived sessions to unarchive it and write again. Codex moves its log to `archived_sessions/` and archives its sub-agents with it. A conversation that is running, or has a running sub-agent, is not archived because Codex would stop its turn.
 
-An archived row's menu has Resume in Tab, Resume in Sidebar, Text Color and Unarchive. Opening an archived conversation, from its row or its menu, unarchives it first, since Codex shows no archived conversation. After a separator it has Delete, which no other row has. Delete asks first and says that Codex will delete the conversation log and its sub-agents' logs. A conversation open in this window or in another VS Code window, or running, is not deleted; the message names the other window.
+An archived row's menu has Resume in Tab, Resume in Sidebar, Text Color and Unarchive. Opening an archived conversation, from its row or its menu, unarchives it first, since Codex shows no archived conversation. After a separator it has Delete, which no other row has. Delete asks first and says that Codex will delete the conversation log and its sub-agents' logs. Delete skips conversations that are running or open in any VS Code window; if another window has the conversation open, the message names it. If you try to archive a conversation that another window's app-server has loaded, Codex refuses with "already has an active writer"; archive it from the window that has it open.
 
-Once a day, one of your windows deletes conversations archived at least `codexPlus.deleteArchivedAfterDays` days ago in the same way, without asking. The default is 30 days; 0 keeps them. The output channel "Codex Plus" lists what was deleted. Days count from Codex's archive time, or from when Codex Plus first saw an archived conversation if Codex recorded no time. A conversation open in any VS Code window, or running, is left for the next day.
+Once a day, one of your windows deletes conversations archived at least `codexPlus.deleteArchivedAfterDays` days ago in the same way, without asking. The default is 30 days; 0 keeps them. The output channel "Codex Plus" lists what was deleted. Days count from Codex's archive time, or from when Codex Plus first saw an archived conversation if Codex recorded no time. If a conversation is running or open in any VS Code window, Codex Plus checks it again the next day.
 
 ### Goals
 
@@ -315,9 +315,9 @@ Only requests that wait indefinitely count as waiting. These include the three `
 
 A wait ends when this window sends the answer or a notification says somebody else answered it. If neither happens, it ends when two Codex Plus polls in a row find that the conversation's turn is no longer running. A conversation shown in neither a tab nor the sidebar still shows as waiting in the Conversations view and is counted there. It makes no sound.
 
-Each VS Code window starts its own app-server, so a request in another window, or in Codex's terminal interface, never passes through this one. For those, the work plan plugin's `PermissionRequest` hook, which Codex runs just before it asks, leaves a mark in `waiting/` beside the plans, and the conversation shows as waiting here too. This needs the plugin's hooks to be trusted. The mark goes once the tool has run, once the window that asked sees the request answered, or at the end of the turn.
+Each VS Code window runs its own Codex app-server. Approval requests from another window or from Codex's terminal interface do not pass through this window. Just before Codex asks for approval, the work plan plugin's `PermissionRequest` hook leaves a mark in `waiting/` beside the plans. The conversation then shows as waiting here too. This requires trust in the plugin's hooks. The mark clears when the tool has run, when the window that asked sees the answer, or when the turn ends. If you approve a request in the terminal interface, the mark stays until the command finishes. If you refuse it there, the mark stays until the turn ends or the next message.
 
-`codex exec` (Codex run from the command line for one task, outside VS Code) never waits for approval: it refuses every approval request at once. Its conversation is not in the Conversations list either.
+`codex exec` runs Codex from the command line for one task outside VS Code. It refuses each approval request immediately and never waits for approval. Its conversation does not appear in the Conversations list.
 
 How the page finds the approval card is documented in [docs/codex-page.md](docs/codex-page.md#the-approval-card).
 
