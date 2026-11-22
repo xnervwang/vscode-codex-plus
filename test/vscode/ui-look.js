@@ -1462,7 +1462,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
 
     /* ═══ Agent Plus ═══ */
     await look('work-plan-view', {
-      expect: 'Agent Plus\'s Work plan view, in its own side bar, shows the plan of the Codex conversation in front: "Find the retry delay" done, "Decide the default delay" waiting on the user with its question, and "Update the docs" to do.',
+      expect: 'Agent Plus\'s Work plan view, in its own side bar, shows the plan of the Codex conversation in front: "Find the retry delay" done, "Decide the default delay" waiting, with how long it has waited, and "Update the docs" to do. '
+        + 'A row shows only its title and times. Resting on the waiting row shows a hover box with its title, "waiting on you" and its question "Should the default retry delay stay at 30 seconds, or go up to 60?".',
     }, async () => {
       await tab(title).click();
       await exec('agentPlus.refreshWorkPlan');
@@ -1475,8 +1476,16 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       if (!rows) tell('the Work plan view did not show the plan\'s rows within 20 s of the tab coming to the front');
       else if (Date.now() - at > 3000) tell(`the Work plan view showed the plan ${Math.round((Date.now() - at) / 1000)} s after the tab came to the front`);
       await sleep(1000);
-      return part(PARTS.sidebar);
+      /* The view keeps a row to its title and times; a question is in the row's hover, and in the Conversations and
+         Answer views the next steps show. */
+      await away();
+      await page.locator('[id="workbench.parts.sidebar"] .monaco-list-row').filter({ hasText: 'Decide the default delay' }).first().hover();
+      const asked = () => page.evaluate(() => !![...document.querySelectorAll('.monaco-hover, .workbench-hover')].find((e) => e.offsetParent && /Question:/.test(e.innerText)));
+      if (!await until(asked, 8000, 300)) tell('resting on the waiting row showed no hover with its question within 8 s');
+      await sleep(400);
+      return union([await part(PARTS.sidebar), await boxIn(null, '.monaco-hover, .workbench-hover')]);
     });
+    await away();
     const panelRow = (text) => page.locator('[id="workbench.parts.panel"] .monaco-list-row').filter({ hasText: text }).first();
     await look('conversations-view', {
       expect: 'Agent Plus\'s Conversations view in the panel lists the Codex conversations of this workspace with Codex\'s logo; this one shows its question "Should the default retry delay stay at 30 seconds, or go up to 60?" waiting for the user, '
