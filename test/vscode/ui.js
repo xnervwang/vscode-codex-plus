@@ -736,6 +736,21 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         const b = document.querySelector('[data-codex-extras="context"]');
         return !b || getComputedStyle(b).display === 'none';
       }), 5000, 200), 'and closes once the pointer leaves the meter');
+
+      /* Toggled off and on with the pointer resting on the meter. The meter is taken out from under the pointer, so the
+         page still counts the pointer as on it when the controls come back, and the map arrives after them. */
+      await codex.locator('[data-codex-extras="meter"]').first().hover();
+      await exec('codexPlus.toggle');
+      await until(() => codex.evaluate(() => !document.querySelector('[data-codex-extras="meter"]')), 15000, 300);
+      await exec('codexPlus.toggle');
+      const barNow = () => codex.evaluate(() => {
+        const pill = document.querySelector('[data-codex-extras="agents"]'), meter = document.querySelector('[data-codex-extras="meter"]');
+        return { pill: pill ? pill.textContent.trim() : null, meter: meter ? meter.textContent.trim() : null };
+      });
+      const backOn = await until(async () => { const b = await barNow(); return b.meter !== null && /timer/.test(b.pill || '') && b; }, 10000, 300);
+      check(!!backOn, 'toggled off and on with the pointer resting on the meter, the meter and the Agent map pill are both back within 10 s', backOn || await barNow());
+      await shot('toggled-on-over-meter');
+      await page.mouse.move(talk ? talk.x + 30 : 0, talk ? talk.y + 15 : 0);
     });
 
     await step('the dot on a tab', async () => {

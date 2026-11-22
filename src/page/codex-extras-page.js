@@ -319,8 +319,12 @@
     var sig = (infoBtn ? 'i' : '') + (muteBtn ? 'm' : '') + (meterBtn ? 'c' : '') + (codexMeterHidden ? 'h' : '')
       + (agentsBtn ? 'a' + agentsBtn.textContent.length : '');
     if (sig !== rowSig) { rowSig = sig; rowNeed = -1; }
-    /* A control taken out from under the pointer gets no mouseleave, and the box it opened would stay open. */
-    if (rowMode && pointedAt()) return rowMode === 'row';
+    /* A control taken out from under the pointer gets no mouseleave, and the box it opened would stay open. A control
+       made meanwhile, such as the pill once the map arrives, still goes in: intoRow moves none already in place. */
+    if (rowMode && pointedAt()) {
+      if (rowMode === 'row') intoRow(s);
+      return rowMode === 'row';
+    }
     if (rowMode === 'row') {
       intoRow(s);
       var left = rowRoom(s), roomy = left >= ROW_KEEP && !squeezed(s) && pickerNamed(s.slotR), cut = cutOff(s.slotR);

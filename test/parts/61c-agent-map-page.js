@@ -149,4 +149,26 @@ module.exports = async ({ eq, root }) => {
       [true, true, 51, 100, true, 201],
       'the dialog is moved by the fraction onto whole pixels, the nearest ones, and onto whole device pixels on a screen with two per pixel');
   }
+
+  {
+    /* Turning the switch on while the pointer rests on one of this script's controls: the view comes first and puts the
+       other controls back in the row, then the map arrives. The pill is put in all the same; nothing already there moves. */
+    const s = page(root);
+    const view = (buttons) => s.send({ type: 'codex-extras-view', timestamps: true, navigation: false, userColor: '', userEdge: true, buttons });
+    const usage = { used: 251000, window: 400000, line: 378947, lineFrom: 'default', model: 'gpt-6.1-sol', effort: 'medium', windowFrom: null,
+      total: { input: 1200000, cached: 980000, output: 45000, reasoning: 12000, total: 1245000 } };
+    s.send({ type: 'codex-extras-usage', usage });
+    view(true);
+    s.send(MAP);
+    view(false);
+    s.send({ type: 'codex-extras-agent-map', shown: false, wakeups: [], goal: null, agents: [] });
+    view(true);
+    const meter = s.q('[data-codex-extras="meter"]')[0];
+    meter.dispatch('mouseenter', {});
+    s.send(MAP);
+    const back = s.q('[data-codex-extras="agents"]')[0];
+    eq([!!back, back && back.parentNode === s.right, back && back.nextElementSibling === s.modelSlot, meter.isConnected && meter.nextElementSibling === back],
+      [true, true, true, true],
+      'a map that arrives while the pointer is on the meter still puts the pill in the row, after the meter, which stays where it was');
+  }
 };
