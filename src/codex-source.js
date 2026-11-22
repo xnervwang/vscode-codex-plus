@@ -29,7 +29,7 @@
  *
  * Each conversation also reports `activity`, `unseen` and `lastUserAt`; `state` stays for an older Agent Plus.
  * `activity` is `working` during a turn, `background` after the turn while work it started still runs, `waiting` for
- * `prompt`, and `stopped` otherwise. `unseen` marks a reply the user has not looked at; it is measured from the latest
+ * `prompt` and for a question its work plan put to the user after the user's last message, and `stopped` otherwise. `unseen` marks a reply the user has not looked at; it is measured from the latest
  * finished turn, so a later turn does not clear it. `lastUserAt` is when the user last typed a message.
  *
  * This module opens none of Codex's files; src/codex-reader.js has the snapshot its worker thread made.
@@ -91,8 +91,14 @@ const lastOf = (thread, st, heard) => Math.max((thread && thread.updatedMs) || 0
  * the user who has to act. `left` lists what the conversation started that is still running (the kinds in
  * src/left-running.js). While it is not empty, an idle or unread conversation's `state` is working, as Claude Code Plus
  * reported it, and `ownState` keeps the state it would otherwise have; its `activity` is background.
+ *
+ * `planAsked` is when its work plan last put a question to the user (src/workplan.js latestQuestionAt). Later than the
+ * user's last message, the activity is waiting, over a turn still running, as Agent Plus's Conversations panel has it
+ * (activityOf in its src/conversations.js), so the tab and the session list draw the panel's red dot. `state` is left
+ * alone: an older Agent Plus reads its `prompt` as a permission prompt, and finds the question in the plan itself.
  */
-function conversationOf(thread, { unread, openHere, now = Date.now(), state = null, hasPlan = false, waiting = null, heard = null, left = [] }) {
+function conversationOf(thread, { unread, openHere, now = Date.now(), state = null, hasPlan = false, waiting = null, heard = null, left = [],
+  planAsked = 0 }) {
   const st = state;
   const last = lastOf(thread, st, heard);
   const { working } = turnOf(st, heard, now, last);
@@ -100,6 +106,8 @@ function conversationOf(thread, { unread, openHere, now = Date.now(), state = nu
   const soon = (waiting && waiting.soon) || 0;
   /* A question asked with request_user_input_async waits for the user once its turn has ended (src/codex-files.js). */
   const asking = !working && !!(st && st.askedMs);
+  const lastUser = (st && st.lastUserMs) || 0;
+  const planned = !!(lastUser && planAsked > lastUser);
   let word = 'idle';
   if (decide || soon) word = 'prompt';
   else if (working) word = 'working';
@@ -108,7 +116,7 @@ function conversationOf(thread, { unread, openHere, now = Date.now(), state = nu
   const after = !working && Array.isArray(left) ? left.slice() : [];
   const own = word;
   if (after.length && (word === 'idle' || word === 'unread')) word = 'working';
-  const waits = !!(decide || soon || asking);
+  const waits = !!(decide || soon || asking || planned);
   return {
     sessionId: thread.id,
     title: withoutEnvelope(thread.title) || '(untitled)',
@@ -133,6 +141,7 @@ function conversationOf(thread, { unread, openHere, now = Date.now(), state = nu
     decide,
     soon,
     asking,
+    planAsks: planned,
     model: (st && st.model) || thread.model,
     effort: (st && st.effort) || thread.effort,
     context: st && st.context,
@@ -335,6 +344,8 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
     }
     return out;
   };
+  /* With the work plan off, its questions are not shown anywhere, so they do not turn a dot red either. */
+  const planAskedOf = (id) => (enabled() && typeof reader.planAsked === 'function' ? reader.planAsked(id) : 0);
   /* What the patch knows about requests this conversation is stopped on, or null without the patch. */
   const askedHere = (id) => {
     if (!patching || typeof patching.approvalsOf !== 'function') return null;
@@ -589,7 +600,8 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
       const openHere = new Set(openThreads());
       const kids = childIndex(), now = Date.now();
       const out = threads.map((t) => conversationOf(t, { unread, openHere, state: reader.state(t.id),
-        hasPlan: enabled() && reader.hasPlan(t.id), waiting: waitingOn(t.id), heard: heardOf(t.id), left: leftOf(t.id, kids, now) }));
+        hasPlan: enabled() && reader.hasPlan(t.id), waiting: waitingOn(t.id), heard: heardOf(t.id), left: leftOf(t.id, kids, now),
+        planAsked: planAskedOf(t.id) }));
       if (snap && !snap.readable) out.problem = 'Codex\'s list of conversations could not be read from ' + files.codexHome();
       return out;
     },
@@ -599,7 +611,8 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
       const t = reader.thread(id), st = reader.state(id);
       if (!t || !st) return null;
       const unread = new Set(seen.unread(id, endedOf(id)) ? [id] : []);
-      return conversationOf(t, { unread, openHere: new Set(), state: st, waiting: waitingOn(id), heard: heardOf(id), left: leftOf(id) });
+      return conversationOf(t, { unread, openHere: new Set(), state: st, waiting: waitingOn(id), heard: heardOf(id), left: leftOf(id),
+        planAsked: planAskedOf(id) });
     },
     leftOf: (id) => (id ? leftOf(id) : []),
     /*

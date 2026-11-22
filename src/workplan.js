@@ -190,7 +190,42 @@ function removeSideFiles(dir, ids) {
 /** The states that mean a row still needs something done to it. */
 const OPEN_STATES = ['discussing', 'todo', 'doing', 'waiting', 'parked'];
 
+/* Agent Plus's bounds on a plan it draws (MAX_DEPTH, MAX_NODES, MAX_PLAN_BYTES in its src/workplan.js). */
+const QUESTION_DEPTH = 8;
+const QUESTION_NODES = 2000;
+const QUESTION_BYTES = 8 * 1024 * 1024;
+const whenOf = (v) => { const t = typeof v === 'string' ? Date.parse(v.trim()) : NaN; return Number.isFinite(t) ? t : 0; };
+
+/*
+ * When the plan in `file` last put a question to the user, in ms since the epoch, 0 for none. Rows are dated as Agent
+ * Plus dates them (planQuestions in src/folders.js over its node()): a row waiting on the user by `asked` when it has a
+ * question, else by `since`; a row with no title is not read, nor its children.
+ */
+function latestQuestionAt(file) {
+  let raw;
+  try {
+    if (fs.statSync(file).size > QUESTION_BYTES) return 0;
+    raw = JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch (_) { return 0; }
+  let latest = 0, left = QUESTION_NODES;
+  const walk = (nodes, depth) => {
+    for (const n of Array.isArray(nodes) ? nodes : []) {
+      if (left <= 0) return;
+      if (!n || typeof n !== 'object' || typeof n.title !== 'string' || !n.title.trim()) continue;
+      left--;
+      if (n.waitingOn === 'user' && (n.state === 'waiting' || n.state === 'discussing')) {
+        const asked = typeof n.question === 'string' && n.question.trim() ? whenOf(n.asked) : 0;
+        latest = Math.max(latest, asked || whenOf(n.since));
+      }
+      if (depth < QUESTION_DEPTH) walk(n.children, depth + 1);
+    }
+  };
+  walk(raw && raw.nodes, 0);
+  return latest;
+}
+
 module.exports = {
+  latestQuestionAt,
   planDir, liveSessions, sweepOrphans, removeSideFiles,
   DATA_ROOT, PLAN_DIR, PLAN_FILE, SIDE_SUFFIXES, CLOSED_DIR, SETTLED_MS, LOCK_STALE_MS, OPEN_STATES,
   STATES, MAX_DETAIL_LINES, MAX_DETAIL_CHARS, WAITING_ON, MAX_QUESTION_CHARS,

@@ -30,6 +30,8 @@ const launchCache = new Map();
 const environs = new Map();
 /* The state of each rollout a snapshot read, kept while the file is unchanged (src/codex-files.js cachedRolloutState). */
 const states = new Map();
+/* When each plan last asked the user something, kept while its file's size and time are unchanged. */
+const asks = new Map();
 
 let home = '';
 function at(h) {
@@ -51,8 +53,26 @@ function stampOf(dir, threads) {
   for (const t of threads || []) {
     if (!t.rollout || !(t.kind === 'user' ? t.updatedMs >= day : t.kind === 'subagent' && t.updatedMs >= subs)) continue;
     try { const s = fs.statSync(files.existingRollout(t.rollout) || t.rollout); parts.push(t.id.slice(-6), s.size); } catch (_) { /* gone */ }
+    /* A plan rewritten in place leaves its folder's time alone. */
+    if (t.kind === 'user') { try { parts.push(fs.statSync(path.join(install.planDir(dir), `${t.id}.json`)).mtimeMs); } catch (_) { /* no plan */ } }
   }
   return parts.join(',');
+}
+
+/* [id, ms] of each of `ids` whose plan asks the user something (src/workplan.js latestQuestionAt). Only conversations
+   whose rollout was read are asked: without its last user message a question is not taken to be new anyway. */
+function askedOf(dir, ids) {
+  const out = [];
+  for (const id of ids) {
+    const file = path.join(install.planDir(dir), `${id}.json`);
+    let s;
+    try { s = fs.statSync(file); } catch (_) { asks.delete(file); continue; }
+    const key = `${s.size}.${s.mtimeMs}`;
+    let had = asks.get(file);
+    if (!had || had.key !== key) { had = { key, at: require('./workplan').latestQuestionAt(file) }; asks.set(file, had); }
+    if (had.at) out.push([id, had.at]);
+  }
+  return out;
 }
 
 const ops = {
@@ -86,6 +106,7 @@ const ops = {
     return {
       stamp, same: false, readable: !!threads, threads: threads || [],
       unread: [...files.unreadThreads(dir)], sections: [...files.sections(dir)], goals: [...files.goals(dir)], states: found, plans, wakeups,
+      asks: askedOf(dir, plans.filter((id) => found[id])),
     };
   },
   /* The rows of Session Information for one thread. A worker thread shares the extension host's process id, which is

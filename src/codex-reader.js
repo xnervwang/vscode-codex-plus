@@ -111,7 +111,7 @@ class CodexReader {
       this.snap = {
         home, stamp: r.stamp, readable: r.readable, threads: r.threads, byId: new Map(r.threads.map((t) => [t.id, t])),
         unread: new Map(r.unread), sections: new Map(r.sections), goals: new Map(r.goals || []), states: r.states || {},
-        plans: new Set(r.plans || []), wakeups: new Map((r.wakeups || []).map((w) => [w.thread, w])), at: Date.now(),
+        plans: new Set(r.plans || []), wakeups: new Map((r.wakeups || []).map((w) => [w.thread, w])), asks: new Map(r.asks || []), at: Date.now(),
       };
       this.hold(extra);
       for (const fn of [...this.listeners]) { try { fn(); } catch (_) { /* the others still hear it */ } }
@@ -157,6 +157,8 @@ class CodexReader {
     return t && t.updatedMs === h.at ? h.state : null;
   }
   hasPlan(id) { return !!(this.snap && this.snap.plans.has(id)); }
+  /* When the thread's plan last asked the user something (src/workplan.js latestQuestionAt), 0 for none. */
+  planAsked(id) { return (this.snap && this.snap.asks && this.snap.asks.get(id)) || 0; }
   /* Whether the thread's rollout exists, as of the last snapshot; a thread the database does not know is not. */
   present(id) { const t = this.thread(id); return !!(t && t.present); }
 
