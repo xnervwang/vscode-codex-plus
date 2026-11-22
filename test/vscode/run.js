@@ -38,10 +38,12 @@ const NO_PROXY_TO = 'http://127.0.0.1:9';
 
 /* The environment for VS Code and everything it starts. It drops the variables a VS Code that runs this script sets
    (ELECTRON_RUN_AS_NODE would start VS Code as plain Node, and VSCODE_IPC_HOOK_CLI would send an install to that other
-   VS Code) and LD_LIBRARY_PATH (VS Code brings its own libraries), and puts HOME and CODEX_HOME in the temporary root. */
+   VS Code), LD_LIBRARY_PATH (VS Code brings its own libraries) and those of a Claude Code session that runs it (the
+   windows' commands would be taken for that session's), and puts HOME and CODEX_HOME in the temporary root. */
+const CLAUDE_SESSION = /^(CLAUDECODE|CLAUDE_CODE_(SESSION_ID|ENTRYPOINT|CHILD_SESSION|SSE_PORT))$/;
 function cleanEnv(root, extra = {}) {
   const env = { ...process.env };
-  for (const k of Object.keys(env)) if (/^(VSCODE_|ELECTRON_)/.test(k) || k === 'LD_LIBRARY_PATH') delete env[k];
+  for (const k of Object.keys(env)) if (/^(VSCODE_|ELECTRON_)/.test(k) || CLAUDE_SESSION.test(k) || k === 'LD_LIBRARY_PATH') delete env[k];
   const home = path.join(root, 'home');
   Object.assign(env, { HOME: home, CODEX_HOME: path.join(root, 'c') }, extra);
   if (process.platform === 'win32') Object.assign(env, { USERPROFILE: home, APPDATA: path.join(home, 'AppData', 'Roaming'), LOCALAPPDATA: path.join(home, 'AppData', 'Local') });
