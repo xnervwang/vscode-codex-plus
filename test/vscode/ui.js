@@ -279,6 +279,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     const got = await until(async () => { const r = await panelRow(t); return panelShows(r, activity, unseen) && r; }, ms, 700);
     const last = got || await panelRow(t);
     await exec('workbench.action.closePanel');
+    /* The editor grows back over the panel's place, and a click aimed before it settles lands elsewhere. */
+    await sleep(800);
     return { ok: !!got, row: last };
   };
   const frontTab = async () => { const g = (await tabs()).find((x) => x.active); return g && g.tabs.find((x) => x.active); };
@@ -1092,9 +1094,9 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       check(idle.ok, 'and its row in Agent Plus\'s Conversations panel has a blank where a dot would be, and no envelope', idle.row);
       model.hold();
       const turns = model.turns();
-      await codex.locator('[data-codex-composer-root] [contenteditable="true"]').first().click();
-      await page.keyboard.type('Run the tests again.');
-      await page.keyboard.press('Enter');
+      await codex.locator(COMPOSER).first().click();
+      await codex.locator(COMPOSER).first().pressSequentially('Run the tests again.');
+      await codex.locator(COMPOSER).first().press('Enter');
       check(!!await until(() => model.turns() > turns, 20000, 300), 'a message sent from the tab reaches the made-up model', model.seen.slice(-3));
       const working = await until(async () => { const d = await dotsOn(title); return d && d.working >= 6 && !d.ring && d; }, 20000, 500);
       check(!!working, 'while the turn runs the tab\'s logo carries the green dot', await dotsOn(title));
