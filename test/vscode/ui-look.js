@@ -1184,6 +1184,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await renameTo(`${ENVELOPE} ${ENVELOPE} ${title} ${ENVELOPE} (kept short)`);
       if (!await until(async () => (await labelOf(kept)) === `${kept} ${ENVELOPE}`, 20000, 500)) throw new Error(`the tab read ${JSON.stringify(await labelOf(kept))}`);
       await showList();
+      /* Narrowed from the step before, so the editor has room for the whole title on its tab. */
+      await sideTo(420);
       await away();
       await sleep(800);
       return union([await tab(kept).boundingBox().catch(() => null), await rowBox(t0.id, '.cp-section[data-key="open"]'), await rowBox(t0.id)]);
