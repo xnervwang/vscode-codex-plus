@@ -1264,11 +1264,14 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       return bottomBox(520);
     });
     await look('skill-search-claude-plugin', {
-      expect: 'With codexPlus.skillRoutingClaudePlugins set to "*", a message about the nightly export bucket check gets a reply whose line above it names the skill nightly-export-check, '
+      expect: 'With codexPlus.skillRoutingClaudePlugins set to "*", a message about the nightly export bucket check, sent after one other message, gets a reply whose line above it names the skill nightly-export-check, '
         + 'which only a Claude Code plugin installed in the made-up home holds (export-tools), not Codex.',
     }, async () => {
       await setting('skillRoutingClaudePlugins', ['*']);
-      await sleep(1000);
+      /* A message after the change finds the skill index out of date and has it rebuilt in the background, answering
+         from the old one meanwhile (search_text in the plugin's skill_route.py), so the question goes in the next one. */
+      await sendAndWait('Thanks, that helps.');
+      await sleep(5000);
       await sendAndWait('Where does the nightly export bucket check skip archived rows?');
       await toBottom();
       return bottomBox(520);
