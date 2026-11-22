@@ -91,7 +91,7 @@ module.exports = async ({ eq, tmp, root }) => {
     eq(page.posted.filter((x) => x.type === 'startRename'), [{ type: 'startRename', id: made[1].id }],
       'Rename from a row\'s right-click menu edits that row\'s title, even with other rows selected too');
 
-    /* ── the row drawn as the current one follows the tab in front, through the extension's own wiring ── */
+    /* ── the current row follows the front tab, through the extension's own wiring ── */
     const patching = require(path.join(root, 'src', 'patching'));
     const frontSent = async () => {
       await tick(150);

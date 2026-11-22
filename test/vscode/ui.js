@@ -82,8 +82,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       const k = Object.keys(require.cache).find((x) => x.toLowerCase() === file.toLowerCase());
       return k ? require.cache[k].exports : require(file); };`;
   const shot = (name) => page.screenshot({ path: path.join(shotsDir, `${String(++shotNo).padStart(2, '0')}-${name}.png`) }).catch(() => {});
-  /* CODEX_PLUS_UI_STEPS, a regular expression, runs only the steps whose names match it, for working on a few steps
-     without the whole stage. The steps a later one relies on (the patch, tab bar, session list) have to match too. */
+  /* CODEX_PLUS_UI_STEPS, a regular expression, runs only the steps whose names match it. The steps a later one relies
+     on (the patch, tab bar, session list) have to match too. */
   const only = process.env.CODEX_PLUS_UI_STEPS ? new RegExp(process.env.CODEX_PLUS_UI_STEPS) : null;
   const step = async (name, fn) => {
     if (only && !only.test(name)) { note(`${name}: not run, as CODEX_PLUS_UI_STEPS leaves it out`); return; }
@@ -131,8 +131,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     const e = [...document.querySelectorAll('.statusbar-item')].find((x) => x.querySelector('.codicon-bell-dot'));
     return e ? Number(e.innerText.trim()) || 0 : 0;
   });
-  /* The number on Agent Plus's bell in the status bar, whichever bell icon it shows: VS Code's own bell at the far end
-     carries no number. */
+  /* The same, whichever bell icon Agent Plus shows; VS Code's own bell at the far end carries no number. */
   const agentCount = () => page.evaluate(() => Math.max(0, ...[...document.querySelectorAll('.statusbar-item')]
     .filter((x) => x.querySelector('.codicon-bell, .codicon-bell-dot')).map((x) => Number(x.innerText.trim()) || 0)));
   /* The number in Agent Plus's "N to decide" in the status bar, 0 while it is not shown. */
@@ -413,8 +412,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
 
     let list = null;
     const row = (t) => list.locator(`.cp-group .cp-row[data-id="${t.id}"]`).first();
-    /* The session list brought into view and found again: VS Code builds its page anew each time its container is shown
-       after another one. */
+    /* Shows the session list and finds its page again, since VS Code builds the page anew each time its container is
+       shown after another one. */
     const showList = async () => {
       await exec('workbench.view.extension.codexPlus');
       const f = await frameWhere(() => !!document.querySelector('.cp-root .cp-section[data-key="open"]'), 20000);
@@ -434,8 +433,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       if (!await showList()) return null;
       return list.evaluate(() => [...document.querySelectorAll('.cp-section[data-key="open"] .cp-row')].map((r) => r.dataset.id)).catch(() => null);
     };
-    /* The conversation in front is drawn current twice, in Open sessions and in its group, and nothing else is; with no
-       conversation in front no row is. */
+    /* The front conversation's two rows, in Open sessions and in its group, are the only current ones; with no
+       conversation in front there are none. */
     const drawnCurrent = (rows, id) => !!rows && (id ? rows.length === 2 && rows.includes(`${id} open`) && rows.every((r) => r.startsWith(`${id} `))
       : rows.length === 0);
     const checkCurrent = async (id, what) => {
@@ -451,8 +450,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       const at = new Date().toISOString().replace(/\.\d+Z$/, '+00:00');
       fs.writeFileSync(path.join(PLANS, `${id}.json`), JSON.stringify({ nodes: [{ title: rowTitle, state: 'doing', since: at }] }));
     };
-    /* The rows of the Work plan view, with Agent Plus's container brought into the side bar for the reading and the
-       session list put back after it, since the steps that read the list's page expect it there. */
+    /* The rows of the Work plan view. Agent Plus's container is shown to read them and the session list put back
+       afterwards, since the steps that read the list's page expect it there. */
     const planRows = async () => {
       await exec('workbench.view.extension.agentPlus');
       const rows = await page.evaluate(() => {
@@ -1329,7 +1328,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
 
     await step('a conversation in Codex\'s sidebar', async () => {
       const t = threads[1];
-      /* With a text file in front, nothing but the sidebar can be what the user looks at. */
+      /* With a text file in front, the sidebar is the only Codex page the user can be looking at. */
       await openNotes();
       /* Resume in Sidebar opens Codex's sidebar through a vscode:// link, and VS Code asks once before an extension
          opens one. */
@@ -1357,7 +1356,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       const listed = await until(async () => { const r = await openRows(); return r && r.includes(t.id) && r; }, 15000, 500);
       check(!!listed, `${how}, Open sessions lists it`, await openRows());
       await planShown(t.id, how);
-      /* A reply that lands while the sidebar is closed has not been seen, and opening the sidebar on it again sees it. */
+      /* A reply that lands while the sidebar is closed is unread until the sidebar is opened on it again. */
       const unseen = () => list.evaluate((id) => {
         const r = document.querySelector(`.cp-group .cp-row[data-id="${id}"]`);
         return !!r && [...r.querySelectorAll('.cp-unseen')].some((x) => getComputedStyle(x).display !== 'none');
@@ -1506,10 +1505,10 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     });
 
     /*
-     * A first message typed into `f`, the page of a tab just opened for a new conversation, checked as a conversation
-     * begun from the tab bar button is: the tab is titled by the conversation during its turn, Agent Plus has it in
-     * front, its reply in front is neither announced nor counted, and the session list lists it in Open sessions and
-     * draws its two rows as the current ones. Resolves to { id, label, text } of the conversation, or null.
+     * Types a first message into `f`, the page of a tab just opened for a new conversation, and checks what the tab
+     * bar button's step checks: the tab takes the conversation's title during its turn, Agent Plus has it in front,
+     * its reply in front is neither announced nor counted, and the session list shows it in Open sessions with its two
+     * rows current. Resolves to { id, label, text } of the conversation, or null.
      */
     const firstMessage = async (f, text, how) => {
       await exec('notifications.clearAll');
@@ -1661,7 +1660,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await shot('in-tab-new-conversation');
     });
 
-    /* The session list's New in tab, which opens what the tab bar button opens. */
+    /* The session list's New in tab, the same kind of tab as the tab bar button's. */
     await step('a conversation begun in a tab the session list\'s New in tab opened', async () => {
       if (!await showList()) throw new Error('the session list did not open');
       const before = new Set(page.frames());
@@ -1719,8 +1718,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
 
     /*
      * The tabs VS Code restores at a reload, as after an update of the patch or a Remote SSH reconnection: the tab
-     * Resume in Tab opened, whose URI names its conversation, and the tab the tab bar button opened, whose URI names
-     * none, left in front. README says a Codex tab is titled by its conversation.
+     * from Resume in Tab, whose URI names its conversation, and the one from the tab bar button, whose URI names none,
+     * left in front. README says a Codex tab is titled by its conversation.
      */
     let restored = null;
     await step('tabs restored at a reload', async () => {
@@ -1743,7 +1742,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await sleep(10000);
       const after = await codexTabsNow();
       const own = after.find(same);
-      /* Codex opens one editor per URI, so opening a tab's own URI again brings that tab to the front. */
+      /* Opening a tab's own URI again brings that tab to the front. */
       const revealTab = (x) => call(`await vscode.commands.executeCommand('vscode.openWith', vscode.Uri.from({ scheme: 'openai-codex', authority: 'route',
         path: arg.route, fragment: arg.fragment }), 'chatgpt.conversationEditor', { viewColumn: arg.column, preview: false }); return true;`, x);
       if (own && !own.active) await revealTab(own);
@@ -1798,7 +1797,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       check(final.length === before.length, 'after all that the window still has the Codex tabs it had before the reload, and no more', { before, after: final });
     });
 
-    /* A turn in the restored New tab, sent from it and finished with it in the background. */
+    /* A turn sent from the restored New tab, which finishes while the tab is in the background. */
     await step('a turn in a restored New tab', async () => {
       if (!restored) throw new Error('the New tab was not restored with its conversation');
       const label = restored.label;
@@ -1931,7 +1930,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       const t = threads[0];
       const stored = () => call(`${OWN} const x = (own('codex-files').listThreads() || []).find((y) => y.id === arg); return x ? x.title : null;`, t.id).catch(() => null);
       const rowTitle = () => list.evaluate((id) => { const r = document.querySelector(`.cp-group .cp-row[data-id="${id}"] .cp-title`); return r ? r.textContent : null; }, t.id).catch(() => null);
-      /* Each row of the conversation, with whether its title is drawn from its first letter: an edited title left
+      /* The conversation's rows, each saying whether its title starts at its first letter: an edited title left
          scrolled sideways shows its end, or nothing. */
       const rowsDrawn = () => list.evaluate((id) => [...document.querySelectorAll(`.cp-row[data-id="${id}"]`)].map((r) => {
         const span = r.querySelector('.cp-title'), box = span.getBoundingClientRect();
@@ -1968,7 +1967,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       retried(await pick(t, ['Codex Plus: Rename']), 'Rename');
       await typeInRow(second);
       await renamedTo(second, 'renamed from its row\'s right-click menu');
-      /* The menu of the conversation's tab, or of its page where the tab's has no item of this extension's. */
+      /* The conversation tab's menu, or its page's menu when the tab's menu has no Codex Plus item. */
       const vsMenu = () => page.evaluate(() => { const m = [...document.querySelectorAll('.context-view .monaco-menu')].find((e) => e.offsetParent); return m ? m.innerText : ''; });
       const menuWith = (item) => until(async () => { const t = await vsMenu(); return t.includes(item) && t; }, 5000, 200);
       const tabMenu = async (name, item) => {

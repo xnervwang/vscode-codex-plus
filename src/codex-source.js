@@ -273,8 +273,8 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
     if (patching && typeof patching.onApprovalsChanged === 'function') {
       try { subs.push(patching.onApprovalsChanged(() => changed.fire())); } catch (_) { /* no patch */ }
     }
-    /* Codex's sidebar shown again puts its conversation in front with no tab changing, and nothing else would mark
-       what it shows as read until the next tab change or read of the list. */
+    /* Showing Codex's sidebar again brings its conversation to the front without any tab change, and nothing else
+       would mark it read until the next tab change or read of the list. */
     if (patching && typeof patching.onSidebarChanged === 'function') {
       try { subs.push(patching.onSidebarChanged(() => { if (markFront()) changed.fire(); })); } catch (_) { /* no patch */ }
     }

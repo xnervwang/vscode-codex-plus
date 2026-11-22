@@ -64,7 +64,7 @@ module.exports = async ({ eq, tmp, root }) => {
   };
   const keepUri = (panel, u) => { (globalThis.__codexExtrasPanelUris || (globalThis.__codexExtrasPanelUris = new WeakMap())).set(panel, String(u)); };
 
-  /* ── the first window: a conversation begun in a New tab, and another begun in a tab opened on a conversation ── */
+  /* ── the first window ── */
   let { patching } = fresh();
   const one = windowOf(patching);
   one.start();

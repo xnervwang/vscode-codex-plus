@@ -273,8 +273,8 @@ function revealPanel(thread) {
 }
 
 /*
- * What each Codex tab showed that its URI does not name, by the tab's URI: a conversation begun in a New tab, or one
- * begun in a tab opened on another. VS Code restores a tab on its URI, and Codex draws it from the route in that URI,
+ * Keyed by tab URI, the conversation each Codex tab showed when its URI names another or none: one begun in a New tab,
+ * or in a tab opened on another conversation. VS Code restores a tab on its URI, and Codex draws it from the route in that URI,
  * so after a reload such a tab is a new conversation page, or the conversation the URI names. The record, kept in the
  * workspace's memento, sends it back to what it showed (restoreShown) and names that conversation for a restored tab
  * whose panel Codex has not built yet. A tab's entry goes when the tab is closed.
@@ -331,8 +331,9 @@ function restoreShown(panel, rec) {
   }, 0);
 }
 /*
- * The conversation the Codex tab on `uri` shows: its panel's, else the one the record says it showed, for a restored
- * tab Codex has not built a panel for yet. null when neither is known, as with an older patch, which kept no URIs.
+ * The conversation the Codex tab on `uri` shows. That is its panel's; for a restored tab Codex has not built a panel
+ * for yet, it is the one the record says the tab showed. null when neither is known, as with an older patch, which
+ * kept no URIs.
  */
 function threadOfTabUri(uri) {
   if (!uri) return null;
@@ -340,7 +341,7 @@ function threadOfTabUri(uri) {
   const kept = shownRecord()[uri];
   return typeof kept === 'string' && kept ? kept : null;
 }
-/* The conversations the Codex tabs of this window show by threadOfTabUri, for the record of open tabs. */
+/* threadOfTabUri for every Codex tab of this window, for the record of open tabs. */
 function shownByTabs() {
   const out = new Set();
   const vscode = deps && deps.vscode;
