@@ -258,6 +258,16 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
    * One step: `act` does what the step needs and returns the box (window CSS pixels) of what it is about, or null for
    * the whole window. Its failure is logged and the screenshots are taken all the same.
    */
+  /* `clip`, in the window's CSS pixels, out of a screenshot taken at SCALE. */
+  const cut = (png, clip) => {
+    const img = pixels.decode(png);
+    const x0 = Math.round(clip.x * SCALE), y0 = Math.round(clip.y * SCALE);
+    const w = Math.min(img.width - x0, Math.round(clip.width * SCALE)), h = Math.min(img.height - y0, Math.round(clip.height * SCALE));
+    if (w < 1 || h < 1) throw new Error('the close view lies outside the screenshot');
+    const data = Buffer.alloc(w * h * 4);
+    for (let y = 0; y < h; y++) img.data.copy(data, y * w * 4, ((y0 + y) * img.width + x0) * 4, ((y0 + y) * img.width + x0 + w) * 4);
+    return pixels.encode({ width: w, height: h, data });
+  };
   const pngSize = (file) => {
     try {
       const b = fs.readFileSync(file);
@@ -294,9 +304,13 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       clip = { x, y, width: Math.min(vp.width, Math.ceil(box.x + box.width + pad)) - x, height: Math.min(vp.height, Math.ceil(box.y + box.height + pad)) - y };
       if (clip.width < 4 || clip.height < 4) clip = null;
     }
-    /* The close view first: a hover can be gone by the time a second screenshot is taken. */
-    if (clip) await page.screenshot({ path: path.join(out, image), clip, animations: 'disabled' }).catch(() => { clip = null; });
-    await page.screenshot({ path: path.join(out, full), animations: 'disabled' }).catch((e) => said.push(`[ui-look] no screenshot: ${e.message}`));
+    /* One screenshot, with the close view cut out of it: a screenshot taken with a clip makes the webview under the
+       pointer see it leave, which takes away a box shown on hover, such as the rail's. */
+    const png = await page.screenshot({ animations: 'disabled' }).catch((e) => { said.push(`[ui-look] no screenshot: ${e.message}`); return null; });
+    if (png) fs.writeFileSync(path.join(out, full), png);
+    if (clip) {
+      try { fs.writeFileSync(path.join(out, image), cut(png, clip)); } catch (_) { clip = null; }
+    }
     if (!clip) {
       if (box) said.push('[ui-look] the box of what this step is about was empty, so the close view is the whole window');
       try { fs.copyFileSync(path.join(out, full), path.join(out, image)); } catch (_) { /* no full either */ }
