@@ -226,6 +226,18 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
   let stepNo = 0, previous = null, told = [];
   /* A line for the current step's log saying what the step did beyond its expect, such as answering VS Code's prompt. */
   const tell = (line) => told.push(`[ui-look note] ${line}`);
+  /* The last user-role message of a conversation's rollout holding `part`; hooks add user-role messages of their own. */
+  const lastUserText = (id, part) => {
+    try {
+      const sessions = path.join(profile.codexHome, 'sessions');
+      const file = fs.readdirSync(sessions, { recursive: true }).map((r) => path.join(sessions, String(r))).find((f) => f.endsWith(`${id}.jsonl`));
+      const said = fs.readFileSync(file, 'utf8').trim().split('\n').map((l) => { try { return JSON.parse(l); } catch (_) { return null; } })
+        .filter((r) => r && r.type === 'response_item' && r.payload && r.payload.type === 'message' && r.payload.role === 'user')
+        .map((r) => (Array.isArray(r.payload.content) ? r.payload.content : []).map((c) => (c && typeof c.text === 'string' ? c.text : '')).join(''))
+        .filter((s) => s.includes(part));
+      return said.length ? said[said.length - 1] : null;
+    } catch (e) { return `unreadable: ${e.message}`; }
+  };
   const featuresOf = (name) => FEATURES.filter((f) => f.steps.includes(name)).map((f) => f.id);
   /*
    * One step: `act` does what the step needs and returns the box (window CSS pixels) of what it is about, or null for
@@ -1392,6 +1404,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await answer.locator('#send').click();
       if (!await until(() => model.turns() > before, 30000, 500)) throw new Error(`the answer reached no model; the view says ${JSON.stringify(await answer.evaluate(() => document.getElementById('status').textContent).catch(() => ''))}`);
       await until(async () => !(((await dotsOn(title)) || {}).working >= 6), 30000, 1000);
+      /* Codex may draw a line break in a user message as a space, so the text it recorded is logged, escaped. */
+      tell(`the answer as Codex recorded it: ${JSON.stringify(lastUserText(t0.id, 'My answer to row'))}`);
       await sleep(1500);
       await toBottom();
       return union([await part(PARTS.panel), await bottomBox(300)]);
