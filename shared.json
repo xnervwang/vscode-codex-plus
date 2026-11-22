@@ -1,5 +1,5 @@
 {
-  "core": "9337d7c5e9a8fe110bbcefcbe0d083298af955b9",
+  "core": "365202a4fc8a1fd67c89cecd4cac8371c9a0abee",
   "files": [
     {
       "path": "build/sync-shared.js",
@@ -64,7 +64,7 @@
     {
       "path": "src/window-entries.js",
       "from": "shared/host/window-entries.js",
-      "sha256": "65105c9ee3caf60c2ef921a05151ee99ff78db5322579949f471dad985ca8f19"
+      "sha256": "cd0e1f9c56bcacd26b80cb10c593b699aa1f875425fc4ee8070f8afd8a179aad"
     },
     {
       "path": "src/folders.js",
