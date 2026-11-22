@@ -796,6 +796,20 @@
     drawMap();
     try { dlg.focus(); } catch (e) { /* no focus here */ }
   }
+  /* A path is one long word to the line breaker, so it gets a <wbr> after each slash but a leading one; a <wbr> adds
+     nothing to the text that is selected or copied. */
+  function fillValue(el, text) {
+    el.textContent = '';
+    var from = 0;
+    for (var i = 1; i < text.length; i++) {
+      var c = text.charAt(i);
+      if (c !== '/' && c !== '\\') continue;
+      el.appendChild(document.createTextNode(text.slice(from, i + 1)));
+      el.appendChild(document.createElement('wbr'));
+      from = i + 1;
+    }
+    if (from < text.length) el.appendChild(document.createTextNode(text.slice(from)));
+  }
   function toggleInfo() {
     if (infoOpen()) { closeInfo(); return; }
     infoAsk = 'info-' + Date.now() + '-' + Math.floor(Math.random() * 1e6);
@@ -822,17 +836,17 @@
       k.textContent = row.label;
       k.style.cssText = 'flex:0 0 72px;opacity:.6;';
       var v = document.createElement('span');
-      v.textContent = String(row.value == null ? '' : row.value);
-      v.style.cssText = 'flex:1 1 auto;min-width:0;word-break:break-all;cursor:pointer;'
+      var value = String(row.value == null ? '' : row.value);
+      fillValue(v, value);
+      v.style.cssText = 'flex:1 1 auto;min-width:0;overflow-wrap:anywhere;cursor:pointer;'
         + 'font-family:var(--vscode-editor-font-family,monospace);';
       v.setAttribute('title', 'Click to copy');
       v.addEventListener('click', function (ev) {
         try { ev.stopPropagation(); } catch (e) { /* none */ }
         post({ kind: 'infoCopy', id: m.id, index: i });
-        var was = v.textContent;
         v.textContent = 'copied';
         v.style.opacity = '0.6';
-        setTimeout(function () { if (v.isConnected) { v.textContent = was; v.style.opacity = ''; } }, 900);
+        setTimeout(function () { if (v.isConnected) { fillValue(v, value); v.style.opacity = ''; } }, 900);
       });
       line.appendChild(k); line.appendChild(v);
       infoBox.appendChild(line);

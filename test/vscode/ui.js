@@ -659,6 +659,28 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         return b && getComputedStyle(b).display !== 'none' && b.innerText;
       }), 10000, 200);
       check(!!info && /Token mode/.test(info) && !/Work plan/.test(info), 'the information box names the token mode, and leaves the work plan to the context meter', info);
+      /* Each place a value of the box goes on to a new line, as the few characters on either side of it. */
+      const midWord = await codex.evaluate(() => {
+        const bad = [];
+        for (const v of document.querySelectorAll('[data-codex-extras="info"] span[title="Click to copy"]')) {
+          const chars = [];
+          const walk = document.createTreeWalker(v, NodeFilter.SHOW_TEXT);
+          for (let n = walk.nextNode(); n; n = walk.nextNode()) for (let i = 0; i < n.nodeValue.length; i++) chars.push([n, i]);
+          let top = null;
+          chars.forEach(([n, i], k) => {
+            const r = document.createRange();
+            r.setStart(n, i);
+            r.setEnd(n, i + 1);
+            const b = r.getClientRects()[0];
+            if (!b) return;
+            const before = k ? chars[k - 1][0].nodeValue[chars[k - 1][1]] : '';
+            if (top !== null && b.top > top + 2 && !/[\s/\\-]/.test(before)) bad.push(`${v.textContent.slice(Math.max(0, k - 8), k)}|${v.textContent.slice(k, k + 8)}`);
+            top = b.top;
+          });
+        }
+        return bad;
+      }).catch((e) => [String(e)]);
+      check(midWord.length === 0, 'the information box breaks a value\'s lines between words or after a path\'s slash, never inside a word', midWord);
       await shot('information-box');
       await infoButton.click();
       await codex.locator('[data-codex-extras="meter"]').first().hover();

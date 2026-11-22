@@ -64,6 +64,10 @@ module.exports = async ({ eq, tmp, root }) => {
     const box = p.q('[data-codex-extras="info"]')[0];
     eq([box && box.style.display, box && /019a6a10/.test(box.textContent)], ['block', true], 'and shows them in a box above the row');
     const values = box.querySelectorAll('span').filter((s) => s.getAttribute('title') === 'Click to copy');
+    eq([values.some((v) => /word-break:break-all/.test(v.style.cssText)), values.every((v) => /overflow-wrap:anywhere/.test(v.style.cssText))], [false, true],
+      'a value breaks between words, and inside one only when a single word is wider than the box');
+    eq([values[1].textContent, values[1].querySelectorAll('wbr').length], [SECRET, 2],
+      'a path may also break after each slash but its first, with its text unchanged');
     values[1].dispatch('click', { stopPropagation() {} });
     const copy = p.posted.filter((m) => m.kind === 'infoCopy')[0];
     eq([copy && copy.index, JSON.stringify(p.posted).includes(SECRET)], [1, false],
