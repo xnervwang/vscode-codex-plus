@@ -3187,6 +3187,110 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       }
       await setting('reopenDroppedTabs', undefined);
     });
+
+    /*
+     * A notice for a conversation whose tab VS Code restored behind another at a reload. VS Code builds a restored
+     * webview tab's page only once it is shown, and notices go only to the conversations this window's app-server has
+     * loaded (thread/loaded/list). A detached command's end is written down for the conversation behind and, to show
+     * that this window sends notices at all, for the one in front. Codex gives up on a page not shown within 30 seconds
+     * and puts "Codex could not start" in it, so a click after that loads nothing until the conversation is opened
+     * again. With codexPlus.loadRestoredTabs on, the tab behind is shown for a moment at the start, so it gets its
+     * notice unclicked and draws when clicked later. Last, since each reload leaves the pages the steps above hold.
+     */
+    await step('a notice for a tab restored behind another', async () => {
+      const pair = [threads[0], threads[1]];
+      const ends = path.join(profile.codexHome, 'plugins', 'data', 'agent-work-plan-codex-extras', 'shared', 'detached-ends');
+      const loadedNow = () => call(`${OWN} const r = await own('patching').hostRequest('thread/loaded/list', {});
+        return r && r.outcome === 'done' && r.result ? r.result.data : r;`).catch((e) => String(e));
+      const end = (t, pid) => {
+        const now = Date.now();
+        fs.mkdirSync(ends, { recursive: true });
+        fs.writeFileSync(path.join(ends, `${t.id}.${pid}.${pid}.json`), JSON.stringify({ thread: t.id, pid, start: String(pid), startMs: now - 60e3,
+          cmd: `sleep ${pid} # window test`, endMs: now }));
+      };
+      const tabOf = async (t) => (await tabs()).flatMap((g) => g.tabs).find((x) => bare(x.label) === t.title);
+      /* Clicked rather than revealed by command, so that VS Code remembers it as the tab in front. A click while the
+         dialog asking to trust the hooks shows goes to the dialog, so it is tried again. */
+      const toFront = async (t) => {
+        for (let i = 0; i < 3; i++) {
+          await until(async () => !await trustShown(), 10000, 200);
+          await tabNamed(t.title).click().catch(() => {});
+          if (await until(async () => { const x = await tabOf(t); return x && x.active; }, 5000, 250)) return true;
+        }
+        return false;
+      };
+      await exec('workbench.action.closeAuxiliaryBar');
+      await exec('workbench.action.joinAllGroups');
+      for (const t of [pair[1], pair[0]]) {
+        await exec('codexPlus.openThreadInTab', t.id);
+        await frameWhere((want) => !!document.querySelector('[data-codex-composer-root]') && document.body.innerText.includes(want), 90000, t.title);
+      }
+      check(!!await toFront(pair[0]), 'two conversations are open in tabs of one group, one in front of the other', await tabs());
+      note(`before the reload, this window's app-server has loaded ${JSON.stringify(await loadedNow())}`);
+
+      /* The conversations in front and behind as VS Code restored them, which has not always been the order before. */
+      let restoredAt = 0;
+      const reloaded = async (what) => {
+        const was = (await tabOf(pair[0]) || {}).active ? pair[0] : pair[1];
+        await exec('notifications.clearAll');
+        await w.reload();
+        restoredAt = Date.now();
+        await until(async () => { const st = await patchState(); return st && st.active; }, 60000, 1000);
+        const both = await until(async () => { const a = await tabOf(pair[0]), b = await tabOf(pair[1]); return a && b && (a.active || b.active) && { a, b }; }, 60000, 500);
+        check(!!both, `${what}: after the reload VS Code restores both tabs, one in front of the other`, await tabs());
+        const front = both && both.b.active ? pair[1] : pair[0], behind = front === pair[0] ? pair[1] : pair[0];
+        if (front !== was) note(`${what}: VS Code restored "${behind.title}" behind, which was the tab in front before the reload`);
+        const up = await until(async () => { const l = await loadedNow(); return Array.isArray(l) && l.includes(front.id) && l; }, 90000, 1000);
+        check(!!up, `${what}: the conversation in front is loaded again`, await loadedNow());
+        return { front, behind };
+      };
+      const pid = { front: 4141, behind: 4242 };
+      let { front, behind } = await reloaded('codexPlus.loadRestoredTabs off');
+      end(front, pid.front);
+      end(behind, pid.behind);
+      const control = await until(() => model.sent(`sleep ${pid.front}`) > 0, 60000, 1000);
+      check(!!control, 'codexPlus.loadRestoredTabs off: the conversation in front gets its notice', model.sent(`sleep ${pid.front}`));
+      await sleep(20000);
+      const unclicked = await loadedNow();
+      note(`codexPlus.loadRestoredTabs off: after the reload and before the tab behind is clicked, the app-server has loaded ${JSON.stringify(unclicked)}`);
+      check(model.sent(`sleep ${pid.behind}`) === 0 && Array.isArray(unclicked) && !unclicked.includes(behind.id),
+        'and the conversation behind is not loaded, and gets none, while its tab has not been shown', { sent: model.sent(`sleep ${pid.behind}`), loaded: unclicked });
+      const gaveUp = () => frameWhere(() => document.title === 'Codex could not start', 20000);
+      await sleep(Math.max(0, restoredAt + 40000 - Date.now()));
+      check(await toFront(behind), 'a click more than 30 seconds after the reload brings the tab behind to the front', await tabs());
+      const failed = await gaveUp();
+      await sleep(15000);
+      const loadedAfter = await loadedNow();
+      note(`codexPlus.loadRestoredTabs off: once the tab behind is clicked, the app-server has loaded ${JSON.stringify(loadedAfter)}`);
+      await shot('restored-behind-clicked');
+      check(!!failed && model.sent(`sleep ${pid.behind}`) === 0 && Array.isArray(loadedAfter) && !loadedAfter.includes(behind.id),
+        'and its tab shows Codex\'s own "Codex could not start", so the conversation is still not loaded and gets no notice',
+        { page: await pageSays(await frontPage()), sent: model.sent(`sleep ${pid.behind}`), loaded: loadedAfter, toasts: await toasts() });
+      await call(`const t = vscode.window.tabGroups.all.flatMap((g) => g.tabs).find((x) => x.input && x.input.uri && x.input.uri.path === arg);
+        if (t) await vscode.window.tabGroups.close(t); return !!t;`, `/local/${behind.id}`);
+      await exec('codexPlus.openThreadInTab', behind.id);
+      const reopened = await until(() => model.sent(`sleep ${pid.behind}`) > 0, 60000, 1000);
+      check(!!reopened, 'opened again in a tab of its own, it is loaded and gets the notice that waited for it', { sent: model.sent(`sleep ${pid.behind}`), loaded: await loadedNow() });
+
+      await toFront(front);
+      await setting('loadRestoredTabs', true);
+      pid.behind += 10;
+      ({ front, behind } = await reloaded('codexPlus.loadRestoredTabs on'));
+      end(behind, pid.behind);
+      const loaded = await until(() => model.sent(`sleep ${pid.behind}`) > 0, 90000, 1000);
+      const loadedOn = await loadedNow();
+      note(`codexPlus.loadRestoredTabs on: without a click the app-server has loaded ${JSON.stringify(loadedOn)}`);
+      check(!!loaded, 'codexPlus.loadRestoredTabs on: the conversation behind gets its notice with its tab never clicked', { sent: model.sent(`sleep ${pid.behind}`), loaded: loadedOn });
+      const after = { front: await tabOf(front), behind: await tabOf(behind) };
+      check(!!after.front && after.front.active && !!after.behind && !after.behind.active, 'and the tab that was in front is in front again', after);
+      await sleep(Math.max(0, restoredAt + 40000 - Date.now()));
+      await toFront(behind);
+      /* Codex's header cuts a long title short. */
+      const drawn = await until(async () => { const st = await pageSays(await frontPage()); return st && st.turns >= 1 && st.text.includes(behind.title.slice(0, 30)) && st; }, 30000, 1000);
+      check(!!drawn && !await gaveUp(), 'clicked more than 30 seconds after the reload, the tab behind draws its conversation',
+        { page: await pageSays(await frontPage()), toasts: await toasts() });
+      await setting('loadRestoredTabs', undefined);
+    });
   } finally {
     watchingTrust = false;
     await trustWatch;

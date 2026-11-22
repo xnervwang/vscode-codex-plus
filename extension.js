@@ -18,6 +18,7 @@ const path = require('path');
 const vscode = require('vscode');
 const files = require('./src/codex-files');
 const tabs = require('./src/codex-tabs');
+const loadTabs = require('./src/load-tabs');
 const install = require('./src/plugin-install');
 const { codexBinary } = require('./src/appserver');
 const { createCodexSource } = require('./src/codex-source');
@@ -66,6 +67,8 @@ let archiveSweeper = null;
 let publishWindow = () => {};
 /* Which of the archived conversations given the daily pass would leave alone; set with the commands. */
 let holdArchived = null;
+/* True while loadRestored() brings the background Codex tabs forward one by one. */
+let loadingTabs = false;
 
 function cfg() { return vscode.workspace.getConfiguration(CONFIG); }
 /* Whether a feature that adds to Codex's context runs: its own setting in the Custom token mode, the mode's table in the
@@ -346,7 +349,8 @@ async function activate(context) {
   };
   const source = createCodexSource(vscode, { log: say, reader, patching, trusted, enabled: () => runs('workPlan'),
     briefs: () => runs('conversationBrief'), seen: createSeen(context.globalState),
-    scanLeft: () => !standsDown() && settings().enabled !== false, onPoll: () => { publishWindow(); if (archiveSweeper) archiveSweeper.tick(); }, onScan });
+    scanLeft: () => !standsDown() && settings().enabled !== false, onPoll: () => { publishWindow(); if (archiveSweeper) archiveSweeper.tick(); }, onScan,
+    holdSeen: () => loadingTabs });
   context.subscriptions.push(source);
   planSource = source;
   /* The user's time zone, as Codex's page reported it through the patch. */
@@ -553,7 +557,25 @@ async function activate(context) {
   if (!wrote && typeof vscode.workspace.onDidGrantWorkspaceTrust === 'function') {
     context.subscriptions.push(vscode.workspace.onDidGrantWorkspaceTrust(whenTrusted));
   }
-  later(() => reopenDropped(memory, say), 8000);
+  /* codexPlus.loadRestoredTabs right after: Codex puts "Codex could not start" in a page not shown within 30 seconds of
+     its creation, and a restored tab's page is created with the window. */
+  later(() => reopenDropped(memory, say).catch((e) => say(`reopening dropped Codex tabs: ${e.message}`))
+    .then(() => loadRestored(say)).catch((e) => say(`loading restored Codex tabs: ${e.message}`)), 8000);
+}
+
+/* Each Codex tab VS Code restored behind another is shown for a moment, so that its page and conversation load
+   (src/load-tabs.js). Returns how many were. */
+async function loadRestored(say) {
+  if (settings().enabled === false || cfg().get('loadRestoredTabs', false) !== true) return 0;
+  loadingTabs = true;
+  let n = 0;
+  try {
+    n = await loadTabs.loadAll({ groups: vscode.window.tabGroups.all, front: vscode.window.tabGroups.activeTabGroup,
+      isTab: (t) => tabs.isCodexTab(vscode, t), exec: (...a) => vscode.commands.executeCommand(...a),
+      sleep: (ms) => new Promise((r) => setTimeout(r, ms)) });
+  } finally { loadingTabs = false; }
+  if (n) say(`loaded ${n} Codex tab(s) VS Code restored behind another`);
+  return n;
 }
 
 /* Reopen the Codex tabs VS Code did not restore, and show in the status bar for ten seconds how many there were. */
@@ -1445,10 +1467,10 @@ function deactivate() {
 
 /* `_settings` is for the tests: the master switch only works if every part reads its settings from settings(), with the
    switch already applied, and the tests check that table directly.
-   `_ensurePlugin` (the start-up install of the plugin) and `_reopenDropped` (reopening dropped tabs) run after a delay
-   during activation, so the tests call them directly. `_tokenModeLine` is Show Status's line for the token mode.
-   `_sweepArchived` runs the pass over archived conversations that activation starts a minute in, and `_holdArchived` says
-   which of the conversations given that pass would leave alone. */
-module.exports = { activate, deactivate, _settings: settings, _ensurePlugin: ensurePlugin, _reopenDropped: reopenDropped,
+   `_ensurePlugin` (the start-up install of the plugin), `_reopenDropped` (reopening dropped tabs) and `_loadRestored`
+   (codexPlus.loadRestoredTabs) run after a delay during activation, so the tests call them directly. `_tokenModeLine`
+   is Show Status's line for the token mode. `_sweepArchived` runs the pass over archived conversations that activation
+   starts a minute in, and `_holdArchived` says which of the conversations given that pass would leave alone. */
+module.exports = { activate, deactivate, _settings: settings, _ensurePlugin: ensurePlugin, _reopenDropped: reopenDropped, _loadRestored: loadRestored,
   _tokenModeLine: tokenModeLine, _sweepArchived: () => (archiveSweeper ? archiveSweeper.run() : Promise.resolve(null)),
   _holdArchived: (ids) => (holdArchived ? holdArchived(ids) : Promise.resolve(null)) };

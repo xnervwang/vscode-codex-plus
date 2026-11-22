@@ -1,5 +1,5 @@
 {
-  "core": "6a548254497ab98f00498fc568bf42d685189aef",
+  "core": "11db2e25ca1ff553ba74cfb3a8b4dc65bf9ff6a4",
   "files": [
     {
       "path": "build/sync-shared.js",
@@ -95,6 +95,11 @@
       "path": "src/python-runtime.js",
       "from": "shared/host/python-runtime.js",
       "sha256": "63d443e330f002aeefde6daad66a7fe63ff9abc8ad280bd99fa1ce2006ba3753"
+    },
+    {
+      "path": "src/load-tabs.js",
+      "from": "shared/host/load-tabs.js",
+      "sha256": "99475c0ba31eeaf4ad0f2c3d91a639967d96a82e760a5a9735e55dd5122861a1"
     },
     {
       "path": "src/python-offer.js",

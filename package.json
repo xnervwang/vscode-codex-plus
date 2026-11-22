@@ -414,6 +414,11 @@
           "default": true,
           "markdownDescription": "Reopen the Codex tabs that were open when the window closed but that VS Code did not restore, as can happen after the window lost its remote connection. Tabs you closed while connected stay closed."
         },
+        "codexPlus.loadRestoredTabs": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "When the window starts, show each Codex tab VS Code restored behind another for a moment, so its conversation loads and gets its wake-ups and notices before you click it."
+        },
         "codexPlus.conversationBrief": {
           "scope": "application",
           "type": "boolean",

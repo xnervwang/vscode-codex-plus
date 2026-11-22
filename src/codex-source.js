@@ -225,11 +225,11 @@ function threadOfCodexTab(vscode, patching, tab) {
  * has it), trusted() (not in Restricted Mode), seen (src/seen.js) and log. scanLeft() says whether this window scans
  * for what conversations left running after their turn (src/left-running.js): no more often than leftEveryMs, in
  * procDir and in the Claude Code session records under claudeSessions. A window that stands down for a newer build
- * does not scan.
+ * does not scan. While holdSeen() is true, what is in front does not count as read.
  */
 function createCodexSource(vscode, { log = () => {}, reader, patching = null, enabled = () => true, trusted = () => true,
   briefs = () => true, seen = createSeen(), scanLeft = () => false, leftEveryMs = LEFT_EVERY_MS, procDir = '/proc',
-  claudeSessions = undefined, onPoll = () => {}, onScan = () => {} } = {}) {
+  claudeSessions = undefined, onPoll = () => {}, onScan = () => {}, holdSeen = () => false } = {}) {
   const changed = new vscode.EventEmitter();
   const focused = new vscode.EventEmitter();
   /* The row above the work plan, set by the extension (_setNotice): { title, description, detail, command, arguments }. */
@@ -319,6 +319,8 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
      once. */
   let wasFront = [];
   function markFront() {
+    /* While codexPlus.loadRestoredTabs brings each background tab forward for a moment, no one has read it. */
+    if (holdSeen()) return false;
     let cleared = false;
     const front = frontThreads();
     for (const id of wasFront) if (!front.includes(id) && typeof seen.left === 'function') seen.left(id);
