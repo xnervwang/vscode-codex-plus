@@ -34,7 +34,7 @@ Most of what Codex Plus draws in Codex's page, message box and tabs needs the pa
 | Answers to plan questions, sent from Agent Plus into the conversation ([Answering a plan question](#answering-a-plan-question)) | Agent Plus's Answer view; Codex's message box |
 | Your time zone, told to Codex when it runs on another machine ([Your time zone](#your-time-zone)) | Codex's context |
 | Images in replies: a chart or screenshot the model saves, shown in the reply, and web images shown as links ([Images in replies](#images-in-replies)) | Codex conversation; Codex's context |
-| The installed skills that best fit each message, given to Codex before the turn ([Skill search](#skill-search)) | Codex's context; the line under a reply |
+| The installed skills that best fit each message, given to Codex before the turn ([Skill search](#skill-search)) | Codex's context; the line above a reply |
 | Wake-ups: prompts the model schedules to keep an idle conversation going ([Wake-ups](#wake-ups)) | Codex conversations open in this window |
 | A list of your Codex conversations laid out like Claude Code's, with groups, search, status dots and account usage ([The session list](#the-session-list)) | Codex sessions view, in the Codex Plus sidebar |
 | Archiving and deleting conversations, and deleting old archived ones ([Archive and delete](#archive-and-delete)) | Codex sessions view |
@@ -90,7 +90,7 @@ Whether the setting is on or off, the patch shows a web image as a plain link. T
 
 ## Skill search
 
-Before each turn, Codex Plus puts the installed skills that best fit your message in front of Codex. It includes their full descriptions and the path of each one's `SKILL.md`, under a line asking the model to check that a skill fits before reading it. The names of those skills appear on a line under that turn's reply.
+Before each turn, Codex Plus puts the installed skills that best fit your message in front of Codex. It includes their full descriptions and the path of each one's `SKILL.md`, under a line asking the model to check that a skill fits before reading it. The names of those skills appear on the line above that turn's reply, after its context share, model and effort.
 
 Codex's own list of skills cuts every description to about 50 characters once a hundred or so skills are installed. It silently drops what its budget cannot hold (see "Codex's own list of skills" below).
 
@@ -247,7 +247,7 @@ Codex Plus draws these additions into Codex's own page. Each needs the patch and
 
 The time appears above every message and reply block in your own time zone, including a message you send while a turn runs. It replaces Codex's time below a reply and beside your message. A time read from the conversation log includes seconds (`HH:MM:SS`); one read from the clock Codex shows on its page has only `HH:MM`. Messages from another day start with `MM/DD HH:MM:SS`, or include the year (`YYYY/MM/DD`) if it is not this year. `codexPlus.timestamps` turns the times off.
 
-Beside each reply's time, you see that turn's share of the context window (see [The context meter](#the-context-meter)), model and effort, for example `14:02:11  ctx 33% · gpt-6.1-sol high`. Codex Plus matches them by the turn ID Codex puts on the reply; `codexPlus.turnFigures` turns them off. When Codex shows no "Worked for" of its own, the time also includes the turn's duration, for example `14:02:11  9s · ctx 33% · …`. Codex draws "Worked for" only when a turn did something before its reply. `codexPlus.replyDuration` turns the added duration off.
+Beside each reply's time, you see that turn's share of the context window (see [The context meter](#the-context-meter)), model and effort, for example `14:02:11  ctx 33% · gpt-6.1-sol high`, then the names of the skills that [skill search](#skill-search) gave the turn, as `· skills web-fetching`. Codex Plus matches them by the turn ID Codex puts on the reply; `codexPlus.turnFigures` turns them off. When Codex shows no "Worked for" of its own, the time also includes the turn's duration, for example `14:02:11  9s · ctx 33% · …`. Codex draws "Worked for" only when a turn did something before its reply. `codexPlus.replyDuration` turns the added duration off.
 
 ![A time above each message, and above a reply its context share, model and effort](images/shots/reply-figures.png)
 

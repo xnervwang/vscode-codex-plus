@@ -80,5 +80,16 @@ module.exports = async ({ eq, tmp, root }) => {
   listeners.message({ data: { type: 'codex-extras-user-times', times: null, compactions: [], turns: { [T4]: long }, turnTimes: {} } });
   const stamp = reply.children.find((k) => k.getAttribute('data-codex-extras') === 'stamp');
   const kept = long.split(' \u00b7 ').map((part) => part.replace(/ /g, '\u00a0').replace(/-/g, '-\u2060').replace(/,\u00a0/g, ', ')).join('\u00a0\u00b7 ');
-  eq(stamp ? stamp.getAttribute('data-codex-extras-figures') : null, `  ${kept}`, `the page draws the whole line under the reply (${long.length} characters)`);
+  eq(stamp ? stamp.getAttribute('data-codex-extras-figures') : null, `  ${kept}`, `the page draws the whole line above the reply (${long.length} characters)`);
+  eq([reply.children[0] === stamp, reply.children.indexOf(stamp) < reply.children.findIndex((k) => k.tagName === 'P')], [true, true],
+    'the names are on the line above the reply, the first thing in its block');
+
+  /* What the README and the setting say about where the names are. */
+  const readme = fs.readFileSync(path.join(root, 'README.md'), 'utf8');
+  const setting = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).contributes.configuration
+    .properties['codexPlus.skillRouting'].markdownDescription;
+  const skillRow = readme.split('\n').find((l) => l.startsWith('| The installed skills that best fit each message'));
+  const said = readme.slice(readme.indexOf('## Skill search'), readme.indexOf('### Search by meaning'));
+  eq([/the line above a reply \|$/.test(skillRow || ''), /appear on the line above that turn's reply/.test(said), /The line above each reply names the skills/.test(setting)],
+    [true, true, true], 'the README\'s list of features, its Skill search section and the setting all put the names on the line above the reply');
 };

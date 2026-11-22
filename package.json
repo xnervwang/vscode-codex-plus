@@ -413,7 +413,7 @@
           "scope": "application",
           "type": "boolean",
           "default": true,
-          "markdownDescription": "Before each turn, give Codex the installed skills that best fit your message, each with its full description and the path of its `SKILL.md` (`#codexPlus.skillRoutingCount#` of them at most). Codex's own list cuts every description short once many skills are installed, and leaves out the ones it has no room for. The search runs on this machine, by keywords, with no network and no credentials. The line under each reply names the skills that turn was given. Used only while `#agentPlus.tokenMode#` is Custom."
+          "markdownDescription": "Before each turn, give Codex the installed skills that best fit your message, each with its full description and the path of its `SKILL.md` (`#codexPlus.skillRoutingCount#` of them at most). Codex's own list cuts every description short once many skills are installed, and leaves out the ones it has no room for. The search runs on this machine, by keywords, with no network and no credentials. The line above each reply names the skills that turn was given. Used only while `#agentPlus.tokenMode#` is Custom."
         },
         "codexPlus.skillRoutingVectorSearch": {
           "scope": "application",

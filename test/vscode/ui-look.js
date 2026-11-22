@@ -1093,7 +1093,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     writePlan('done');
     await look('reply-duration', {
       expect: 'Above the last reply its time is followed, when Codex shows no "Worked for" of its own, by how long the turn took, and then its figures, as "14:02:11  3s · ctx 0% · gpt-6.1-sol medium"; '
-        + 'under that turn\'s reply a line names the skill "inventory-sync-retry" that the skill search gave Codex.',
+        + 'after them the same line names the skill "inventory-sync-retry" that the skill search gave Codex.',
     }, async () => {
       await toBottom();
       return bottomBox(520);

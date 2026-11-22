@@ -88,7 +88,7 @@
     "steps": ["agent-map", "detached-agent-map", "subagent-agent-map"], "settings": [], "commands": [] },
   { "id": "reply-images", "what": "Images in replies drawn at their own size from absolute paths, file:// and data: URLs, web images shown as links, and [Image] with codexPlus.replyImages off",
     "steps": ["reply-images", "reply-images-off"], "settings": ["codexPlus.replyImages"], "commands": [] },
-  { "id": "skill-search", "what": "The installed skills that best fit a message, given to Codex before the turn and named on a line under the reply",
+  { "id": "skill-search", "what": "The installed skills that best fit a message, given to Codex before the turn and named on the line above the reply",
     "steps": ["reply-duration"], "settings": ["codexPlus.skillRouting", "codexPlus.skillRoutingCount", "codexPlus.skillRoutingExtraFolders"], "commands": [] },
   { "id": "skill-search-by-meaning", "what": "Searching skills by meaning through cohere.embed-v4 on Amazon Bedrock",
     "steps": [], "settings": ["codexPlus.skillRoutingVectorSearch"], "commands": [],
