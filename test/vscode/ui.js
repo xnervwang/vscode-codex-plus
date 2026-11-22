@@ -2176,6 +2176,24 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         return n ? n.innerText : '';
       }, T.title).catch(() => '');
       const shelved = () => list.evaluate((id) => !!document.querySelector(`.cp-group[data-key="archived"] .cp-row[data-id="${id}"]`), T.id).catch(() => false);
+      /* Agent Plus's Go to the conversation (agentPlus.openConversation), run in the second window: the window that shows
+         the conversation takes the request from <shared home>/open and brings it forward, and with no such window the
+         second window offers to open it there. */
+      const tabsIn = (folder) => call('return vscode.window.tabGroups.all.flatMap((g) => g.tabs.map((t) => ({ label: t.label, '
+        + 'active: t.isActive, front: t.isActive && g.isActive, uri: t.input && t.input.uri ? String(t.input.uri) : "" })));', undefined, 60000, folder).catch(() => []);
+      const tabOf = async (folder, t) => (await tabsIn(folder)).find((x) => bare(x.label) === t.title || x.uri.includes(t.id)) || null;
+      const toastsIn = (p) => p.evaluate(() => [...document.querySelectorAll('.notification-toast')].map((e) => e.innerText)).catch(() => []);
+      const openFromB = (t) => inB('await vscode.commands.executeCommand("agentPlus.openConversation", arg); return true;',
+        { sourceId: 'codex', sessionId: t.id, title: t.title, cwd: profile.folder }, 30000).catch((e) => e.message);
+      const OPENS = path.join(profile.home, '.agent-work-plan', 'open');
+      /* Each request another window took: who asked, who took it, and whether it was brought forward. */
+      const taken = () => {
+        let names = [];
+        try { names = fs.readdirSync(OPENS).filter((n) => n.endsWith('.done')); } catch (_) { return []; }
+        const read = (f) => { try { return JSON.parse(fs.readFileSync(path.join(OPENS, f), 'utf8')); } catch (_) { return null; } };
+        return names.map((n) => { const id = n.slice(0, -5), ask = read(`${id}.taken`) || {}, done = read(n) || {};
+          return { id, session: ask.sessionId, from: ask.from, by: done.by, shown: done.shown }; });
+      };
       const dialog = () => page.evaluate(() => {
         const d = [...document.querySelectorAll('.monaco-dialog-box')].find((e) => e.offsetParent);
         if (!d) return null;
@@ -2184,11 +2202,68 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       });
       try {
         await until(() => inB('const mine = vscode.extensions.getExtension("xnervwang.codex-plus"); return !!(mine && mine.isActive);'), 60000, 1000);
-        await inB('await vscode.commands.executeCommand("codexPlus.openThreadInTab", arg); return true;', T.id);
+        /* ── Go to the conversation, for one no window shows ── */
+        const said = await openFromB(T);
+        const nowhere = `"${T.title}" is not open in any VS Code window on this machine.`;
+        const offered = await until(async () => (await toastsIn(pageB)).find((x) => x.includes(nowhere) && x.includes('Open it here')), 20000, 500);
+        check(!!offered && !await tabOf(profile.folder, T),
+          'Go to the conversation in the second window, for a conversation no window shows, says so there and offers Open it here; this window opens nothing',
+          { said, toasts: await toastsIn(pageB), here: await tabOf(profile.folder, T) });
+        await shotB('open-nowhere-offered');
+        if (offered) {
+          await pageB.locator('.notification-toast').filter({ hasText: nowhere }).locator('a, .monaco-button').filter({ hasText: 'Open it here' }).first().click({ timeout: 5000 });
+        } else await inB('await vscode.commands.executeCommand("codexPlus.openThreadInTab", arg); return true;', T.id);
+        const inTabB = await until(() => tabOf(folderB, T), 30000, 500);
+        check(!!inTabB && !await tabOf(profile.folder, T), 'Open it here opens it in a tab of the second window, and this window is left as it was',
+          { b: await tabsIn(folderB), here: await tabOf(profile.folder, T) });
         const shownB = await until(() => { const e = entryOf(folderB); return e && e.sessions.includes(T.id) && e; }, 60000, 1000);
         check(!!shownB, 'the conversation opened in a tab of the second window, and that window\'s entry among the windows lists it',
           { entry: entryOf(folderB), entries: entries() });
         const nameB = (shownB && shownB.name) || path.basename(folderB);
+
+        /* ── Go to the conversation, for one this window shows in a tab ── */
+        const X = threads[0];
+        await exec('codexPlus.openThreadInTab', X.id);
+        await until(() => tabOf(profile.folder, X), 30000, 500);
+        await openNotes();
+        await inB('await vscode.commands.executeCommand("notifications.clearAll"); return true;').catch(() => {});
+        const before1 = taken().length;
+        await openFromB(X);
+        const fronted = await until(async () => { const t = await tabOf(profile.folder, X); return t && t.active && t; }, 20000, 500);
+        const took = taken().filter((r) => r.session === X.id).pop();
+        const notOpen = (await toastsIn(pageB)).filter((x) => /is not open/.test(x));
+        check(!!fronted && taken().length > before1 && !!took && !!took.by && took.by !== took.from && took.shown === true,
+          'Go to the conversation in the second window, for one a tab of this window shows, is taken by this window, which brings that tab forward',
+          { fronted, took, here: await tabsIn(profile.folder) });
+        check(!await tabOf(folderB, X) && !notOpen.length, 'and the second window opens no copy of it and says nothing about it not being open',
+          { b: await tabsIn(folderB), notOpen });
+        await shot('open-elsewhere-brought-forward');
+
+        /* ── the same, for one this window shows only in Codex's sidebar ── */
+        try {
+          const tab = await call('return vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((t) => t.input && t.input.uri && String(t.input.uri).includes(arg)).length;', X.id);
+          await call('const mine = vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((t) => (t.input && t.input.uri && String(t.input.uri).includes(arg[0])) '
+            + '|| String(t.label || "").replace(/\u2709[\uFE0E\uFE0F]?/g, "").trim() === arg[1]); if (mine.length) await vscode.window.tabGroups.close(mine); return mine.length;', [X.id, X.title]);
+          /* Through the patch rather than Resume in Sidebar, whose vscode:// link VS Code hands to the window it last saw
+             focused: under xvfb-run that was the second window, which then asked whether to open it. */
+          await call(`${OWN} return own('patching').openInSidebar(arg);`, X.id).catch(() => false);
+          const inSidebar = await until(() => call(`${OWN} return own('patching').sidebarShowing() === arg;`, X.id), 30000, 500);
+          if (!inSidebar) note(`Codex's sidebar in this window did not come to show the conversation on ${process.platform} (it had ${tab} tab(s) of it), so a request for one shown only there was not checked`);
+          else {
+            await openNotes();
+            const before2 = taken().length;
+            await openFromB(X);
+            const took2 = await until(() => { const r = taken().slice(before2).find((x) => x.session === X.id); return r && r; }, 20000, 500);
+            const stillSide = await call(`${OWN} return own('patching').sidebarShowing() === arg;`, X.id);
+            check(!!took2 && took2.by !== took2.from && took2.shown === true && stillSide && !await tabOf(folderB, X) && !await tabOf(profile.folder, X),
+              'for one this window shows only in Codex\'s sidebar, this window takes the request and its sidebar shows it, with no tab opened in either window',
+              { took2, stillSide, b: await tabOf(folderB, X), here: await tabOf(profile.folder, X) });
+            await shot('open-elsewhere-sidebar');
+          }
+        } catch (e) {
+          check(false, 'a request for a conversation shown only in Codex\'s sidebar ran to its end', String((e && e.stack) || e).split('\n').slice(0, 3).join(' | '));
+        }
+        await exec('workbench.action.closeAuxiliaryBar').catch(() => {});
         const pageReady = await until(() => inB(`${OWN} return own('patching').canDeliver(arg);`, T.id), 60000, 1000);
         await until(async () => {
           for (const f of pageB.frames()) { try { if (await f.evaluate(() => document.querySelectorAll('[data-turn-key]').length > 0)) return true; } catch (_) { /* gone */ } }
@@ -2221,14 +2296,20 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
           check(!!red, 'this window\'s session list then shows the conversation the second window runs with the red dot', await rowDot());
           check(!!await until(async () => (await agentCount()) > counted, 15000, 500), 'and Agent Plus counts it in the status bar',
             { before: counted, now: await agentCount() });
-          /* Under xvfb-run both windows can count as focused; Agent Plus shows its notification in one of them. */
+          /* Agent Plus shows its notification in the focused window. Under xvfb-run, with no window manager, both windows can
+             count as focused, and then which one shows it, and whether only one does, is not the test of anything. */
           const focusA = await focused(), focusB = await inB('return vscode.window.state.focused;').catch(() => null);
           if (focusA || focusB) {
             const told = await until(async () => ((await toastIn(page)) || (await toastIn(pageB))) && true, 15000, 500);
             await sleep(2000);
             const inA = !!await toastIn(page), inBNow = !!await toastIn(pageB);
-            check(!!told && inA !== inBNow, `and says in a notification that it is waiting for you, in one window only (${inA ? 'this one' : inBNow ? 'the second' : 'neither'})`,
-              { here: await toasts(), focusA, focusB, inA, inB: inBNow });
+            const where = { here: await toasts(), focusA, focusB, inA, inB: inBNow };
+            if (focusA && focusB) {
+              check(!!told, `and says in a notification that it is waiting for you (shown ${inA && inBNow ? 'in both windows' : inA ? 'in this one' : 'in the second'})`, where);
+              note(`both windows count as focused on ${process.platform}, so whether the notification shows in one window only was not judged (${inA && inBNow ? 'it showed in both' : 'it showed in one'})`);
+            } else {
+              check(!!told && inA === !!focusA && inBNow === !!focusB, `and says in a notification that it is waiting for you, in the focused window (${focusA ? 'this one' : 'the second'}) only`, where);
+            }
           } else note(`neither window has the system's focus on ${process.platform}, so Agent Plus shows no notification; not checked`);
           await shot('waiting-in-another-window');
           await shotB('second-window-waiting');
@@ -2257,8 +2338,11 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
             hook({ ...asCodex(turn2), hook_event_name: 'PermissionRequest', tool_name: 'Bash', tool_input: { command: 'true', description: 'Check the export outside the sandbox.' } });
             check(!!await until(async () => (await rowDot()) === 'waiting', 20000, 500), 'this window shows it waiting', await rowDot());
             await sleep(4000);
-            /* The reply after the command is held, so the turn is still running when the dot is read. */
+            /* The reply after the command is held, so the turn is still running when the dot is read. Agent Plus's notice sits
+               over the bottom right of the window, where the approval's buttons are. */
             model.hold();
+            await inB('await vscode.commands.executeCommand("notifications.clearAll"); return true;').catch(() => {});
+            await sleep(500);
             let approved = false;
             for (const f of pageB.frames()) {
               try {
