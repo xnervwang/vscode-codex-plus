@@ -39,6 +39,8 @@
     "steps": ["status-filter-menu"], "settings": [], "commands": [] },
   { "id": "session-row-menu", "what": "The session list's own right-click menu on a row, drawn in the look of Claude Code's",
     "steps": ["row-menu"], "settings": [], "commands": [] },
+  { "id": "session-current", "what": "The session list drawing the conversation in front as the current one, in Open sessions and in its group, and no other row, however it came to the front",
+    "steps": ["session-list", "resume-in-tab", "resume-in-sidebar", "current-after-menus"], "settings": [], "commands": [] },
   { "id": "session-resume", "what": "Resume in Tab and Resume in Sidebar on a row, opening the conversation in a Codex tab or in Codex's sidebar",
     "steps": ["resume-in-tab", "resume-in-sidebar"], "settings": [], "commands": ["codexPlus.openThreadInTab", "codexPlus.openThreadInSidebar"] },
   { "id": "session-text-color", "what": "Text Color on a row: a submenu of Default and eight colours, colouring the row's title",

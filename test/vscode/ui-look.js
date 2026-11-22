@@ -651,8 +651,11 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         + 'a session manager with "New in tab" and "New in sidebar" side by side (each with a plus icon), a filter row (a funnel, "Active · N", a search icon and "New group"), '
         + 'and an "Ungrouped" group with four conversations: the one just started and the three made-up ones, "Can you find where the retry delay for the inventory sync is set?", '
         + '"Why does the nightly export skip archived rows?" and "Add a dry-run flag to the cleanup script". Each row has its title and at the right how long ago it was used with its first and last day, as "1m · 11/20→11/21"; none of these conversations is running or waiting, so no row has a dot, and each title starts at the row\'s left padding. '
-        + 'Section labels are in capitals.',
+        + 'Section labels are in capitals. The conversation just started, whose tab is in front, is drawn as the current one in both places it is listed, Open sessions and Ungrouped: '
+        + 'the list\'s selection background and its title in bold. No other row has that background or a bold title.',
     }, async () => {
+      /* The step before left notes.txt in front. */
+      if (freshTitle) await tab(freshTitle).click();
       await toList();
       await until(() => list.evaluate((want) => want.every((t) => [...document.querySelectorAll('.cp-row .cp-title')].some((e) => e.textContent === t)), threads.map((t) => t.title)), 30000, 500);
       await widen();
@@ -923,17 +926,31 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       if (!await until(async () => !await rowIn('archived', t2.id).count() && !under('sessions').length && !under('archived_sessions').length, 30000, 500)) throw new Error('the conversation was not deleted in 30 s');
       return inList('.cp-groups');
     });
+    await look('current-after-menus', {
+      expect: `With the tab of "${freshTitle || 'the conversation started from the tab bar'}" in front again, after the list's menus were used on other rows above, only that conversation's rows are drawn as the current one: `
+        + 'its row in Open sessions and its row in Ungrouped, with the selection background and a bold title. No other row, in particular "Why does the nightly export skip archived rows?" whose menu was used, '
+        + 'is left with that background, a bold title or an outline.',
+    }, async () => {
+      if (!freshTitle) throw new Error('the conversation started from the tab bar has no title');
+      await tab(freshTitle).click();
+      await showList();
+      await away();
+      await sleep(1500);
+      return part(PARTS.sidebar);
+    });
 
     /* ═══ a conversation in a tab ═══ */
     await look('resume-in-tab', {
-      expect: `Resume in Tab opens "${title}" in a tab of the editor group there, titled by the conversation, showing its four messages and replies and the message box at the bottom.`,
+      expect: `Resume in Tab opens "${title}" in a tab of the editor group there, titled by the conversation, showing its four messages and replies and the message box at the bottom. `
+        + `In the session list on the left, "${title}" is now the current conversation: its row in Open sessions and its row in Ungrouped have the selection background and a bold title, `
+        + 'and no other row has either, the conversation that was in front before included.',
     }, async () => {
       await pick(row(t0.id), ['Resume in Tab']);
       codex = await frameWhere((want) => !!document.querySelector('[data-codex-composer-root]') && document.querySelectorAll('[data-turn-key]').length >= 4
         && document.body.innerText.includes(want), 90000, title);
       if (!codex) throw new Error('the conversation did not open in 90 s');
       await sleep(2500);
-      return union([await tabsBox(), await part(PARTS.editor)]);
+      return union([await tabsBox(), await part(PARTS.editor), await part(PARTS.sidebar)]);
     });
     if (!codex) throw new Error('the conversation did not open, so the steps inside it cannot run');
     await look('conversation-stamps', {
@@ -1607,8 +1624,10 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
 
     /* ═══ Codex's sidebar ═══ */
     await look('resume-in-sidebar', {
-      expect: 'Resume in Sidebar on "Why does the nightly export skip archived rows?" shows it in Codex\'s sidebar on the right, with a time on each message and reply, each inside its column; the session list\'s Open sessions lists it.',
+      expect: 'Resume in Sidebar on "Why does the nightly export skip archived rows?", with notes.txt the tab in front, shows it in Codex\'s sidebar on the right, with a time on each message and reply, each inside its column; '
+        + 'the session list\'s Open sessions lists it, and its rows in Open sessions and in its group are drawn as the current conversation (selection background, bold title), with no other row drawn so.',
     }, async () => {
+      await openNotes();
       await toList();
       await pick(row(t1.id), ['Resume in Sidebar']);
       await allowUri();
