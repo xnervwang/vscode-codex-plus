@@ -1737,14 +1737,25 @@
     return Math.floor(mi / 60) + 'h' + (mi % 60) + 'm';
   }
   /*
-   * Codex draws its own "Worked for" in a turn only when the turn did something before its last reply, as a button
-   * that expands that activity, inside the turn but outside its messages, and the button has no attribute of its own. So any button with aria-expanded in that position is taken to be it.
+   * Codex draws its own "Worked for" in a turn only when the turn did something before its last reply, inside the turn
+   * but outside its messages: as a button that expands that activity, or, from 26.1117, as a line of text after it.
+   * Neither has an attribute of its own. So a button with aria-expanded in that position is taken to be it, and so is
+   * any text in the turn's body outside its messages; the day's divider is outside the body.
    */
   var WORKED_SEL = 'button[aria-expanded]';
   function codexShowsWorked(turn) {
     var found = turn ? all(turn, WORKED_SEL) : [];
-    var mine = SEL.user + ',' + SEL.assistantSide + ',' + SEL.unit + ',[' + MARK + ']';
+    var mine = SEL.user + ',' + SEL.assistantSide + ',' + SEL.unit + ',' + SEL.assistant + ',[' + MARK + ']';
     for (var i = 0; i < found.length; i++) if (!(found[i].closest && found[i].closest(mine))) return true;
+    var stack = turn ? all(turn, SEL.turnBody) : [];
+    while (stack.length) {
+      var kids = stack.pop().childNodes || [];
+      for (var k = 0; k < kids.length; k++) {
+        var n = kids[k];
+        if (n.nodeType === 3 && String(n.nodeValue || '').trim()) return true;
+        if (n.nodeType === 1 && !(n.matches && n.matches(mine))) stack.push(n);
+      }
+    }
     return false;
   }
   var own = function (o, k) { return Object.prototype.hasOwnProperty.call(o, k); };

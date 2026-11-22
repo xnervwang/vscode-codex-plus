@@ -69,6 +69,8 @@ module.exports = async ({ eq, root }) => {
   eq([said(firstReply), said(lastReply)], ['02:09:17', '02:09:17'],
     'both replies of a turn a Stop hook continued take their times from the rollout, the one in the activity part as well');
   eq([said(hookPrompt), line(firstReply)], ['02:09:17', null], 'the hook\'s prompt keeps its own time, and the turn\'s line stays off the reply in the activity part');
+  eq(line(lastReply), '  ctx\u00a00%\u00a0\u00b7 gpt-\u2060x\u00a0medium',
+    'the last reply has the time, then the figures, and no duration: Codex already shows "Worked for" as a line of text');
   eq(line(plainReply), '  21s\u00a0\u00b7 ctx\u00a020%\u00a0\u00b7 gpt-\u2060x\u00a0medium',
     'a turn with no activity part, where Codex shows no "Worked for", still gets its duration after the time');
 };
