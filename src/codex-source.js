@@ -584,10 +584,8 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
       notice = next || null;
       if (JSON.stringify(notice) !== was) noticeChanged.fire();
     },
-    /*
-     * Brings a conversation to the front in this window, if this window shows it. False otherwise, and Agent Plus then
-     * asks the window that shows it. Opening it here is openHere(), offered only once no window has it.
-     */
+    /* Brings the conversation to the front if this window shows it, and is false otherwise; Agent Plus then asks the
+       window that shows it. */
     async reveal(sessionId) {
       if (!files.THREAD_ID.test(String(sessionId || ''))) return false;
       if (tabs.codexTabs(vscode).some((t) => t.thread === sessionId)) {
@@ -603,7 +601,6 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
       }
       return false;
     },
-    /* Whether this window shows the conversation: in a tab, a panel the patch knows or Codex's sidebar. */
     shows(sessionId) { return !!sessionId && (openThreads().includes(sessionId) || sidebarInFront() === sessionId); },
     async openHere(sessionId) {
       if (!files.THREAD_ID.test(String(sessionId || ''))) return false;
