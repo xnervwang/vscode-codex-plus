@@ -319,16 +319,21 @@ async function main() {
       await snap('images-in-replies', await editor());
     }
     if (want('reply-figures')) {
-      await toMessage('Put them in a `rules.json`') || await toMessage('Put them in a rules.json');
+      /* Codex draws only a long conversation's last few turns, so the shot uses one of those. */
+      if (!await toMessage('Put those under')) throw new Error('the message "Put those under …" is not on the page');
       await away();
       await snap('reply-figures', await editor());
     }
     if (want('navigation')) {
       await toMessage('What should happen when a row matches no rule');
       await conv.locator('.codex-extras-rail-handle').first().click();
-      await until(() => conv.evaluate(() => { const l = document.querySelector('[data-codex-extras="nav-list"]'); return !!(l && l.offsetWidth); }), 5000, 200);
+      if (!await until(() => conv.evaluate(() => { const p = document.querySelector('.codex-extras-panel'); return !!(p && getComputedStyle(p).display !== 'none'); }), 5000, 200)) {
+        throw new Error(`the rail's list did not open: ${await conv.evaluate(() => document.querySelectorAll('[data-codex-extras="nav-row"]').length)} rows`);
+      }
       await away();
-      await conv.locator('[data-codex-extras="nav-row"]').nth(3).hover();
+      /* The list holds only the messages Codex has drawn, which for a long conversation are its last few. */
+      const rows = conv.locator('[data-codex-extras="nav-row"]');
+      await rows.nth(Math.min(3, await rows.count() - 1)).hover();
       await sleep(800);
       await snap('navigation', await editor());
       await conv.locator('.codex-extras-rail-handle').first().click();
