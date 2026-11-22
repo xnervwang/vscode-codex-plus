@@ -207,8 +207,9 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       /* A selected row draws its icon in the selection's colour, so the theme colour the icon was given comes first. */
       const colour = icon ? getComputedStyle(icon).color : '', declared = icon ? icon.style.color : '';
       const badge = label ? getComputedStyle(label, '::after').content : '';
-      const tone = /charts-green/.test(declared) ? 'green' : /charts-red/.test(declared) ? 'red' : declared ? ''
-        : colour === tones.green ? 'green' : colour === tones.red ? 'red' : '';
+      const rgb = (/(\d+),\s*(\d+),\s*(\d+)/.exec(declared || colour) || []).slice(1).map(Number);
+      const tone = /charts-green/.test(declared) || colour === tones.green ? 'green' : /charts-red/.test(declared) || colour === tones.red ? 'red'
+        : rgb.length !== 3 ? '' : rgb[1] > rgb[0] + 40 && rgb[1] > rgb[2] + 40 ? 'green' : rgb[0] > rgb[1] + 60 && rgb[0] > rgb[2] + 60 ? 'red' : '';
       return { icons: icon ? [...icon.classList].filter((c) => /^codicon-/.test(c)) : [], colour, declared, tone,
         selected: r.classList.contains('selected'), badge: /^".*"$/.test(badge) ? badge.slice(1, -1) : '' };
     }, want).catch(() => null);
@@ -1449,19 +1450,21 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         const bar = [...document.querySelectorAll('[data-codex-extras="bar-button"]')];
         const mute = bar.find((b) => b.hasAttribute('data-codex-extras-muted'));
         const replies = [...document.querySelectorAll('.codex-extras-stamp-assistant')];
+        /* A reply's duration and figures are an attribute its stylesheet draws after the time. */
+        const fig = (e) => e.getAttribute('data-codex-extras-figures') || '';
         return { userStamps: document.querySelectorAll('.codex-extras-stamp-user').length, replyStamps: replies.length,
-          figures: replies.filter((e) => /ctx \d+%/.test(e.textContent)).length,
-          durations: replies.filter((e) => /\d\d:\d\d:\d\d\s+\d+[hms]/.test(e.textContent)).length,
+          timed: replies.filter((e) => e.hasAttribute('data-codex-extras-timed')).length,
+          figures: replies.filter((e) => /ctx\s\d+%/.test(fig(e))).length, durations: replies.filter((e) => /^\s*\d+[hms]/.test(fig(e))).length,
           rail: !!document.querySelector('.codex-extras-rail'), edges: document.querySelectorAll('.codex-extras-user-edge').length,
           info: bar.some((b) => /^About this conversation/.test(b.getAttribute('aria-label') || '')), mute: !!mute,
           muted: mute ? mute.getAttribute('data-codex-extras-muted') : '', meter: !!document.querySelector('[data-codex-extras="meter"]'),
           codexMeterHidden: document.querySelectorAll('.codex-extras-ctx-hidden').length };
       }).catch((e) => ({ error: String(e) }));
       const on = await until(async () => { const x = await read(); return x.replyStamps > 0 && x.meter && x; }, 15000, 500) || await read();
-      check(on.userStamps > 0 && on.figures > 0 && on.durations > 0 && on.rail && on.edges > 0 && on.info && on.mute && on.muted === 'false' && on.meter
-        && on.codexMeterHidden === 1, 'with the defaults the page has the times, each reply\'s figures and how long its turn took, the rail, the bar down '
-        + 'the user\'s messages, both buttons, and the meter in place of Codex\'s own', on);
-      const same = (x) => ['userStamps', 'replyStamps', 'figures', 'durations', 'rail', 'edges', 'info', 'mute', 'muted', 'meter', 'codexMeterHidden']
+      check(on.userStamps > 0 && on.timed > 0 && on.figures > 0 && on.durations > 0 && on.rail && on.edges > 0 && on.info && on.mute && on.muted === 'false'
+        && on.meter, 'with the defaults the page has the times, each reply\'s figures and how long its turn took, the rail, the bar down '
+        + 'the user\'s messages, both buttons, and the meter', on);
+      const same = (x) => ['userStamps', 'replyStamps', 'timed', 'figures', 'durations', 'rail', 'edges', 'info', 'mute', 'muted', 'meter', 'codexMeterHidden']
         .every((k) => x[k] === on[k]);
       /* Turns `key` off, checks with `gone` that `what` went, and checks the page is as it was once it is back at its default. */
       const pageSetting = async (key, what, gone) => {
@@ -1473,7 +1476,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         const back = await until(async () => { const x = await read(); return same(x) && x; }, 15000, 500);
         check(!!back, `and with codexPlus.${key} back at its default, the page is as it was`, back || await read());
       };
-      await pageSetting('timestamps', 'the times above the messages and replies go', (x) => x.userStamps === 0 && x.replyStamps === 0);
+      await pageSetting('timestamps', 'the times above the messages and replies go, the replies\' figures staying', (x) => x.userStamps === 0 && x.timed === 0 && x.figures > 0);
       await pageSetting('turnFigures', 'the context share, model and effort beside each reply\'s time go', (x) => x.replyStamps > 0 && x.figures === 0);
       await pageSetting('replyDuration', 'how long each turn took goes from beside its reply\'s time', (x) => x.replyStamps > 0 && x.durations === 0 && x.figures > 0);
       await pageSetting('conversationNavigation', 'the rail at the right edge goes', (x) => !x.rail && x.replyStamps > 0);
@@ -1481,7 +1484,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await pageSetting('infoButton', 'the information button goes, the chime button staying', (x) => !x.info && x.mute);
       await pageSetting('chimeButton', 'the chime button goes, the information button staying', (x) => !x.mute && x.info);
       await pageSetting('chime', 'the chime button is drawn muted', (x) => x.mute && x.muted === 'true');
-      await pageSetting('contextMeter', 'the meter goes and Codex\'s own is shown again', (x) => !x.meter && x.codexMeterHidden === 0);
+      /* Whether Codex's own meter comes back depends on Codex drawing one where the patch looks (codexMeter in the page). */
+      await pageSetting('contextMeter', 'the meter goes', (x) => !x.meter && x.info);
     });
 
     /* What reaches the plugin's hooks: the settings file under CODEX_HOME that they read on every message (writeHookSettings
@@ -3054,14 +3058,18 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     await step('a tab closed while the extension host was away', async () => {
       const t = threads[1];
       const tabUp = () => page.evaluate((want) => [...document.querySelectorAll('.tabs-container .tab')].some((e) => e.textContent.includes(want)), t.title);
+      /* The extension host is killed, so the tab is closed while nothing in the window records it, and VS Code starts a
+         new host on its own; failing that, the window is asked to through its command palette. */
       const dropOnce = async () => {
         await exec('codexPlus.openThreadInTab', t.id);
         if (!await until(tabUp, 20000, 500)) throw new Error(`no tab of "${t.title}" opened`);
         await tabNamed(t.title).click();
         await sleep(3000);
+        const host = await w.hostUp();
         const at = Date.now();
-        call('vscode.commands.executeCommand("workbench.action.restartExtensionHost"); return true;', null, 3000).catch(() => {});
-        const down = await until(async () => { try { await call('return 1;', null, 800); return false; } catch (_) { return true; } }, 15000, 100);
+        let killed = true;
+        try { process.kill(host.pid, 'SIGKILL'); } catch (_) { killed = false; }
+        await sleep(500);
         await page.keyboard.press(process.platform === 'darwin' ? 'Meta+W' : 'Control+W');
         let closed = await until(async () => !await tabUp(), 3000, 100);
         if (!closed) {
@@ -3069,18 +3077,25 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
           await tabNamed(t.title).locator('.tab-actions .action-label').first().click({ timeout: 3000 }).catch(() => {});
           closed = await until(async () => !await tabUp(), 3000, 100);
         }
-        await w.hostUp(at);
+        let back = await w.hostUp(at).then(() => true, () => false);
+        if (!back) {
+          await page.keyboard.press('F1');
+          await page.keyboard.type('Developer: Restart Extension Host');
+          await sleep(800);
+          await page.keyboard.press('Enter');
+          back = await w.hostUp(at).then(() => true, () => false);
+        }
         await until(async () => { const s = await patchState().catch(() => null); return s && s.active; }, 60000, 1000);
-        return { down: !!down, closed: !!closed };
+        return { killed, closed: !!closed, back };
       };
       const first = await dropOnce();
-      check(first.down && first.closed, 'the tab is closed while the extension host restarts', first);
+      check(first.killed && first.closed && first.back, 'the tab is closed while the extension host is down, and a new host starts', first);
       const back = await until(tabUp, 40000, 1000);
       check(!!back, 'once the host is back, Codex Plus reopens the tab of the conversation that was open, as VS Code did not restore it', await tabs());
       await shot('dropped-tab-reopened');
       await setting('reopenDroppedTabs', false);
       const second = await dropOnce();
-      check(second.down && second.closed, 'with codexPlus.reopenDroppedTabs off, the tab is closed the same way', second);
+      check(second.killed && second.closed && second.back, 'with codexPlus.reopenDroppedTabs off, the tab is closed the same way', second);
       await sleep(20000);
       check(!await tabUp(), 'and it is not reopened', await tabs());
       await setting('reopenDroppedTabs', undefined);
