@@ -1179,7 +1179,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     const kept = `${title} (kept short)`;
     await look('rename-envelope-anywhere', {
       expect: `Renamed, while the reply is unread, to "✉️ ✉️ ${title} ✉️ (kept short)", with envelopes typed at the start and in the middle, the tab's title reads "${kept} ✉️": `
-        + `none of the typed envelopes is kept, and one envelope is drawn last. The conversation's rows in the session list read "${kept}" with one envelope after the title.`,
+        + `none of the typed envelopes is kept, and one envelope is drawn last. The conversation's rows in the session list, their titles cut short in the narrowed side bar, `
+        + 'each end in one envelope after the title and none inside it. (The window test checks the rows\' whole titles.)',
     }, async () => {
       await renameTo(`${ENVELOPE} ${ENVELOPE} ${title} ${ENVELOPE} (kept short)`);
       if (!await until(async () => (await labelOf(kept)) === `${kept} ${ENVELOPE}`, 20000, 500)) throw new Error(`the tab read ${JSON.stringify(await labelOf(kept))}`);
