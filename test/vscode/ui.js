@@ -1993,9 +1993,14 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       const menuWith = (item) => until(async () => { const t = await vsMenu(); return t.includes(item) && t; }, 5000, 200);
       const tabMenu = async (name, item) => {
         if (!await labelOf(name)) throw new Error(`no tab is titled "${name}": ${JSON.stringify(await tabs())}`);
-        await tabNamed(name).click();
-        await tabNamed(name).click({ button: 'right' });
-        let where = await menuWith(item);
+        let where = '';
+        /* A right-click on a tab has opened no menu now and then on Linux runs too, so it is tried a few times. */
+        for (let attempt = 0; attempt < 3 && !where; attempt++) {
+          if (attempt) { await page.keyboard.press('Escape'); await page.mouse.move(5, 5); await sleep(500); }
+          await tabNamed(name).click();
+          await tabNamed(name).click({ button: 'right' });
+          where = await menuWith(item);
+        }
         if (!where) {
           await page.keyboard.press('Escape');
           const f = await frontPage();
