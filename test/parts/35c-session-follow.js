@@ -90,6 +90,38 @@ module.exports = async ({ eq, tmp, root }) => {
     await control.state.handlers['codexPlus.renameThread']({ webview: 'codexPlus.sessions', webviewSection: 'thread', threadId: made[1].id });
     eq(page.posted.filter((x) => x.type === 'startRename'), [{ type: 'startRename', id: made[1].id }],
       'Rename from a row\'s right-click menu edits that row\'s title, even with other rows selected too');
+
+    /* ── the row drawn as the current one follows the tab in front, through the extension's own wiring ── */
+    const patching = require(path.join(root, 'src', 'patching'));
+    const frontSent = async () => {
+      await tick(150);
+      const models = page.posted.filter((x) => x.type === 'model');
+      return models.length ? models[models.length - 1].model.front : null;
+    };
+    const notes = control.fileTab(path.join(home, 'notes.txt'));
+    control.setTabs([control.codexTab(made[0].id), notes], 0);
+    control.fireTabs();
+    eq(await frontSent(), made[0].id, 'with a tab whose URI names a conversation in front, the page is told that conversation is the current one');
+    const provider = { sendMessageToPanel() {}, postMessageToWebview() {}, navigateToRoute() {} };
+    const panel = { webview: { name: 'new tab' }, title: 'Codex', visible: true, viewColumn: 1, active: true, iconPath: null,
+      reveal() {}, onDidDispose(fn) { this.dispose = fn; } };
+    const newTab = (label) => ({ label, input: new vscode.TabInputCustom(vscode.Uri.from({ scheme: 'openai-codex', authority: 'route',
+      path: '/extension/panel/new', fragment: 'new-1' }), 'chatgpt.conversationEditor') });
+    globalThis.__codexExtrasPanel(panel, null, provider, '/extension/panel/new');
+    control.setTabs([control.codexTab(made[0].id), newTab('Codex'), notes], 1);
+    control.fireTabs();
+    eq(await frontSent(), '', 'a New tab with no conversation yet in front: no row is the current one');
+    globalThis.__codexExtrasAppServer('notification', { method: 'turn/started', params: { threadId: made[1].id, turn: { id: 'turn-front-1' } } });
+    globalThis.__codexExtrasMessage(panel.webview, { type: 'codex-extras', kind: 'turnShown', turn: 'turn-front-1' }, provider);
+    await patching.refreshPanels();
+    control.setTabs([control.codexTab(made[0].id), newTab(panel.title), notes], 1);
+    control.fireTabs();
+    eq([panel.title, await frontSent()], ['Also kept', made[1].id],
+      'once the New tab\'s page shows a turn of a conversation, the tab is titled by it and its row is the current one');
+    control.setTabs([control.codexTab(made[0].id), newTab(panel.title), notes], 2);
+    control.fireTabs();
+    eq(await frontSent(), '', 'and with a text file in front and Codex\'s sidebar showing nothing, no row is');
+    panel.dispose();
   } finally {
     for (const d of subs) { try { d.dispose(); } catch (_) { /* gone */ } }
     ext.deactivate();
