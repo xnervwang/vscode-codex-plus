@@ -647,7 +647,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
 
     /* ═══ the session list ═══ */
     await look('session-list', {
-      expect: 'The Codex Plus side bar shows the Codex sessions view. From the top: an "Account & usage" section, an "Open sessions" section listing the conversation just started in a tab, '
+      expect: 'The Codex Plus side bar shows the Codex sessions view. From the top: an "Open sessions" section listing the conversation just started in a tab (there is no "Account & usage" section, since the made-up provider has no account; the next step is about that), '
         + 'a session manager with "New in tab" and "New in sidebar" side by side (each with a plus icon), a filter row (a funnel, "Active · N", a search icon and "New group"), '
         + 'and an "Ungrouped" group with four conversations: the one just started and the three made-up ones, "Can you find where the retry delay for the inventory sync is set?", '
         + '"Why does the nightly export skip archived rows?" and "Add a dry-run flag to the cleanup script". Each row has its title and at the right how long ago it was used with its first and last day, as "1m · 11/20→11/21"; none of these conversations is running or waiting, so no row has a dot, and each title starts at the row\'s left padding. '
