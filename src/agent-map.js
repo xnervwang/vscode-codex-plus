@@ -6,11 +6,10 @@
 /*
  * Builds the Agent map for one Codex conversation: the dialog Claude Code opens from its "N agents" button, plus the
  * timers Claude Code Plus adds to it. Here it lists the conversation's wake-up (src/wakeup.js), its goal, the
- * sub-agents it started, and everything it or they started that still runs (src/left-running.js): detached commands,
- * background terminals, codex exec runs, claude -p workers and claude --bg sessions, so the user can see why its dot is
- * green. Everything comes from the in-memory snapshot (src/codex-reader.js) and the last scan for work left running;
- * nothing here touches the disk. The page script draws the button and the dialog (src/page/codex-extras-page.js) and
- * shows the button only while `shown` is true.
+ * sub-agents it started, and the work still running that it or a sub-agent started (src/left-running.js): detached
+ * commands, background terminals, codex exec runs, claude -p workers and claude --bg sessions, so the user can see why
+ * its dot is green. Everything comes from the in-memory snapshot (src/codex-reader.js) and the last scan for work left
+ * running; nothing here touches the disk. The page script draws the button and the dialog (src/page/codex-extras-page.js).
  *
  * A sub-agent's dot is its own activity, as on the tabs and in the session list: working, background (only work it
  * started is left), waiting (for the user) or stopped, and unknown while its rollout has not been read. `unseen` marks
@@ -24,10 +23,7 @@ const dotOf = (c) => (!c ? 'unknown' : DOTS.has(c.activity) ? c.activity : 'stop
 
 /*
  * `reader` is the snapshot. `stateOf(id)` returns a thread's state as computed by threadState in src/codex-source.js,
- * or null when its rollout has not been read. For the conversation and its sub-agents, `detached(id)` lists the
- * detached commands still running (detachedOf), `left(id)` names the kinds of work still running (leftOf) and
- * `running(id)` lists that work besides the sub-agents and the detached commands (runningOf). `envelope` is the
- * character src/envelope.js picks for the theme.
+ * or null when its rollout has not been read. `envelope` is the character src/envelope.js picks for the theme.
  */
 function mapOf(thread, { reader, stateOf = () => null, detached = () => [], left = () => [], running = () => [], envelope = '' }) {
   const w = thread ? reader.wakeup(thread) : null;

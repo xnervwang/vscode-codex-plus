@@ -4,10 +4,9 @@
 
 'use strict';
 /*
- * The Agent map lists everything a conversation started that is still running, not only its sub-agents and detached
- * commands: a background terminal, a codex exec, a claude -p worker and a claude --bg session too, and any one of them
- * running is enough for the pill. A sub-agent's dot is its own activity, as on the tabs and in the session list, and an
- * unread reply adds the envelope. The session list draws a sub-agent row by its nickname, with that same dot.
+ * The Agent map lists every kind of work a conversation left running, not only its sub-agents and detached commands,
+ * and any one of them is enough to show the pill. Each sub-agent carries its own activity and whether its reply is
+ * unread. The session list draws a sub-agent row by its nickname.
  *
  * The page is covered by test/parts/61f-agent-map-work-page.js.
  */
@@ -59,7 +58,7 @@ module.exports = async ({ eq, root }) => {
   eq([mapOf(B, { reader, left: () => [] }).shown, mapOf(B, { reader, left: () => ['subagent'] }).kinds, NO_MAP.background, NO_MAP.kinds],
     [false, [], [], []], 'with nothing running and nothing else to show there is no pill');
 
-  /* ── the source: the kinds, the work and a sub-agent's unread reply ── */
+  /* ── the source ── */
   {
     const { createCodexSource } = require('../../src/codex-source');
     const { createSeen } = require('../../src/seen');
@@ -105,7 +104,7 @@ module.exports = async ({ eq, root }) => {
     } finally { source.dispose(); }
   }
 
-  /* ── the extension hands those to the map ── */
+  /* ── extension.js ── */
   const ext = fs.readFileSync(path.join(root, 'extension.js'), 'utf8');
   eq([/left: \(id\) => source\.leftOf\(id\)/.test(ext), /running: \(id\) => source\.runningOf\(id\)/.test(ext), /envelope: envelope\(vscode\)/.test(ext)],
     [true, true, true], 'the extension builds each page\'s map with the kinds, the work and the envelope');

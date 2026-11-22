@@ -470,8 +470,8 @@ async function activate(context) {
     /* A goal changed, by a command here, by the model or by Codex itself: the list reads the goals database again. */
     if (m.startsWith('thread/goal/')) source._poll();
   }));
-  /* The Agent map in each Codex page (src/agent-map.js) is built from the snapshot and the last scan for work left
-     running. Its goal buttons run the commands of the same name, and Remove deletes the wake-up through src/wakeup.js. */
+  /* The Agent map's goal buttons run the commands of the same name, and its Remove deletes the wake-up through
+     src/wakeup.js. */
   const agentMap = (thread) => agentMaps.mapOf(thread, { reader, stateOf: (id) => source.threadState(id), detached: (id) => source.detachedOf(id),
     left: (id) => source.leftOf(id), running: (id) => source.runningOf(id), envelope: envelope(vscode) });
   const agentMapAct = async (thread, action, id) => {

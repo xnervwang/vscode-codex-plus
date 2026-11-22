@@ -22,11 +22,10 @@
  *   left running a conversation stays green, on its tab and in the session list, until the work its turn started is
  *                done: a background command, a sub-agent, and on Linux a detached shell, a program run under setsid, a
  *                codex exec, a claude -p worker and a claude --bg session, as a green ring. The ones on Linux need
- *                Codex's approval to run outside its sandbox, and the tab shows the red dot until it is given. Each one
- *                gives the Agent map pill a green dot, is counted on it and is listed in its dialog with a green dot. With
+ *                Codex's approval to run outside its sandbox, and the tab shows the red dot until it is given. With
  *                background threads listed, the sub-agent's row has its nickname and its dot. Once the shell or the
- *                program stops, the conversation gets a notice. The two Claude Code ones are stand-ins that write the
- *                session record Claude Code writes, since a real one would call a model
+ *                program stops, the conversation gets a notice. The two Claude Code ones are stand-ins, since a real
+ *                one would call a model
  *   images       a reply's images: a PNG and an SVG by absolute path, a file:// URL and a data: URL drawn, an image at
  *                a web address shown as a plain link; with codexPlus.replyImages off the others are "[Image]", and
  *                drawn again once it is back on. What the model is told is left to the hook's own self-test, since
@@ -979,7 +978,6 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       };
       const pillText = () => codex.evaluate(() => ((document.querySelector('[data-codex-extras="agents"]') || {}).textContent || ''))
         .catch(() => '');
-      /* The Agent map pill's dot and label, and what its dialog lists, read with the dialog opened and closed again. */
       const pillNow = () => codex.evaluate(() => {
         const p = document.querySelector('[data-codex-extras="agents"]');
         const d = p && p.querySelector('[data-codex-extras-dot]');
@@ -1089,8 +1087,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
             steps: [outside(`setsid nohup '${bin}' exec --skip-git-repo-check 'Wait for the job.' >/dev/null 2>&1 &`), { reply: 'Started a worker.' }],
             map: { text: /\b1 codex exec\b/, listed: (r) => r.work.some((x) => x.kind === 'codexExec' && green(x) && /exec --skip-git-repo-check/.test(x.text)) } });
         }
-        /* Claude Code is not run here, since it would call a model. These stand-ins write the session record Claude Code
-           keeps for a running process, which is what Codex Plus reads, under this window's own HOME. */
+        /* The stand-ins write the session record Claude Code keeps for a running process, which is what Codex Plus
+           reads, under this window's own HOME. */
         const fakeBin = path.join(profile.home, 'fake-claude');
         fs.mkdirSync(fakeBin, { recursive: true });
         const fakeClaude = path.join(fakeBin, 'claude'), fakeSession = path.join(fakeBin, 'claude-bg-session');

@@ -543,9 +543,9 @@
    * The Agent map: a copy of Claude Code's dialog of that name and of the "N agents" pill that opens it, with Claude
    * Code Plus's timers added. It shows this conversation's wake-up, goal and sub-agents, and the work it started that
    * still runs, which the host sends (codex-extras-agent-map, src/agent-map.js) whenever they change. The pill sits in
-   * the row with the other controls while any of those is there. Its dot is green while any of that work runs, red while
-   * a sub-agent waits for the user, and grey once it has all ended. The dialog is built when it opens and removed when
-   * it closes. Each button posts one of the host's ACTIONS; Open also posts the sub-agent's id.
+   * the row with the other controls whenever there is something to show. Its dot is green while any of that work runs,
+   * red while a sub-agent waits for the user, and grey once it has all ended. The dialog is built when it opens and
+   * removed when it closes. Each button posts one of the host's ACTIONS; Open also posts the sub-agent's id.
    */
   var agentMap = null, agentsBtn = null, mapBox = null, mapKeysWired = false;
   var Z_MAP = 28;
@@ -566,7 +566,8 @@
   var WORK = ['command', 'codexExec', 'claudeWorker', 'claudeBg'];
   var WORK_WORD = { command: ['terminal', 'terminals', 'Background terminal'], codexExec: ['codex exec', 'codex exec', 'codex exec'],
     claudeWorker: ['claude -p', 'claude -p', 'claude -p'], claudeBg: ['claude --bg', 'claude --bg', 'claude --bg'] };
-  /* What the dialog says for work the host knows runs but could not list, as a window without /proc knows Codex's. */
+  /* The dialog's line for a kind of work the host knows is running but has no entries for, as with Codex's background
+     terminals in a window without /proc. */
   var WORK_BARE = { detached: 'A command it detached is still running', command: 'A background terminal is still running',
     codexExec: 'A codex exec it started is still running', claudeWorker: 'A claude -p worker it started is still running',
     claudeBg: 'A claude --bg session it started is still busy' };
@@ -598,7 +599,7 @@
     return busy ? 'working' : 'idle';
   }
   /* Its label as Claude Code Plus writes it: "2 agents · 1 detached · 1 timer", each part only when there is one, and the
-     running work before the timers. A kind the host knows runs but could not count is named without a number. */
+     running work before the timers. */
   function pillText(m) {
     var parts = [];
     if (m.agents.length) parts.push(plural(m.agents.length, 'agent'));
@@ -770,15 +771,13 @@
     }
     return out;
   }
-  /* A command line, cut to 120 characters with the whole of it on hover. */
+  /* A command line cut to 120 characters, shown whole on hover. */
   function cmdLine(text, indent) {
     var cmd = mk('div', 'min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--vscode-editor-font-family,monospace);'
       + 'font-size:.92em;' + indent, text.length > 120 ? text.slice(0, 119) + '…' : text);
     cmd.setAttribute('title', text);
     return cmd;
   }
-  /* Under a row, lined up with the text after its dot: its job id when it has one, its pid when it has one, and when it
-     started. */
   function metaLine(d, first) {
     var age = d.startMs ? kit.age(d.startMs) : '';
     var parts = first.slice();
@@ -786,7 +785,6 @@
     if (d.startMs) parts.push('started ' + kit.stamp(d.startMs, false) + (age === 'now' ? ', just now' : ', ' + age + ' ago'));
     return mk('div', 'color:' + DIM + ';padding-left:14px;', parts.join(' · '));
   }
-  /* One piece of work: what it is, with the name Claude Code gave a claude session, then its command line. */
   function workRow(w) {
     var row = mk('div', 'margin:5px 0;');
     row.setAttribute(MARK, 'map-bg');

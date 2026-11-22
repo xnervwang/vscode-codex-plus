@@ -138,7 +138,7 @@ svg.cp-icon.cp-grid24 { stroke-width: 2.1; }
 .cp-dot.d-background { border: 2px solid #22c55e; }
 .cp-dot.d-waiting { background: #ef4444; }
 .cp-dot.d-none, .cp-dot.d-unknown { display: none; }
-/* A sub-agent row keeps the dot's room when it has none, so it still stands indented under its parent's title. */
+/* A sub-agent row without a dot keeps the space for one, so it still stands indented under its parent's title. */
 .cp-row.cp-child .cp-dot.d-none, .cp-row.cp-child .cp-dot.d-unknown { display: block; visibility: hidden; }
 .cp-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--vscode-foreground); }
 /* The unread envelope sits outside the title, so the title's ellipsis never takes it. */

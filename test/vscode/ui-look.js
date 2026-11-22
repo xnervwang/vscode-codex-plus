@@ -1289,7 +1289,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     await until(async () => !(((await dotsOn(title)) || {}).working >= 6), 60000, 1000);
     model.script(null);
 
-    /* ═══ work left running besides sub-agents and detached commands: a background terminal and a codex exec ═══ */
+    /* ═══ a background terminal and a codex exec left running ═══ */
     {
       const ext = fs.readdirSync(profile.exts).find((d) => d.startsWith('openai.chatgpt-'));
       const bin = ext && process.platform === 'linux' ? codexBinary(path.join(profile.exts, ext)) : '';
@@ -1297,8 +1297,9 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         expect: 'After a turn that left a background terminal ("sleep 60") and a codex exec running, the Agent map pill in the message box\'s toolbar has a solid green dot and reads "1 agent · 1 terminal · 1 codex exec · 1 timer": the sub-agent of the step before, which has stopped, the two pieces of work, and the wake-up.',
       }, async () => {
         if (!bin) throw new Error('a codex exec is started only on Linux, with the Codex extension\'s own codex program');
-        /* A script answers whatever request of the conversation comes next, so the step waits until the conversation has
-           sent none for a few seconds; a request the previous step left in flight would otherwise take the first call. */
+        /* The made-up model answers the conversation's next request with the script, so the step waits until the
+           conversation has sent none for a few seconds; otherwise a request the previous step left in flight would take
+           the script's first call. */
         const asked = () => model.seen.filter((r) => r.thread === t0.id).length;
         let was = -1;
         await until(() => { const k = asked(); const still = k === was; was = k; return still; }, 30000, 3000);

@@ -538,11 +538,10 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
       const unread = new Set(seen.unread(id, endedOf(id)) ? [id] : []);
       return conversationOf(t, { unread, openHere: new Set(), state: st, waiting: waitingOn(id), heard: heardOf(id), left: leftOf(id) });
     },
-    /* The kinds still running for `id` and its sub-agents, in KINDS order (src/left-running.js). */
     leftOf: (id) => (id ? leftOf(id) : []),
     /*
-     * The work besides sub-agents and detached commands still running for `id` and its sub-agents, oldest first, as
-     * { thread, kind, pid, start, startMs, cmd, name, session, job }. A conversation's background terminals are the ones
+     * The entries of kind command, codexExec, claudeWorker and claudeBg still running for `id` and its sub-agents,
+     * oldest first, as { thread, kind, pid, start, startMs, cmd, name, session, job }. A conversation's background terminals are the ones
      * this window's Codex reports, by the command the model gave, wherever it reports any; elsewhere the processes the
      * scan found under Codex. A terminal of this window has no pid.
      */

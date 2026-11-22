@@ -37,7 +37,7 @@
  * Threads Codex started by itself - sub-agents, the reviews of approval requests - and `codex exec` runs are left out
  * unless codexPlus.hideBackgroundSessions is off, when they are listed with the rest. A sub-agent whose parent is listed
  * is then drawn indented straight after its parent, in every group that shows the parent. A sub-agent is titled by its
- * nickname, else its title, as the Agent map names it, and its dot is its own activity.
+ * nickname, else its title, as in the Agent map. Its dot shows its own activity.
  */
 const { folderTest } = require('./folders');
 const { PINNED_SECTION } = require('./session-groups');

@@ -30,8 +30,8 @@
  * holder processes mfns-holder, not bash.
  *
  * The top process of each detached tree is also listed (`detached` in the scan), and so is every other process counted
- * and every busy claude --bg session (`running`), with the name Claude Code's record gives a claude session. The Agent
- * map shows both lists, and src/detached-ends.js tells the conversation when a detached one is gone.
+ * and every busy claude --bg session (`running`). The Agent map shows both lists, and src/detached-ends.js tells the
+ * conversation when a detached one is gone.
  *
  * Without /proc only the claude --bg launches are found; src/codex-source.js then falls back on what the rollout says
  * of Codex's own background commands.
@@ -138,7 +138,6 @@ function readRecords(dir = sessionsHome(), { proc = '/proc', procs = null } = {}
 /* A `claude -p` worker's record names an entrypoint starting sdk-; an idle one is waiting for input. */
 const isWorker = (d) => /^sdk-/.test(d.entrypoint || '') && d.kind !== 'bg' && d.status !== 'idle';
 
-/* What a claude session's record calls it, as the listed work carries it. */
 const recordName = (d) => (typeof d.name === 'string' ? d.name.slice(0, NAME_MAX) : '');
 const recordSession = (d) => (typeof d.sessionId === 'string' && THREAD_ID.test(d.sessionId) ? d.sessionId : '');
 const NAME_MAX = 200;
@@ -216,8 +215,8 @@ function snapshot({ proc = '/proc', records = [], procs = null, environs = null 
     return id;
   };
   const argvOf = (pid) => { const a = read(path.join(proc, String(pid), 'cmdline'), 'latin1'); return a ? a.split('\0') : []; };
-  /* pid -> thread id of each detached process counted, and the other processes counted as [pid, thread id, kind, the
-     claude -p record or null]. */
+  /* `counted`: pid -> thread id for the detached processes. `others`: [pid, thread id, kind, claude -p record or null]
+     for the rest. */
   const counted = new Map();
   const others = [];
   for (const [pid, p] of all) {
@@ -263,11 +262,11 @@ function bootMs(proc) {
   const m = /^btime (\d+)$/m.exec(read(path.join(proc, 'stat'), 'latin1') || '');
   return m ? Number(m[1]) * 1000 : 0;
 }
-/* The longest command line kept for a process listed; the Agent map shows less. */
+/* Command lines are cut to this length when a process is listed; the Agent map shows less. */
 const CMD_MAX = 1000;
 const startMsOf = (p, boot) => (boot && p ? Math.round(boot + (Number(p.start) / TICKS) * 1000) : 0);
-/* A process listed: its pid, the stat file's start (kept with the pid against its reuse), that start in ms, and its
-   command line. */
+/* A process listed: its pid, its start from the stat file and in ms, and its command line. The start goes with the pid
+   because pids are reused. */
 function describe(pid, all, boot, argvOf) {
   const p = all.get(pid);
   return { pid, start: String(p.start), startMs: startMsOf(p, boot),
@@ -410,9 +409,9 @@ function writeShared(file, text) {
 }
 
 /*
- * The /proc part of a scan, { available, threads: { [thread id]: [kinds] }, bg: [busy claude --bg sessions, as busyBg()
- * lists them], detached and running: [as snapshot() lists them] }. It is another window's scan when `share` holds one
- * fresh enough at `now`.
+ * The /proc part of a scan, { available, threads: { [thread id]: [kinds] }, bg, detached, running }, where bg is
+ * busyBg()'s list and detached and running are snapshot()'s. It is another window's scan when `share` holds one written
+ * less than SHARE_MS before `now`.
  */
 function scan({ proc = '/proc', sessionsDir, share = '', environs = null, now = Date.now() } = {}) {
   const sessions = path.resolve(sessionsDir || sessionsHome());
@@ -440,10 +439,9 @@ function scan({ proc = '/proc', sessionsDir, share = '', environs = null, now = 
 
 /*
  * One scan of `threads`, the recent threads the worker passes in, as [{ id, rollout }].
- * Returns { available, threads: { [thread id]: [kinds] }, detached, running }, where `running` adds to the scan's list
- * each busy claude --bg session under the conversation that launched it. `cache` keeps how far each rollout has been read
- * for launches; rollouts no longer passed in are dropped from it. `environs`, `share` and `now` are those of snapshot()
- * and scan().
+ * Returns the scan without `bg`: each busy claude --bg session is added under the conversation that launched it, as
+ * the kind claudeBg and as an entry of `running`. `cache` keeps how far each rollout has been read for launches;
+ * rollouts no longer passed in are dropped from it.
  */
 function leftRunning({ threads = [], proc = '/proc', sessionsDir, cache = new Map(), environs = null, share = '', now = Date.now() } = {}) {
   const found = scan({ proc, sessionsDir, share, environs, now });

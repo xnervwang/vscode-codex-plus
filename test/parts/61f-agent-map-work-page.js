@@ -4,11 +4,10 @@
 
 'use strict';
 /*
- * The Agent map's pill and dialog in Codex's page (src/page/codex-extras-page.js) for work a conversation left running,
- * on the stand-in DOM. The pill is green while any of that work runs, red while a sub-agent waits for the user, and
- * grey once it has all ended; its label counts each kind as Claude Code Plus counts its own. The dialog lists that work
- * with a green dot for each item, and draws each sub-agent's dot from its own activity, with the envelope after the
- * name for an unread reply. The host's side is test/parts/35x-agent-map-work.js.
+ * The Agent map's pill and dialog in Codex's page (src/page/codex-extras-page.js), on the stand-in DOM. The pill is green
+ * while anything the conversation started still runs, red while a sub-agent waits for the user, and grey once it has
+ * all ended; its label has one count per kind. The dialog gives each item of that work a green dot. The host's side is
+ * test/parts/35x-agent-map-work.js.
  */
 const path = require('path');
 const vm = require('vm');
@@ -59,7 +58,7 @@ module.exports = async ({ eq, root }) => {
   const pillDot = () => { const d = pill() && pill().querySelectorAll('[data-codex-extras-dot]')[0]; return d ? d.getAttribute('data-codex-extras-dot') : ''; };
   const look = () => [!!pill(), pillDot(), pill() ? pill().textContent : ''];
 
-  /* ── the pill, for each kind running alone ── */
+  /* ── each kind alone ── */
   p.send(map({ detached: [job], kinds: ['detached'] }));
   eq(look(), [true, 'working', '1 detached'], 'a detached command alone shows the pill with a green dot');
   const cases = [

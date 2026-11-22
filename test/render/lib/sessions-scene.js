@@ -374,7 +374,7 @@ async function run({ env, check, shots, out, results }) {
     /* Claude Code's values, with --app-menu-* resolved through the Dark Modern colours of harness/vscode-stub.js. */
     const CC = { radius: '6px', border: '1px solid rgb(69, 69, 69)', padding: '2px 0px 2px 0px', minWidth: '140px', shadow: 'rgba(0, 0, 0, 0.15) 0px 2px 8px 0px',
       bg: 'rgb(31, 31, 31)', zIndex: '1000', position: 'fixed', itemPadding: '6px 12px 6px 12px', fontSize: '13px', color: 'rgb(204, 204, 204)',
-      /* Claude Code's items stop at 280 px; ours are 360 so the longest, Codex Plus: Start New Session in This Group, is whole. */
+      /* Claude Code's items stop at 280 px; ours go to 360 so that our longest item fits on one line. */
       maxWidth: '360px' };
     const looks = (m) => !!m && m.radius === CC.radius && m.border === CC.border && m.padding === CC.padding && m.minWidth === CC.minWidth
       && m.shadow === CC.shadow && m.bg === CC.bg && m.zIndex === CC.zIndex && m.position === CC.position && !!m.item && m.item.padding === CC.itemPadding
