@@ -1521,6 +1521,11 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       check(!!await until(() => model.turns() > turns, 20000, 300), `${how}: its first message reaches the made-up model`, model.seen.slice(-3));
       const id = await until(() => rolloutWith(text), 20000, 500);
       const named = await until(async () => { const t = await frontTab(); return t && bare(t.label).startsWith(text.slice(0, 20)) && t; }, 30000, 500);
+      if (!named && await f.evaluate(() => /hit a snag/i.test(document.body.innerText)).catch(() => false)) {
+        model.release();
+        note(`${how}: Codex's own page failed after the first message ("ChatGPT hit a snag"), so there was no conversation page to follow; not checked on ${process.platform}`);
+        return null;
+      }
       check(!!id && !!named, `${how}: while that turn runs, the tab is titled by the conversation Codex made of the message`,
         { thread: id, tab: await frontTab(), patch: await panelTrace() });
       check(!!id && !!await until(() => agentFront() === `codex ${id}`, 15000, 500), `${how}: and Agent Plus has that conversation in front`, { thread: id, agentPlus: agentFront() });
@@ -1971,7 +1976,14 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await typeInRow(second);
       await renamedTo(second, 'renamed from its row\'s right-click menu');
       /* The conversation tab's menu, or its page's menu when the tab's menu has no Codex Plus item. */
-      const vsMenu = () => page.evaluate(() => { const m = [...document.querySelectorAll('.context-view .monaco-menu')].find((e) => e.offsetParent); return m ? m.innerText : ''; });
+      /* A locator rather than document.querySelectorAll, since a locator also finds a menu drawn inside a shadow root. */
+      const vsMenu = async () => {
+        const menus = page.locator('.context-view .monaco-menu');
+        for (let i = 0, n = await menus.count().catch(() => 0); i < n; i++) {
+          if (await menus.nth(i).isVisible().catch(() => false)) return (await menus.nth(i).innerText().catch(() => '')) || '';
+        }
+        return '';
+      };
       const menuWith = (item) => until(async () => { const t = await vsMenu(); return t.includes(item) && t; }, 5000, 200);
       const tabMenu = async (name, item) => {
         if (!await labelOf(name)) throw new Error(`no tab is titled "${name}": ${JSON.stringify(await tabs())}`);
