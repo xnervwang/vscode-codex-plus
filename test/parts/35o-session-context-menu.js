@@ -64,8 +64,22 @@ module.exports = async ({ eq, root }) => {
   'Text Color and Add to Group end in Claude Code\'s › for a submenu, and no other item does');
   posted.length = 0;
   if (item(RENAME)) item(RENAME).bubble('click');
-  eq([posted, gone(), dom.waiting() === timers], [[{ kind: 'menu', command: 'codexPlus.renameThread', context: thread(ID(4)) }], true, true],
+  eq([posted.filter((m) => m.kind === 'menu'), gone(), dom.waiting() === timers], [[{ kind: 'menu', command: 'codexPlus.renameThread', context: thread(ID(4)) }], true, true],
     'an item clicked sends its command with the row\'s context to the host, and the menu is taken off the page');
+  /* As in Claude Code Plus's list: once a menu's item has run, the row it was opened on is not left looking selected. */
+  const marked = (n) => ['cp-selected', 'cp-hl'].filter((c) => rowEl('ungrouped', n).classList.contains(c));
+  eq([marked(4), posted.filter((m) => m.kind === 'select')], [[], [{ kind: 'select', ids: [] }]],
+    'and the row that was selected only for its menu is neither selected nor highlighted any more, and the host is told the selection is empty');
+  rightClick(rowEl('ungrouped', 3));
+  clickAway();
+  eq(marked(3), [], 'a menu closed with nothing picked leaves its row unselected too');
+  rowEl('ungrouped', 3).bubble('click', { button: 0 });
+  rowEl('ungrouped', 4).bubble('click', { button: 0, ctrlKey: true });
+  rightClick(rowEl('ungrouped', 4));
+  clickAway();
+  eq([marked(3).includes('cp-selected'), marked(4).includes('cp-selected')], [true, true],
+    'while rows the user selected stay selected after a menu opened on one of them');
+  page.bubble('keydown', { key: 'Escape' });
   const withGoal = (goal) => Object.assign({}, model, { groups: model.groups.map((g) => (g.key !== 'ungrouped' ? g
     : Object.assign({}, g, { rows: g.rows.map((r) => (r.id === ID(4) ? Object.assign({}, r, { goal, goalText: `Goal (${goal}): x` }) : r)) }))) });
   const goalMenu = (goal) => {
@@ -180,6 +194,7 @@ module.exports = async ({ eq, root }) => {
   if (item(DELETE)) item(DELETE).bubble('click');
   eq(posted.filter((m) => m.kind === 'menu'), [{ kind: 'menu', command: 'codexPlus.deleteThread', context: thread(ID(4), true) }],
     'Delete sends its command with the row\'s context, and the host acts on the selection it was told of');
+  rowEl('archived', 4).bubble('click', { ctrlKey: true });
   rowEl('archived', 3).bubble('click', { ctrlKey: true });
   rightClick(rowEl('archived', 4));
   const two = deleteOf();
@@ -289,8 +304,8 @@ module.exports = async ({ eq, root }) => {
   const swallowed = [gone(), posted.length];
   rowEl('ungrouped', 3).bubble('mousedown', { button: 0 });
   rowEl('ungrouped', 3).bubble('click');
-  eq([swallowed, posted.map((m) => m.kind)], [[true, 0], ['select', 'open']],
-    'a click outside the menu only closes it, as Claude Code\'s does; the next click opens the row');
+  eq([swallowed, posted.map((m) => (m.kind === 'select' ? `select ${m.ids.length}` : m.kind))], [[true, 1], ['select 0', 'select 1', 'open']],
+    'a click outside the menu only closes it, as Claude Code\'s does, and lets go of the row it had selected; the next click opens the row');
   const closes = [];
   rightClick(rowEl('ungrouped', 4));
   if (main()) main().bubble('wheel', { deltaY: 40 });

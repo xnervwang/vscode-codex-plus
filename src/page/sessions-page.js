@@ -248,6 +248,8 @@
   let ctxRow = null;
   let selection = new Set();
   let anchor = '';
+  /* The row a menu was opened on, while that menu is open: { row, alone, pointer } (aimAt). */
+  let aimed = null;
   let shownFront = '';
   let renameGroupKey = '';
   let lastExpanded = '';
@@ -631,6 +633,7 @@
     was.box.remove();
     cm = null;
     if (had && was.back && was.back.isConnected) was.back.focus({ preventScroll: true });
+    letGoAim();
   }
   /* Runs the item `b`. An item of a submenu sends the command of the item that opened it, with what was picked. */
   function pressItem(b) {
@@ -680,10 +683,21 @@
     return true;
   }
   /* A row whose menu opens is selected alone if it was not selected, and the menu's commands act on the selection. */
-  function aimAt(r) {
+  function aimAt(r, pointer) {
     ctxRow = r;
-    if (!selection.has(r._row.id)) { anchor = r._row.id; select([r._row.id]); }
+    aimed = { row: r, alone: !selection.has(r._row.id), pointer: !!pointer };
+    if (aimed.alone) { anchor = r._row.id; select([r._row.id]); }
     highlight(r, false);
+  }
+  /* Once the menu is gone the row it was opened on no longer looks chosen, as in Claude Code Plus's list: what aimAt
+     selected only for the menu is let go, and so is the highlight a right-click gave it. A keyboard's highlight stays,
+     as the place the next key moves from. */
+  function letGoAim() {
+    const a = aimed;
+    aimed = null;
+    if (!a) return;
+    if (a.alone && selection.size === 1 && selection.has(a.row._row.id)) select([]);
+    if (a.pointer && hl === a.row) highlight(null);
   }
 
   /* ── selection ── */
@@ -880,9 +894,10 @@
     closeCtx();
     const r = e.target.closest('.cp-row');
     ctxRow = r || null;
-    if (r) aimAt(r);
+    if (r) aimAt(r, true);
     const where = r || e.target.closest('.cp-group-head');
     if (where && openFor(where, e)) e.preventDefault();
+    else letGoAim();
   });
   /* A press outside the menu closes it. As in Claude Code's menu, a left click there does nothing else, so it does not
      also open a row. */
