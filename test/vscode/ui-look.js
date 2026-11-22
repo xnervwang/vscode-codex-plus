@@ -977,15 +977,6 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       return union([await inCodex('[data-codex-extras="info"]'), await toolbar()]);
     });
     await infoButton().click().catch(() => {});
-    await look('context-meter-hover', {
-      expect: 'Resting on the context meter shows a box with the context window it uses and where that figure came from (codexPlus.contextWindow is set to 600K for this model), the tokens in use and free, where Codex compacts and how far away that is, '
-        + 'the conversation\'s input, cached input, output and reasoning tokens, the model and effort, and a line "Work plan: injected ..." saying how much the plan added.',
-    }, async () => {
-      await codex.locator('[data-codex-extras="meter"]').first().hover();
-      if (!await until(() => codex.evaluate(() => { const b = document.querySelector('[data-codex-extras="context"]'); return b && getComputedStyle(b).display !== 'none'; }), 10000, 200)) throw new Error('the meter showed no hover');
-      await sleep(600);
-      return union([await inCodex('[data-codex-extras="context"]'), await toolbar()]);
-    });
     {
       const talk = await inCodex('[data-app-action-timeline-scroll]');
       await page.mouse.move(talk ? talk.x + 30 : 3, talk ? talk.y + 15 : 300);
@@ -1197,6 +1188,21 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await toBottom();
       return bottomBox(520);
     });
+    /* After the turns above rather than with the toolbar's other steps: the meter's window is the one Codex recorded on
+       the conversation's latest turn, and the made-up turns recorded theirs before codexPlus.contextWindow was set. */
+    await look('context-meter-hover', {
+      expect: 'Resting on the context meter shows a box with the context window it uses and where that figure came from, codexPlus.contextWindow for gpt-6.1-sol set to 600K '
+        + '(a published window, which counts output, so the value Codex works with is smaller); also the tokens in use and free, where Codex compacts and how far away that is, '
+        + 'the conversation\'s input, cached input, output and reasoning tokens, the model and effort, and a line "Work plan: injected ..." saying how much the plan added.',
+    }, async () => {
+      await away();
+      await codex.locator('[data-codex-extras="meter"]').first().hover();
+      if (!await until(() => codex.evaluate(() => { const b = document.querySelector('[data-codex-extras="context"]'); return b && getComputedStyle(b).display !== 'none'; }), 10000, 200)) throw new Error('the meter showed no hover');
+      await sleep(600);
+      tell(`the window Codex recorded on the conversation's latest turn: ${windowOf(t0.id)}`);
+      return union([await inCodex('[data-codex-extras="context"]'), await toolbar()]);
+    });
+    await away();
 
     /* ═══ work left running after a turn ═══ */
     await look('left-running-command', {
