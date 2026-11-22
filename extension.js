@@ -583,7 +583,21 @@ function registerCommands(context, { source, memory, sessionsModel, sessionsView
   const reg = (name, fn) => context.subscriptions.push(vscode.commands.registerCommand(`${CONFIG}.${name}`, fn));
   /* A conversation as a command is given it: its id, the context of a session list row, or Agent Plus's. */
   const threadArg = (arg) => (typeof arg === 'string' ? arg : arg && typeof arg.threadId === 'string' ? arg.threadId
-    : arg && arg.thread ? arg.thread.id : arg && arg.sessionId) || '';
+    : arg && arg.thread ? arg.thread.id : arg && arg.sessionId) || tabThread(arg);
+  /* A tab's own right-click menu passes the URI of the tab right-clicked, which need not be the one in front: its
+     conversation, as Agent Plus is told it, or '' for a URI that is not a Codex tab's. */
+  const tabThread = (uri) => {
+    if (!uri || typeof uri.scheme !== 'string' || typeof uri.path !== 'string') return '';
+    const key = String(uri);
+    for (const g of vscode.window.tabGroups.all || []) {
+      for (const tab of g.tabs || []) {
+        if (!tab.input || !tab.input.uri || String(tab.input.uri) !== key) continue;
+        const id = source.sessionForTab(tab);
+        return typeof id === 'string' ? id : '';
+      }
+    }
+    return '';
+  };
   /* Whether a command came from the session list's own right-click menu. */
   const fromList = (arg) => !!(arg && arg.webview === 'codexPlus.sessions');
   const restricted = () => {
@@ -809,7 +823,7 @@ function registerCommands(context, { source, memory, sessionsModel, sessionsView
       ? selected.map(threadArg) : [threadArg(arg)];
     return [...new Set(ids.filter(Boolean))];
   };
-  /* A conversation tab's own right-click menu names no conversation: it is the one in the tab in front. */
+  /* The menu of a conversation's page names no conversation: it is the one in the tab in front. */
   const inFront = () => {
     const tab = (vscode.window.tabGroups.activeTabGroup || {}).activeTab;
     const id = tab ? source.sessionForTab(tab) : null;

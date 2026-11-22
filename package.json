@@ -316,6 +316,23 @@
           "group": "navigation"
         }
       ],
+      "editor/title/context": [
+        {
+          "command": "codexPlus.markThreadUnread",
+          "when": "resourceScheme == 'openai-codex'",
+          "group": "codexPlus@1"
+        },
+        {
+          "command": "codexPlus.renameThread",
+          "when": "resourceScheme == 'openai-codex'",
+          "group": "codexPlus@2"
+        },
+        {
+          "command": "codexPlus.moveThreadToSection",
+          "when": "resourceScheme == 'openai-codex' && !codexPlus.noGroups",
+          "group": "codexPlus@3"
+        }
+      ],
       "webview/context": [
         {
           "command": "codexPlus.markThreadUnread",

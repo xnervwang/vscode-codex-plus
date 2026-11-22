@@ -103,6 +103,23 @@ module.exports = async ({ eq, tmp, root }) => {
     eq(await stateOf(made[0].id), 'unread', 'Mark as Unread from its page makes it unread, though it is in front');
     eq(await run('renameThread', { webview: 'chatgpt.conversationEditor' }).then((r) => r.length), 0,
       'and Rename from the page renames the conversation in that tab (here dismissed, so nothing is sent)');
+
+    /* From a tab's own right-click menu, which VS Code calls with the URI of the tab right-clicked, whether or not it is
+       the one in front, and the tab's place as the second argument. */
+    const behind = control.codexTab(made[1].id);
+    control.setTabs([control.codexTab(made[0].id), behind], 0);
+    control.fireTabs();
+    await tick(100);
+    eq(await stateOf(made[1].id), 'idle', 'the conversation of the tab behind is read');
+    await control.state.handlers['codexPlus.markThreadUnread'](behind.input.uri, { groupId: 1, editorIndex: 1 });
+    eq(await stateOf(made[1].id), 'unread', 'Mark as Unread from a tab\'s own menu makes the conversation of that tab unread, not the one in front');
+    control.state.inputAnswer = (o) => (o.value === 'Second' ? 'Second, renamed' : undefined);
+    eq(await run('renameThread', behind.input.uri, { groupId: 1, editorIndex: 1 }), [['thread/name/set', { threadId: made[1].id, name: 'Second, renamed' }]],
+      'and Rename from it renames that tab\'s conversation');
+    control.state.pickAnswer = (items) => items.find((i) => i.label === 'Pinned');
+    eq(await run('moveThreadToSection', behind.input.uri, { groupId: 1, editorIndex: 1 }), [['thread/section/move', { threadId: made[1].id, sectionId: 'sec-1' }]],
+      'and Add to Group moves that tab\'s conversation');
+    control.state.inputAnswer = undefined;
   } finally {
     for (const d of subs) { try { d.dispose(); } catch (_) { /* gone */ } }
     ext.deactivate();
@@ -117,7 +134,10 @@ module.exports = async ({ eq, tmp, root }) => {
   eq(['moveThreadToSection', 'markThreadUnread'].map((c) => item(c).length), [1, 1], 'Add to Group and Mark as Unread are in a row\'s right-click menu');
   const onPage = (menus['webview/context'] || []).filter((m) => m.when === "webviewId == 'chatgpt.conversationEditor'").map((m) => m.command).sort();
   eq(onPage, ['codexPlus.markThreadUnread', 'codexPlus.moveThreadToSection', 'codexPlus.renameThread'],
-    'a conversation tab\'s own right-click menu has Rename, Mark as Unread and Add to Group, as Claude Code\'s has its three');
+    'the right-click menu of a conversation\'s page has Rename, Mark as Unread and Add to Group, as Claude Code\'s has its three');
+  const onTab = (menus['editor/title/context'] || []).filter((m) => /\bresourceScheme == 'openai-codex'/.test(m.when || '')).map((m) => m.command).sort();
+  eq(onTab, ['codexPlus.markThreadUnread', 'codexPlus.moveThreadToSection', 'codexPlus.renameThread'],
+    'and so has the right-click menu of a Codex tab itself, as README says');
   const hidden = (menus.commandPalette || []).filter((m) => m.when === 'false').map((m) => m.command);
   eq(['renameThread', 'moveThreadToSection', 'markThreadUnread'].filter((c) => !hidden.includes(`codexPlus.${c}`)), [],
     'none of them is in the command palette, where Claude Code has none of them either');
