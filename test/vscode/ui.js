@@ -2082,6 +2082,12 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         return names.map((n) => { try { return JSON.parse(fs.readFileSync(path.join(dir, n), 'utf8')); } catch (_) { return null; } }).filter(Boolean);
       };
       const entryOf = (folder) => entries().find((e) => Array.isArray(e.folders) && e.folders.some((f) => sameFolder(f, folder)) && alive(e.pid));
+      /* Earlier steps can leave the conversation in a tab here too, and this window would then keep it for itself. */
+      await call(`const mine = vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((t) => (t.input && t.input.uri && String(t.input.uri).includes(arg[0]))
+        || String(t.label || '').replace(/\u2709[\uFE0E\uFE0F]?/g, '').trim() === arg[1]);
+        if (mine.length) await vscode.window.tabGroups.close(mine); return mine.length;`, [T.id, T.title]);
+      check(!!await until(() => { const e = entryOf(profile.folder); return e && !e.sessions.includes(T.id); }, 20000, 500),
+        'with the conversation in no tab here, this window\'s own entry among the windows does not list it', entryOf(profile.folder));
       const before = Date.now();
       await call('await vscode.commands.executeCommand("vscode.openFolder", vscode.Uri.file(arg), { forceNewWindow: true }); return true;', folderB);
       const pageB = await w.pageOf(path.basename(folderB), 90000);
@@ -2278,6 +2284,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         const refused = await until(async () => (await toasts()).find((x) => x.includes(want)), 20000, 500);
         check(!!refused && !await dialog() && archivedOnDisk(), 'Delete here leaves it alone, and its message names the second window',
           { want, toasts: await toasts(), dialog: await dialog(), rollout: rolloutOf(T.id) });
+        /* The notification slides in over a moment. */
+        await sleep(1500);
         await shot('delete-refused-open-elsewhere');
         const kept = await held();
         check(Array.isArray(kept) && kept.includes(T.id), 'the daily pass over archived conversations would leave it for the next pass too', kept);
