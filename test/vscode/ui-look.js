@@ -392,12 +392,12 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
   };
   const ctxItem = (label, sub = false) => list.locator(`${sub ? '.cp-ctx-sub' : '.cp-ctx:not(.cp-ctx-sub)'} .cp-ctx-item`).filter({ hasText: label }).first();
   /* Right-clicks `target` and clicks labels[0], or that item's submenu item labels[1]. The page closes its menu when
-     another webview takes the focus, so a click that missed for that reason is tried again, as in ui.js. */
+     another webview takes the focus, so a menu that did not open or a click that missed is tried again, as in ui.js. */
   const pick = async (target, labels) => {
     let last = '';
     for (let attempt = 1; attempt <= 3; attempt++) {
-      await menuOn(target);
       try {
+        await menuOn(target);
         if (labels.length > 1) {
           if (!await openSubOf(ctxItem(labels[0]))) throw new Error(`${labels[0]} opened no submenu`);
           await ctxItem(labels[1], true).click({ timeout: 5000 });
