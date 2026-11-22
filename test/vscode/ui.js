@@ -3126,11 +3126,15 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         const asked = await until(dialog, 15000, 300);
         if (!asked) {
           note(`no confirmation drawn in the window was found on ${process.platform}, so the Delete after the second window closed was not tried`);
-          return;
+        } else {
+          check(asked.title === `Delete "${T.title}" from disk?`, 'once that window has closed, Delete here asks to delete it', asked);
+          await page.locator('.monaco-dialog-box .dialog-buttons .monaco-button').filter({ hasText: 'Cancel' }).first().click({ timeout: 5000 });
+          await until(async () => !await dialog(), 5000, 200);
         }
-        check(asked.title === `Delete "${T.title}" from disk?`, 'once that window has closed, Delete here asks to delete it', asked);
-        await page.locator('.monaco-dialog-box .dialog-buttons .monaco-button').filter({ hasText: 'Delete' }).first().click({ timeout: 5000 });
-        check(!!await until(() => !rolloutOf(T.id), 30000, 500), 'and deletes it', { rollout: rolloutOf(T.id), toasts: await toasts() });
+        /* The last two steps open this conversation again; deleting one is checked in "archive and delete". */
+        await call('vscode.commands.executeCommand("codexPlus.unarchiveThread", arg, [arg.threadId]); return true;', ctx);
+        check(!!await until(() => !!rolloutOf(T.id) && !archivedOnDisk(), 30000, 500),
+          'kept instead, and unarchived, its rollout is back under sessions/', { rollout: rolloutOf(T.id), toasts: await toasts() });
       } finally {
         await closeB();
       }
