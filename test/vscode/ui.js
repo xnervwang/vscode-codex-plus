@@ -1637,7 +1637,13 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
           /* That tab is closed to make room, so the reload step does not look for it. */
           agentNew = null;
         }
+        const panels = () => call(`${OWN} return own('patching')._registry.size;`).catch(() => -1);
+        const had = await panels();
         await exec('workbench.action.closeActiveEditor');
+        /* Pressed again before Codex has let go of the closed tab's panel, the new tab on the same URI was seen to carry on
+           the closed conversation. */
+        await until(async () => (await panels()) < had, 10000, 300);
+        await sleep(2000);
         await tabNamed(t.title).click();
         await until(async () => (await frontPage()) === f, 15000, 500);
         target = await outcome(await press());
