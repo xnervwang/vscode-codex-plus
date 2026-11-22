@@ -1356,14 +1356,15 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     }, async () => {
       await setting('tokenMode', 'custom', 'agentPlus');
       await setting('detachedEndNotices', false);
-      const before = model.sent('Codex Plus notice');
       model.script(t0.id, [outside('setsid sleep 8 >/dev/null 2>&1 < /dev/null &'), { reply: 'Started the short job.' }]);
       await type('Start the short detached job and come back.');
       if (!await until(card, 20000, 300)) throw new Error('Codex showed no approval card');
       await approve();
       await until(() => model.left() === 0, 20000, 500);
       await sleep(45000);
-      tell(`Codex Plus notices sent while codexPlus.detachedEndNotices was off: ${model.sent('Codex Plus notice') - before}`);
+      /* Every request quotes the notices sent before, so the rollout is asked whether one named this command. */
+      const told = lastUserText(t0.id, 'sleep 8');
+      tell(told ? `a notice naming "sleep 8" was sent: ${told.slice(0, 200)}` : 'no message naming "sleep 8" was sent into the conversation while codexPlus.detachedEndNotices was off');
       await toBottom();
       return bottomBox(420);
     });
