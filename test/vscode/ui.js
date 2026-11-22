@@ -2146,15 +2146,18 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       /* The tab's page has its panel before the second window's app-server has loaded the conversation, which it then
          does not know; on macOS it was still not loaded half a minute after the tab opened, so it is loaded here. */
       const startTurn = async (text) => {
-        let r = null;
+        let r = null, resumed = null;
         await until(async () => {
           r = await inB(`${OWN} return own('patching').hostRequest('turn/start', { threadId: arg[0], input: [{ type: 'text', text: arg[1], text_elements: [] }] });`,
             [T.id, text]).catch((e) => ({ outcome: 'failed', reason: e.message }));
           const unknown = r.outcome === 'failed' && /not found|not loaded/i.test(r.reason || '');
-          if (unknown) await inB(`${OWN} return own('patching').hostRequest('thread/resume', { threadId: arg });`, T.id).catch(() => null);
+          if (unknown) {
+            resumed = await inB(`${OWN} const x = await own('patching').hostRequest('thread/resume', { threadId: arg }); return { outcome: x.outcome, reason: x.reason || '' };`, T.id)
+              .catch((e) => ({ outcome: 'failed', reason: e.message }));
+          }
           return !(r.outcome === 'unavailable' || unknown);
-        }, 30000, 1000);
-        return r;
+        }, 60000, 1000);
+        return resumed ? { ...r, resumed } : r;
       };
       const EXT = `const mine = vscode.extensions.getExtension('xnervwang.codex-plus');
         const file = require('path').join(mine.extensionPath, 'extension.js');
