@@ -1875,6 +1875,9 @@
           /* From 26.1117 Codex draws no time on a reply. It takes the rollout's time for its place in the turn, if the
              rollout and the page hold the same number of replies in that turn. */
           when = { ms: tt.r[e.nth - 1], secs: true };
+        } else if (e.kind === 'assistant' && tt && !when && tt.r.length > repliesIn[e.turn] && codexShowsWorked(e.turnEl)) {
+          /* A finished turn's "Worked for" folds its earlier replies away, so the ones the page shows are its last. */
+          when = { ms: tt.r[tt.r.length - repliesIn[e.turn] + e.nth - 1], secs: true };
         } else if (e.kind === 'assistant' && tt && when && !when.secs) {
           var hit = null, hits = 0;
           for (var q = 0; q < tt.r.length; q++) if (agrees(when, tt.r[q], e.day !== null)) { hit = tt.r[q]; hits++; }
