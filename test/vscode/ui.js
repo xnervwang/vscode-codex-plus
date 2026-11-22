@@ -1515,7 +1515,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       const counted = await bellCount();
       model.hold();
       const turns = model.turns();
-      /* Typed into the message box itself: keys sent to the window have landed in another tab's box on Windows. */
+      /* Typing into the message box itself, since keys sent to the window have landed in another tab's box on Windows. */
       await f.locator(COMPOSER).first().click();
       await f.locator(COMPOSER).first().pressSequentially(text);
       await f.locator(COMPOSER).first().press('Enter');
@@ -1855,7 +1855,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await shot('reopened-from-recently-closed');
       await exec('workbench.action.closeActiveEditor');
       await firstClosed(t.id);
-      /* The keys go to the editor area, as a user's would, not to the session list's page that firstClosed showed. */
+      /* The keys go to the editor area, where a user's would, rather than to the session list. */
       await exec('workbench.action.focusActiveEditorGroup');
       await page.keyboard.press(REOPEN);
       check(!!await cameBack(title, had), `closed again, ${REOPEN} opens it again the same way`, { tab: await frontTab(), newest: await newestInFront(), had });
@@ -1980,7 +1980,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await typeInRow(second);
       await renamedTo(second, 'renamed from its row\'s right-click menu');
       /* The conversation tab's menu, or its page's menu when the tab's menu has no Codex Plus item. */
-      /* The page's own query first; a locator also reaches a menu drawn inside a shadow root. */
+      /* A locator also reaches a menu drawn inside a shadow root, so it is tried when the page's own query finds none. */
       const vsMenu = async () => {
         const plain = await page.evaluate(() => { const m = [...document.querySelectorAll('.context-view .monaco-menu')].find((e) => e.offsetParent); return m ? m.innerText : ''; });
         if (plain) return plain;

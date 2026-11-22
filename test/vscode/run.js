@@ -166,8 +166,6 @@ async function testStage() {
     /* Draw modal dialogs, such as Delete's confirmation, inside the window so Playwright can read them and click their
        buttons. VS Code's default is the system dialog on every platform. */
     'window.dialogStyle': 'custom',
-    /* The same for context menus, such as a tab's: macOS and Windows draw them as system menus by default. */
-    'window.menuStyle': 'custom',
     ...(LOOK ? ui.LOOK_SETTINGS : {}),
   }, null, 2));
 

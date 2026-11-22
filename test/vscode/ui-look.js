@@ -392,7 +392,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
   };
   const ctxItem = (label, sub = false) => list.locator(`${sub ? '.cp-ctx-sub' : '.cp-ctx:not(.cp-ctx-sub)'} .cp-ctx-item`).filter({ hasText: label }).first();
   /* Right-clicks `target` and clicks labels[0], or that item's submenu item labels[1]. The page closes its menu when
-     another webview takes the focus, so a menu that did not open or a click that missed is tried again, as in ui.js. */
+     another webview takes the focus, so the right-click is tried again when no menu opened or the click on its item
+     missed, as in ui.js. */
   const pick = async (target, labels) => {
     let last = '';
     for (let attempt = 1; attempt <= 3; attempt++) {
