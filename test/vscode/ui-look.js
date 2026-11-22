@@ -808,7 +808,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     await exec('workbench.action.closeActiveEditor');
     await look('remove-from-group', {
       expect: 'Remove from Group on the row puts "Why does the nightly export skip archived rows?" back in Ungrouped; the "Release 1.3" group stays, empty, with a count of 0.',
-      unchanged: 'The script closed the tab the step before opened, so notes.txt is in front again.',
+      unchanged: 'The script closed the tab the step before opened, so the tab that was in front before that step is in front again.',
     }, async () => {
       await pick(row(t1.id), ['Remove from Group']);
       if (!await until(() => list.evaluate((id) => !!document.querySelector(`.cp-group[data-key="ungrouped"] .cp-row[data-id="${id}"]`), t1.id), 20000, 500)) throw new Error('the row did not go back to Ungrouped');
@@ -1549,7 +1549,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     await away();
     const panelRow = (text) => page.locator('[id="workbench.parts.panel"] .monaco-list-row').filter({ hasText: text }).first();
     await look('conversations-view', {
-      expect: 'Agent Plus\'s Conversations view in the panel lists the Codex conversations of this workspace with Codex\'s logo; this one shows its question "Should the default retry delay stay at 30 seconds, or go up to 60?" waiting for the user, '
+      expect: 'Agent Plus\'s Conversations view in the panel lists the Codex conversations of this workspace, with no agent logo since only one agent is installed; this one shows its question "Should the default retry delay stay at 30 seconds, or go up to 60?" waiting for the user, '
         + 'and the status bar has "1 to decide".',
     }, async () => {
       await exec('agentPlus.showConversations');
