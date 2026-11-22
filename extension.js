@@ -113,6 +113,9 @@ async function offerReloadForStale() {
  * kept up to date; with the switch off it does not take an applied patch out of Codex's files, which only the remove
  * command does.
  */
+/* The settings viewOf in src/patching.js draws Codex's pages from, through settings() below. */
+const PAGE_SETTINGS = ['enabled', 'timestamps', 'conversationNavigation', 'userMessageColor', 'userMessageEdge', 'lowContextOutline',
+  'turnFigures', 'replyDuration', 'chime', 'infoButton', 'chimeButton', 'contextMeter', 'replyImages'];
 function settings() {
   const c = cfg();
   const on = c.get('enabled', true);
@@ -453,14 +456,11 @@ async function activate(context) {
       followTokenMode(context, say).then((r) => (r === 'left' && runs('workPlan') && !install.installedVersions(files.codexHome()).length
         ? ensurePlugin(context, say) : undefined)).catch((err) => say(`the work plan plugin under the new token mode: ${err.message}`));
     }
-    /* The time stamps, the message list, the colours and the images in replies live in Codex's page, and this is how a
-       change to one of them gets there: the same redraw the figures use, rather than a watcher of its own. The master
-       switch is in the list because it decides all of them, and a page has to be told when it goes either way. */
-    if (e.affectsConfiguration(`${CONFIG}.enabled`) || e.affectsConfiguration(`${CONFIG}.timestamps`)
-      || e.affectsConfiguration(`${CONFIG}.conversationNavigation`)
-      || e.affectsConfiguration(`${CONFIG}.userMessageColor`) || e.affectsConfiguration(`${CONFIG}.userMessageEdge`)
-      || e.affectsConfiguration(`${CONFIG}.lowContextOutline`) || e.affectsConfiguration(`${CONFIG}.chime`)
-      || e.affectsConfiguration(`${CONFIG}.replyDuration`) || e.affectsConfiguration(`${CONFIG}.replyImages`)) {
+    /* The time stamps, the message list, the colours, the figures, the toolbar's controls and the images in replies
+       live in Codex's page, and this is how a change to one of them gets there: the same redraw the figures use, rather
+       than a watcher of its own. The master switch is in the list because it decides all of them, and a page has to be
+       told when it goes either way. */
+    if (PAGE_SETTINGS.some((k) => e.affectsConfiguration(`${CONFIG}.${k}`))) {
       const typed = String(cfg().get('userMessageColor', '') || '').trim();
       if (typed && !patching.safeColor(typed)) {
         vscode.window.showWarningMessage(`Codex Plus: "${typed}" is not a CSS colour (use for example #90EE90, `
