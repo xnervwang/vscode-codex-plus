@@ -42,6 +42,10 @@
  *   to the front a conversation's tab clicked from a New tab with nothing typed into it, and from the tab above: Agent
  *                Plus has the conversation the clicked tab shows in front at once, although VS Code says which panel is
  *                visible only after it reports the switch
+ *   two windows  a second window holding a conversation in a tab: an approval asked for there (the PermissionRequest
+ *                hook's mark, the hook run here with what Codex sends it; on Linux also a real request, approved there)
+ *                gives it the red dot and Agent Plus's count here; archived from here, it is neither deleted here nor
+ *                taken by the daily pass while that window shows it, and is once that window has closed
  *
  * Every step saves a screenshot to <out>/shots, and crops of the parts this extension draws are compared with the
  * approved copies (lib/baseline.js).
@@ -2050,6 +2054,251 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await call('vscode.commands.executeCommand(\'codexPlus.renameThread\', arg); return true;', t.id);
       const back = page.locator('.quick-input-widget input').first();
       if (await back.waitFor({ state: 'visible', timeout: 10000 }).then(() => true, () => false)) { await back.fill(title); await back.press('Enter'); }
+    });
+
+    /*
+     * A second window of the same VS Code on a folder of its own, holding a conversation in a tab (Claude Code Plus's
+     * ui.js has the same two-window step). While its turn runs there, an approval Codex asks for there is shown here by
+     * the mark the plugin's PermissionRequest hook leaves. This window does not trust the plugin's hooks, so the hook
+     * script is run here with the JSON Codex sends it (the input schema Codex 26.1117 embeds); on Linux a real request
+     * to run a command outside the sandbox is asked for there as well, and approved there. Then the conversation,
+     * archived in the other window and kept open there read-only, is neither deleted here nor taken by the daily pass,
+     * until that window closes. It is archived there because this window's app-server refuses to archive a conversation
+     * another app-server has loaded ("already has an active writer").
+     */
+    await step('a second window', async () => {
+      if (!list) throw new Error('the session list did not open');
+      const T = threads[1];
+      const folderB = path.join(path.dirname(profile.folder), 'ws-b');
+      fs.mkdirSync(folderB, { recursive: true });
+      fs.writeFileSync(path.join(folderB, 'notes-b.txt'), 'A file for the second window.\n');
+      /* On Windows VS Code gives a folder with its drive letter in lower case. */
+      const sameFolder = (a, b) => (process.platform === 'win32' ? path.resolve(String(a)).toLowerCase() === path.resolve(String(b)).toLowerCase() : a === b);
+      const alive = (pid) => { try { process.kill(pid, 0); return true; } catch (e) { return !!(e && e.code === 'EPERM'); } };
+      const entries = () => {
+        const dir = path.join(PLANS, 'windows');
+        let names = [];
+        try { names = fs.readdirSync(dir).filter((n) => /^\d+\.json$/.test(n)); } catch (_) { return []; }
+        return names.map((n) => { try { return JSON.parse(fs.readFileSync(path.join(dir, n), 'utf8')); } catch (_) { return null; } }).filter(Boolean);
+      };
+      const entryOf = (folder) => entries().find((e) => Array.isArray(e.folders) && e.folders.some((f) => sameFolder(f, folder)) && alive(e.pid));
+      const before = Date.now();
+      await call('await vscode.commands.executeCommand("vscode.openFolder", vscode.Uri.file(arg), { forceNewWindow: true }); return true;', folderB);
+      const pageB = await w.pageOf(path.basename(folderB), 90000);
+      const hostB = pageB ? await w.hostUp(before, folderB).catch(() => null) : null;
+      check(!!pageB && !!hostB, 'a second window of the same VS Code opens on another folder, with the test helper in it',
+        { pageB: !!pageB, hosts: fs.readdirSync(profile.control).filter((n) => /^host-/.test(n)) });
+      if (!pageB || !hostB) {
+        /* Its helper would otherwise take the requests of the steps after this one. */
+        if (pageB) await pageB.keyboard.press(process.platform === 'darwin' ? 'Meta+Shift+W' : 'Control+Shift+W').catch(() => {});
+        return;
+      }
+      w.pin(profile.folder);
+      const inB = (body, arg, ms = 60000) => call(body, arg, ms, folderB);
+      const shotB = (name) => pageB.screenshot({ path: path.join(shotsDir, `${String(++shotNo).padStart(2, '0')}-${name}.png`) }).catch(() => {});
+      /* The second window asks to trust the hooks too, with a dialog that takes every click in it. */
+      let watchingB = true;
+      const trustB = (async () => {
+        while (watchingB && !pageB.isClosed()) {
+          try {
+            const box = pageB.locator('.monaco-dialog-box').filter({ hasText: 'Trust the work plan hooks in Codex?' }).first();
+            if (await box.isVisible()) await box.locator('.dialog-buttons .monaco-button').filter({ hasText: 'Cancel' }).first().dispatchEvent('click');
+          } catch (_) { /* closing */ }
+          await sleep(500);
+        }
+      })();
+      let closedB = false;
+      const closeB = async () => {
+        if (closedB) return;
+        closedB = true;
+        watchingB = false;
+        await inB('setTimeout(() => vscode.commands.executeCommand("workbench.action.closeWindow"), 200); return true;', undefined, 15000).catch(() => {});
+        await until(() => pageB.isClosed(), 30000, 500);
+        await trustB;
+      };
+      const rolloutOf = (id) => [...walk(path.join(profile.codexHome, 'sessions')), ...walk(path.join(profile.codexHome, 'archived_sessions'))]
+        .find((f) => f.endsWith('.jsonl') && path.basename(f).includes(id)) || '';
+      /* The newest turn the rollout says started, as Codex's own hooks are told it in turn_id. */
+      const turnOf = (id) => {
+        const f = rolloutOf(id);
+        let turn = '';
+        if (f) {
+          for (const l of fs.readFileSync(f, 'utf8').split('\n')) {
+            try { const r = JSON.parse(l); if (r.type === 'event_msg' && r.payload && r.payload.type === 'task_started') turn = String(r.payload.turn_id || ''); } catch (_) { /* a line being written */ }
+          }
+        }
+        return turn;
+      };
+      const rowDot = () => list.evaluate((id) => { const r = document.querySelector(`.cp-group .cp-row[data-id="${id}"]`); return r && r._row ? String(r._row.dot || '') : null; }, T.id).catch(() => null);
+      const marks = () => { try { return fs.readdirSync(path.join(PLANS, 'waiting')).filter((n) => n.endsWith('.json')); } catch (_) { return []; } };
+      const cp = require('child_process');
+      const py = ['python3', 'python'].find((x) => (cp.spawnSync(x, ['-c', 'import sys; print(sys.version_info[:2] >= (3, 7))'], { encoding: 'utf8' }).stdout || '').trim() === 'True');
+      const hookFile = await call('return require("path").join(vscode.extensions.getExtension("xnervwang.codex-plus").extensionPath, "codex-plugin", "agent-work-plan", "hooks", "mark-waiting.py");');
+      /* The hook as Codex runs it: the event's JSON on standard input, the plugin's data folder as its argument. */
+      const hook = (payload) => cp.spawnSync(py, [hookFile, PLANS], { input: JSON.stringify(payload), encoding: 'utf8' });
+      const asCodex = (turn) => ({ session_id: T.id, turn_id: turn, cwd: folderB, model: 'gpt-5.5', permission_mode: 'default', transcript_path: rolloutOf(T.id) });
+      /* The tab's page has its panel before the second window's app-server has loaded the conversation, which it then
+         does not know. */
+      const startTurn = async (text) => {
+        let r = null;
+        await until(async () => {
+          r = await inB(`${OWN} return own('patching').hostRequest('turn/start', { threadId: arg[0], input: [{ type: 'text', text: arg[1], text_elements: [] }] });`,
+            [T.id, text]).catch((e) => ({ outcome: 'failed', reason: e.message }));
+          return !(r.outcome === 'unavailable' || (r.outcome === 'failed' && /not found|not loaded/i.test(r.reason || '')));
+        }, 30000, 1000);
+        return r;
+      };
+      const EXT = `const mine = vscode.extensions.getExtension('xnervwang.codex-plus');
+        const file = require('path').join(mine.extensionPath, 'extension.js');
+        const k = Object.keys(require.cache).find((x) => x.toLowerCase() === file.toLowerCase());
+        const ext = k ? require.cache[k].exports : null;`;
+      const held = () => call(`${EXT} const r = ext && await ext._holdArchived([arg]); return r ? [...r] : null;`, T.id);
+      /* The conversation's tab in the second window, put behind notes-b.txt. Agent Plus neither announces nor counts the
+         conversation the focused window shows in front, and under xvfb-run, with no window manager, the window opened
+         last keeps counting as focused. */
+      const tabOfT = () => inB('return vscode.window.tabGroups.all.flatMap((g) => g.tabs.map((t) => ({ column: g.viewColumn, '
+        + 'uri: t.input && t.input.uri ? String(t.input.uri) : "" }))).find((t) => t.uri.includes(arg)) || null;', T.id).catch(() => null);
+      const coverT = async () => {
+        const t = await tabOfT();
+        await inB('await vscode.window.showTextDocument(vscode.Uri.file(arg[0]), { preview: false, viewColumn: arg[1] }); return true;',
+          [path.join(folderB, 'notes-b.txt'), (t && t.column) || 1]);
+      };
+      const toastIn = (p) => p.evaluate((want) => {
+        const n = [...document.querySelectorAll('.notification-toast')].find((e) => e.innerText.includes(`"${want}" is waiting for you`));
+        return n ? n.innerText : '';
+      }, T.title).catch(() => '');
+      const shelved = () => list.evaluate((id) => !!document.querySelector(`.cp-group[data-key="archived"] .cp-row[data-id="${id}"]`), T.id).catch(() => false);
+      const dialog = () => page.evaluate(() => {
+        const d = [...document.querySelectorAll('.monaco-dialog-box')].find((e) => e.offsetParent);
+        if (!d) return null;
+        const text = (sel) => { const e = d.querySelector(sel); return e ? e.innerText.trim() : ''; };
+        return { title: text('.dialog-message-text'), detail: text('.dialog-message-detail') };
+      });
+      try {
+        await until(() => inB('const mine = vscode.extensions.getExtension("xnervwang.codex-plus"); return !!(mine && mine.isActive);'), 60000, 1000);
+        await inB('await vscode.commands.executeCommand("codexPlus.openThreadInTab", arg); return true;', T.id);
+        const shownB = await until(() => { const e = entryOf(folderB); return e && e.sessions.includes(T.id) && e; }, 60000, 1000);
+        check(!!shownB, 'the conversation opened in a tab of the second window, and that window\'s entry among the windows lists it',
+          { entry: entryOf(folderB), entries: entries() });
+        const nameB = (shownB && shownB.name) || path.basename(folderB);
+        const pageReady = await until(() => inB(`${OWN} return own('patching').canDeliver(arg);`, T.id), 60000, 1000);
+        await shotB('second-window');
+
+        /* ── an approval asked for in the second window ── */
+        if (!py) note('no Python 3.7+ for the test here, so the PermissionRequest hook was not run and waiting in another window was not checked');
+        else if (!pageReady) note('the second window\'s page of the conversation never connected to the patch, so no turn was started there');
+        else {
+          await showList();
+          await exec('notifications.clearAll');
+          await inB('await vscode.commands.executeCommand("notifications.clearAll"); return true;').catch(() => {});
+          await coverT();
+          const was = turnOf(T.id);
+          model.hold();
+          const started = await startTurn('Check the export from the second window.');
+          const turn = await until(() => { const t = turnOf(T.id); return t && t !== was && t; }, 30000, 500);
+          check(!!turn, 'a turn of the conversation started in the second window runs, held by the made-up model', { started, was, turn: turnOf(T.id) });
+          const green = await until(async () => (await rowDot()) === 'working', 30000, 500);
+          check(!!green, 'this window\'s session list shows it working, from its rollout', await rowDot());
+          const counted = await agentCount();
+          const r = hook({ ...asCodex(turn), hook_event_name: 'PermissionRequest', tool_name: 'Bash',
+            tool_input: { command: 'make check', description: 'Run the checks outside the sandbox.' } });
+          check(r.status === 0 && r.stdout === '' && marks().length === 1,
+            'the PermissionRequest hook, run with what Codex sends it, leaves one mark and prints nothing, so the approval goes on as Codex asks it',
+            { status: r.status, stdout: r.stdout, stderr: r.stderr, marks: marks() });
+          const red = await until(async () => (await rowDot()) === 'waiting', 20000, 500);
+          check(!!red, 'this window\'s session list then shows the conversation the second window runs with the red dot', await rowDot());
+          check(!!await until(async () => (await agentCount()) > counted, 15000, 500), 'and Agent Plus counts it in the status bar',
+            { before: counted, now: await agentCount() });
+          const focusA = await focused(), focusB = await inB('return vscode.window.state.focused;').catch(() => null);
+          if (focusA || focusB) {
+            const told = await until(async () => (await toastIn(page)) || (await toastIn(pageB)), 15000, 500);
+            check(!!told, `and says in a notification, in the window that has the focus (${focusA ? 'this one' : 'the second'}), that it is waiting for you`,
+              { here: await toasts(), focusA, focusB });
+          } else note(`neither window has the system's focus on ${process.platform}, so Agent Plus shows no notification; not checked`);
+          await shot('waiting-in-another-window');
+          await shotB('second-window-waiting');
+          hook({ ...asCodex(turn), hook_event_name: 'PostToolUse', tool_name: 'Bash', tool_use_id: 'call_1', tool_input: { command: 'make check' }, tool_response: 'ok' });
+          const back = await until(async () => marks().length === 0 && (await rowDot()) === 'working', 20000, 500);
+          check(!!back, 'once the approved command has run, PostToolUse takes the mark away and the dot here is green again', { marks: marks(), dot: await rowDot() });
+          check(!!await until(async () => (await agentCount()) <= counted, 15000, 500), 'and Agent Plus no longer counts it', { before: counted, now: await agentCount() });
+          model.release();
+          await until(async () => (await rowDot()) !== 'working', 30000, 500);
+
+          if (process.platform !== 'linux') {
+            note(`the request to run a command outside the sandbox is made only on Linux in this run, so an approval given in the second window was not checked on ${process.platform}`);
+          } else {
+            await exec('notifications.clearAll');
+            /* The approval card is clicked in the tab's page, which has to be the one in front. */
+            await inB('await vscode.commands.executeCommand("codexPlus.openThreadInTab", arg); return true;', T.id);
+            model.script(T.id, [{ call: 'exec_command', args: { cmd: 'true', yield_time_ms: 1000, sandbox_permissions: 'require_escalated',
+              justification: 'Check the export outside the sandbox.' } }, { reply: 'Checked.' }]);
+            const was2 = turnOf(T.id);
+            await startTurn('Check the export outside the sandbox.');
+            const askedB = await until(() => inB(`${OWN} return own('patching').approvalsOf(arg).decide;`, T.id), 30000, 500);
+            const turn2 = turnOf(T.id);
+            check(!!askedB && turn2 !== was2, 'on Linux the second window\'s conversation asks for approval to run a command outside the sandbox', { askedB, turn: turn2 });
+            /* Codex runs the hook just before it asks; here it runs just after, and the second window's next poll (every
+               three seconds) sees the mark while the request is outstanding. */
+            hook({ ...asCodex(turn2), hook_event_name: 'PermissionRequest', tool_name: 'Bash', tool_input: { command: 'true', description: 'Check the export outside the sandbox.' } });
+            check(!!await until(async () => (await rowDot()) === 'waiting', 20000, 500), 'this window shows it waiting', await rowDot());
+            await sleep(4000);
+            /* The reply after the command is held, so the turn is still running when the dot is read. */
+            model.hold();
+            let approved = false;
+            for (const f of pageB.frames()) {
+              try {
+                const yes = f.locator('[data-codex-approval-surface] button').filter({ hasText: /^(Yes|Allow once|Allow this time|Approve|Run)\b/ }).first();
+                if (await yes.count()) { await yes.click({ timeout: 5000 }); approved = true; break; }
+              } catch (_) { /* another frame */ }
+            }
+            check(approved, 'the second window shows the approval with a button to give it', null);
+            const cleared = await until(async () => marks().length === 0 && (await rowDot()) === 'working', 15000, 500);
+            check(!!cleared, 'approved there, the second window takes the mark away at once, and this window shows the conversation working while its turn goes on',
+              { marks: marks(), dot: await rowDot() });
+            model.release();
+            await until(async () => model.left() === 0 && (await rowDot()) !== 'working', 60000, 500);
+            model.script(null);
+          }
+        }
+
+        /* ── Delete and the daily pass while the second window shows it ── */
+        await until(async () => (await rowDot()) !== 'working', 30000, 500);
+        await inB('await vscode.commands.executeCommand("codexPlus.archiveThread", arg, [arg.threadId]); return true;',
+          { webviewSection: 'thread', threadId: T.id, webview: 'codexPlus.sessions' });
+        const archivedOnDisk = () => !!rolloutOf(T.id) && rolloutOf(T.id).includes(`${path.sep}archived_sessions${path.sep}`);
+        check(!!await until(archivedOnDisk, 30000, 500), 'archived in the second window, its rollout moves to archived_sessions/', rolloutOf(T.id));
+        check(!!await until(shelved, 30000, 500), 'and this window\'s list puts it in Archived sessions', null);
+        const stillB = await until(() => { const e = entryOf(folderB); return e && e.sessions.includes(T.id); }, 15000, 500);
+        check(!!stillB, 'the second window keeps it in its tab, read-only, and its entry still lists it', entryOf(folderB));
+        await shotB('archived-open-in-second-window');
+        await exec('notifications.clearAll');
+        const ctx = { webviewSection: 'thread', threadId: T.id, webview: 'codexPlus.sessions' };
+        await call('vscode.commands.executeCommand("codexPlus.deleteThread", arg, [arg.threadId]); return true;', ctx);
+        const want = `Not deleted: "${T.title}" is open in the VS Code window "${nameB}".`;
+        const refused = await until(async () => (await toasts()).find((x) => x.includes(want)), 20000, 500);
+        check(!!refused && !await dialog() && archivedOnDisk(), 'Delete here leaves it alone, and its message names the second window',
+          { want, toasts: await toasts(), dialog: await dialog(), rollout: rolloutOf(T.id) });
+        await shot('delete-refused-open-elsewhere');
+        const kept = await held();
+        check(Array.isArray(kept) && kept.includes(T.id), 'the daily pass over archived conversations would leave it for the next pass too', kept);
+        await closeB();
+        const gone = await until(() => !entryOf(folderB), 30000, 500);
+        check(!!gone && pageB.isClosed(), 'closed, the second window leaves no entry among the windows', entries());
+        const free = await held();
+        check(Array.isArray(free) && !free.includes(T.id), 'and the daily pass would now take it', free);
+        await exec('notifications.clearAll');
+        await call('vscode.commands.executeCommand("codexPlus.deleteThread", arg, [arg.threadId]); return true;', ctx);
+        const asked = await until(dialog, 15000, 300);
+        if (!asked) {
+          note(`no confirmation drawn in the window was found on ${process.platform}, so the Delete after the second window closed was not tried`);
+          return;
+        }
+        check(asked.title === `Delete "${T.title}" from disk?`, 'once that window has closed, Delete here asks to delete it', asked);
+        await page.locator('.monaco-dialog-box .dialog-buttons .monaco-button').filter({ hasText: 'Delete' }).first().click({ timeout: 5000 });
+        check(!!await until(() => !rolloutOf(T.id), 30000, 500), 'and deletes it', { rollout: rolloutOf(T.id), toasts: await toasts() });
+      } finally {
+        await closeB();
+      }
     });
   } finally {
     watchingTrust = false;

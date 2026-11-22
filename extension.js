@@ -63,6 +63,8 @@ let memento = null;
 let archiveSweeper = null;
 /* Writes this window's entry among the windows (src/window-entries.js), once activation has what it shows. */
 let publishWindow = () => {};
+/* Which of the archived conversations given the daily pass would leave alone; set with the commands. */
+let holdArchived = null;
 
 function cfg() { return vscode.workspace.getConfiguration(CONFIG); }
 /* Whether a feature that adds to Codex's context runs: its own setting in the Custom token mode, the mode's table in the
@@ -1123,6 +1125,18 @@ function registerCommands(context, { source, memory, sessionsModel, sessionsView
     await sendEach('unarchive', 'thread/unarchive', want, /^no archived rollout found for thread id/);
   });
   /* The daily pass over archived conversations (src/archive-sweep.js), with the same checks Delete makes. */
+  holdArchived = async (ids) => {
+    if (!openNow()) return null;
+    await readNow([...new Set(ids.flatMap((id) => [id, ...subAgentsOf(id)]))]);
+    const open = openNow(), elsewhere = elsewhereNow();
+    if (!open) return null;
+    const away = ids.filter((id) => ![id, ...subAgentsOf(id)].some((x) => open.has(x) || busyNow(x)) && [id, ...subAgentsOf(id)].some((x) => elsewhere.has(x)));
+    for (const id of away) {
+      const by = [id, ...subAgentsOf(id)].find((x) => elsewhere.has(x));
+      say(`left for the next pass "${nameOf(id)}" (${id}), archived long enough to be deleted: ${by === id ? 'it' : `its sub-agent "${nameOf(by)}"`} is open in ${windowNames(elsewhere.get(by))}`);
+    }
+    return new Set(ids.filter((id) => away.includes(id) || [id, ...subAgentsOf(id)].some((x) => open.has(x) || busyNow(x))));
+  };
   archiveSweeper = archiveSweep.createArchiveSweep({
     dir: () => path.join(context.globalStorageUri.fsPath, 'archive-sweep'),
     home: () => files.codexHome(),
@@ -1130,18 +1144,7 @@ function registerCommands(context, { source, memory, sessionsModel, sessionsView
     threads: () => reader.threads(),
     check: () => (!context.globalStorageUri ? 'there is no storage folder' : !trusted() ? 'the workspace is not trusted'
       : standsDown() ? 'this window runs a replaced build of Codex Plus' : ''),
-    hold: async (ids) => {
-      if (!openNow()) return null;
-      await readNow([...new Set(ids.flatMap((id) => [id, ...subAgentsOf(id)]))]);
-      const open = openNow(), elsewhere = elsewhereNow();
-      if (!open) return null;
-      const away = ids.filter((id) => ![id, ...subAgentsOf(id)].some((x) => open.has(x) || busyNow(x)) && [id, ...subAgentsOf(id)].some((x) => elsewhere.has(x)));
-      for (const id of away) {
-        const by = [id, ...subAgentsOf(id)].find((x) => elsewhere.has(x));
-        say(`left for the next pass "${nameOf(id)}" (${id}), archived long enough to be deleted: ${by === id ? 'it' : `its sub-agent "${nameOf(by)}"`} is open in ${windowNames(elsewhere.get(by))}`);
-      }
-      return new Set(ids.filter((id) => away.includes(id) || [id, ...subAgentsOf(id)].some((x) => open.has(x) || busyNow(x))));
-    },
+    hold: (ids) => holdArchived(ids),
     remove: async (list) => {
       const subs = new Map(list.map((t) => [t.id, subAgentsOf(t.id)]));
       const titles = new Map(list.map((t) => [t.id, nameOf(t.id)]));
@@ -1420,6 +1423,8 @@ function deactivate() {
    switch already applied, and the tests check that table directly.
    `_ensurePlugin` (the start-up install of the plugin) and `_reopenDropped` (reopening dropped tabs) run after a delay
    during activation, so the tests call them directly. `_tokenModeLine` is Show Status's line for the token mode.
-   `_sweepArchived` runs the pass over archived conversations that activation starts a minute in. */
+   `_sweepArchived` runs the pass over archived conversations that activation starts a minute in, and `_holdArchived` says
+   which of the conversations given that pass would leave alone. */
 module.exports = { activate, deactivate, _settings: settings, _ensurePlugin: ensurePlugin, _reopenDropped: reopenDropped,
-  _tokenModeLine: tokenModeLine, _sweepArchived: () => (archiveSweeper ? archiveSweeper.run() : Promise.resolve(null)) };
+  _tokenModeLine: tokenModeLine, _sweepArchived: () => (archiveSweeper ? archiveSweeper.run() : Promise.resolve(null)),
+  _holdArchived: (ids) => (holdArchived ? holdArchived(ids) : Promise.resolve(null)) };

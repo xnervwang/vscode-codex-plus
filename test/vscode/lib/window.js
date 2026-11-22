@@ -60,20 +60,26 @@ async function open({ exe, profile, env, playwright, log }) {
   if (!page) throw new Error('no workbench page among the DevTools targets');
   await page.waitForSelector('.monaco-workbench', { timeout: 90000 });
 
-  let next = 0;
+  let next = 0, pinned;
+  /* On Windows VS Code gives a folder with its drive letter in lower case. */
+  const sameFolder = (a, b) => (process.platform === 'win32' ? path.resolve(String(a)).toLowerCase() === path.resolve(String(b)).toLowerCase() : a === b);
   const hosts = () => fs.readdirSync(profile.control).filter((n) => /^host-\d+\.json$/.test(n))
     .map((n) => JSON.parse(fs.readFileSync(path.join(profile.control, n), 'utf8')));
-  /* The newest extension host's pid, once there is one newer than `after` (ms since the epoch). */
-  const hostUp = async (after = 0) => {
-    const h = await until(() => hosts().filter((x) => x.at > after).sort((a, b) => b.at - a.at)[0], 120000);
+  /* The newest extension host's pid, once there is one newer than `after` (ms since the epoch), of the window that has
+     `folder` open if one is given. */
+  const hostUp = async (after = 0, folder) => {
+    const h = await until(() => hosts().filter((x) => x.at > after && (!folder || sameFolder(x.folder, folder))).sort((a, b) => b.at - a.at)[0], 120000);
     if (!h) throw new Error('the helper extension did not start in the extension host in 120 s');
     return h;
   };
-  /* Runs `body` in the extension host, as an async function of (vscode, require, arg), and returns what it returns. */
-  const call = async (body, arg, ms = 60000) => {
+  /*
+   * Runs `body` in the extension host, as an async function of (vscode, require, arg), and returns what it returns. With
+   * a second window open, `folder` (or the one pin() set) says whose extension host runs it.
+   */
+  const call = async (body, arg, ms = 60000, folder = pinned) => {
     const id = `r${process.pid}-${++next}`;
     const tmp = path.join(profile.control, `.${id}.tmp`);
-    fs.writeFileSync(tmp, JSON.stringify({ body, arg }));
+    fs.writeFileSync(tmp, JSON.stringify({ body, arg, folder }));
     fs.renameSync(tmp, path.join(profile.control, `${id}.req.json`));
     const res = path.join(profile.control, `${id}.res.json`);
     const got = await until(() => fs.existsSync(res), ms, 100);
@@ -91,6 +97,15 @@ async function open({ exe, profile, env, playwright, log }) {
     await page.waitForSelector('.monaco-workbench', { timeout: 90000 });
     return hostUp(before);
   };
+  /* The workbench page of another window of this VS Code, by a word of its title such as its folder's name. */
+  const pageOf = (word, ms = 60000) => until(async () => {
+    for (const p of browser.contexts().flatMap((c) => c.pages())) {
+      if (p === page || !/workbench\.html/.test(p.url())) continue;
+      try { if ((await p.title()).includes(word)) return p; } catch (_) { /* closing */ }
+    }
+    return null;
+  }, ms, 500);
+  const pin = (folder) => { pinned = folder; };
   const close = async () => {
     try { await browser.close(); } catch (_) { /* gone */ }
     try { proc.kill('SIGTERM'); } catch (_) { /* gone */ }
@@ -98,7 +113,7 @@ async function open({ exe, profile, env, playwright, log }) {
     if (exited === null) { try { proc.kill('SIGKILL'); } catch (_) { /* gone */ } }
     out.end();
   };
-  return { browser, page, call, reload, hostUp, close, proc };
+  return { browser, page, call, reload, hostUp, pageOf, pin, close, proc };
 }
 
 module.exports = { open, until, sleep, SECRETS };

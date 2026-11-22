@@ -8,7 +8,8 @@
  * outside the window, so it writes a request file into the folder CODEX_PLUS_UI_CONTROL names and this extension runs
  * the request's body with `vscode` in scope and writes the result back. Files rather than a socket, because the
  * window is reloaded during the run: the extension host restarts, and the requests left in the folder wait for the next
- * one. Each extension host writes host-<pid>.json when it is up.
+ * one. Each extension host writes host-<pid>.json when it is up, with the folder its window has open. A request that
+ * names a folder is left to the window that has that folder open, so the windows of one run can share the folder.
  */
 const fs = require('fs');
 const path = require('path');
@@ -23,6 +24,12 @@ function activate(context) {
     const tmp = path.join(dir, `.${name}.${process.pid}.tmp`);
     fs.writeFileSync(tmp, JSON.stringify(value));
     fs.renameSync(tmp, path.join(dir, name));
+  };
+  const own = ((vscode.workspace.workspaceFolders || [])[0] || { uri: { fsPath: '' } }).uri.fsPath;
+  /* On Windows VS Code gives the folder with its drive letter in lower case, and the test names it as it was created. */
+  const sameFolder = (a, b) => (process.platform === 'win32' ? path.resolve(a).toLowerCase() === path.resolve(b).toLowerCase() : a === b);
+  const forMe = (name) => {
+    try { const r = JSON.parse(fs.readFileSync(path.join(dir, name), 'utf8')); return !r.folder || sameFolder(r.folder, own); } catch (_) { return false; }
   };
   const busy = new Set();
   const take = async (name) => {
@@ -43,14 +50,14 @@ function activate(context) {
     let names = [];
     try { names = fs.readdirSync(dir); } catch (_) { return; }
     for (const n of names) {
-      if (!n.endsWith('.req.json') || busy.has(n)) continue;
+      if (!n.endsWith('.req.json') || busy.has(n) || !forMe(n)) continue;
       busy.add(n);
       take(n).finally(() => busy.delete(n));
     }
   };
   const timer = setInterval(poll, 150);
   context.subscriptions.push({ dispose: () => clearInterval(timer) });
-  write(`host-${process.pid}.json`, { pid: process.pid, at: Date.now(), version: vscode.version, platform: process.platform });
+  write(`host-${process.pid}.json`, { pid: process.pid, at: Date.now(), version: vscode.version, platform: process.platform, folder: own });
 }
 
 module.exports = { activate, deactivate() {} };
