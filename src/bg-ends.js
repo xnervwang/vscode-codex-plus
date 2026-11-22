@@ -129,7 +129,7 @@ function update({ dir, threads = [], cache: launched = new Map(), jobs = path.jo
   const was = readJson(seenFile);
   const before = was && was.jobs && typeof was.jobs === 'object' ? was.jobs : null;
   const cur = {}, found = [];
-  /* With no session records at all no rollout is read, so a machine without Claude Code reads none. */
+  /* With no record under the jobs folder no rollout is read, so a machine that runs no claude --bg session reads none. */
   const live = ids.size ? liveJobs(sessions, proc) : new Set();
   for (const t of ids.size ? threads : []) {
     if (!t || !t.rollout || !THREAD.test(String(t.id || ''))) continue;
