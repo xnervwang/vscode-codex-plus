@@ -128,13 +128,15 @@ function createDetachedEnds({ dir, ask, now = Date.now, enabled = () => true, ra
     return ended;
   }
 
-  /** Sends the ends written down to the conversations this window has loaded. Returns how many notices went. */
-  async function deliver() {
+  /** Sends the ends written down to the conversations this window has loaded. Returns how many notices went. `sub` and
+      `text` name another kind's folder in `dir()` and its notice, as for the claude --bg sessions (src/bg-ends.js). */
+  async function deliver({ sub = DIR, text = noticeText } = {}) {
+    const here = path.join(dir(), sub);
     let names;
-    try { names = fs.readdirSync(folder()); } catch (_) { return 0; }
+    try { names = fs.readdirSync(here); } catch (_) { return 0; }
     const byThread = new Map();
     for (const n of names) {
-      const file = path.join(folder(), n);
+      const file = path.join(here, n);
       if (SENDING.test(n)) {
         let st = null;
         try { st = fs.statSync(file); } catch (_) { /* gone */ }
@@ -157,7 +159,7 @@ function createDetachedEnds({ dir, ask, now = Date.now, enabled = () => true, ra
     let sent = 0;
     for (const [thread, files] of byThread) {
       if (!loaded.has(thread)) continue;
-      const mark = path.join(folder(), `${thread}.sent`);
+      const mark = path.join(here, `${thread}.sent`);
       if (now() - (+(readJson(mark) || {}).at || 0) < BATCH_MS) continue;
       const claimed = [];
       for (const f of files) {
@@ -167,7 +169,7 @@ function createDetachedEnds({ dir, ask, now = Date.now, enabled = () => true, ra
       const ends = claimed.map(readJson).filter(Boolean).sort((a, b) => (a.startMs - b.startMs) || (a.pid - b.pid));
       if (!ends.length) { for (const c of claimed) unlink(c); continue; }
       const q = await ask('thread/queue/add', { threadId: thread, clientUserMessageId: `${ID_PREFIX}${now()}`,
-        input: [{ type: 'text', text: noticeText(ends), text_elements: [] }] });
+        input: [{ type: 'text', text: text(ends), text_elements: [] }] });
       if (q && (q.outcome === 'done' || q.outcome === 'sent')) {
         for (const c of claimed) unlink(c);
         try { fs.writeFileSync(mark, JSON.stringify({ at: now() })); } catch (_) { /* the next one is not held back */ }

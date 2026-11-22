@@ -1772,6 +1772,82 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       model.script(null);
     });
 
+    /* The news of a claude --bg session the conversation launched (src/bg-ends.js). The launch is a command whose
+       output has the hint line claude --bg prints, and the session is its record under this window's HOME, so no Claude
+       Code runs, and the check runs where there is no /proc too. */
+    await step('news of a claude --bg session', async () => {
+      if (!codex) throw new Error('the conversation did not open in a tab');
+      const id = threads[0].id, job = '5e6f7a8b';
+      const claude = env.CLAUDE_CONFIG_DIR || path.join(profile.home, '.claude');
+      const shared = path.join(profile.codexHome, 'plugins', 'data', 'agent-work-plan-codex-extras', 'shared');
+      const seenNow = () => { try { return JSON.parse(fs.readFileSync(path.join(shared, 'background-seen.json'), 'utf8')).jobs || {}; } catch (_) { return {}; } };
+      const record = (fields) => {
+        const dir = path.join(claude, 'jobs', job), at = new Date().toISOString();
+        fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(path.join(dir, 'state.json'), JSON.stringify({ id: job, name: 'window test suite', createdAt: at, updatedAt: at, ...fields }));
+      };
+      const card = () => codex.evaluate(() => !!document.querySelector('[data-codex-approval-surface]')).catch(() => false);
+      const cmd = `echo 'claude logs ${job}  show recent output' # claude --bg 'Run the suite.'`;
+      /* Codex's sandbox cannot start a command on every Linux machine, so there it runs outside, once approved. */
+      model.script(id, [{ call: 'exec_command', args: process.platform === 'linux'
+        ? { cmd, yield_time_ms: 1000, sandbox_permissions: 'require_escalated', justification: 'Start the session.' } : { cmd, yield_time_ms: 1000 } },
+      { reply: 'Started a session.' }]);
+      await exec('notifications.clearAll');
+      await tabNamed(title).click();
+      await codex.locator(COMPOSER).first().click();
+      await page.keyboard.type('Start the claude --bg session and come back.');
+      await page.keyboard.press('Enter');
+      /* On Windows Codex asks before it runs even a sandboxed command. */
+      const asked = await until(async () => (await card()) || (process.platform !== 'linux' && model.left() === 0 && 'none'), 30000, 300);
+      if (asked === true) {
+        const yes = codex.locator('[data-codex-approval-surface] button').filter({ hasText: /^(Yes|Allow once|Allow this time|Approve|Run)\b/ }).first();
+        if (await yes.count()) await yes.click();
+        const submit = codex.locator('[data-codex-approval-surface] button').filter({ hasText: /^Submit$/ }).first();
+        if (await submit.count()) await submit.click();
+      }
+      const launched = () => {
+        try {
+          const sessions = path.join(profile.codexHome, 'sessions');
+          const file = fs.readdirSync(sessions, { recursive: true }).map((r) => path.join(sessions, String(r))).find((f) => f.endsWith(`${id}.jsonl`));
+          return fs.readFileSync(file, 'utf8').split('\n').some((l) => l.includes('function_call_output') && l.includes(`claude logs ${job}`));
+        } catch (_) { return false; }
+      };
+      check(!!await until(() => model.left() === 0 && launched(), 40000, 500), 'the conversation runs a command that launches a claude --bg session',
+        { left: model.left(), asked });
+      model.script(null);
+      record({ state: 'working' });
+      const noted = await until(() => seenNow()[job] === 'working' && seenNow(), 60000, 1000);
+      check(!!noted, 'Codex Plus finds the session in the command\'s output and notes it as working, without telling anyone yet', seenNow());
+
+      const turns = model.turns();
+      record({ state: 'done', lastTerminalAt: new Date().toISOString(), output: { result: 'All 12 window suites passed.' } });
+      const told = await until(() => model.sent('All 12 window suites passed.') > 0 && model.turns() > turns, 60000, 1000);
+      check(!!told && model.sent(`(${job}) finished`) > 0, 'once it is done, the idle conversation starts a turn with a notice naming the session and its result',
+        { sent: model.sent(job), turns: [turns, model.turns()], seen: seenNow() });
+
+      fs.mkdirSync(path.join(claude, 'sessions'), { recursive: true });
+      const live = path.join(claude, 'sessions', `${process.pid}.json`);
+      fs.writeFileSync(live, JSON.stringify({ pid: process.pid, kind: 'bg', jobId: job, status: 'idle', name: 'window test suite' }));
+      const question = 'Which window region should the suite run in?';
+      record({ state: 'blocked', needs: question });
+      check(!!await until(() => model.sent(question) > 0, 120000, 1000), 'once it waits for an answer, with its process running, the conversation is told what it asks',
+        { sent: model.sent(question), seen: seenNow() });
+
+      await call('await vscode.workspace.getConfiguration("agentPlus").update("tokenMode", "custom", vscode.ConfigurationTarget.Global); return true;');
+      await setting('detachedEndNotices', false);
+      const quiet = 'Nothing to tell while notices are off.';
+      record({ state: 'done', lastTerminalAt: new Date().toISOString(), output: { result: quiet } });
+      const noted2 = await until(() => /^done@/.test(seenNow()[job] || ''), 60000, 1000);
+      await sleep(25000);
+      check(!!noted2 && model.sent(quiet) === 0, 'with codexPlus.detachedEndNotices off in Custom, the next change is noted and nothing is sent',
+        { seen: seenNow(), sent: model.sent(quiet) });
+      await setting('detachedEndNotices', true);
+      await call('await vscode.workspace.getConfiguration("agentPlus").update("tokenMode", undefined, vscode.ConfigurationTarget.Global); return true;');
+      await sleep(25000);
+      check(model.sent(quiet) === 0, 'and turned back on, what changed meanwhile is not sent either', model.sent(quiet));
+      fs.rmSync(live, { force: true });
+    });
+
     await step('images', async () => {
       if (!codex) throw new Error('the conversation did not open');
       const id = threads[0].id;

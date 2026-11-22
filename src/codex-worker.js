@@ -75,6 +75,13 @@ function askedOf(dir, ids) {
   return out;
 }
 
+/* The recent conversations and sub-agents with their rollouts, '' for one only kept compressed, which is not read. */
+function recentRollouts(dir) {
+  const since = Date.now() - STATE_WINDOW_MS;
+  return (files.listThreads(dir) || []).filter((t) => (t.kind === 'user' || t.kind === 'subagent') && t.updatedMs >= since && t.rollout)
+    .map((t) => { const real = files.existingRollout(t.rollout); return { id: t.id, rollout: real && !real.endsWith('.zst') ? real : '' }; });
+}
+
 const ops = {
   /*
    * What the extension shows of Codex: { stamp, same } when nothing moved since `previous`, otherwise every thread with
@@ -134,11 +141,15 @@ const ops = {
   /* What the recent conversations and sub-agents still have running after their turn ended (src/left-running.js).
      `share` is the folder the windows share a scan through, '' for none. */
   leftRunning({ home: h, proc = '/proc', sessionsDir, share = '' }) {
-    const dir = at(h);
-    const since = Date.now() - STATE_WINDOW_MS;
-    const threads = (files.listThreads(dir) || []).filter((t) => (t.kind === 'user' || t.kind === 'subagent') && t.updatedMs >= since && t.rollout)
-      .map((t) => { const real = files.existingRollout(t.rollout); return { id: t.id, rollout: real && !real.endsWith('.zst') ? real : '' }; });
+    const threads = recentRollouts(at(h));
     return require('./left-running').leftRunning({ threads, proc, sessionsDir, cache: launchCache, environs, share });
+  },
+  /* The changes of the claude --bg sessions the same conversations launched, each written down in `dir` for
+     src/detached-ends.js to send (src/bg-ends.js). */
+  bgEnds({ home: h, dir, proc = '/proc', sessionsDir, jobsDir, claim = true }) {
+    const threads = recentRollouts(at(h));
+    return require('./bg-ends').update({ dir, threads, cache: launchCache, proc, claim,
+      ...(sessionsDir ? { sessions: sessionsDir } : {}), ...(jobsDir ? { jobs: jobsDir } : {}) });
   },
   /* Plans of conversations that are gone (src/workplan.js). */
   sweep({ home: h }) {

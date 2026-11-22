@@ -38,6 +38,7 @@ const codexConfig = require('./src/codex-config');
 const uninstallPlan = require('./src/uninstall-plan');
 const wakeup = require('./src/wakeup');
 const detachedEnds = require('./src/detached-ends');
+const bgEnds = require('./src/bg-ends');
 const { SHARE_DIR } = require('./src/left-running');
 const workplan = require('./src/workplan');
 const agentMaps = require('./src/agent-map');
@@ -322,8 +323,10 @@ async function activate(context) {
   /* A conversation is shown as working while something it started is still running (src/left-running.js). A window
      running an older build than the installed one leaves this scan to the windows running the installed build. */
   /* The notice a conversation gets once a command it left running detached is no longer running (src/detached-ends.js). */
-  const ends = detachedEnds.createDetachedEnds({ dir: () => path.join(install.planDir(files.codexHome()), SHARE_DIR),
-    ask: (m, p) => patching.hostRequest(m, p), log: say, enabled: () => runs('detachedEndNotices') && trusted() && !standsDown(),
+  const sharedDir = () => path.join(install.planDir(files.codexHome()), SHARE_DIR);
+  const endsOn = () => runs('detachedEndNotices') && trusted() && !standsDown();
+  const ends = detachedEnds.createDetachedEnds({ dir: sharedDir,
+    ask: (m, p) => patching.hostRequest(m, p), log: say, enabled: endsOn,
     ran: (thread, cmd, startMs) => {
       const file = files.existingRollout((reader.thread(thread) || {}).rollout || '');
       return detachedEnds.ranBy(file ? files.tailLines(file, detachedEnds.RAN_BYTES) : null, cmd, startMs);
@@ -333,7 +336,13 @@ async function activate(context) {
     ends.observe(scan);
     if (delivering) return;
     delivering = true;
-    ends.deliver().catch((e) => say(`detached command notices: ${e.message}`)).finally(() => { delivering = false; });
+    (async () => {
+      await ends.deliver().catch((e) => say(`detached command notices: ${e.message}`));
+      /* The news of claude --bg sessions (src/bg-ends.js), written down in the worker and sent the same way. */
+      const told = await reader.request('bgEnds', { home: files.codexHome(), dir: sharedDir(), claim: endsOn() });
+      if (Array.isArray(told) && told.length) say(`claude --bg sessions changed: ${told.map((e) => `${e.job} ${e.kind} for ${e.thread}`).join(', ')}`);
+      await ends.deliver({ sub: bgEnds.ENDS_DIR, text: bgEnds.noticeText });
+    })().catch((e) => say(`claude --bg session notices: ${e.message}`)).finally(() => { delivering = false; });
   };
   const source = createCodexSource(vscode, { log: say, reader, patching, trusted, enabled: () => runs('workPlan'),
     briefs: () => runs('conversationBrief'), seen: createSeen(context.globalState),
