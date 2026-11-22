@@ -3313,11 +3313,11 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       note(`codexPlus.loadRestoredTabs on: without a click the app-server has loaded ${JSON.stringify(loadedOn)}`);
       check(!!loaded, 'codexPlus.loadRestoredTabs on: the conversation behind gets its notice with its tab never clicked', { sent: model.sent(`sleep ${pid.behind}`), loaded: loadedOn });
       await sleep(Math.max(0, restoredAt + 40000 - Date.now()));
-      await toFront(behind);
+      check(await toFront(behind), 'codexPlus.loadRestoredTabs on: a click more than 30 seconds after the reload brings the tab behind to the front', await tabs());
       /* Codex's header cuts a long title short. */
-      const drawn = await until(async () => { const st = await pageSays(await frontPage()); return st && st.turns >= 1 && st.text.includes(behind.title.slice(0, 30)) && st; }, 30000, 1000);
-      check(!!drawn && !await gaveUp(), 'clicked more than 30 seconds after the reload, the tab behind draws its conversation',
-        { page: await pageSays(await frontPage()), toasts: await toasts() });
+      const drawn = await frameWhere((want) => !!document.querySelector('[data-codex-composer-root]') && document.querySelectorAll('[data-turn-key]').length >= 1
+        && document.body.innerText.includes(want), 30000, behind.title.slice(0, 30));
+      check(!!drawn && !await gaveUp(), 'and the tab draws its conversation', { page: await pageSays(await frontPage()), tabs: await tabs(), toasts: await toasts() });
       await setting('loadRestoredTabs', undefined);
     });
   } finally {
