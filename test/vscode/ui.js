@@ -1082,6 +1082,14 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await call('await vscode.workspace.getConfiguration("agentPlus").update("tokenMode", undefined, vscode.ConfigurationTarget.Global); return true;');
     });
 
+    await step('how long Codex\'s pages took to open', async () => {
+      const walk = (d) => { try { return fs.readdirSync(d, { withFileTypes: true }).flatMap((n) => (n.isDirectory() ? walk(path.join(d, n.name)) : [path.join(d, n.name)])); } catch (_) { return []; } };
+      const said = () => walk(path.join(profile.user, 'logs')).filter((f) => /Codex Plus\.log$/.test(f)).map((f) => fs.readFileSync(f, 'utf8')).join('\n');
+      await exec('codexPlus.showOpenTimes');
+      const line = await until(() => (said().match(/Opening a Codex page[^\n]*/g) || []).pop(), 10000, 300);
+      check(!!line && /\(\d+ found/.test(line), 'Show How Long Opening a Codex Page Took finds in Codex\'s own log the start of the pages this window opened', line);
+    });
+
     /* After every step that types into the conversation, since it is archived here. */
     await step('a conversation archived while its tab is open', async () => {
       if (!codex) throw new Error('the conversation did not open');

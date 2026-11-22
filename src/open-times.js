@@ -11,6 +11,11 @@
  * whether the page opened on a conversation or on its home page, and whether it gave up (`outcome=failure
  * reason=timeout`). So nothing is paired or timed here; the lines are found and read.
  *
+ * Codex writes those spans only while a switch it fetches from OpenAI is on, and so not offline and, as seen with
+ * Codex 26.1117, not with another model provider. It then still writes `[startup][renderer] app routes mounted after
+ * <ms>ms` once per page start, which gives only how long the page took to start its app. A log that has any span is
+ * read for its spans alone, so a page start is not counted twice.
+ *
  * Every window's Codex.log under VS Code's logs folder is read, since one window opens only a few pages. They are read
  * only when asked for (Show Status and the command), each from the offset it was read to the time before, with fs
  * promises so the extension host's thread is not held.
@@ -20,6 +25,8 @@ const path = require('path');
 
 /* `2026-11-08 21:01:08.567 [info] client.performance.span key=value ...`, in the extension host's local time. */
 const LINE = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})\.(\d{3}) \[\w+\] client\.performance\.span (.*)$/;
+/* The same time, then Codex's line for a page whose app has mounted its routes, `performance.now()` after its start. */
+const MOUNTED = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})\.(\d{3}) \[\w+\] \[startup\]\[renderer\] app routes mounted after (\d+)ms$/;
 /* `marksMs` is compact JSON with no nested object; every other value has no space in it. */
 const FIELD = /(\w+)=(\{[^}]*\}|\S+)/g;
 /* The first read of a file takes at most its last this many bytes. */
@@ -61,12 +68,32 @@ function parseSpan(line) {
   };
 }
 
+/** A page start from Codex's line that its app mounted, as a span of surface `page` with no stages; null for any other line. */
+function parseMounted(line) {
+  const m = MOUNTED.exec(line);
+  if (!m) return null;
+  const logged = new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6], +m[7]).getTime();
+  const ms = +m[8];
+  return { at: logged - ms, ms, surface: 'page', outcome: 'success', reason: '', background: 0, marks: {}, mounted: true };
+}
+
 /** The spans in `text`, which holds whole lines. */
 function spansIn(text) {
   const out = [];
   for (const line of String(text).split('\n')) {
     if (!line.includes('name=app_start')) continue;
     const s = parseSpan(line);
+    if (s) out.push(s);
+  }
+  return out;
+}
+
+/** The page starts in `text` from Codex's lines that a page's app mounted. */
+function mountsIn(text) {
+  const out = [];
+  for (const line of String(text).split('\n')) {
+    if (!line.includes('app routes mounted')) continue;
+    const s = parseMounted(line);
     if (s) out.push(s);
   }
   return out;
@@ -89,7 +116,11 @@ function createOpenTimes({ own = '', root = '' } = {}) {
     for (const s of sessions) {
       let hosts = [];
       try { hosts = await fs.promises.readdir(path.join(root, s)); } catch (_) { continue; }
-      for (const h of hosts) if (/^exthost\d+$/.test(h)) out.add(path.join(root, s, h, 'openai.chatgpt', 'Codex.log'));
+      /* exthost<n> under a VS Code server's session; exthost under each window of a desktop VS Code's session. */
+      for (const h of hosts) {
+        if (/^exthost\d+$/.test(h)) out.add(path.join(root, s, h, 'openai.chatgpt', 'Codex.log'));
+        else if (/^window\d+$/.test(s) && h === 'exthost') out.add(path.join(root, s, h, 'openai.chatgpt', 'Codex.log'));
+      }
     }
     return [...out];
   }
@@ -99,7 +130,7 @@ function createOpenTimes({ own = '', root = '' } = {}) {
     try { st = await fs.promises.stat(file); } catch (_) { files.delete(file); return; }
     let have = files.get(file);
     if (have && (have.ino !== st.ino || st.size < have.size)) have = null;
-    if (!have) have = { ino: st.ino, size: Math.max(0, st.size - FIRST_READ_MAX), spans: [], midLine: st.size > FIRST_READ_MAX };
+    if (!have) have = { ino: st.ino, size: Math.max(0, st.size - FIRST_READ_MAX), spans: [], mounts: [], midLine: st.size > FIRST_READ_MAX };
     files.set(file, have);
     if (st.size <= have.size) return;
     let fh;
@@ -113,6 +144,7 @@ function createOpenTimes({ own = '', root = '' } = {}) {
       let text = buf.toString('utf8', 0, end + 1);
       if (have.midLine) { text = text.slice(text.indexOf('\n') + 1); have.midLine = false; }
       have.spans = have.spans.concat(spansIn(text)).slice(-KEEP);
+      have.mounts = have.mounts.concat(mountsIn(text)).slice(-KEEP);
       have.size += end + 1;
     } catch (_) { /* read again from the same offset next time */ } finally {
       if (fh) await fh.close().catch(() => {});
@@ -125,7 +157,7 @@ function createOpenTimes({ own = '', root = '' } = {}) {
     for (const f of list) await readOne(f);
     for (const f of [...files.keys()]) if (!list.includes(f)) files.delete(f);
     const all = [];
-    for (const [file, e] of files) for (const s of e.spans) all.push({ ...s, here: file === own });
+    for (const [file, e] of files) for (const s of (e.spans.length ? e.spans : e.mounts)) all.push({ ...s, here: file === own });
     return all.sort((a, b) => a.at - b.at);
   }
 
@@ -195,9 +227,10 @@ function reportLines(spans, { zone = '', last = 5 } = {}) {
   return [
     `Opening a Codex page, as Codex's own log times it (${spans.length} found; times in ${zone || 'UTC'}):`,
     ...summaryLines(spans),
+    ...(spans.some((s) => s.mounted) ? ['  for a "page", Codex logged only how long it took to start, not whether it was the sidebar or a tab, nor its stages'] : []),
     `  the last ${shown.length}, newest last; "script run" is when Codex's page script had loaded and run:`,
     ...shown.map((s) => `    ${describe(s, zone)}`),
   ];
 }
 
-module.exports = { parseSpan, spansIn, whereLogs, createOpenTimes, reportLines, describe, FIRST_READ_MAX };
+module.exports = { parseSpan, parseMounted, spansIn, mountsIn, whereLogs, createOpenTimes, reportLines, describe, FIRST_READ_MAX };

@@ -80,4 +80,24 @@ module.exports = async ({ eq, tmp }) => {
     report.some((l) => /thread: 1 opened, median 8\.0s, slowest 8\.0s$/.test(l))], [true, true, true],
   'the report counts the opens per surface, with the median and slowest of those that finished and how many gave up');
   eq(ot.reportLines([], {}).length, 1, 'with nothing found it says so in one line');
+
+  /* Codex 26.1117 writes the spans only while a switch it fetches from OpenAI is on. Without it, its one line per page
+     start is the time its app's routes were mounted, measured from the page's start. */
+  const mounted = (ts, ms) => `${ts} [info] [startup][renderer] app routes mounted after ${ms}ms`;
+  const desk = tmp('desktop-logs');
+  const w1 = ot.whereLogs(path.join(desk, '20261122T005035', 'window1', 'exthost', 'xnervwang.codex-plus'));
+  const w2 = path.join(desk, '20261122T005035', 'window2', 'exthost', 'openai.chatgpt', 'Codex.log');
+  for (const f of [w1.own, w2]) fs.mkdirSync(path.dirname(f), { recursive: true });
+  fs.writeFileSync(w1.own, ['2026-11-22 00:50:38.535 [info] Activating Codex extension', mounted('2026-11-22 00:50:58.232', 5830),
+    mounted('2026-11-22 00:52:11.504', 3453), ''].join('\n'));
+  fs.writeFileSync(w2, `${mounted('2026-11-22 00:51:00.000', 4000)}\n${thread('2026-11-22 00:51:30.000', 9000.5)}\n`);
+  const starts = await ot.createOpenTimes(w1).read();
+  eq(starts.map((x) => [x.surface, x.ms, x.here]), [['page', 5830, true], ['thread', 9000.5, false], ['page', 3453, true]],
+    'with no span in a window\'s log, each page start is read from that line; a log that has spans gives only those, so no start counts twice; '
+      + 'and a desktop window\'s log beside another window\'s is read too');
+  eq(starts[0].at, new Date(2026, 10, 22, 0, 50, 58, 232).getTime() - 5830, 'such a start began that long before its line was logged');
+  const told = ot.reportLines(starts, { zone: 'UTC', last: 5 });
+  eq([/3 found/.test(told[0]), told.some((l) => /page: 2 opened, median 4\.6s, slowest 5\.8s$/.test(l)),
+    told.some((l) => /Codex logged only how long it took to start/.test(l))], [true, true, true],
+  'the report counts those starts as pages, and says Codex logged no more about them');
 };
