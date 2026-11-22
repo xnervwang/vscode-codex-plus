@@ -66,7 +66,7 @@ module.exports = async ({ eq, root }) => {
   if (item(RENAME)) item(RENAME).bubble('click');
   eq([posted.filter((m) => m.kind === 'menu'), gone(), dom.waiting() === timers], [[{ kind: 'menu', command: 'codexPlus.renameThread', context: thread(ID(4)) }], true, true],
     'an item clicked sends its command with the row\'s context to the host, and the menu is taken off the page');
-  /* As in Claude Code Plus's list: once a menu's item has run, the row it was opened on is not left looking selected. */
+  /* As in Claude Code Plus's list: once a menu's item has run, its row no longer looks selected. */
   const marked = (n) => ['cp-selected', 'cp-hl'].filter((c) => rowEl('ungrouped', n).classList.contains(c));
   eq([marked(4), posted.filter((m) => m.kind === 'select')], [[], [{ kind: 'select', ids: [] }]],
     'and the row that was selected only for its menu is neither selected nor highlighted any more, and the host is told the selection is empty');

@@ -6,8 +6,8 @@
 /*
  * A New tab that showed a conversation, across a reload. VS Code restores the tab on its URI, fragment and all, and
  * Codex 26.1117 draws it as a new conversation page: the route it reads from that URI is /extension/panel/new, and it
- * keeps nothing of what the page showed (seen in a real window). So the window remembers, by tab URI, the
- * conversation a tab showed that its URI does not name, and sends the restored tab's page back to it.
+ * keeps nothing of what the page showed (seen in a real window). So the window keeps, for each tab URI that names no
+ * conversation or another one, the conversation the tab showed, and navigates the restored page back to it.
  *
  * The URI comes from the host patch, which keeps each conversation panel's URI on Codex's side from the moment Codex
  * resolves it, before this extension starts (src/host.js "conversation panel URIs"). It is taken here from the patch
@@ -82,7 +82,7 @@ module.exports = async ({ eq, tmp, root }) => {
     'in the first window the New tab shows the conversation begun in it, and the tab opened on a conversation the one begun after it');
   one.stop();
 
-  /* ── the reload: VS Code restores the tabs, and Codex resolves the one in front before this extension starts ── */
+  /* ── the reload; Codex resolves the tab in front before this extension starts ── */
   ({ patching } = fresh());
   const two = windowOf(patching);
   const back = panelOf('restored New tab'), backEmpty = panelOf('restored empty New tab');
@@ -125,7 +125,7 @@ module.exports = async ({ eq, tmp, root }) => {
       eq(mem.dropped(), [], 'so none of their conversations is taken to be a tab VS Code dropped, and none is opened a second time');
     } finally { mem.dispose(); }
 
-    /* Closing the tab forgets what it showed: a tab later opened on the same URI is a new conversation. */
+    /* A closed tab's entry is dropped, so a tab later opened on the same URI is a new conversation. */
     const tab = control.groups[0].tabs[0];
     control.setTabs([tabOf('Codex', EMPTY_URI), tabOf('Why does the export skip rows?', NAMED_URI)], 0);
     back.dispose();

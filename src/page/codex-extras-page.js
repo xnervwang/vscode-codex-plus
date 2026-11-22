@@ -1876,7 +1876,7 @@
              rollout and the page hold the same number of replies in that turn. */
           when = { ms: tt.r[e.nth - 1], secs: true };
         } else if (e.kind === 'assistant' && tt && !when && tt.r.length > repliesIn[e.turn] && codexShowsWorked(e.turnEl)) {
-          /* A finished turn's "Worked for" folds its earlier replies away, so the ones the page shows are its last. */
+          /* A finished turn's "Worked for" folds its earlier replies away, so the replies on the page are its last ones. */
           when = { ms: tt.r[tt.r.length - repliesIn[e.turn] + e.nth - 1], secs: true };
         } else if (e.kind === 'assistant' && tt && when && !when.secs) {
           var hit = null, hits = 0;

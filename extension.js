@@ -512,7 +512,7 @@ async function activate(context) {
     }, 60000);
     try {
       patching.activate(context, { vscode, log: say, codexProgram, source, context, settings, onTimeZone: reportTimeZone,
-        /* A restored tab is sent back only to a conversation that still exists; until Codex's list is first read, all are taken to. */
+        /* A restored tab is sent back only to a conversation that still exists. */
         present: (id) => !reader.threads() || reader.present(id),
         userTimes, sessionInfo: (id) => sessionInfoRows(id), compactLimit: compactLimitNow, agentMap, agentMapAct,
         planLine: (id) => (runs('workPlan') ? reader.request('plan', { home: files.codexHome(), id }) : Promise.resolve('')),

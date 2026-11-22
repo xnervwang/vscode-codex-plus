@@ -331,7 +331,7 @@ async function main() {
         throw new Error(`the rail's list did not open: ${await conv.evaluate(() => document.querySelectorAll('[data-codex-extras="nav-row"]').length)} rows`);
       }
       await away();
-      /* The list holds only the messages Codex has drawn, which for a long conversation are its last few. */
+      /* The list holds only the messages Codex has drawn. */
       const rows = conv.locator('[data-codex-extras="nav-row"]');
       await rows.nth(Math.min(3, await rows.count() - 1)).hover();
       await sleep(800);

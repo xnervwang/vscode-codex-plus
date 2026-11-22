@@ -144,7 +144,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     return n ? n.innerText : '';
   }, [t, words]);
   const frontTab = async () => { const g = (await tabs()).find((x) => x.active); return g && g.tabs.find((x) => x.active); };
-  /* Every Codex tab, with the route its URI names and the fragment that tells two New tabs apart. */
+  /* Every Codex tab, with its URI's route and fragment; only the fragment tells two New tabs apart. */
   const codexTabsNow = () => call(`return vscode.window.tabGroups.all.flatMap((g) => g.tabs
     .filter((t) => t.input && typeof t.input.viewType === 'string' && /conversationEditor$/.test(t.input.viewType) && t.input.uri)
     .map((t) => ({ label: t.label, route: t.input.uri.path, fragment: t.input.uri.fragment, active: t.isActive && g.isActive, column: g.viewColumn })));`);
@@ -443,7 +443,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         { want: id, rows: got || await currentRows() });
       return !!got;
     };
-    /* A work plan of one row for a conversation, which Agent Plus's Work plan view shows while it is in front. */
+    /* Agent Plus's Work plan view shows the plan of the conversation in front; each test plan has one row. */
     const PLANS = path.join(profile.codexHome, 'plugins', 'data', 'agent-work-plan-codex-extras');
     const planFor = (id, rowTitle) => {
       fs.mkdirSync(PLANS, { recursive: true });
@@ -462,7 +462,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       return rows;
     };
     const planTitle = (id) => `Work plan of ${id}`;
-    /* Writes a conversation's one-row plan, named by its id, and checks the Work plan view shows it. */
+    /* Writes a one-row plan for `id` and checks that the Work plan view shows it. */
     const planShown = async (id, what) => {
       planFor(id, planTitle(id));
       await exec('agentPlus.refreshWorkPlan');
@@ -1538,7 +1538,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await checkCurrent(id, how);
       return named ? { id, label: named.label, text } : null;
     };
-    /* Whether `id`'s row in its group carries the unread envelope, and the titles of every row that does. */
+    /* Whether the envelope is on `id`'s row in its group, and which rows have one. */
     const rowUnread = async (id) => {
       if (!await showList()) return null;
       return list.evaluate((want) => {
@@ -1821,8 +1821,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       check(!!await until(async () => (await labelOf(label)) === label, 20000, 500), 'and bringing it to the front takes the envelope away', await labelOf(label));
     });
 
-    /* The key of the newest turn the page in front draws, '' with none. Codex draws only the turns near the bottom of a
-       long conversation, so their number says little. */
+    /* The newest turn drawn on the front page, by its key ('' when there is none). Codex draws only the turns near the
+       bottom of a long conversation, so counting them says little. */
     const newestInFront = async () => { const f = await frontPage(); return f ? f.evaluate(() => { const all = document.querySelectorAll('[data-turn-key]');
       return all.length ? all[all.length - 1].getAttribute('data-turn-key') : ''; }).catch(() => '') : ''; };
     const REOPEN = process.platform === 'darwin' ? 'Meta+Shift+T' : 'Control+Shift+T';
@@ -1878,7 +1878,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await checkCurrent(other, 'the conversation clicked in Open sessions');
     });
 
-    /* A conversation stopped on a question for the user while its tab is in the background. */
+    /* A conversation that stops to ask the user something while its tab is in the background. */
     await step('a conversation waiting for you in the background', async () => {
       if (process.platform !== 'linux') {
         note(`the request to run a command outside the sandbox is made only on Linux in this run, so waiting in the background was not checked on ${process.platform}`);

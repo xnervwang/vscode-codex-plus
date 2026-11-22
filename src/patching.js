@@ -293,7 +293,7 @@ const writeShown = (next) => {
   for (const k of keys.slice(0, Math.max(0, keys.length - SHOWN_KEPT))) delete next[k];
   Promise.resolve(m.update(SHOWN_KEY, next)).catch(() => { /* kept on the next change */ });
 };
-/* The conversation a tab's URI names itself, '' for a New tab's. */
+/* The conversation named in a tab's URI; '' for a New tab. */
 const namedBy = (uri) => { const m = /^openai-codex:\/\/route\/local\/([^/?#]+)/i.exec(uri || ''); return m ? m[1].toLowerCase() : ''; };
 function rememberShown() {
   const next = { ...shownRecord() };
@@ -314,9 +314,8 @@ function uriOfPanel(panel) {
   try { const u = globalThis.__codexExtrasPanelUris && globalThis.__codexExtrasPanelUris.get(panel); return typeof u === 'string' ? u : ''; } catch (_) { return ''; }
 }
 /*
- * A restored tab's page goes back to the conversation the tab showed. Codex adds the panel to its own map only after
- * handing it over, and holds a message for a page that is not ready yet, so the message is sent on the next turn of
- * the event loop.
+ * Codex adds the panel to its own map only after handing it over, and holds a message for a page that is not ready
+ * yet, so the navigation is sent on the next turn of the event loop.
  */
 function restoreShown(panel, rec) {
   const want = rec.uri ? shownRecord()[rec.uri] : '';
