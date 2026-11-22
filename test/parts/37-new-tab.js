@@ -127,7 +127,8 @@ module.exports = async ({ eq, bad, note, tmp }) => {
   patching._approvals.clear();
   patching.activate(context, { vscode, log: () => {}, source, context,
     settings: () => ({ patchCodex: 'off', chime: true, figures: false, enabled: true, timestamps: true }) });
-  const panelOf = (id) => ({ webview: { id }, visible: false, viewColumn: undefined, active: false, iconPath: null,
+  /* Titled "Codex", as VS Code hands a Codex panel over until something names it. */
+  const panelOf = (id) => ({ webview: { id }, title: 'Codex', visible: false, viewColumn: undefined, active: false, iconPath: null,
     reveal() { this.revealed = (this.revealed || 0) + 1; }, onDidDispose(fn) { this.dispose = fn; } });
   const say = (webview, on) => globalThis.__codexExtrasMessage(webview, { type: 'codex-extras', kind: 'approval', on }, provider);
   const toPanel = (p) => sent.filter((s) => s.to === p || s.to === p.webview).map((s) => s.msg);

@@ -15,7 +15,8 @@
  * and that URI never changes, so a conversation the user started with Codex's own New button has no id in its tab for
  * as long as the tab lives, and a conversation started in a tab opened on another leaves that other one's id there.
  * From the URI alone the first is indistinguishable from an empty tab and the second from the conversation it left; the
- * patch learns both from the thread start of the tab's own page (src/patching.js panelThreads, nowShowing).
+ * patch learns both from the tab's own page, the thread it starts or the turns it shows (src/patching.js panelThreads,
+ * nowShowing).
  */
 const VIEW_TYPE = 'chatgpt.conversationEditor';
 const SCHEME = 'openai-codex';

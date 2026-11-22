@@ -60,7 +60,7 @@ class TabMemory {
 
   /*
    * The conversations open here: the ones named by their tab's URI, and the ones only the patch can name, which it
-   * learns from the thread start of the tab's own page. A tab Codex opened with its New button keeps the URI
+   * learns from the tab's own page. A tab Codex opened with its New button keeps the URI
    * /extension/panel/new whatever conversation goes into it, so without `alsoOpen` every such conversation is missing
    * from the open list and gets reopened in a second tab as though dropped.
    */

@@ -9,6 +9,8 @@
  *   - The page's time zone goes to the extension host, since this is the one part that runs where the user is.
  *   - Whether an approval card is on screen goes to the host as a flag, which is how the conversation Codex's sidebar
  *     is showing is seen as waiting even though it has no tab of its own.
+ *   - The id of the newest turn shown goes to the host, which is how a tab Codex opened for a new conversation is
+ *     matched to the conversation it goes on to show.
  *   - A chime plays when the host says a turn finished, Codex stopped for permission, or the model asked something,
  *     for the conversation shown here.
  *   - The strip shows the figures the host sends for this conversation: the last turn's duration, how much of the
@@ -1364,9 +1366,9 @@
    * sample of a Codex conversation, so a Codex release that drops one turns a check red instead of quietly showing
    * nothing.
    *
-   * A message's opening words are read and shown here and go no further. The one thing this part posts to the host is
-   * the shape of a sent time it could not parse: its length, the class of its first character and whether it is all
-   * digits. None of that includes the value itself.
+   * A message's opening words are read and shown here and go no further. This part posts two things to the host: the
+   * id Codex puts on the newest turn (noteShownTurn), and the shape of a sent time it could not parse: its length, the
+   * class of its first character and whether it is all digits. Neither includes anything the conversation says.
    */
   var ATTR = {
     scroller: 'data-app-action-timeline-scroll',
@@ -2535,6 +2537,21 @@
     hookCount = n;
   }
 
+  /*
+   * Tells the host the id Codex puts on the newest turn this page shows, each time it changes. The host recorded which
+   * conversation each started turn belongs to, and a tab opened on Codex's new-conversation route has no other way of
+   * saying which conversation it went on to show. Codex first draws a turn under a placeholder key, which the host
+   * finds no conversation for. Only the id is sent.
+   */
+  var shownTurn = '';
+  function noteShownTurn(list) {
+    var key = '';
+    for (var i = list.length - 1; i >= 0 && !key; i--) key = list[i].turn || '';
+    if (key === shownTurn) return;
+    shownTurn = key;
+    if (key) post({ kind: 'turnShown', turn: key.slice(0, 100) });
+  }
+
   var refreshing = false;
   function refresh() {
     if (refreshing || !document.body) return;
@@ -2545,6 +2562,7 @@
       var list = entries();
       noteMisses(list);
       if (!list) { dropNav(); return; }
+      noteShownTurn(list);
       var users = stampAll(list);
       colourAll(users);
       if (view.navigation) buildNav(users); else dropNav();

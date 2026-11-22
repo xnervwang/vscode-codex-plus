@@ -160,21 +160,36 @@ function unnamedTabThread(vscode, patching) {
   return free.length === 1 ? free[0] : '';
 }
 
+/* What the patch answers, or `none` without that answer. */
+const ask = (patching, name, args, none) => {
+  if (!patching || typeof patching[name] !== 'function') return none;
+  try { return patching[name](...args); } catch (_) { return none; }
+};
+
 /*
  * The conversation a Codex tab shows, '' when that is not known (a conversation not started yet, or no way to tell).
- * A tab in front of its group is matched to the one panel visible in that column; any other goes by its URI, as the
- * patch has it now, and a tab whose URI names nothing by elimination.
+ * When the tab's URI has a conversation id, that is the conversation, as the patch has it now: Codex opens one editor
+ * per URI, so no other panel can be that tab's. A New tab's URI has none; its conversation is that of the panel this
+ * extension gave the tab's title, else, in front of its group, the one panel visible in that column, else whatever
+ * elimination leaves.
+ *
+ * The visible panel counts only if it is a New tab's panel titled like the tab: VS Code reports a tab coming to the
+ * front before it updates which panel is visible, so for that moment the visible one is the panel of the tab that was
+ * in front.
  */
 function threadOfCodexTab(vscode, patching, tab) {
-  if (tab && tab.isActive && patching && typeof patching.shownIn === 'function') {
-    const group = ((vscode.window.tabGroups && vscode.window.tabGroups.all) || []).find((g) => g.activeTab === tab);
-    let shown = null;
-    try { shown = group ? patching.shownIn(group.viewColumn) : null; } catch (_) { shown = null; }
-    if (shown) return shown.thread;
-  }
   const named = tabs.threadOfTab(vscode, tab);
   if (named) return namedNow(patching, named);
-  return tabs.isCodexTab(vscode, tab) ? unnamedTabThread(vscode, patching) : '';
+  if (!tabs.isCodexTab(vscode, tab)) return '';
+  const label = typeof tab.label === 'string' ? tab.label : '';
+  const titled = ask(patching, 'newPanelThreadsTitled', [label], []);
+  if (Array.isArray(titled) && titled.length === 1) return titled[0];
+  if (tab.isActive) {
+    const group = ((vscode.window.tabGroups && vscode.window.tabGroups.all) || []).find((g) => g.activeTab === tab);
+    const shown = group ? ask(patching, 'shownIn', [group.viewColumn], null) : null;
+    if (shown && shown.fresh && shown.title === label) return shown.thread;
+  }
+  return unnamedTabThread(vscode, patching);
 }
 
 /*

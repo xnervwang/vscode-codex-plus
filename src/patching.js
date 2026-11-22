@@ -22,18 +22,20 @@
  *                         list of the user's own messages and their colouring from, with the times its rollout gives
  *                         for those messages (src/page/codex-extras-page.js draws all of it, src/user-times.js reads
  *                         the rollout)
- *   page requests and     which conversation a panel shows when its tab does not say: the one its own page started.
- *   responses             A page asks the app-server to start a thread (or to prewarm one), and the answer that comes
- *                         back to that page's webview carries the new thread's id. Such a thread counts once it is in
- *                         Codex's list of conversations, which is when its first message has been sent: a prewarmed
- *                         thread nobody typed into never gets there, and neither does a side chat, which is ephemeral
+ *   page requests and     which conversation a panel shows when its tab does not say: the one its own page started,
+ *   responses             where the page starts it. A page asks the app-server to start a thread (or to prewarm one),
+ *                         and the answer that comes back to that page's webview carries the new thread's id. Such a
+ *                         thread counts once it is in Codex's list of conversations, which is when its first message
+ *                         has been sent: a prewarmed thread nobody typed into never gets there, and neither does a
+ *                         side chat, which is ephemeral
  *   window broadcasts     a thread this window starts following in a view that is not one of its tabs is taken to be
  *                         in front in the sidebar (onDidFocus). sidebarThread() is the last such thread, and nothing
  *                         is reported after it; whether the user is still looking at the sidebar is worked out by the
  *                         source from the active tab and whether a sidebar view is visible (sidebarShowing,
  *                         src/codex-source.js isFocused)
- *   page messages         the user's time zone, whether an approval card is on a page, and, when one was asked for, a
- *                         self-check of what the page script found and drew
+ *   page messages         the user's time zone, whether an approval card is on a page, the newest turn a page shows,
+ *                         which in 26.1117 is how a New tab's conversation is learned (placeShownTurn), and, when
+ *                         one was asked for, a self-check of what the page script found and drew
  *   app-server traffic    which conversations are stopped waiting for the user, and how many of those owe an answer
  *                         (src/approvals.js): the tab dot, the state the Conversations view shows and a chime, none of
  *                         which need a tab to be open on the conversation; and when a turn starts and ends, which the
@@ -70,6 +72,8 @@ let state = { active: false, reason: 'not checked yet', provider: null };
  *   route     the route Codex opened it on
  *   starts    ids of thread starts its page sent that have had no answer yet
  *   started   threads its page started that are not in Codex's list yet, oldest first
+ *   titled    the title this extension gave the panel for its conversation, or ''
+ *   turn      the id of the newest turn its page said it shows, or ''
  * }
  * A page outside this map is one of the sidebar's: Codex opens every editor panel through one of the two places the
  * patch hands panels over from.
@@ -82,6 +86,8 @@ let last = new Map();
 /* The thread Codex's sidebar last started following, as the broadcast says, or ''. It is never cleared: the broadcast
    only ever says a thread started being followed. */
 let sidebar = '';
+/* What `sidebar` was before each broadcast moved it, by the conversation it moved to. */
+const sidebarBefore = new Map();
 const approvals = createApprovals();
 /* How many answers the user owed at the last redraw, per conversation, so a chime rings on a new one rather than on
    every pass while the same request is still waiting. */
@@ -194,8 +200,8 @@ function canDeliver(thread) { return canType() && (panelsOf(thread).length > 0 |
 /*
  * The threads shown by Codex's own panels in this window. For a tab Codex opened with its New button this is the only
  * source: that tab's URI stays /extension/panel/new whatever conversation ends up in it (src/codex-tabs.js), and its
- * panel's conversation is the one its page started (installHooks). Empty without the patch, and then the tab URIs are
- * all there is.
+ * panel's conversation is the one its page started or shows (installHooks). Empty without the patch, and then the tab
+ * URIs are all there is.
  */
 function panelThreads() { return [...byThread().keys()]; }
 
@@ -207,19 +213,38 @@ function recordOfWebview(webview) {
   return null;
 }
 
+/* A panel Codex opened on its route for a conversation not started yet, whose tab's URI never names one. */
+const NEW_ROUTE = /^\/extension\/panel\/new(?:[/?#]|$)/;
+const isNewPanel = (rec) => !rec.opened && NEW_ROUTE.test(rec.route);
+
 /*
- * The conversation shown in front in an editor column: a webview panel is visible only while it is its group's active
- * tab, so exactly one handed-over panel visible in `viewColumn` is that tab's. { thread } with '' for a panel whose
- * conversation is not known, or null when no single handed-over panel is visible there.
+ * The panel shown in front in an editor column: a webview panel is visible only while it is its group's active tab,
+ * so exactly one handed-over panel visible in `viewColumn` is that tab's once VS Code has caught up. `fresh` (opened on
+ * the new-conversation route) and `title` let the caller check the panel can be the tab's.
+ * { thread, fresh, title } with '' for a panel whose conversation is not known, or null when no single handed-over
+ * panel is visible there.
  */
 function shownIn(viewColumn) {
   let found = null, n = 0;
   for (const [panel, rec] of registry) {
     let here = false;
     try { here = !!panel.visible && panel.viewColumn === viewColumn; } catch (_) { /* disposed */ }
-    if (here) { found = rec; n++; }
+    if (here) { found = [panel, rec]; n++; }
   }
-  return n === 1 ? { thread: found.thread } : null;
+  if (n !== 1) return null;
+  let title = '';
+  try { title = String(found[0].title || ''); } catch (_) { /* disposed */ }
+  return { thread: found[1].thread, fresh: isNewPanel(found[1]), title };
+}
+
+/*
+ * The conversations of the panels opened on the new-conversation route that this extension titled `title`. A New tab
+ * is labelled with its panel's title, so this finds the tab's panel even while VS Code still says another is visible.
+ */
+function newPanelThreadsTitled(title) {
+  const out = new Set();
+  if (title) for (const rec of registry.values()) if (isNewPanel(rec) && rec.thread && rec.titled === title) out.add(rec.thread);
+  return [...out];
 }
 
 /*
@@ -560,6 +585,22 @@ const TURN_HEARD_MS = 10 * 60 * 1000;
 const turnsRunning = new Map();
 const turnsEnded = new Map();
 const keepNewest = (map) => { while (map.size > TURNS_KEPT) map.delete(map.keys().next().value); };
+/* Turn id -> the conversation it is a turn of, from this window's turn/started notifications. */
+const turnThreads = new Map();
+
+/*
+ * A page shows the conversation its newest turn belongs to, which is what a panel opened on the new-conversation route
+ * shows once one starts there. In 26.1117 the thread start that names that conversation is made by Codex's host for
+ * the page rather than by the page, so no page request names it; the turn id the page shows does, and the
+ * app-server named that turn's conversation when the turn started. The conversation is taken as a thread the page
+ * started, so, like those, it waits until Codex lists it.
+ */
+function placeShownTurn(rec) {
+  const thread = rec.turn ? turnThreads.get(rec.turn) : '';
+  if (!thread || rec.started[rec.started.length - 1] === thread || (thread === rec.thread && !rec.started.length)) return false;
+  rec.started = rec.started.filter((id) => id !== thread).concat(thread).slice(-PAGE_KEEP);
+  return true;
+}
 /* The conversation a turn notification is about, or '' for any other message. */
 function noteTurn(msg) {
   const method = msg && msg.method, thread = String(((msg && msg.params) || {}).threadId || '');
@@ -572,6 +613,14 @@ function noteTurn(msg) {
   } else {
     turnsRunning.set(thread, { at: Date.now(), heard: true });
     keepNewest(turnsRunning);
+    const turn = msg.params.turn && msg.params.turn.id;
+    if (typeof turn === 'string' && turn) {
+      turnThreads.set(turn, thread);
+      keepNewest(turnThreads);
+      let placed = false;
+      for (const rec of registry.values()) if (rec.turn === turn && placeShownTurn(rec)) placed = true;
+      if (placed) refreshPanels().catch(() => { /* the next poll settles it */ });
+    }
   }
   return thread;
 }
@@ -715,7 +764,7 @@ function leave(thread) {
 /*
  * Each page's newest started thread that has reached Codex's list (`now`, by id) becomes what its panel shows, and the
  * older ones it supersedes are dropped. One not in the list yet waits, and so does every thread of a page that started
- * none: a page is never matched to a conversation by anything but its own thread start.
+ * none: a page is never matched to a conversation by anything but its own thread start or the turn it shows.
  */
 function settle(now) {
   for (const [panel, rec] of registry) {
@@ -726,6 +775,10 @@ function settle(now) {
       if (id !== rec.thread) {
         const was = rec.thread;
         rec.thread = id;
+        rec.titled = '';
+        /* In 26.1117 the page of a New tab retains the conversation it started, which reads as the sidebar going to it
+           (window broadcasts in src/host.js). */
+        if (sidebar === id) sidebar = sidebarBefore.get(id) || '';
         leave(was);
         /* The page still holds the previous conversation's work plan line. */
         postTo(panel, { type: 'codex-extras-plan', text: '', cleared: true });
@@ -855,7 +908,11 @@ async function refreshPanels() {
       /* The tab is titled by its conversation, kept in step as Codex names or renames it: Codex itself titles only a
          tab opened on an existing conversation, once, so one started in a tab stays "Codex". */
       const title = c && c.title && c.title !== '(untitled)' ? String(c.title).slice(0, TITLE_MAX) : '';
-      if (title) { try { if (panel.title !== title) panel.title = title; } catch (_) { /* disposed */ } }
+      if (title) {
+        try { if (panel.title !== title) panel.title = title; } catch (_) { /* disposed */ }
+        const rec = registry.get(panel);
+        if (rec) rec.titled = title;
+      }
       /* Against the rollout's own answer, not against `state`: a turn that stopped on an approval has not finished, and
          `state` reads `prompt` for it, which would otherwise ring the finished-turn chime. */
       if (deps.settings().chime && was && was.working && c && !c.working) postTo(panel, { type: 'codex-extras-chime', kind: turnEndChime(c) });
@@ -908,7 +965,7 @@ function adoptPanel(panel, thread, provider, route) {
   if (provider) state.provider = provider;
   if (!panel || registry.has(panel)) return;
   const id = thread ? String(thread) : '';
-  registry.set(panel, { thread: id, opened: id, route: typeof route === 'string' ? route : '', starts: new Set(), started: [] });
+  registry.set(panel, { thread: id, opened: id, route: typeof route === 'string' ? route : '', starts: new Set(), started: [], titled: '', turn: '' });
   state.active = true;
   state.reason = 'Codex handed over its panels';
   /* A page that is gone cannot say its card went with it (leave). */
@@ -998,6 +1055,14 @@ function installHooks() {
       deps.log(`Codex's sent time is in a form this extension cannot read: ${+msg.len || 0} characters, the first a `
         + `${msg.first === 'digit' || msg.first === 'letter' ? msg.first : 'character that is neither'}`
         + `, ${msg.digits ? 'all digits' : 'not all digits'}. No time is shown on replies.`);
+    }
+    /* The newest turn a tab's page shows, as the id Codex puts on it (placeShownTurn). */
+    if (msg && msg.kind === 'turnShown' && typeof msg.turn === 'string') {
+      const rec = recordOfWebview(webview);
+      if (rec) {
+        rec.turn = msg.turn.slice(0, 100);
+        if (placeShownTurn(rec)) refreshPanels().catch(() => { /* the next poll settles it */ });
+      }
     }
     /* What a page saw of an answer it was asked to send: one word of its own vocabulary. */
     if (msg && msg.kind === 'answer' && answering.has(msg.id)) answering.get(msg.id)(String(msg.outcome || ''));
@@ -1116,7 +1181,12 @@ function installHooks() {
     if (!deps || method !== 'thread-stream-following-changed' || !params || !params.following) return;
     const thread = String(params.conversationId || '');
     /* sidebarChanged redraws the pages too (activate), which sends the sidebar's page its conversation's times. */
-    if (thread && !panelsOf(thread).length) { sidebar = thread; deps.source._focus(thread); sidebarChanged(); }
+    if (thread && !panelsOf(thread).length) {
+      sidebarBefore.delete(thread);
+      sidebarBefore.set(thread, sidebar);
+      while (sidebarBefore.size > PAGE_KEEP) sidebarBefore.delete(sidebarBefore.keys().next().value);
+      sidebar = thread; deps.source._focus(thread); sidebarChanged();
+    }
   };
   if (globalThis.__codexExtrasProvider) {
     state.provider = globalThis.__codexExtrasProvider;
@@ -1257,6 +1327,7 @@ function activate(context, opts) {
     commands.clear();
     turnsRunning.clear();
     turnsEnded.clear();
+    turnThreads.clear();
     if (hostLink && hostLink.sub && typeof hostLink.sub.dispose === 'function') { try { hostLink.sub.dispose(); } catch (_) { /* gone */ } }
     hostLink = null;
   } });
@@ -1266,7 +1337,7 @@ function activate(context, opts) {
   return state;
 }
 
-module.exports = { activate, ensurePatched, statusLines, openInSidebar, canType, canDeliver, deliver, sidebarThread, panelThreads, shownIn,
+module.exports = { activate, ensurePatched, statusLines, openInSidebar, canType, canDeliver, deliver, sidebarThread, panelThreads, shownIn, newPanelThreadsTitled,
   nowShowing, revealPanel, removePatch, NOT_SUPPORTED_MESSAGE, SHOW_DETAILS,
   figuresOf, usageOf, compactThread, hostRequest, safeColor, viewOf, selfCheckPage, selfCheckLines, installHooks, refreshPanels, approvalsOf,
   onApprovalsChanged, offerReloadIfStale, sidebarShowing, onSidebarChanged, onPanelClosed, onAccountNotification, onAppServerNotification, runningCommands, heardCommand, turnEndChime, turnHeard, _state: () => state, _registry: registry, _approvals: approvals,

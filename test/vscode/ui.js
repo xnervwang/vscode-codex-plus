@@ -33,6 +33,11 @@
  *   the sidebar  a conversation resumed in Codex's sidebar: each reply's stamp inside its column
  *   archived     the conversation in the tab archived while open: the tab keeps its turns, read-only, and opening it
  *                from the list unarchives it and gives the tab its message box back
+ *   a New tab    a first message typed into a tab the tab bar button opened: the tab is titled by the conversation, and
+ *                Agent Plus has it in front, so its reply is neither announced nor counted
+ *   to the front a conversation's tab clicked from a New tab with nothing typed into it, and from the tab above: Agent
+ *                Plus has the conversation the clicked tab shows in front at once, although VS Code says which panel is
+ *                visible only after it reports the switch
  *
  * Every step saves a screenshot to <out>/shots, and crops of the parts this extension draws are compared with the
  * approved copies (lib/baseline.js).
@@ -48,6 +53,9 @@ const { sleep, until } = win;
 const TITLES = { tab: 'Codex Plus: New Codex Conversation in a Tab', sidebar: 'Codex Plus: Open Codex Sidebar', codex: 'Open Codex Sidebar' };
 /* TAB_DOTS in src/patching.js. */
 const DOTS = { working: [0x22, 0xc5, 0x5e], unread: [0xef, 0x44, 0x44], prompt: [0x3b, 0x82, 0xf6] };
+const COMPOSER = '[data-codex-composer-root] [contenteditable="true"]';
+/* What lib/fake-model.js answers a turn with when no script is set. */
+const REPLY = 'Done. The cap is configurable.';
 /* The theme colour Text Color's Red gives a title, in the Dark Modern theme run.js sets. */
 const RED_TITLE = 'rgb(241, 76, 76)';
 
@@ -115,6 +123,63 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     const n = [...document.querySelectorAll('.notification-toast')].find((e) => e.innerText.includes(`"${want}" ${w}`));
     return n ? n.innerText : '';
   }, [t, words]);
+  const frontTab = async () => { const g = (await tabs()).find((x) => x.active); return g && g.tabs.find((x) => x.active); };
+  /* The conversation Agent Plus last said is in front, as its output channel has it: "codex <id>",
+     "codex (no session yet)", "(none)", or '' before it said any. */
+  const walk = (d) => { try { return fs.readdirSync(d, { withFileTypes: true }).flatMap((n) => (n.isDirectory() ? walk(path.join(d, n.name)) : [path.join(d, n.name)])); } catch (_) { return []; } };
+  const agentFront = () => {
+    const logs = walk(path.join(profile.user, 'logs')).filter((f) => /Agent Plus\.log$/.test(f))
+      .map((f) => ({ f, at: fs.statSync(f).mtimeMs })).sort((a, b) => b.at - a.at);
+    if (!logs.length) return '';
+    const said = fs.readFileSync(logs[0].f, 'utf8').split('\n').filter((l) => / active conversation: /.test(l));
+    return said.length ? said[said.length - 1].replace(/^.* active conversation: /, '').trim() : '';
+  };
+  /* The id of the conversation whose rollout in the Codex home has a user message starting with `text`, '' while there
+     is none. Codex names a new conversation in a thread of its own, whose request quotes the message inside one of its
+     own, and keeps the newline the message box ends a message with. */
+  const rolloutWith = (text) => {
+    const dir = path.join(profile.codexHome, 'sessions');
+    let names = [];
+    try { names = fs.readdirSync(dir, { recursive: true }).map(String).filter((n) => n.endsWith('.jsonl') && !threads.some((t) => n.includes(t.id))); } catch (_) { return ''; }
+    const hit = names.find((n) => { try { return fs.readFileSync(path.join(dir, n), 'utf8').includes(`"message":${JSON.stringify(text).slice(0, -1)}`); } catch (_) { return false; } });
+    return hit ? (hit.match(/([0-9a-f]{8}-[0-9a-f-]{27})\.jsonl$/) || [])[1] || '' : '';
+  };
+  /*
+   * For a failure's detail: the panels the patch holds and, since the first call, what their pages, the app-server and
+   * the tabs did, in order: the newest turn each page said it shows, each turn the app-server started, each tab change
+   * with which panels were visible at that moment, and each panel's own view state change.
+   */
+  const panelTrace = () => call(`${OWN} const p = own('patching');
+    const shape = (x, r) => { try { return { route: r.route, opened: r.opened, thread: r.thread, turn: r.turn, started: r.started, titled: r.titled,
+      visible: x.visible, active: x.active, column: x.viewColumn }; } catch (_) { return { route: r.route, disposed: true }; } };
+    if (!globalThis.__cxpTrace) {
+      const log = globalThis.__cxpTrace = [], t0 = Date.now();
+      const push = (e) => { log.push({ at: Date.now() - t0, ...e }); if (log.length > 120) log.shift(); };
+      const known = (w) => [...p._registry.keys()].some((x) => { try { return x.webview === w; } catch (_) { return false; } });
+      const watch = (x) => { try { x.onDidChangeViewState(() => { const r = p._registry.get(x); push({ k: 'view', ...(r ? shape(x, r) : { unknown: true }) }); }); } catch (_) { /* gone */ } };
+      for (const x of p._registry.keys()) watch(x);
+      const wrap = (k, rec) => { const f = globalThis[k]; if (typeof f !== 'function') return; globalThis[k] = function (...a) { try { rec(...a); } catch (_) { /* traced or not */ } return f.apply(this, a); }; };
+      wrap('__codexExtrasPanel', (x, conv, prov, route) => { push({ k: 'panel', conv: conv || '', route: String(route || '') }); watch(x); });
+      wrap('__codexExtrasMessage', (w, m) => { if (m && m.kind === 'turnShown') push({ k: 'shown', turn: m.turn, known: known(w) }); });
+      wrap('__codexExtrasAppServer', (kind, m) => { if (kind === 'notification' && m && m.method === 'turn/started') push({ k: 'started', thread: (m.params || {}).threadId, turn: ((m.params || {}).turn || {}).id }); });
+      vscode.window.tabGroups.onDidChangeTabs(() => { const g = vscode.window.tabGroups.activeTabGroup, t = g && g.activeTab;
+        push({ k: 'tabs', front: t ? t.label : '', panels: [...p._registry].map(([x, r]) => shape(x, r)).filter((s) => s.visible) }); });
+    }
+    return { panels: [...p._registry].map(([x, r]) => shape(x, r)), trace: globalThis.__cxpTrace.slice(-60) };`);
+  const newTabPage = async () => {
+    await openNotes();
+    await until(async () => { const b = await codexButtons(); return b.length === 1 && b[0] === TITLES.tab; }, 15000, 500);
+    const before = new Set(page.frames());
+    await codexButton().click();
+    /* Codex keeps the page of its hidden sidebar, which also shows a message box and no turns. */
+    return until(async () => {
+      for (const f of page.frames()) {
+        if (before.has(f)) continue;
+        try { if (await f.evaluate(() => !!document.querySelector('[data-codex-composer-root]') && !document.querySelector('[data-turn-key]') && innerWidth > 600)) return f; } catch (_) { /* gone */ }
+      }
+      return null;
+    }, 90000, 500);
+  };
   const visibleNativeMenu = () => page.evaluate(() => !![...document.querySelectorAll('.context-view .monaco-menu, .monaco-menu-container')].find((e) => e.offsetParent));
   const auxiliaryShowsCodex = () => page.evaluate(() => {
     const part = document.getElementById('workbench.parts.auxiliarybar');
@@ -941,7 +1006,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await call('await vscode.workspace.getConfiguration("agentPlus").update("tokenMode", undefined, vscode.ConfigurationTarget.Global); return true;');
     });
 
-    /* Last, since the conversation the steps above type into is archived here. */
+    /* After every step that types into the conversation, since it is archived here. */
     await step('a conversation archived while its tab is open', async () => {
       if (!codex) throw new Error('the conversation did not open');
       const t = threads[0];
@@ -956,6 +1021,58 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await exec('codexPlus.openThreadInTab', t.id);
       check(!!await until(() => !shelvedOnDisk(), 30000, 500), 'opening it from the list unarchives it');
       check(!!await drawn(true), 'and the tab has its message box again');
+    });
+
+    let begun = null;
+    await step('a conversation begun in a tab the tab bar button opened', async () => {
+      if (!await focused()) {
+        note(`the window does not have the system's focus on ${process.platform}, so Agent Plus shows no notification anyway; not checked`);
+        return;
+      }
+      await panelTrace();
+      await exec('notifications.clearAll');
+      const fresh = await newTabPage();
+      check(!!fresh, 'the tab bar button opens a new conversation page in a tab');
+      if (!fresh) return;
+      const counted = await bellCount();
+      const text = 'Draft the release notes for 1.2.';
+      model.hold();
+      const turns = model.turns();
+      await fresh.locator(COMPOSER).first().click();
+      await page.keyboard.type(text);
+      await page.keyboard.press('Enter');
+      check(!!await until(() => model.turns() > turns, 20000, 300), 'its first message reaches the made-up model', model.seen.slice(-3));
+      const id = await until(() => rolloutWith(text), 20000, 500);
+      const named = await until(async () => { const t = await frontTab(); return t && t.label !== 'Codex' && t.label.startsWith(text.slice(0, 20)) && t; }, 30000, 500);
+      check(!!named, 'while that turn runs, the tab is titled by the conversation Codex made of the message', { thread: id, tab: await frontTab(), patch: await panelTrace() });
+      const front = await until(() => agentFront() === `codex ${id}`, 15000, 500);
+      check(!!id && !!front, 'and Agent Plus has that conversation in front', { thread: id, agentPlus: agentFront(), patch: await panelTrace() });
+      model.release();
+      const ended = await until(() => fresh.evaluate((r) => document.body.innerText.includes(r), REPLY).catch(() => false), 30000, 500);
+      await sleep(5000);
+      const after = { ended: !!ended, counted: await bellCount(), notification: await toastAbout(named ? named.label : text, 'finished') };
+      check(after.ended && after.counted <= counted && !after.notification,
+        'when its reply lands with the tab in front of the focused window, Agent Plus neither announces nor counts it', { before: counted, ...after });
+      await shot('tab-bar-conversation');
+      if (id && named) begun = { id, label: named.label };
+    });
+
+    await step('a conversation\'s tab brought back to the front', async () => {
+      const t = threads[0];
+      const toFront = async (label, want, from) => {
+        await page.locator('.tabs-container .tab').filter({ hasText: label }).first().click();
+        const ok = await until(() => agentFront() === want, 15000, 500);
+        check(!!ok, `a click on the tab of a conversation whose URI names it, from ${from}, puts that conversation in front for Agent Plus`,
+          { want, agentPlus: agentFront(), tab: await frontTab(), patch: await panelTrace() });
+      };
+      const empty = await newTabPage();
+      if (!empty) throw new Error('the tab bar button opened no new conversation page');
+      check(!!await until(() => agentFront() === 'codex (no session yet)', 15000, 500), 'a new tab nothing was typed into has no conversation in front for Agent Plus', agentFront());
+      await toFront(title, `codex ${t.id}`, 'a new tab nothing was typed into');
+      if (!begun) { note('no conversation was begun in a tab the tab bar button opened, so the switch from one was not checked'); return; }
+      await page.locator('.tabs-container .tab').filter({ hasText: begun.label }).first().click();
+      check(!!await until(() => agentFront() === `codex ${begun.id}`, 15000, 500), 'the tab of the conversation begun in a new tab puts it in front', agentFront());
+      await toFront(title, `codex ${t.id}`, 'the tab of a conversation begun in a new tab');
     });
   } finally {
     watchingTrust = false;
