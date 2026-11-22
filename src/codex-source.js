@@ -497,7 +497,7 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
   const source = {
     protocol: PROTOCOL,
     /* ['brief'] while the conversation brief and the work plan both run. */
-    get features() { return enabled() && briefs() ? ['brief'] : []; },
+    get features() { return (enabled() && briefs() ? ['brief'] : []).concat(['openHere', 'shows']); },
     id: 'codex',
     label: 'Codex',
     extensionId: EXTENSION_ID,
@@ -585,12 +585,10 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
       if (JSON.stringify(notice) !== was) noticeChanged.fire();
     },
     /*
-     * Brings a conversation to the front in this window, if a tab here shows it. A conversation running with no tab here
-     * is running in another window, which an extension cannot raise, so that is false. One with no tab and not running
-     * is offered for opening here, by the person: opening it unasked could make a second copy of a conversation that is
-     * open in another window after all.
+     * Brings a conversation to the front in this window, if this window shows it. False otherwise, and Agent Plus then
+     * asks the window that shows it. Opening it here is openHere(), offered only once no window has it.
      */
-    async reveal(sessionId, row) {
+    async reveal(sessionId) {
       if (!files.THREAD_ID.test(String(sessionId || ''))) return false;
       if (tabs.codexTabs(vscode).some((t) => t.thread === sessionId)) {
         try { return await tabs.openInTab(vscode, sessionId); } catch (e) { log(`reveal ${sessionId}: ${e.message}`); return false; }
@@ -600,17 +598,16 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
       if (patching && typeof patching.revealPanel === 'function') {
         try { if (patching.revealPanel(sessionId)) return true; } catch (_) { /* no panel here */ }
       }
-      const t = reader.thread(sessionId);
-      const st = reader.state(sessionId);
-      const last = Math.max((t && t.updatedMs) || 0, (st && st.lastActivityMs) || 0);
-      if (st && st.working && Date.now() - last < STALE_WORKING_MS) return false;
-      const title = (row && row.title) || (t && t.title) || sessionId;
-      const open = 'Open it here';
-      Promise.resolve(vscode.window.showInformationMessage(`"${title}" is not open in this window.`, open)).then((pick) => {
-        if (pick === open) return tabs.openInTab(vscode, sessionId);
-        return undefined;
-      }).catch((e) => log(`reveal ${sessionId}: ${e.message}`));
-      return true;
+      if (sidebarInFront() === sessionId && patching && typeof patching.openInSidebar === 'function') {
+        try { return (await patching.openInSidebar(sessionId)) === true; } catch (_) { return false; }
+      }
+      return false;
+    },
+    /* Whether this window shows the conversation: in a tab, a panel the patch knows or Codex's sidebar. */
+    shows(sessionId) { return !!sessionId && (openThreads().includes(sessionId) || sidebarInFront() === sessionId); },
+    async openHere(sessionId) {
+      if (!files.THREAD_ID.test(String(sessionId || ''))) return false;
+      try { return await tabs.openInTab(vscode, sessionId); } catch (e) { log(`open ${sessionId}: ${e.message}`); return false; }
     },
     canDeliver(sessionId) { return trusted() && !!patching && patching.canDeliver(sessionId); },
     /*

@@ -198,14 +198,27 @@ module.exports = async ({ ok, bad, eq, tmp }) => {
         'a delivery id from 400 answers ago is still recognised, and one that was not received can be sent again');
 
       control.state.openWith = (uri) => control.setTabs([control.codexTab(uri.path.split('/').pop())]);
+      const wasSidebar = sidebarOn;
+      sidebarOn = '';
       const here = await source.reveal(idle.id, { title: 'Idle here' });
       const elsewhere = await source.reveal(working.id, { title: 'Working here' });
-      control.answer('is not open in this window', 'Open it here');
-      const offered = await source.reveal(unread.id, { title: 'Unread elsewhere' });
+      const notHere = await source.reveal(unread.id, { title: 'Unread elsewhere' });
       await new Promise((r) => setTimeout(r, 20));
+      const shownBefore = [source.shows(idle.id), source.shows(unread.id)];
+      const offered = control.state.said.filter((m) => /not open/.test(m.message)).length;
+      const openedHere = await source.openHere(unread.id);
       const opened = control.state.commands.filter((c) => c[0] === 'vscode.openWith').map((c) => c[1].path.split('/').pop());
-      eq([here, elsewhere, offered, opened], [true, false, true, [idle.id, unread.id]],
-        'reveal: an open tab is brought forward; one running elsewhere is false; one not open is offered, and opened only on request');
+      eq([here, elsewhere, notHere, offered, shownBefore, openedHere, opened, source.shows(unread.id)],
+        [true, false, false, 0, [true, false], true, [idle.id, unread.id], true],
+        'reveal brings a tab here forward and is false, offering nothing, for a conversation this window does not show, so Agent Plus asks the '
+        + 'window that does; shows() says which this window shows; openHere() opens a tab here');
+      const toSidebar = [];
+      patching.openInSidebar = async (id) => { toSidebar.push(id); return true; };
+      sidebarOn = working.id;
+      eq([source.shows(working.id), await source.reveal(working.id), toSidebar], [true, true, [working.id]],
+        'a conversation Codex\'s sidebar shows counts as shown here, and reveal brings the sidebar forward with it');
+      delete patching.openInSidebar;
+      sidebarOn = wasSidebar;
       /* A request for a state rides the poll the source already makes, and is dropped once answered, so the same old
          rollout is not read again on every pass. */
       inWorker.held.delete(old.id);

@@ -58,7 +58,7 @@ module.exports = async ({ eq, tmp, root }) => {
   const on = await run(root, tmp, {});
   const off = await run(root, tmp, { conversationBrief: false, 'agentPlus.tokenMode': 'custom' });
   const noPlans = await run(root, tmp, { workPlan: false, 'agentPlus.tokenMode': 'custom' });
-  eq([on.brief, on.features, off.brief, off.features, noPlans.features], [true, ['brief'], false, [], []],
+  eq([on.brief, on.features, off.brief, off.features, noPlans.features], [true, ['brief', 'openHere', 'shows'], false, ['openHere', 'shows'], ['openHere', 'shows']],
     'in the Custom token mode, the hooks are given the setting as `brief`, and the source lists the brief while it is on and plans are kept');
 
   /* The sweep (src/workplan.js) deletes side files by suffix, so a new suffix has to be added there too. */
@@ -72,6 +72,6 @@ module.exports = async ({ eq, tmp, root }) => {
   const custom = { 'agentPlus.tokenMode': 'custom' };
   const turned = await run(root, tmp, custom, { conversationBrief: false });
   const back = await run(root, tmp, { conversationBrief: false, ...custom }, { conversationBrief: true });
-  eq([turned.after, back.after], [{ brief: false, features: [], fired: 1 }, { brief: true, features: ['brief'], fired: 1 }],
+  eq([turned.after, back.after], [{ brief: false, features: ['openHere', 'shows'], fired: 1 }, { brief: true, features: ['brief', 'openHere', 'shows'], fired: 1 }],
     'changing the setting rewrites config.json, changes the features and tells Agent Plus the conversations changed');
 };

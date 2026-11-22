@@ -130,11 +130,11 @@ module.exports = async ({ eq, note, tmp, root }) => {
     got.unset = [given(unset.hooks()), unset.source.features];
     unset.close();
     eq(got, {
-      interface: [[false, false, false, false], [], 'Token mode: Interface features (agentPlus.tokenMode); in Codex: work plan off, time-zone note off, conversation brief off, skill suggestions off, wake-ups off, notices when a detached command stops off'],
-      essential: [[true, true, false, false], [], 'Token mode: Essential features (agentPlus.tokenMode); in Codex: work plan on, time-zone note on, conversation brief off, skill suggestions off, wake-ups off, notices when a detached command stops off'],
-      all: [[true, true, true, true], ['brief'], 'Token mode: All features (agentPlus.tokenMode); in Codex: work plan on, time-zone note on, conversation brief on, skill suggestions on, wake-ups on, notices when a detached command stops on'],
-      custom: [[false, false, false, false], [], 'Token mode: Custom (agentPlus.tokenMode); in Codex: work plan off, time-zone note off, conversation brief off, skill suggestions off, wake-ups off, notices when a detached command stops off'],
-      unset: [[true, true, true, true], ['brief']],
+      interface: [[false, false, false, false], ['openHere', 'shows'], 'Token mode: Interface features (agentPlus.tokenMode); in Codex: work plan off, time-zone note off, conversation brief off, skill suggestions off, wake-ups off, notices when a detached command stops off'],
+      essential: [[true, true, false, false], ['openHere', 'shows'], 'Token mode: Essential features (agentPlus.tokenMode); in Codex: work plan on, time-zone note on, conversation brief off, skill suggestions off, wake-ups off, notices when a detached command stops off'],
+      all: [[true, true, true, true], ['brief', 'openHere', 'shows'], 'Token mode: All features (agentPlus.tokenMode); in Codex: work plan on, time-zone note on, conversation brief on, skill suggestions on, wake-ups on, notices when a detached command stops on'],
+      custom: [[false, false, false, false], ['openHere', 'shows'], 'Token mode: Custom (agentPlus.tokenMode); in Codex: work plan off, time-zone note off, conversation brief off, skill suggestions off, wake-ups off, notices when a detached command stops off'],
+      unset: [[true, true, true, true], ['brief', 'openHere', 'shows']],
     }, 'every setting turned off: each mode decides as its table says, Custom follows the settings, and nothing set is All features');
   }
 
@@ -150,8 +150,8 @@ module.exports = async ({ eq, note, tmp, root }) => {
     const custom = [given(w.hooks()), w.source.features, fired];
     w.change({ 'agentPlus.tokenMode': 'all' });
     const all = [given(w.hooks()), w.source.features, fired];
-    eq([before, essential, custom, all], [[[true, true, true, true], ['brief']], [[true, true, false, false], [], 1],
-      [[true, true, false, false], [], 2], [[true, true, true, true], ['brief'], 3]],
+    eq([before, essential, custom, all], [[[true, true, true, true], ['brief', 'openHere', 'shows']], [[true, true, false, false], ['openHere', 'shows'], 1],
+      [[true, true, false, false], ['openHere', 'shows'], 2], [[true, true, true, true], ['brief', 'openHere', 'shows'], 3]],
     'a change of mode rewrites config.json at once and tells Agent Plus the conversations changed; back in Custom the settings are as they were');
     eq(w.control.state.said.filter((s) => /token mode/.test(s.message)).length, 0, 'changing the mode itself says nothing');
 
