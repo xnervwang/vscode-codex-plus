@@ -1528,7 +1528,16 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       tell(`the answer as Codex recorded it: ${JSON.stringify(lastUserText(t0.id, 'My answer to row'))}`);
       await sleep(1500);
       await toBottom();
-      return union([await part(PARTS.panel), await bottomBox(300)]);
+      /* From the top of the message the answer became, however tall the reply and the hook's prompt under it are. */
+      const fb = await (await codex.frameElement()).boundingBox();
+      const sent = fb && await codex.evaluate(() => {
+        const b = [...document.querySelectorAll('[data-user-message-bubble]')].filter((e) => /Keep it at 30 seconds/.test(e.innerText)).pop();
+        const r = b && b.getBoundingClientRect();
+        return r && r.height ? { x: r.left, y: r.top, width: r.width, height: r.height } : null;
+      }).catch(() => null);
+      if (!sent) tell('the message the answer became was not found in the page, so the close view may not show it');
+      const asked = sent && { x: fb.x, y: Math.max(fb.y, fb.y + sent.y - 24), width: fb.width, height: sent.height + 24 };
+      return union([await part(PARTS.panel), await bottomBox(300), asked]);
     });
 
     /* ═══ the token mode ═══ */
