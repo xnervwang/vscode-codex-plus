@@ -1449,9 +1449,14 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     }, async () => {
       await tab(title).click();
       await sleep(500);
+      const at = Date.now();
       await page.keyboard.press('Control+Shift+T');
       if (!await until(async () => { const t = await frontTab(); return t && t.label === freshTitle; }, 20000, 500)) throw new Error(`the tab in front is ${JSON.stringify(await frontTab())}`);
-      await sleep(3000);
+      /* A reopened tab is a new page, which Codex 26.1117 takes some seconds to draw the conversation in. */
+      const drawn = await frameWhere((want) => document.querySelectorAll('[data-turn-key]').length > 0 && innerWidth > 600
+        && document.body.innerText.includes(want.message) && document.body.innerText.includes(want.reply), 60000, { message: 'Draft the release notes for 1.2.', reply: 'Done. The cap is configurable.' });
+      tell(drawn ? `the reopened page drew the conversation ${((Date.now() - at) / 1000).toFixed(1)} s after the shortcut` : 'the reopened page drew no conversation within 60 s of the shortcut');
+      await sleep(1500);
       return union([await tabsBox(), await part(PARTS.editor)]);
     });
 
