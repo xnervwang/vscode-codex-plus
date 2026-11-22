@@ -505,6 +505,42 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         return { sections: await p.hostRequest('threadSection/list', {}),
           thread: await p.hostRequest('thread/read', { threadId: arg }) };`, threads[1].id).catch((e) => e.message) });
       await shot('session-row-grouped');
+
+      /* The side bar is widened by dragging its edge for this menu, as the window gives it room to be, then put back, so
+         the steps after it draw at the width they always had. */
+      const sideWidth = () => page.evaluate(() => Math.round(document.getElementById('workbench.parts.sidebar').getBoundingClientRect().width));
+      const dragSide = async (by) => {
+        const edge = await page.evaluate(() => {
+          const b = document.getElementById('workbench.parts.sidebar').getBoundingClientRect();
+          const s = [...document.querySelectorAll('.monaco-sash.vertical')].map((e) => e.getBoundingClientRect())
+            .find((r) => r.height > 100 && Math.abs((r.left + r.right) / 2 - b.right) < 4);
+          return s && { x: (s.left + s.right) / 2, y: b.top + b.height / 2 };
+        });
+        if (!edge) return;
+        await page.mouse.move(edge.x, edge.y);
+        await page.mouse.down();
+        await page.mouse.move(edge.x + by, edge.y, { steps: 10 });
+        await page.mouse.up();
+        await sleep(600);
+      };
+      const narrow = await sideWidth();
+      await dragSide(160);
+      const wide = await sideWidth();
+      await list.locator('.cp-group-head').filter({ hasText: 'Release 1.2' }).first().click({ button: 'right' });
+      const headMenu = await until(() => list.evaluate(() => {
+        const m = document.querySelector('.cp-ctx:not(.cp-ctx-sub)');
+        return m && { width: Math.round(m.getBoundingClientRect().width), view: innerWidth,
+          items: [...m.querySelectorAll('.cp-ctx-item')].map((x) => ({ label: x.textContent.trim(), cut: x.scrollWidth > x.clientWidth })) };
+      }), 5000, 200);
+      await still(list.locator('.cp-ctx:not(.cp-ctx-sub)').first());
+      await shot('session-group-menu');
+      check(wide >= narrow + 100 && !!headMenu && headMenu.items.some((i) => i.label === 'Codex Plus: Start New Session in This Group') && headMenu.items.every((i) => !i.cut),
+        'a right-click on a group\'s header in a side bar with room opens its menu, with Start New Session in This Group, and every label in it shown whole',
+        { sideBar: [narrow, wide], menu: headMenu });
+      await closeMenus();
+      await dragSide(narrow - await sideWidth());
+      const back = await sideWidth();
+      if (Math.abs(back - narrow) > 1) note(`the side bar went back to ${back} px, not the ${narrow} px it had`);
     });
 
     /* The made-up conversation that no other step uses is archived, unarchived and archived again, then deleted from

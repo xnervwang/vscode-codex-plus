@@ -155,5 +155,6 @@ module.exports = async ({ eq, root }) => {
 
 
   /* The right-click menu's items are as wide as the longest one needs. */
-  eq(has('.cp-ctx-item', 'max-width: 280px'), true, 'a menu item may be 280 px wide, room for "Start New Session in This Group"');
+  eq([has('.cp-ctx-item', 'max-width: 360px'), has('.cp-ctx', 'max-width: calc(100vw - 16px)')], [true, true],
+    'a menu item may be 360 px wide, room for "Codex Plus: Start New Session in This Group" in any platform\'s menu font, and a menu is never wider than the view');
 };
