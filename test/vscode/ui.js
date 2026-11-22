@@ -765,6 +765,9 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       check(!!await until(() => model.turns() > turns, 20000, 300), 'a message sent from the tab reaches the made-up model', model.seen.slice(-3));
       const working = await until(async () => { const d = await dotsOn(title); return d && d.working >= 6 && d; }, 20000, 500);
       check(!!working, 'while the turn runs the tab\'s logo carries the green dot', await dotsOn(title));
+      const meterNow = () => codex.evaluate(() => { const m = document.querySelector('[data-codex-extras="meter"]'); return m ? m.textContent.trim() : null; });
+      await sleep(4000);
+      check(/%/.test(await meterNow() || ''), 'and the context meter stays, with the last turn\'s figure, before this turn\'s first model call has answered', await meterNow());
       await shot('tab-dot-working');
       await openNotes();
       await sleep(800);

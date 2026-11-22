@@ -350,7 +350,8 @@ function sessionMeta(file) {
 /*
  * What the end of a rollout says about its thread: whether a turn is running, and the figures of the turn that ran
  * last. Read newest first; each fact is taken from the newest line that carries it, and the walk stops once the start
- * of the latest turn has been seen, because nothing before it changes the answer.
+ * of the latest turn has been seen, because nothing before it changes the answer. The one exception is `context` (and
+ * `tokens` with it): a turn has none of its own before its first model call, so it is looked for further back.
  *
  *   working        a task_started with no task_complete or turn_aborted after it
  *   turnId, startedMs, endedMs, durationMs
@@ -378,7 +379,18 @@ function rolloutState(file, lines = null) {
   }
   const st = { working: false, turnId: '', startedMs: 0, endedMs: 0, durationMs: 0, context: null, tokens: null, model: '', effort: '',
     lastTool: null, error: '', lastActivityMs: 0, aborted: false, askedMs: 0 };
-  let sawEnd = false;
+  let sawEnd = false, pastStart = false;
+  const usage = (info) => {
+    const last = info.last_token_usage || {};
+    const used = +last.input_tokens || 0;
+    if (used) st.context = { used, window: +info.model_context_window || 0 };
+    // The same record carries what the whole thread has spent, so it costs nothing more to keep.
+    const total = info.total_token_usage || {};
+    if (!st.tokens && +total.total_tokens) {
+      st.tokens = { total: +total.total_tokens || 0, input: +total.input_tokens || 0, output: +total.output_tokens || 0,
+        cached: +total.cached_input_tokens || 0, reasoning: +total.reasoning_output_tokens || 0 };
+    }
+  };
   for (const line of lines) {
     let row;
     try { row = JSON.parse(line); } catch (_) { continue; }
@@ -386,20 +398,16 @@ function rolloutState(file, lines = null) {
     const at = Date.parse(row.timestamp) || 0;
     if (!st.lastActivityMs && at) st.lastActivityMs = at;
     const p = row.payload && typeof row.payload === 'object' ? row.payload : {};
+    if (pastStart) {
+      if (row.type === 'event_msg' && p.type === 'token_count' && p.info) { usage(p.info); if (st.context) break; }
+      continue;
+    }
     if (row.type === 'turn_context' && !st.model) {
       st.model = String(p.model || '');
       st.effort = String(p.effort || p.reasoning_effort || '');
     } else if (row.type === 'event_msg') {
       if (p.type === 'token_count' && !st.context && p.info) {
-        const last = p.info.last_token_usage || {};
-        const used = +last.input_tokens || 0;
-        if (used) st.context = { used, window: +p.info.model_context_window || 0 };
-        // The same record carries what the whole thread has spent, so it costs nothing more to keep.
-        const total = p.info.total_token_usage || {};
-        if (!st.tokens && +total.total_tokens) {
-          st.tokens = { total: +total.total_tokens || 0, input: +total.input_tokens || 0, output: +total.output_tokens || 0,
-            cached: +total.cached_input_tokens || 0, reasoning: +total.reasoning_output_tokens || 0 };
-        }
+        usage(p.info);
       } else if ((p.type === 'task_complete' || p.type === 'turn_aborted') && !sawEnd) {
         sawEnd = true;
         st.turnId = String(p.turn_id || '');
@@ -410,7 +418,8 @@ function rolloutState(file, lines = null) {
       } else if (p.type === 'task_started') {
         st.startedMs = p.started_at ? p.started_at * 1000 : at;
         if (!sawEnd) { st.working = true; st.turnId = String(p.turn_id || ''); }
-        if (st.model) break;
+        if (st.model && st.context) break;
+        if (st.model) pastStart = true;
       }
     }
     if (row.type === 'response_item' && p.type === 'function_call' && p.name === ASYNC_QUESTION && !st.startedMs && !st.askedMs) {
