@@ -4,7 +4,7 @@
 
 'use strict';
 /*
- * A turn Codex 26.1117 draws with an activity part: a turn a Stop hook continued. Its first reply and the hook's prompt
+ * A turn a Stop hook continued, which Codex 26.1117 draws with an activity part. Its first reply and the hook's prompt
  * sit in the activity part, above Codex's "Worked for" as a plain line of text, and only the last reply is on the
  * final-reply side. The page below has the elements and data-* attributes of such a turn as a window test read them
  * off Codex 26.1117.41037; class names are left out, as the page script reads none.

@@ -9,11 +9,11 @@
  * Codex measures this itself. Each time one of its pages starts, it writes one `client.performance.span name=app_start`
  * line to `Codex.log` in its extension host's log folder: the whole time, the time each stage was reached (`marksMs`),
  * whether the page opened on a conversation or on its home page, and whether it gave up (`outcome=failure
- * reason=timeout`). So nothing is paired or timed here; the lines are found and read.
+ * reason=timeout`).
  *
  * Codex writes those spans only while a switch it fetches from OpenAI is on, and so not offline and, as seen with
  * Codex 26.1117, not with another model provider. It then still writes `[startup][renderer] app routes mounted after
- * <ms>ms` once per page start, which gives only how long the page took to start its app. A log that has any span is
+ * <ms>ms` once per page start; that gives only the app's own start time. A log that has any span is
  * read for its spans alone, so a page start is not counted twice.
  *
  * Every window's Codex.log under VS Code's logs folder is read, since one window opens only a few pages. They are read

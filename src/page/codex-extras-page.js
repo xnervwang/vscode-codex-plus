@@ -319,8 +319,8 @@
     var sig = (infoBtn ? 'i' : '') + (muteBtn ? 'm' : '') + (meterBtn ? 'c' : '') + (codexMeterHidden ? 'h' : '')
       + (agentsBtn ? 'a' + agentsBtn.textContent.length : '');
     if (sig !== rowSig) { rowSig = sig; rowNeed = -1; }
-    /* A control taken out from under the pointer gets no mouseleave, and the box it opened would stay open. A control
-       made meanwhile, such as the pill once the map arrives, still goes in: intoRow moves none already in place. */
+    /* A control taken out from under the pointer gets no mouseleave, and the box it opened would stay open. A new one,
+       such as the pill when the map arrives, is still put in, since intoRow leaves the controls already there alone. */
     if (rowMode && pointedAt()) {
       if (rowMode === 'row') intoRow(s);
       return rowMode === 'row';
@@ -1741,8 +1741,8 @@
     return Math.floor(mi / 60) + 'h' + (mi % 60) + 'm';
   }
   /*
-   * Codex draws its own "Worked for" in a turn only when the turn did something before its last reply, inside the turn
-   * but outside its messages: as a button that expands that activity, or, from 26.1117, as a line of text after it.
+   * Codex draws its own "Worked for" only when a turn did something before its last reply. It sits inside the turn,
+   * outside its messages: a button that expands that activity, or, from 26.1117, a line of text after it.
    * Neither has an attribute of its own. So a button with aria-expanded in that position is taken to be it, and so is
    * any text in the turn's body outside its messages; the day's divider is outside the body.
    */

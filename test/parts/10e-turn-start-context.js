@@ -6,7 +6,7 @@
 /*
  * The context in use at the start of a turn, before its first model call has written a token_count: the newest one in
  * the rollout, from the turn before. The context meter and the figures strip draw from it, so without it they go blank
- * at the start of every turn. The turn's own facts, such as the tool call it is running, still come from that turn only.
+ * at the start of every turn. Everything else, such as the tool call the turn is running, comes from that turn only.
  */
 const fs = require('fs');
 const path = require('path');

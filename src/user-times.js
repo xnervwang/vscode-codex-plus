@@ -49,8 +49,10 @@ const PER_TURN = 8;
  * <environment_context>. Every one of the 40 rollouts read while this was written held exactly one such message and no
  * other, while whether the row carries a `metadata` key does not tell the two apart. A message the user really did
  * begin with such a tag is counted out here. The counts then differ, and the page shows no times at all.
+ * The tag may carry attributes, as a goal's <codex_internal_context source="goal"> does. A Stop hook's
+ * <hook_prompt hook_run_id="..."> is the exception: Codex draws it on the user's side.
  */
-const INJECTED = /^\s*<[a-z][a-z0-9_]*>/;
+const INJECTED = /^\s*<(?!hook_prompt[\s>])[a-z][a-z0-9_]*(?:\s[^>]*)?>/;
 /*
  * First words of the block the skill search injects (MARK in codex-plugin/agent-work-plan/hooks/skill_route.py).
  * Codex records it in the rollout as a developer message, one line per skill under that first line, each
