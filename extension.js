@@ -940,7 +940,9 @@ function registerCommands(context, { source, memory, sessionsModel, sessionsView
     const t = reader.thread(id) || {};
     return String((t.kind === 'subagent' && t.nickname) || t.title || '(untitled)').slice(0, 120);
   };
-  const sizeText = (bytes) => (bytes < 1024 ? `${bytes} B` : bytes < 1024 * 1024 ? `${Math.round(bytes / 102.4) / 10} KB` : `${Math.round(bytes / 104857.6) / 10} MB`);
+  /* A no-break space before the unit: VS Code's confirmation wraps its detail at spaces, and "11.6" and "KB" can land
+     on two lines. */
+  const sizeText = (bytes) => (bytes < 1024 ? `${bytes}\u00a0B` : bytes < 1024 * 1024 ? `${Math.round(bytes / 102.4) / 10}\u00a0KB` : `${Math.round(bytes / 104857.6) / 10}\u00a0MB`);
   const describe = (id, subs) => {
     const dir = install.planDir(files.codexHome());
     const bytes = [id, ...subs].reduce((n, x) => {

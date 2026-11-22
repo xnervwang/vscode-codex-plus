@@ -522,6 +522,22 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
           buttons: [...d.querySelectorAll('.dialog-buttons .monaco-button')].map((b) => b.innerText.trim()) };
       });
       const press = (label) => page.locator('.monaco-dialog-box .dialog-buttons .monaco-button').filter({ hasText: label }).first().click({ timeout: 5000 });
+      /* How many lines the size in the confirmation's detail, such as "11.6 KB", is drawn on. */
+      const sizeLines = () => page.evaluate(() => {
+        const d = [...document.querySelectorAll('.monaco-dialog-box')].find((e) => e.offsetParent);
+        const el = d && d.querySelector('.dialog-message-detail');
+        if (!el) return null;
+        const walk = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+        for (let n = walk.nextNode(); n; n = walk.nextNode()) {
+          const m = /\d+(?:\.\d+)?\s(?:B|KB|MB)\)/.exec(n.nodeValue);
+          if (!m) continue;
+          const r = document.createRange();
+          r.setStart(n, m.index);
+          r.setEnd(n, m.index + m[0].length);
+          return new Set([...r.getClientRects()].filter((b) => b.width > 0).map((b) => Math.round(b.top))).size;
+        }
+        return 0;
+      });
       const listed = () => list.evaluate((id) => !!document.querySelector(`.cp-row[data-id="${id}"]`), t.id);
       const shelved = () => list.evaluate((id) => !!document.querySelector(`.cp-group[data-key="archived"] .cp-row[data-id="${id}"]`), t.id);
       const shelfOpen = () => list.evaluate(() => { const g = document.querySelector('.cp-group[data-key="archived"]'); return g ? g.classList.contains('cp-open') : null; });
@@ -549,6 +565,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       check(asked.title === `Delete "${t.title}" from disk?` && asked.buttons.includes('Delete') && asked.buttons.includes('Cancel')
         && asked.detail.startsWith(`"${t.title}": the rollout`) && /This cannot be undone\.$/.test(asked.detail),
       'Delete Conversation... opens VS Code\'s modal confirmation, naming the conversation and what goes, with Delete and Cancel', asked);
+      const sizeOn = await sizeLines();
+      check(sizeOn === 1, 'the size in the confirmation is drawn on one line, its number beside its unit', { lines: sizeOn, detail: asked.detail });
       await press('Cancel');
       await until(async () => !await dialog(), 5000, 200);
       await sleep(1500);

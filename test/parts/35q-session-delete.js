@@ -145,7 +145,9 @@ module.exports = async ({ eq, tmp, root }) => {
     eq([asked && asked.message, asked && asked.buttons, asked && asked.options && asked.options.modal],
       ['Delete "First" from disk?', ['Delete'], true],
       'the confirmation is VS Code\'s modal warning, titled as Claude Code Plus\'s, with Delete its only button of its own');
-    eq([detail(asked)[0].replace(/\(\d+(\.\d+)? (B|KB)\)/, '(n)'), detail(asked).slice(-2)],
+    eq(/ \(\d+(?:\.\d+)?\u00a0(?:B|KB|MB)\)$/.test(detail(asked)[0]), true,
+      'the size\'s number and unit are joined by a no-break space, so the confirmation never breaks the line between them');
+    eq([detail(asked)[0].replace(/\(\d+(\.\d+)?\u00a0(B|KB)\)/, '(n)'), detail(asked).slice(-2)],
       ['"First": the rollout, the work plan, the wake-up (n)', ['', 'This cannot be undone.']],
       'its detail says what goes of each conversation and how much, and ends as Claude Code Plus\'s does');
     eq(detail(asked).some((l) => /rollout file, its row in Codex's state database, its title and its goal/.test(l)), true,
@@ -173,7 +175,7 @@ module.exports = async ({ eq, tmp, root }) => {
 
     /* ── sub-agents ── */
     eq(await run(5, null, 'Delete'), [ID(5)], 'a conversation with a sub-agent is deleted with one request, since Codex deletes its sub-agents with it');
-    eq(detail(dialogs()[0])[0].replace(/\(\d+(\.\d+)? (B|KB)\)/, '(n)'), '"Parent": the rollout and 1 sub-agent conversation (n)',
+    eq(detail(dialogs()[0])[0].replace(/\(\d+(\.\d+)?\u00a0(B|KB)\)/, '(n)'), '"Parent": the rollout and 1 sub-agent conversation (n)',
       'and the confirmation says the sub-agent goes too');
     await tick(100);
     eq([plans().includes(`${ID(6)}.json`), colorsNow().includes(ID(6))], [false, false], 'its sub-agent\'s plan and colour go with it');
