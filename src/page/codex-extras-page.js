@@ -1659,14 +1659,16 @@
       var key = keyed ? String(keyed.getAttribute(ATTR.turnBody) || '') : '';
       var users = usersIn(turn);
       for (var u = 0; u < users.length; u++) out.push({ kind: 'user', node: users[u], day: day, turn: key, turnEl: turn });
-      var sides = all(turn, SEL.assistantSide), firstReply = true;
-      for (var s = 0; s < sides.length; s++) {
-        var blocks = all(sides[s], SEL.assistant);
-        for (var b = 0; b < blocks.length; b++) {
-          var kind = roleOf(blocks[b]) === 'user' ? 'user' : 'assistant';
-          out.push({ kind: kind, node: blocks[b], day: day, turn: key, turnEl: turn, first: kind === 'assistant' && firstReply });
-          if (kind === 'assistant') firstReply = false;
-        }
+      /* Every reply block of the turn, not only those on its final-reply side: from 26.1117 a reply written before the
+         turn's last one sits in the turn's activity part, and the rollout counts it. The turn's line still goes on the
+         first reply of the final-reply side. */
+      var blocks = all(turn, SEL.assistant), firstReply = true;
+      for (var b = 0; b < blocks.length; b++) {
+        if (blocks[b].closest && blocks[b].closest(SEL.user)) continue;
+        var kind = roleOf(blocks[b]) === 'user' ? 'user' : 'assistant';
+        var final = !!(blocks[b].closest && blocks[b].closest(SEL.assistantSide));
+        out.push({ kind: kind, node: blocks[b], day: day, turn: key, turnEl: turn, first: kind === 'assistant' && final && firstReply });
+        if (kind === 'assistant' && final) firstReply = false;
       }
     }
     return out;
