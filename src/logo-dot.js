@@ -4,12 +4,14 @@
 
 'use strict';
 /*
- * A Codex tab's icon: Codex's logo with a dot in the colour of its conversation's state on the corner (TAB_DOTS in
+ * A Codex tab's icon is Codex's logo with a dot in its corner, coloured by what the conversation is doing (TAB_DOTS in
  * patching.js). The logo is read from Codex's own installed extension and the composite written into this extension's
  * global storage, so no copy of anyone's logo ships here.
  *
  * The logo is drawn inside a 24-unit box with a circle masked out round the dot, so the dot reads against any theme. A
  * logo that is not one SVG element with a viewBox is not composited, and the tab keeps Codex's own logo.
+ *
+ * A palette entry is a colour for a dot, or { ring: colour } for a ring.
  */
 const crypto = require('crypto');
 const fs = require('fs');
@@ -21,9 +23,10 @@ const DOT = { prompt: '#f59e0b', needs: '#f59e0b', working: '#3b82f6', unread: '
 const BOX = 24;
 const R = 4.2;
 const GAP = 1.4;
+const RING_WIDTH = 2;
 
-/** The logo with a dot of `color`, or '' when `svg` is not something this knows how to wrap. */
-function withDot(svg, color, { r = R, gap = GAP } = {}) {
+/** Returns '' for an `svg` this cannot wrap. */
+function withDot(svg, color, { r = R, gap = GAP, ring = false } = {}) {
   const text = String(svg || '');
   const open = /<svg\b[^>]*>/i.exec(text);
   const close = text.lastIndexOf('</svg>');
@@ -33,10 +36,13 @@ function withDot(svg, color, { r = R, gap = GAP } = {}) {
   const inner = text.slice(open.index + open[0].length, close);
   if (/<script/i.test(inner)) return '';
   const cx = BOX - r, cy = r;
+  /* The ring's outer edge matches the dot's, so both take the same space on the logo. */
+  const mark = ring ? `<circle cx="${cx}" cy="${cy}" r="${r - RING_WIDTH / 2}" fill="none" stroke="${color}" stroke-width="${RING_WIDTH}"/>`
+    : `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${color}"/>`;
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${BOX}" height="${BOX}" viewBox="0 0 ${BOX} ${BOX}">`
     + `<defs><mask id="d"><rect width="${BOX}" height="${BOX}" fill="white"/><circle cx="${cx}" cy="${cy}" r="${r + gap}" fill="black"/></mask></defs>`
     + `<g mask="url(#d)"><svg width="${BOX}" height="${BOX}" viewBox="${vb[1]}" fill="none">${inner}</svg></g>`
-    + `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${color}"/></svg>`;
+    + `${mark}</svg>`;
 }
 
 /* Written under another name and moved into place (writeAtomic): a file is named by its content and never rewritten once
@@ -56,8 +62,10 @@ function iconsFor(logo, dir, cache = new Map(), palette = DOT, size = {}) {
   const out = {};
   try {
     fs.mkdirSync(dir, { recursive: true });
-    for (const [state, color] of Object.entries(palette)) {
-      const l = withDot(light, color, size), d = withDot(dark, color, size);
+    for (const [state, entry] of Object.entries(palette)) {
+      const ring = !!(entry && typeof entry === 'object');
+      const color = ring ? entry.ring : entry;
+      const l = withDot(light, color, { ...size, ring }), d = withDot(dark, color, { ...size, ring });
       if (!l || !d) { cache.set(key, null); return null; }
       const lp = path.join(dir, `logo-${key}-${state}-light.svg`), dp = path.join(dir, `logo-${key}-${state}-dark.svg`);
       if (!fs.existsSync(lp)) writeWhole(lp, l);

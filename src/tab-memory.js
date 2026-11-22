@@ -24,6 +24,7 @@
  * shutdown, is ignored.
  */
 const tabs = require('./codex-tabs');
+const { withoutEnvelope } = require('./title-marks');
 
 const OPEN_KEY = 'codexPlus.openTabs';
 const CLOSED_KEY = 'codexPlus.recentlyClosed';
@@ -103,7 +104,7 @@ class TabMemory {
       if (swap) this.replaced.delete(named);
       let t = swap && now - swap.at <= CLOSE_PAIR_MS ? swap.thread : '';
       if (!t && named) { try { t = this.nowShowing(named) || named; } catch (_) { t = named; } }
-      if (t) closed.push({ thread: t, title: this.titleOf(t) || tab.label || '', at: now });
+      if (t) closed.push({ thread: t, title: this.titleOf(t) || withoutEnvelope(tab.label), at: now });
       this.closeOrder.push({ codex: true, thread: t });
     }
     if (this.codexClosedAt === now) {

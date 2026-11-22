@@ -246,19 +246,19 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
     } finally { source.dispose(); reader.dispose(); }
   });
 
-  /* The session list draws a solid green dot for this. */
+  /* The session list draws a green ring for this, and the Agent map a solid green dot. */
   await section('the session list', async () => {
     const { SessionsModel, lookKey } = require('../../src/sessions-view');
-    const conv = { sessionId: ID(1), state: 'working', ownState: 'unread', working: false, left: ['command', 'subagent'] };
+    const conv = { sessionId: ID(1), state: 'working', ownState: 'unread', working: false, left: ['command', 'subagent'], activity: 'background', unseen: true };
     eq([lookKey(conv, false), lookKey({ ...conv, left: [], working: true }, false)], ['working', 'workingElsewhere'],
-      'work left running is drawn as a solid green dot, not as a turn running in another window');
+      'in the Agent map, work left running is a solid green dot, not a turn running in another window');
     const threads = [{ id: ID(1), title: 'Busy after its turn', kind: 'user', parent: '', cwd: '/w', section: '', createdMs: 1, updatedMs: 2 }];
     const model = new SessionsModel(vscode, { memory: { openThreads: () => [], recentlyClosed: () => [], frontAt: () => 0 }, memento: fake.memento(),
       reader: { threads: () => threads, sections: () => new Map(), state: () => ({}), thread: () => null },
       stateOf: () => conv, settings: () => ({ recentClosedSessions: 10 }) }).model();
     const row = model.groups.flatMap((g) => g.rows).find((r) => r.id === ID(1));
-    eq([row.dot, row.unread, row.running], ['working', true, 'A background command is still running\nA sub-agent is still running'],
-      'its row is green, still marked unread for its menu, and names what is running');
+    eq([row.dot, row.unread, row.running], ['background', true, 'A background command is still running\nA sub-agent is still running'],
+      'its row has the green ring, keeps its envelope and Mark as Read, and names what is running');
     const { createDom } = require('../fake-dom');
     const dom = createDom();
     const page = dom.el('div', { attrs: { id: 'root' } });

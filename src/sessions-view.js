@@ -28,10 +28,11 @@
  * values (groups, dots, time text) without reading files; the page filters and searches that model. SessionsView posts
  * the model only when it changed and the view is visible.
  *
- * Conversations whose rollout was not read carry no status dot until their group is expanded, which is the only moment
- * their rollout is asked for; the answer comes back on the next scheduled poll (SessionsModel.expanded). As in Claude
- * Code's list, an idle conversation that is not open in this window has no dot either, and its title starts where the
- * dot would be.
+ * A row's dot shows its conversation's activity: green while working, a green ring when only background work is left,
+ * red while waiting for the user, and none once stopped. An unread reply adds an envelope after the title and before
+ * the time; src/envelope.js picks its form for the theme. A conversation whose rollout has not been read has no dot
+ * until its group is expanded. Expanding is what asks for the rollout, and the next scheduled poll reads it
+ * (SessionsModel.expanded).
  *
  * Threads Codex started by itself - sub-agents, the reviews of approval requests - and `codex exec` runs are left out
  * unless codexPlus.hideBackgroundSessions is off, when they are listed with the rest. A sub-agent whose parent is listed
@@ -40,6 +41,8 @@
 const { folderTest } = require('./folders');
 const { PINNED_SECTION } = require('./session-groups');
 const kit = require('./page/kit.js');
+const { envelope } = require('./envelope');
+const { withoutEnvelope } = require('./title-marks');
 
 /* Title colours: the eight that Claude Code's /color command offers, mapped to the same theme colours and listed in the
    same order as Claude Code Plus's Text color menu. */
@@ -87,9 +90,9 @@ const LIST_MENU = [
   const title = COMMAND_TITLES.get(command) || command;
   return submenu ? { command, title: title.replace(/\.\.\.$/, ''), group, when, submenu } : { command, title, group, when, ...more };
 });
-/* The same dots Claude Code's list uses: green running, blue waiting for you, red replied and unread or last turn
-   failed, grey idle. A conversation running or waiting in another window gets a ring in that colour. The list draws
-   the grey one only for a conversation open in this window (SessionsModel.build). */
+const ACTIVITY_DOT = { working: 'working', background: 'background', waiting: 'waiting' };
+/* A sub-agent's dot in the Agent map (src/agent-map.js): green running, blue waiting for you, red replied and unread or
+   last turn failed, grey idle, and a ring in that colour for one running or waiting in another window. */
 const STATE_LOOK = {
   working: { icon: 'circle-filled', color: 'charts.green', word: 'working' },
   workingElsewhere: { icon: 'circle-outline', color: 'charts.green', word: 'working in another window' },
@@ -119,8 +122,6 @@ function lookKey(conv, here) {
   return STATE_LOOK[state] ? state : 'idle';
 }
 const lookOf = (conv, here) => STATE_LOOK[lookKey(conv, here)];
-/* Dots that mean a turn is running or waiting for the user. */
-const BUSY_LOOKS = new Set(['working', 'workingElsewhere', 'prompt', 'promptElsewhere']);
 /* What a row's hover says still runs after the conversation's turn, for each kind src/left-running.js names. */
 const LEFT_WORDS = {
   subagent: 'A sub-agent is still running',
@@ -297,22 +298,21 @@ class SessionsModel {
     const byId = new Map(this.threads.map((t) => [t.id, t]));
     const row = (t, where) => {
       const here = open.has(t.id) || t.id === this.sidebarNow;
-      /* No dot for a conversation whose rollout has not been read: unread state is unknown, not idle, and reading
-         every old rollout just to colour dots costs too much. */
+      /* Without its rollout the activity is unknown rather than stopped, and reading every old rollout just to colour
+         dots costs too much. */
       const conv = this.stateOf(t.id);
-      const look = this.reader.state(t.id) ? lookKey(conv, here) : 'unknown';
-      /* The unread mark, and whether the row can be archived or deleted, follow the conversation's own state. */
-      const own = conv && conv.ownState && conv.ownState !== conv.state ? { ...conv, state: conv.ownState, left: [] } : conv;
-      const ownLook = this.reader.state(t.id) ? lookKey(own, here) : 'unknown';
-      const dot = look === 'idle' && !here && where !== 'open' ? 'none' : look;
+      const read = !!this.reader.state(t.id);
+      const dot = read ? ACTIVITY_DOT[conv && conv.activity] || 'none' : 'unknown';
       const goal = typeof this.reader.goal === 'function' ? this.reader.goal(t.id) : null;
       /* `here` leaves Resume in Tab and Resume in Sidebar out of the row's menu, as Claude Code Plus offers them only for
-         a conversation that is not open; a sub-agent drawn under its parent in Open sessions counts as open too. */
-      const busy = BUSY_LOOKS.has(ownLook);
-      return { id: t.id, title: t.title || '(untitled)', time: dateSpan(t.createdMs, t.updatedMs, now), dot, here: here || where === 'open',
+         a conversation that is not open; a sub-agent drawn under its parent in Open sessions counts as open too. A
+         conversation whose turn runs or waits for the user cannot be archived or deleted; one with only background
+         work left can. */
+      const busy = read && !!conv && (conv.activity === 'working' || conv.activity === 'waiting');
+      return { id: t.id, title: withoutEnvelope(t.title) || '(untitled)', time: dateSpan(t.createdMs, t.updatedMs, now), dot, here: here || where === 'open',
         archived: !!t.archived, archivable: !t.archived && !busy, deletable: !!t.archived && !here && where !== 'open' && !busy,
         color: COLORS[colors[t.id]] || '', open: open.has(t.id), sidebar: where === 'open' && t.id === this.sidebarNow && !open.has(t.id),
-        unread: !!(own && own.state === 'unread'), running: leftText(conv), grouped: !!(t.section && this.sections.has(t.section)),
+        unread: !!(conv && conv.unseen), running: leftText(conv), grouped: !!(t.section && this.sections.has(t.section)),
         group: placeOf(t, this.sections), branch: t.branch || '', goal: (goal && goal.status) || '', goalText: goalText(goal),
         child: nested.has(t.id), parentTitle: nested.has(t.id) ? ((byId.get(t.parent) || {}).title || '(untitled)') : '',
         nickname: nested.has(t.id) ? String(t.nickname || '') : '' };
@@ -333,6 +333,7 @@ class SessionsModel {
       noGroups: !!this.noGroups(),
       menu: LIST_MENU,
       colors: COLOR_LIST,
+      envelope: envelope(this.vscode),
       font: chatFont((k) => (chat ? chat.get(k) : undefined)),
     };
   }
@@ -434,4 +435,4 @@ function pageHtml({ js, css, csp, nonce: n }) {
 const looksLikeId = (q) => /^[0-9a-f-]{4,}$/i.test(String(q || '').trim());
 
 module.exports = { SessionsModel, SessionsView, pageHtml, group, drawn, dateSpan, placeOf, looksLikeId, lookOf, lookKey, goalText,
-  chatFont, COLORS, COLOR_NAMES, COLOR_KEY, STATE_LOOK, GOAL_WORD, LEFT_WORDS, PAGE_FILES, LIST_MENU };
+  chatFont, COLORS, COLOR_NAMES, COLOR_KEY, ACTIVITY_DOT, STATE_LOOK, GOAL_WORD, LEFT_WORDS, PAGE_FILES, LIST_MENU };

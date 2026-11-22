@@ -550,7 +550,7 @@
   var Z_MAP = 28;
   var DIM = 'var(--vscode-descriptionForeground,#9d9d9d)';
   var EDGE = 'var(--vscode-inlineChatInput-border,var(--vscode-input-border,var(--vscode-widget-border,#7f7f7f66)))';
-  /* The session list's dots (src/page/sessions-page.css). */
+  /* A sub-agent's dot, by lookKey in src/sessions-view.js. */
   var DOT_TONE = { working: '#22c55e', prompt: '#3b82f6',
     unread: '#ef4444', failed: 'var(--vscode-errorForeground,#f85149)', idle: DIM };
   var GOAL_SHORT = { active: 'goal', paused: 'goal paused', blocked: 'goal blocked', usageLimited: 'goal: usage limit',

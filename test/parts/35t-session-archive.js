@@ -63,7 +63,7 @@ module.exports = async ({ eq, tmp, root }) => {
   const mine = [t(10), t(11), t(12, { archived: true, archivedMs: 3 * DAY }), t(13, { archived: true, archivedMs: 2 * DAY })];
   const model = new SessionsModel(vscode, { memory: { openThreads: () => [ID(13)], recentlyClosed: () => [], frontAt: () => 0 }, memento: fake.memento(),
     reader: { threads: () => mine, sections: () => new Map(), state: () => ({}), thread: () => null },
-    stateOf: (id) => ({ state: id === ID(11) ? 'working' : 'idle', runningHere: id === ID(11) }),
+    stateOf: (id) => ({ state: id === ID(11) ? 'working' : 'idle', runningHere: id === ID(11), activity: id === ID(11) ? 'working' : 'stopped' }),
     settings: () => ({ recentClosedSessions: 10, hideBackgroundSessions: true }) }).model();
   const flags = (r) => `${r.id.slice(-2)}:${r.archived ? 'A' : '-'}${r.archivable ? 'a' : '-'}${r.deletable ? 'd' : '-'}`;
   eq([model.groups.map((g) => g.key), model.groups.map((g) => g.rows.map(flags)), model.open.map(flags)],

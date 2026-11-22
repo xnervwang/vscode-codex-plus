@@ -15,7 +15,7 @@ const vm = require('vm');
 const { createDom } = require('../fake-dom');
 
 const ID = (n) => `01a1f0f0-0000-7000-8000-${String(n).padStart(12, '0')}`;
-const row = (n, extra = {}) => ({ id: ID(n), title: `Conversation ${n}`, time: `${n}d · 11/0${n % 9}`, dot: 'idle', color: '', open: false,
+const row = (n, extra = {}) => ({ id: ID(n), title: `Conversation ${n}`, time: `${n}d · 11/0${n % 9}`, dot: 'none', color: '', open: false,
   sidebar: false, unread: false, grouped: false, group: 'Ungrouped', branch: '', ...extra });
 
 module.exports = async ({ eq, root }) => {
@@ -44,7 +44,7 @@ module.exports = async ({ eq, root }) => {
     account: { account: [{ label: 'Signed in with', value: 'Amazon Bedrock' }], windows: [], tokens: [] },
     closed: [row(9, { title: 'Closed earlier' })],
     open: [row(1, { open: true, here: true, dot: 'working' })],
-    groups: [{ key: 'section:a', label: 'Alpha', made: true, rows: [row(2, { grouped: true, group: 'Alpha', dot: 'prompt' })] },
+    groups: [{ key: 'section:a', label: 'Alpha', made: true, rows: [row(2, { grouped: true, group: 'Alpha', dot: 'waiting' })] },
       { key: 'section:e', label: 'Empty one', made: true, rows: [] },
       { key: 'ungrouped', label: 'Ungrouped', made: false, rows: [row(1, { open: true, here: true, dot: 'working' }), row(3, { unread: true, branch: 'fix/retry' }), row(4)] }],
     front: ID(1), noGroups: false,
@@ -65,7 +65,7 @@ module.exports = async ({ eq, root }) => {
     [['Alpha', '1'], ['Empty one', '0'], ['Ungrouped', '3']], 'each group with its name and a count, the empty one the user made with its nought');
   const r3 = $(`.cp-group[data-key="ungrouped"] .cp-row[data-id="${ID(3)}"]`);
   eq([r3.querySelector('.cp-dot').className, r3.querySelector('.cp-title').textContent, r3.querySelector('.cp-time').textContent,
-    !!r3.querySelector('.cp-actions [data-act="rename"]')], ['cp-dot d-idle', 'Conversation 3', '3d · 11/03', true],
+    !!r3.querySelector('.cp-actions [data-act="rename"]')], ['cp-dot d-none', 'Conversation 3', '3d · 11/03', true],
   'a row is its dot, its title, its time and, in the time\'s place on hover, the rename button');
   eq([r3.hasAttribute('data-vscode-context'), $('.cp-group[data-key="section:a"] .cp-group-head').hasAttribute('data-vscode-context')], [false, false],
     'a row and a group header carry nothing for VS Code\'s own menu, since the page draws their right-click menus');

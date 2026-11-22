@@ -1,5 +1,5 @@
 {
-  "core": "6e78b55afd70aa5119e63d0e3e4843a0dfba3c3b",
+  "core": "82dae01d3b1b8a0eee5d467fd1d474a34930e17a",
   "files": [
     {
       "path": "build/sync-shared.js",
@@ -65,6 +65,16 @@
       "path": "src/folders.js",
       "from": "src/folders.js",
       "sha256": "8f98f10c6ced4271c3b506f1f352d9de86cad392cd0c99e25e009b62b7e24e77"
+    },
+    {
+      "path": "src/envelope.js",
+      "from": "src/envelope.js",
+      "sha256": "53cc30e27783dd13f41c0dfd4895ba7b853c02bf5e0eb67fd9cf345d6cac5c9b"
+    },
+    {
+      "path": "src/title-marks.js",
+      "from": "src/title-marks.js",
+      "sha256": "f92c3452c20bc9fd4da45545b37ae404e72d292b43291fbf034c4d6d203ff6dc"
     },
     {
       "path": "src/token-mode.js",

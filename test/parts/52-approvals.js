@@ -201,7 +201,7 @@ module.exports = async ({ ok, bad, note, eq, tmp }) => {
   eq(chimes.filter((m) => m.type === 'codex-extras-chime').length, 0,
     'a turn waiting on the user does not ring the finished-turn chime, though the state it reports is no longer working');
   globalThis.__codexExtrasAppServer('answer', { id: 11 });
-  eq(patching.TAB_DOTS.prompt, '#3b82f6', 'and the tab dot has a colour for waiting on the user, beside working and unread: Claude Code Extras\' blue');
+  eq(patching.TAB_DOTS.waiting, '#ef4444', 'and the tab dot has a colour for waiting on the user, beside working and background work: Claude Code Plus\'s red');
 
   /* ── what a page reports, and which conversation it is taken to be about ── */
   const sidebarPage = {};

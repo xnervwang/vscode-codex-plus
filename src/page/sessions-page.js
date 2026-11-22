@@ -145,8 +145,11 @@
     restore.dataset.act = 'unarchive';
     acts.append(rename, archive, restore);
     meta.append(time, acts);
-    r.append(dot, title, goal, meta);
-    r._p = { dot, title, time, goal, acts, rename, archive, restore };
+    const unseen = el('span', 'cp-unseen cp-hidden');
+    unseen.title = 'Has a reply you have not read';
+    unseen.setAttribute('aria-label', unseen.title);
+    r.append(dot, title, unseen, goal, meta);
+    r._p = { dot, title, time, goal, acts, rename, archive, restore, unseen };
     r._sig = '';
     r._mark = '';
     return r;
@@ -162,11 +165,13 @@
     r._place = place;
     const sig = `${row.id}\u0001${row.title}\u0001${row.time}\u0001${row.dot}\u0001${row.color}\u0001${row.grouped}\u0001${row.unread}`
       + `\u0001${row.goal || ''}\u0001${row.goalText || ''}\u0001${row.child ? 1 : 0}\u0001${row.parentTitle || ''}\u0001${row.nickname || ''}`
-      + `\u0001${row.here ? 1 : 0}\u0001${row.running || ''}\u0001${row.archived ? 1 : 0}\u0001${row.archivable ? 1 : 0}`;
+      + `\u0001${row.here ? 1 : 0}\u0001${row.running || ''}\u0001${row.archived ? 1 : 0}\u0001${row.archivable ? 1 : 0}\u0001${mark}`;
     if (sig === r._sig) return;
     r._sig = sig;
     r.dataset.id = row.id;
     r._p.dot.className = `cp-dot d-${row.dot}`;
+    setText(r._p.unseen, mark);
+    r._p.unseen.classList.toggle('cp-hidden', !row.unread);
     r.classList.toggle('cp-child', !!row.child);
     if (!r._editing) { r._mark = ''; markTitle(r); }
     r._p.title.style.color = themeColor(row.color);
@@ -192,7 +197,8 @@
     const q = term();
     const at = q && !looksLikeId(q) ? title.toLowerCase().indexOf(q.toLowerCase()) : -1;
     const want = at >= 0 && r._place !== 'open' && r._place !== 'closed' ? `${at}:${q.length}` : '';
-    if (want === r._mark && r._p.title.firstChild) return;
+    /* Without a search mark the text is compared too: the title may have been renamed, or edited in place but not sent. */
+    if (want === r._mark && r._p.title.firstChild && (want || r._p.title.textContent === title)) return;
     r._mark = want;
     const t = r._p.title;
     if (!want) { t.textContent = title; return; }
@@ -234,6 +240,8 @@
 
   /* ── the model ── */
   let model = null;
+  /* The envelope for an unread reply, in the form the host chose for the theme. */
+  let mark = '\u2709\uFE0F';
   let hl = null;
   /* The row the last right-click menu was opened on. A conversation can appear twice, in Open sessions and in a group;
      commands from that menu act on this row. */
@@ -255,6 +263,7 @@
 
   function apply(next) {
     model = next || { account: null, closed: [], open: [], groups: [], front: '', noGroups: false };
+    if (typeof model.envelope === 'string' && model.envelope) mark = model.envelope;
     useFont(model.font);
     drawAccount(model.account);
     reconcile(closedList, closedRows, model.closed || [], 'closed');
@@ -354,8 +363,7 @@
   /* ── filtering and searching, over the session manager's rows ── */
   const looksLikeId = (q) => /^[0-9a-f-]{4,}$/i.test(q);
   const term = () => ui.search.trim();
-  const statusOf = (row) => (row.dot === 'prompt' || row.dot === 'promptElsewhere' ? 'needs_input'
-    : row.dot === 'working' || row.dot === 'workingElsewhere' ? 'working' : 'completed');
+  const statusOf = (row) => (row.dot === 'waiting' ? 'needs_input' : row.dot === 'working' || row.dot === 'background' ? 'working' : 'completed');
   const isActive = (row) => row.unread || statusOf(row) !== 'completed';
   function passes(row) {
     const st = statusOf(row);
@@ -704,7 +712,7 @@
   }
 
   /* ── editing a title or a group's name where it is drawn ── */
-  function editText(span, was, done) {
+  function editText(span, was, done, tidy = (t) => t) {
     span.textContent = was;
     span.contentEditable = 'true';
     span.classList.add('cp-editing');
@@ -720,7 +728,7 @@
       over = true;
       span.removeEventListener('keydown', onKey);
       span.removeEventListener('blur', onBlur);
-      const text = span.textContent.replace(/\s+/g, ' ').trim();
+      const text = tidy(span.textContent.replace(/\s+/g, ' ').trim());
       span.contentEditable = 'false';
       span.classList.remove('cp-editing');
       done(commit && text && text !== was ? text : '');
@@ -752,8 +760,10 @@
       if (title) { r._row = Object.assign({}, r._row, { title }); send({ kind: 'rename', id, title }); }
       r._mark = '';
       markTitle(r);
-    });
+    }, withoutEnvelope);
   }
+  /* The same rule as withoutEnvelope in src/title-marks.js, which the host applies again. */
+  const withoutEnvelope = (t) => t.replace(/\u2709[\uFE0E\uFE0F]?/g, ' ').replace(/\s+/g, ' ').trim();
   function renameGroup(key) {
     const ge = groupEls.get(key);
     if (!ge) { renameGroupKey = key; return; }

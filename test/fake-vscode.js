@@ -49,6 +49,7 @@ function create() {
   const tabsChanged = new EventEmitter();
   const groupsChanged = new EventEmitter();
   const extChanged = new EventEmitter();
+  const themeChanged = new EventEmitter();
   const groups = [{ viewColumn: 1, tabs: [], activeTab: null, isActive: true }];
   const state = { commands: [], context: {}, extensions: new Map(), clipboard: '', views: [], status: [], log: [], registered: [],
     said: [], answers: [], handlers: {}, external: [], externalAnswer: true, picks: [], quickPicks: [], treeViews: {}, inputs: [], statusMessages: [],
@@ -69,7 +70,10 @@ function create() {
     ViewColumn: { Active: -1, Beside: -2, One: 1, Two: 2, Three: 3 },
     /* The English text with its {0}, {1}, ... filled in, which is what vscode.l10n.t gives when no translation is loaded. */
     l10n: { t: (message, ...args) => String(message).replace(/\{(\d+)\}/g, (m, i) => (args[i] === undefined ? m : String(args[i]))) },
+    ColorThemeKind: { Light: 1, Dark: 2, HighContrast: 3, HighContrastLight: 4 },
     window: {
+      activeColorTheme: { kind: 2 },
+      onDidChangeActiveColorTheme: themeChanged.event,
       tabGroups: {
         get all() { return groups; },
         get activeTabGroup() { return groups.find((g) => g.isActive) || groups[0]; },
@@ -141,6 +145,8 @@ function create() {
     },
     fireTabs(e = {}) { tabsChanged.fire({ opened: [], closed: [], changed: [], ...e }); },
     fireExtensions() { extChanged.fire(); },
+    /* Switches to a colour theme of `kind` (vscode.ColorThemeKind) and announces it as VS Code would. */
+    setTheme(kind) { vscode.window.activeColorTheme = { kind }; themeChanged.fire(vscode.window.activeColorTheme); },
     answer(match, pick) { state.answers.push([match, pick]); },
     codexTab(thread) { return { label: 't', input: new TabInputCustom(Uri.from({ scheme: 'openai-codex', authority: 'route', path: `/local/${thread}` }), 'chatgpt.conversationEditor') }; },
     fileTab(p) { return { label: path.basename(p), input: new TabInputText(Uri.file(p)) }; },

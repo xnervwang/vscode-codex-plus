@@ -16,11 +16,13 @@
  *   delete       Delete on a row: VS Code's modal confirmation, drawn in the window (run.js sets window.dialogStyle),
  *                cancelled and then accepted, and the rollout gone from the Codex home
  *   a tab        a conversation resumed in a tab from the list: its title, then the dot on its logo during a turn sent
- *                through fake-model.js, and after the reply arrives while the tab is in the background
+ *                through fake-model.js, and the envelope after its title once the reply arrives while the tab is in the
+ *                background. After a rename that leaves the envelope in the new name, the tab and the list row each
+ *                end with a single envelope. A long title in a narrowed side bar is cut, and its envelope still shows
  *   left running a conversation stays green, on its tab and in the session list, until the work its turn started is
  *                done: a background command, a sub-agent, and on Linux a detached shell, a program run under setsid and
- *                a codex exec. The last three need Codex's approval to run outside its sandbox, and the tab shows the
- *                blue dot until it is given. The setsid program also appears in the Agent map, and once the shell or
+ *                a codex exec, as a green ring. The last three need Codex's approval to run outside its sandbox, and the
+ *                tab shows the red dot until it is given. The setsid program also appears in the Agent map, and once the shell or
  *                the program stops, the conversation gets a notice
  *   images       a reply's images: a PNG and an SVG by absolute path, a file:// URL and a data: URL drawn, an image at
  *                a web address shown as a plain link; with codexPlus.replyImages off the others are "[Image]", and
@@ -51,8 +53,12 @@ const { codexBinary } = require('../../src/appserver');
 
 const { sleep, until } = win;
 const TITLES = { tab: 'Codex Plus: New Codex Conversation in a Tab', sidebar: 'Codex Plus: Open Codex Sidebar', codex: 'Open Codex Sidebar' };
-/* TAB_DOTS in src/patching.js. */
-const DOTS = { working: [0x22, 0xc5, 0x5e], unread: [0xef, 0x44, 0x44], prompt: [0x3b, 0x82, 0xf6] };
+/* TAB_DOTS in src/patching.js: green working, drawn as a ring with only background work left, and red waiting. */
+const DOTS = { working: [0x22, 0xc5, 0x5e], waiting: [0xef, 0x44, 0x44] };
+/* The unread envelope in the Dark Modern theme that run.js sets (src/envelope.js). */
+const ENVELOPE = '\u2709\uFE0F';
+const envelopes = (text) => (String(text || '').match(/\u2709[\uFE0E\uFE0F]?/g) || []).length;
+const bare = (text) => String(text || '').replace(/\u2709[\uFE0E\uFE0F]?/g, ' ').replace(/\s+/g, ' ').trim();
 const COMPOSER = '[data-codex-composer-root] [contenteditable="true"]';
 /* What lib/fake-model.js answers a turn with when no script is set. */
 const REPLY = 'Done. The cap is configurable.';
@@ -241,21 +247,49 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     for (let y = 0; y < h; y++) img.data.copy(data, y * w * 4, ((y0 + y) * img.width + x0) * 4, ((y0 + y) * img.width + x0 + w) * 4);
     return pixels.encode({ width: w, height: h, data });
   };
-  /* How many pixels of each tab dot's colour the tab named `label` shows on its logo. */
+  /* Counts the pixels of each tab dot colour on the logo of the tab named `label`, and tells a ring from a dot: a
+     ring's centre pixel is not green. */
   const dotsOn = async (label) => {
     const tab = page.locator('.tabs-container .tab').filter({ hasText: label }).first();
     const box = await tab.boundingBox();
     if (!box) return null;
     const img = pixels.decode(await crop({ x: box.x, y: box.y, width: Math.min(40, box.width), height: box.height }));
     const count = {};
+    const near = (i, c) => Math.abs(img.data[i] - c[0]) <= 24 && Math.abs(img.data[i + 1] - c[1]) <= 24 && Math.abs(img.data[i + 2] - c[2]) <= 24;
     for (const [k, c] of Object.entries(DOTS)) {
       let n = 0;
-      for (let i = 0; i < img.data.length; i += 4) {
-        if (Math.abs(img.data[i] - c[0]) <= 24 && Math.abs(img.data[i + 1] - c[1]) <= 24 && Math.abs(img.data[i + 2] - c[2]) <= 24) n++;
-      }
+      for (let i = 0; i < img.data.length; i += 4) if (near(i, c)) n++;
       count[k] = n;
     }
+    let x0 = img.width, y0 = img.height, x1 = -1, y1 = -1;
+    for (let y = 0; y < img.height; y++) {
+      for (let x = 0; x < img.width; x++) {
+        if (near((y * img.width + x) * 4, DOTS.working)) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
+      }
+    }
+    count.ring = count.working >= 6 && !near((Math.round((y0 + y1) / 2) * img.width + Math.round((x0 + x1) / 2)) * 4, DOTS.working);
     return count;
+  };
+  /* Finds the tab whose title is `want` once its envelope is removed. */
+  const labelOf = async (want) => {
+    const t = (await tabs()).flatMap((g) => g.tabs).find((x) => bare(x.label) === want);
+    return t ? t.label : null;
+  };
+  /* Reads the side bar's width, or drags its edge `by` pixels. */
+  const sideWidth = () => page.evaluate(() => Math.round(document.getElementById('workbench.parts.sidebar').getBoundingClientRect().width));
+  const dragSide = async (by) => {
+    const edge = await page.evaluate(() => {
+      const b = document.getElementById('workbench.parts.sidebar').getBoundingClientRect();
+      const s = [...document.querySelectorAll('.monaco-sash.vertical')].map((e) => e.getBoundingClientRect())
+        .find((r) => r.height > 100 && Math.abs((r.left + r.right) / 2 - b.right) < 4);
+      return s && { x: (s.left + s.right) / 2, y: b.top + b.height / 2 };
+    });
+    if (!edge) return;
+    await page.mouse.move(edge.x, edge.y);
+    await page.mouse.down();
+    await page.mouse.move(edge.x + by, edge.y, { steps: 10 });
+    await page.mouse.up();
+    await sleep(600);
   };
 
   /* Installing the work plan plugin at start-up asks for trust in its hooks with a modal dialog, which takes every click
@@ -508,21 +542,6 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
 
       /* The side bar is widened by dragging its edge for this menu, as the window gives it room to be, then put back, so
          the steps after it draw at the width they always had. */
-      const sideWidth = () => page.evaluate(() => Math.round(document.getElementById('workbench.parts.sidebar').getBoundingClientRect().width));
-      const dragSide = async (by) => {
-        const edge = await page.evaluate(() => {
-          const b = document.getElementById('workbench.parts.sidebar').getBoundingClientRect();
-          const s = [...document.querySelectorAll('.monaco-sash.vertical')].map((e) => e.getBoundingClientRect())
-            .find((r) => r.height > 100 && Math.abs((r.left + r.right) / 2 - b.right) < 4);
-          return s && { x: (s.left + s.right) / 2, y: b.top + b.height / 2 };
-        });
-        if (!edge) return;
-        await page.mouse.move(edge.x, edge.y);
-        await page.mouse.down();
-        await page.mouse.move(edge.x + by, edge.y, { steps: 10 });
-        await page.mouse.up();
-        await sleep(600);
-      };
       const narrow = await sideWidth();
       await dragSide(160);
       const wide = await sideWidth();
@@ -621,7 +640,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       if (!list) throw new Error('the session list did not open');
       const groups = (await tabs()).length;
       retried(await pick(threads[0], ['Codex Plus: Resume in Tab']), 'Resume in Tab');
-      const open = await until(async () => { const t = await tabs(); const x = t.flatMap((g) => g.tabs).find((y) => y.label === title); return x && x.active && t; }, 20000, 500);
+      const open = await until(async () => { const t = await tabs(); const x = t.flatMap((g) => g.tabs).find((y) => bare(y.label) === title); return x && x.active && t; }, 20000, 500);
       check(!!open && open.length === groups, 'Resume in Tab opens the conversation in a tab of the group there, titled by the conversation', open || await tabs());
       codex = await frameWhere((want) => {
         return !!document.querySelector('[data-codex-composer-root]') && document.querySelectorAll('[data-turn-key]').length >= 4
@@ -756,14 +775,15 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     await step('the dot on a tab', async () => {
       if (!codex) throw new Error('the conversation did not open');
       const before = await dotsOn(title);
-      check(!!before && before.working === 0 && before.unread === 0, 'an idle conversation\'s tab has no dot', before);
+      check(!!before && before.working === 0 && before.waiting === 0 && envelopes(await labelOf(title)) === 0,
+        'a stopped conversation\'s tab has no dot, and its title no envelope', { dots: before, label: await labelOf(title) });
       model.hold();
       const turns = model.turns();
       await codex.locator('[data-codex-composer-root] [contenteditable="true"]').first().click();
       await page.keyboard.type('Run the tests again.');
       await page.keyboard.press('Enter');
       check(!!await until(() => model.turns() > turns, 20000, 300), 'a message sent from the tab reaches the made-up model', model.seen.slice(-3));
-      const working = await until(async () => { const d = await dotsOn(title); return d && d.working >= 6 && d; }, 20000, 500);
+      const working = await until(async () => { const d = await dotsOn(title); return d && d.working >= 6 && !d.ring && d; }, 20000, 500);
       check(!!working, 'while the turn runs the tab\'s logo carries the green dot', await dotsOn(title));
       const meterNow = () => codex.evaluate(() => { const m = document.querySelector('[data-codex-extras="meter"]'); return m ? m.textContent.trim() : null; });
       await sleep(4000);
@@ -772,8 +792,12 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await openNotes();
       await sleep(800);
       model.release();
-      const unread = await until(async () => { const d = await dotsOn(title); return d && d.unread >= 6 && d.working === 0 && d; }, 30000, 500);
-      check(!!unread, 'once the reply lands with the tab not in front, the dot turns red', await dotsOn(title));
+      const unread = await until(async () => {
+        const d = await dotsOn(title), label = await labelOf(title);
+        return d && d.working === 0 && d.waiting === 0 && label === `${title} ${ENVELOPE}` && { d, label };
+      }, 30000, 500);
+      check(!!unread, 'once the reply lands with the tab not in front, the dot goes and the tab\'s title ends in the envelope',
+        { dots: await dotsOn(title), label: await labelOf(title) });
       const bell = await until(() => page.evaluate(() => {
         const e = [...document.querySelectorAll('.statusbar-item')].find((x) => x.querySelector('.codicon-bell-dot'));
         return e ? e.innerText.trim() : '';
@@ -789,11 +813,67 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await shot('tab-dot-unread');
       const logo = await logoCrop(title);
       if (logo) base.compare('tab-dot-unread', logo);
+
+      /* Renamed while the reply is unread, keeping the tab's envelope at the end of the typed name. */
+      const renameTo = async (name) => {
+        await call('vscode.commands.executeCommand(\'codexPlus.renameThread\', arg); return true;', threads[0].id);
+        const box = page.locator('.quick-input-widget input').first();
+        await box.waitFor({ state: 'visible', timeout: 10000 });
+        const offered = await box.inputValue();
+        await box.fill(name);
+        await box.press('Enter');
+        return offered;
+      };
+      const stored = () => call(`${OWN}
+        const t = (own('codex-files').listThreads() || []).find((x) => x.id === arg); return t ? t.title : null;`, threads[0].id).catch((e) => String(e));
+      const rowNow = () => list.evaluate((id) => {
+        const r = [...document.querySelectorAll(`.cp-row[data-id="${id}"]`)].find((x) => x.offsetParent);
+        if (!r) return null;
+        const t = r.querySelector('.cp-title'), e = r.querySelector('.cp-unseen');
+        const rb = r.getBoundingClientRect(), tb = t.getBoundingClientRect(), eb = e.getBoundingClientRect();
+        return { title: t.textContent, cut: t.scrollWidth > t.clientWidth, inTitle: !!t.querySelector('.cp-unseen'),
+          shown: [...r.querySelectorAll('.cp-unseen')].filter((x) => getComputedStyle(x).display !== 'none').map((x) => x.textContent),
+          afterTitle: e.previousElementSibling === t && eb.left >= tb.right - 0.5, whole: eb.width > 0 && e.scrollWidth <= Math.ceil(eb.width),
+          inRow: eb.left >= rb.left && eb.right <= rb.right, rowRight: Math.round(rb.right), envelopeRight: Math.round(eb.right) };
+      }, threads[0].id).catch(() => null);
+      const renamed = `${title} (renamed)`;
+      const offered = await renameTo(`${renamed} ${ENVELOPE}`);
+      check(offered === title, 'Rename on a conversation with a reply not seen starts from its title, without the envelope', offered);
+      const shown = await until(async () => { const l = await labelOf(renamed); return l && l; }, 20000, 500);
+      check(shown === `${renamed} ${ENVELOPE}` && envelopes(shown) === 1, 'renamed with the envelope left in, the tab\'s title ends in one envelope', shown);
+      const saved = await until(async () => { const t = await stored(); return t === renamed && t; }, 15000, 500);
+      check(!!saved, 'and the name saved in Codex has none', await stored());
+      await exec('workbench.view.extension.codexPlus');
+      list = (await frameWhere(() => !!document.querySelector('.cp-root'), 15000)) || list;
+      const inList = await until(async () => { const r = await rowNow(); return r && r.title === renamed && r; }, 15000, 500);
+      check(!!inList && inList.shown.length === 1 && inList.shown[0] === ENVELOPE && !inList.inTitle && inList.afterTitle,
+        'and its row in the session list has one envelope, outside the title and after it', inList || await rowNow());
+      await shot('renamed-with-envelope');
+
+      /* A long title in a side bar dragged narrow is cut short, and the envelope after it stays whole inside the row. */
+      /* Shorter than the 120-character limit in titleOf (src/codex-files.js), so the row gets the whole title. */
+      const long = `${title}, renamed to be cut short`;
+      await renameTo(long);
+      const wideSide = await sideWidth();
+      await dragSide(Math.min(0, 230 - wideSide));
+      const cut = await until(async () => { const r = await rowNow(); return r && r.title === long && r.cut && r; }, 15000, 500);
+      check(!!cut && cut.shown.length === 1 && !cut.inTitle && cut.afterTitle && cut.whole && cut.inRow,
+        'in a narrowed side bar the long title ends in an ellipsis, and the envelope follows it whole, its right edge inside the row',
+        { side: await sideWidth(), row: cut || await rowNow() });
+      await shot('narrow-side-bar-envelope');
+      await dragSide(wideSide - await sideWidth());
+      await renameTo(title);
+      check(!!await until(async () => (await labelOf(title)) === `${title} ${ENVELOPE}`, 20000, 500), 'renamed back, the tab keeps one envelope after its title',
+        await labelOf(title));
+
       await page.locator('.tabs-container .tab').filter({ hasText: title }).first().click();
       await page.bringToFront().catch(() => {});
-      const read = await until(async () => { const d = await dotsOn(title); return d && d.unread === 0 && d.working === 0 && d; }, 20000, 500);
+      const read = await until(async () => {
+        const d = await dotsOn(title), label = await labelOf(title);
+        return d && d.working === 0 && d.waiting === 0 && label === title && d;
+      }, 20000, 500);
       const inFront = await focused();
-      if (read || inFront) check(!!read, 'and bringing the tab to the front clears it', { dots: await dotsOn(title), windowFocused: inFront });
+      if (read || inFront) check(!!read, 'and bringing the tab to the front takes the envelope away', { dots: await dotsOn(title), label: await labelOf(title), windowFocused: inFront });
       if (read && notified) check(!!await until(async () => !(await toast()), 15000, 500), 'and closes the notification that it finished');
       else note(`the window does not have the system's focus on ${process.platform}, so the reply stays unread, as it should; clearing the dot was not checked`);
       await shot('tab-dot-read');
@@ -817,9 +897,9 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       model.release();
       const ended = await until(async () => { const d = await dotsOn(title); return d && d.working === 0 && d; }, 30000, 500);
       await sleep(5000);
-      const after = { ended: !!ended, dots: await dotsOn(title), counted: await bellCount(), notification: await toastAbout(title, 'finished') };
-      check(after.ended && !!after.dots && after.dots.unread === 0 && after.counted <= counted && !after.notification,
-        'when the reply lands with the tab in front of the focused window, the tab gets no red dot and Agent Plus neither announces nor counts it',
+      const after = { ended: !!ended, dots: await dotsOn(title), label: await labelOf(title), counted: await bellCount(), notification: await toastAbout(title, 'finished') };
+      check(after.ended && !!after.dots && after.dots.waiting === 0 && after.label === title && after.counted <= counted && !after.notification,
+        'when the reply lands with the tab in front of the focused window, the tab gets no envelope and Agent Plus neither announces nor counts it',
         { before: counted, ...after });
       await shot('tab-in-front-finished');
     });
@@ -833,7 +913,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       }, id).catch(() => null);
       const now = async () => {
         const d = await dotsOn(title), r = await rowNow();
-        return { tab: !!d && d.working >= 6, row: !!r && /^working/.test(r.dot), running: (r && r.running) || '', dots: d, rowDot: r && r.dot };
+        return { tab: !!d && d.working >= 6 && d.ring, row: !!r && r.dot === 'background', green: d ? d.working : -1, running: (r && r.running) || '',
+          dots: d, rowDot: r && r.dot };
       };
       const send = async (text) => {
         await codex.locator('[data-codex-composer-root] [contenteditable="true"]').first().click();
@@ -892,8 +973,10 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         if (ask) check(!!shown && shown !== 'none', `${name}: Codex shows its card asking to run the command outside the sandbox`);
         if (shown && shown !== 'none') {
           note(`${name}: the card reads ${JSON.stringify(shown)}`);
-          const blue = await until(async () => { const d = await dotsOn(title); return d && d.prompt >= 6 && d; }, 20000, 500);
-          check(!!blue, `${name}: while Codex waits for the approval, the tab's logo carries the blue dot`, await dotsOn(title));
+          const red = await until(async () => { const d = await dotsOn(title); return d && d.waiting >= 6 && d; }, 20000, 500);
+          check(!!red, `${name}: while Codex waits for the approval, the tab's logo carries the red dot`, await dotsOn(title));
+          const redRow = await until(async () => { const r = await rowNow(); return r && r.dot === 'waiting' && r; }, 10000, 300);
+          check(!!redRow, `${name}: and so does the conversation's row in the session list`, await rowNow());
           if (await focused()) {
             await sleep(4000);
             const held = { counted: await bellCount(), notification: await toastAbout(title, 'is waiting for you') };
@@ -904,14 +987,14 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
           await approve(name);
         }
         const after = await until(async () => { const g = await now(); return model.left() === 0 && g.running.includes(words) && g.tab && g.row && g; }, 40000, 500);
-        check(!!after, `${name}: after its turn has ended, the tab's logo and the conversation's row in the session list stay green, and the row's hover says "${words}"`,
+        check(!!after, `${name}: after its turn has ended, the tab's logo and the conversation's row in the session list show the green ring, and the row's hover says "${words}"`,
           after || { left: model.left(), ...await now(), held: await call(`${OWN}
             const a = own('patching')._approvals;
             return { waiting: a.of(arg), threads: a.threads(), sinceMs: a.since ? a.since(arg) : null };`, id).catch((e) => String(e)) });
         await shot(`left-${name.replace(/\W+/g, '-')}`);
         if (during) await during();
         if (end) end();
-        const gone = await until(async () => { const g = await now(); return !g.tab && !g.row && !g.running.includes(words) && g; }, ms, 1000);
+        const gone = await until(async () => { const g = await now(); return g.green === 0 && !/^(working|background)$/.test(g.rowDot || '') && !g.running.includes(words) && g; }, ms, 1000);
         check(!!gone, `${name}: once that has finished, the green leaves both`, gone || { ...await now(), ...await why() });
         if (notice) {
           const told = await until(() => model.sent('Codex Plus notice') > notices && model.sent(notice) > 0, 60000, 1000);
@@ -946,7 +1029,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         }
       } else {
         note(`a detached shell, a program setsid started and a codex exec are found through /proc, which ${process.platform} does not have, `
-          + 'so none of them is made here' + (process.platform === 'win32' ? '' : ', and no command waits for approval, so the blue dot is not checked'));
+          + 'so none of them is made here' + (process.platform === 'win32' ? '' : ', and no command waits for approval, so the red dot is not checked'));
       }
       model.script(null);
     });
@@ -1037,11 +1120,11 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await row.hover();
       const arrow = row.locator('.action-label[aria-label*="Go to the Conversation"]').first();
       await arrow.click({ timeout: 10000 });
-      const back = await until(async () => { const t = (await tabs()).flatMap((g) => g.tabs).find((x) => x.active); return t && t.label === title && t; }, 15000, 500);
+      const back = await until(async () => { const t = (await tabs()).flatMap((g) => g.tabs).find((x) => x.active); return t && bare(t.label) === title && t; }, 15000, 500);
       check(!!back, 'the arrow at the end of its row goes to the conversation\'s tab', await tabs());
       await openNotes();
       if (brief) await brief.locator('#bopen').click({ timeout: 10000 });
-      const again = await until(async () => { const t = (await tabs()).flatMap((g) => g.tabs).find((x) => x.active); return t && t.label === title && t; }, 15000, 500);
+      const again = await until(async () => { const t = (await tabs()).flatMap((g) => g.tabs).find((x) => x.active); return t && bare(t.label) === title && t; }, 15000, 500);
       check(!!again, 'and so does the button at the top of the brief', await tabs());
     });
 

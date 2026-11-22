@@ -19,21 +19,22 @@ const { pageHtml, COLORS, COLOR_NAMES, LIST_MENU, chatFont } = require('../../..
 const ROOT = path.join(__dirname, '..', '..', '..');
 const HARNESS = path.join(__dirname, '..', 'harness');
 const ID = (n) => `01a1f0f0-0000-7000-8000-${String(n).padStart(12, '0')}`;
-const DOTS = ['idle', 'working', 'prompt', 'unread', 'idle', 'workingElsewhere', 'failed', 'idle', 'unknown', 'promptElsewhere'];
+const DOTS = ['none', 'working', 'waiting', 'none', 'none', 'background', 'none', 'none', 'unknown', 'waiting'];
+/* Rows with an unread reply: one working, one stopped, one with background work left. */
+const UNSEEN = new Set([1, 3, 5]);
 const TITLES = ['Fix the retry delay in the inventory sync', 'Why does the nightly export skip archived rows?', 'Add a dry-run flag to the cleanup script',
   'Review the cache eviction change', 'Split the settings page into two', 'Upgrade the test runner', 'Trace the slow login on staging',
   'Rename the billing columns', 'Write the migration for the new index', 'Explain the flaky upload test'];
 
 /* A model of `n` conversations in three groups and Ungrouped, plus two archived ones, as SessionsModel.model() makes
-   one. A row may be archived unless it is running or waiting for the user (BUSY_LOOKS in src/sessions-view.js),
+   one. A row may be archived unless it is running or waiting for the user (SessionsModel.build in src/sessions-view.js),
    and one in Archived sessions may be deleted unless it is open here. */
-const BUSY = ['working', 'workingElsewhere', 'prompt', 'promptElsewhere'];
+const BUSY = ['working', 'waiting'];
 function fakeModel(n, { stamp = '' } = {}) {
-/* An idle conversation not open in this window has no dot, as the host draws it (SessionsModel.build). */
-  const dotOf = (i) => (DOTS[i % DOTS.length] === 'idle' && i >= 2 ? 'none' : DOTS[i % DOTS.length]);
+  const dotOf = (i) => DOTS[i % DOTS.length];
   const row = (i, extra = {}) => ({ id: ID(i), title: `${TITLES[i % TITLES.length]}${i >= TITLES.length ? ` (${i})` : ''}`,
     time: `${(i % 9) + 1}d · 11/0${(i % 9) + 1}→11/09${stamp}`, dot: dotOf(i), color: i % 7 === 3 ? 'charts.purple' : '',
-    open: i < 2, sidebar: false, unread: DOTS[i % DOTS.length] === 'unread', grouped: false, group: 'Ungrouped', branch: i % 4 ? '' : `fix/${i}`,
+    open: i < 2, sidebar: false, unread: UNSEEN.has(i % DOTS.length), grouped: false, group: 'Ungrouped', branch: i % 4 ? '' : `fix/${i}`,
     archived: false, archivable: !BUSY.includes(dotOf(i)), deletable: false, ...extra });
   const shelved = (i, title) => row(i, { title, dot: 'none', open: false, unread: false, group: 'Archived sessions', archived: true, archivable: false,
     deletable: true });
@@ -49,7 +50,7 @@ function fakeModel(n, { stamp = '' } = {}) {
   return { account: { account: [{ label: 'Signed in with', value: 'Amazon Bedrock' }], windows: [], tokens: [] },
     closed: [row(n + 1, { title: 'Closed this morning' }), row(n + 2, { title: 'Closed yesterday' })],
     open: rows.slice(0, 2), groups, front: ID(0), noGroups: false, menu: LIST_MENU, colors: COLOR_NAMES.map((name) => ({ name, color: COLORS[name] })),
-    font: chatFont(() => undefined) };
+    font: chatFont(() => undefined), envelope: '\u2709\uFE0F' };
 }
 
 /* Proportional set size of a process, in MB, from /proc; 0 where that cannot be read. */
@@ -178,12 +179,36 @@ async function run({ env, check, shots, out, results }) {
       };
     })()`);
     r.measures.look = look;
-    const TONE = { working: ['rgb(34, 197, 94)'], prompt: ['rgb(59, 130, 246)'], unread: ['rgb(239, 68, 68)'], failed: ['rgb(248, 81, 73)'],
-      workingElsewhere: ['rgba(0, 0, 0, 0)', 'rgb(34, 197, 94)'], promptElsewhere: ['rgba(0, 0, 0, 0)', 'rgb(59, 130, 246)'] };
+    const TONE = { working: ['rgb(34, 197, 94)'], waiting: ['rgb(239, 68, 68)'], background: ['rgba(0, 0, 0, 0)', 'rgb(34, 197, 94)'] };
     check(Object.keys(TONE).every((k) => look.dots.some(([s]) => s === k)) && look.dots.every(([s, bg, edge]) => !TONE[s] || (bg === TONE[s][0] && (!TONE[s][1] || edge === TONE[s][1]))),
-      'sessions: the dots are Claude Code Plus\'s #22c55e, #3b82f6 and #ef4444, rings in the same colours, failed in errorForeground', look.dots);
+      'sessions: the dots are Claude Code Plus\'s #22c55e working and #ef4444 waiting, and a ring of the green with only background work left', look.dots);
     check(look.dots.some(([s]) => s === 'none') && look.noDot.length > 0 && look.noDot.every((x) => x === 8),
-      'sessions: an idle row not open here has no dot, and its title starts at the row\'s 8 px padding, as in Claude Code\'s list', look.noDot);
+      'sessions: a stopped row has no dot, and its title starts at the row\'s 8 px padding, as in Claude Code\'s list', look.noDot);
+
+    /* A title too long for the row, with an unread reply: the title is cut, the envelope is not. */
+    const long = fakeModel(14);
+    long.groups[2].rows = [];
+    long.groups[3].rows[0] = Object.assign({}, long.groups[3].rows[0], { unread: true,
+      title: 'A very long title about the retry delay of the inventory sync, its cap, the backoff and what the nightly export does with them' });
+    await toPage({ type: 'model', model: long });
+    await sleep(300);
+    const mail = await b.evaluate(`(() => {
+      const row = [...document.querySelectorAll('.cp-group[data-key="ungrouped"] .cp-row')].find((x) => x.offsetParent);
+      const t = row.querySelector('.cp-title'), e = row.querySelector('.cp-unseen'), time = row.querySelector('.cp-time');
+      const r = row.getBoundingClientRect(), tb = t.getBoundingClientRect(), eb = e.getBoundingClientRect(), mb = time.getBoundingClientRect();
+      return { cut: t.scrollWidth > t.clientWidth, ellipsis: getComputedStyle(t).textOverflow, inside: t.contains(e), text: e.textContent,
+        shown: getComputedStyle(e).display !== 'none' && eb.width > 0, afterTitle: Math.round(eb.left - tb.right), beforeTime: Math.round(mb.left - eb.right),
+        inRow: eb.left >= r.left && eb.right <= r.right && eb.top >= r.top && eb.bottom <= r.bottom, whole: e.scrollWidth <= Math.ceil(eb.width) };
+    })()`);
+    r.measures.envelope = mail;
+    check(mail.cut && mail.ellipsis === 'ellipsis' && !mail.inside && mail.shown && mail.whole && mail.inRow && mail.afterTitle >= 0 && mail.beforeTime >= 0
+      && mail.text === '\u2709\uFE0F',
+    'sessions: a long title with a reply not seen ends in an ellipsis, and the envelope, outside the title, follows it whole, inside the row and before the time', mail);
+    const clipped = await b.evaluate(`(() => { const r = [...document.querySelectorAll('.cp-group[data-key="ungrouped"] .cp-row')].find((x) => x.offsetParent).getBoundingClientRect();
+      return { x: Math.floor(r.left), y: Math.floor(r.top), width: Math.ceil(r.width), height: Math.ceil(r.height) }; })()`);
+    await shot('sessions-long-title-envelope', clipped);
+    await toPage({ type: 'model', model: small });
+    await sleep(300);
     check(['funnel', 'bolt'].every((k) => look.icons[k] && look.icons[k][0] !== 'none' && look.icons[k][1] === 'none'), 'sessions: the funnel and the bolt are solid shapes', look.icons);
     check(/BlinkMacSystemFont/.test(look.font[0]) && look.font[1] === '13px', 'sessions: the list is in the chat font the host sent, Claude Code\'s own default here', look.font);
     check(!!look.account && look.account.opacity === '0.7' && look.account.colour === 'rgb(204, 204, 204)' && look.account.size === '12px' && look.account.pad === '4px'

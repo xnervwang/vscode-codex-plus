@@ -46,6 +46,8 @@ const contextWindow = require('./src/context-window');
 const codexManifest = require('./src/manifest');
 const tokenMode = require('./src/token-mode');
 const archiveSweep = require('./src/archive-sweep');
+const { withoutEnvelope } = require('./src/title-marks');
+const { onEnvelopeChange } = require('./src/envelope');
 
 const CONFIG = 'codexPlus';
 /* This copy's id and folder, kept for deactivate, which runs after the editor's API is gone. */
@@ -405,7 +407,7 @@ async function activate(context) {
   /* The conversation in front changed: its row is drawn as the current one. */
   const follow = () => sessionsModel.refresh();
   context.subscriptions.push(source.onDidChangeConversations(redrawSessions), memory.onDidChange(relist), patching.onSidebarChanged(relist),
-    source.onDidFocus(() => follow()));
+    source.onDidFocus(() => follow()), onEnvelopeChange(vscode, () => sessionsModel.refresh()));
   if (typeof vscode.window.tabGroups.onDidChangeTabs === 'function') context.subscriptions.push(vscode.window.tabGroups.onDidChangeTabs(() => follow()));
 
   /* ── Agent Plus draws the rest ── */
@@ -808,10 +810,13 @@ function registerCommands(context, { source, memory, sessionsModel, sessionsView
     /* In the list the title is edited where it is, as in Claude Code's list. */
     if (fromList(arg) && sessionsView.tell({ type: 'startRename', id })) return;
     await snapshotIn();
-    const was = (reader.thread(id) || {}).title || '';
+    /* The envelope a tab or row draws for an unread reply is never part of the name, here or in what is saved. */
+    const stored = (reader.thread(id) || {}).title || '';
+    const was = withoutEnvelope(stored);
     const name = await vscode.window.showInputBox({ prompt: 'A new title for this Codex conversation', value: was, valueSelection: [0, was.length] });
-    if (name === undefined || !name.trim() || name.trim() === was) return;
-    await changeThread('rename it', 'thread/name/set', { threadId: id, name: name.trim() });
+    const next = withoutEnvelope(name || '').trim();
+    if (name === undefined || !next || next === stored) return;
+    await changeThread('rename it', 'thread/name/set', { threadId: id, name: next });
   });
   /*
    * Group commands. If it is not yet known whether this Codex has sections, groupsHere() checks first. When it has
@@ -1142,7 +1147,7 @@ function registerCommands(context, { source, memory, sessionsModel, sessionsView
     }
     else if (msg.kind === 'rename' && id && typeof msg.title === 'string') {
       const was = (reader.thread(id) || {}).title || '';
-      const title = msg.title.replace(/\s+/g, ' ').trim();
+      const title = withoutEnvelope(msg.title).replace(/\s+/g, ' ').trim();
       if (title && title !== was && !(reader.thread(id) || {}).archived && !restricted()) await changeThread('rename it', 'thread/name/set', { threadId: id, name: title });
     } else if (msg.kind === 'renameGroup' && typeof msg.name === 'string') {
       const sec = sectionArg({ groupKey: msg.key });

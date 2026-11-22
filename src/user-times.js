@@ -53,6 +53,9 @@ const PER_TURN = 8;
  * <hook_prompt hook_run_id="..."> is the exception: Codex draws it on the user's side.
  */
 const INJECTED = /^\s*<(?!hook_prompt[\s>])[a-z][a-z0-9_]*(?:\s[^>]*)?>/;
+const HOOK_PROMPT = /^\s*<hook_prompt[\s>]/;
+/* True when the user typed this message: it is neither one Codex wrote nor a Stop hook's prompt. */
+const typedByUser = (text) => !INJECTED.test(text) && !HOOK_PROMPT.test(text);
 /*
  * First words of the block the skill search injects (MARK in codex-plugin/agent-work-plan/hooks/skill_route.py).
  * Codex records it in the rollout as a developer message, one line per skill under that first line, each
@@ -279,4 +282,4 @@ function userTimes(rollout) {
 
 function forget() { cache.clear(); }
 
-module.exports = { MAX_BYTES, MAX_TIMES, TURNS_SENT, INJECTED, ROUTE_MARK, ORDER_LINE, GIVEN_EARLIER, ORDER_END, textOf, wholeLines, timesIn, turnFigures, turnTimes, userTimes, rolloutMarks, forget };
+module.exports = { MAX_BYTES, MAX_TIMES, TURNS_SENT, INJECTED, HOOK_PROMPT, typedByUser, ROUTE_MARK, ORDER_LINE, GIVEN_EARLIER, ORDER_END, textOf, wholeLines, timesIn, turnFigures, turnTimes, userTimes, rolloutMarks, forget };

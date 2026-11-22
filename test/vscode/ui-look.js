@@ -48,8 +48,11 @@ const FEATURES = JSON.parse(fs.readFileSync(path.join(__dirname, 'ui-look-featur
    it took from this extension's setting. */
 const LOOK_SETTINGS = { 'window.newWindowDimensions': 'maximized', 'workbench.secondarySideBar.defaultVisibility': 'hidden',
   'codexPlus.contextWindow': { 'gpt-6.1-sol': '600K' } };
-/* TAB_DOTS in src/patching.js. */
-const DOTS = { working: [0x22, 0xc5, 0x5e], unread: [0xef, 0x44, 0x44], prompt: [0x3b, 0x82, 0xf6] };
+/* TAB_DOTS in src/patching.js: green working, drawn as a ring with only background work left, and red waiting. */
+const DOTS = { working: [0x22, 0xc5, 0x5e], waiting: [0xef, 0x44, 0x44] };
+/* The unread envelope in the Dark Modern theme that run.js sets (src/envelope.js). */
+const ENVELOPE = '\u2709\uFE0F';
+const bare = (text) => String(text || '').replace(/\u2709[\uFE0E\uFE0F]?/g, ' ').replace(/\s+/g, ' ').trim();
 const PLAN_DIR = path.join('plugins', 'data', 'agent-work-plan-codex-extras');
 const TRUST = 'Trust the work plan hooks in Codex?';
 const WAKEUP_LINE = 'Wake-up set in this conversation';
@@ -144,14 +147,26 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     const x = Math.round(box.x), y = Math.round(box.y);
     const img = pixels.decode(await page.screenshot({ clip: { x, y, width: Math.min(40, Math.round(box.width)), height: Math.round(box.height) } }));
     const count = {};
+    const near = (i, c) => Math.abs(img.data[i] - c[0]) <= 24 && Math.abs(img.data[i + 1] - c[1]) <= 24 && Math.abs(img.data[i + 2] - c[2]) <= 24;
     for (const [k, c] of Object.entries(DOTS)) {
       let n = 0;
-      for (let i = 0; i < img.data.length; i += 4) {
-        if (Math.abs(img.data[i] - c[0]) <= 24 && Math.abs(img.data[i + 1] - c[1]) <= 24 && Math.abs(img.data[i + 2] - c[2]) <= 24) n++;
-      }
+      for (let i = 0; i < img.data.length; i += 4) if (near(i, c)) n++;
       count[k] = n;
     }
+    /* A ring is a green mark whose centre pixel is not green. */
+    let x0 = img.width, y0 = img.height, x1 = -1, y1 = -1;
+    for (let yy = 0; yy < img.height; yy++) {
+      for (let xx = 0; xx < img.width; xx++) {
+        if (near((yy * img.width + xx) * 4, DOTS.working)) { x0 = Math.min(x0, xx); y0 = Math.min(y0, yy); x1 = Math.max(x1, xx); y1 = Math.max(y1, yy); }
+      }
+    }
+    count.ring = count.working >= 6 && !near((Math.round((y0 + y1) / 2) * img.width + Math.round((x0 + x1) / 2)) * 4, DOTS.working);
     return count;
+  };
+  /* Finds the tab whose title is `want` once its envelope is removed. */
+  const labelOf = async (want) => {
+    const t = (await tabs()).flatMap((g) => g.tabs).find((x) => bare(x.label) === want);
+    return t ? t.label : null;
   };
   /* Agent Plus's bell. VS Code's own notifications entry, at the right end, shows the same icon while it holds any. */
   const AGENT_BELL = '.statusbar-item:not([id="status.notifications"])';
@@ -390,6 +405,11 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
   const widen = async (to = 420) => {
     const sb = await part(PARTS.sidebar);
     if (!sb || sb.width >= to - 4) return;
+    await sideTo(to);
+  };
+  const sideTo = async (to) => {
+    const sb = await part(PARTS.sidebar);
+    if (!sb || Math.abs(sb.width - to) < 4) return;
     const sash = await page.evaluate((edge) => {
       const b = [...document.querySelectorAll('.monaco-sash.vertical')].map((e) => e.getBoundingClientRect())
         .find((r) => r.height > 200 && Math.abs(r.left + r.width / 2 - edge) < 6);
@@ -616,7 +636,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       expect: 'The Codex Plus side bar shows the Codex sessions view. From the top: an "Account & usage" section, an "Open sessions" section listing the conversation just started in a tab, '
         + 'a session manager with "New in tab" and "New in sidebar" side by side (each with a plus icon), a filter row (a funnel, "Active · N", a search icon and "New group"), '
         + 'and an "Ungrouped" group with four conversations: the one just started and the three made-up ones, "Can you find where the retry delay for the inventory sync is set?", '
-        + '"Why does the nightly export skip archived rows?" and "Add a dry-run flag to the cleanup script". Each row has a small dot or space for it, the title, and at the right how long ago it was used with its first and last day, as "1m · 11/20→11/21". '
+        + '"Why does the nightly export skip archived rows?" and "Add a dry-run flag to the cleanup script". Each row has its title and at the right how long ago it was used with its first and last day, as "1m · 11/20→11/21"; none of these conversations is running or waiting, so no row has a dot, and each title starts at the row\'s left padding. '
         + 'Section labels are in capitals.',
     }, async () => {
       await toList();
@@ -786,18 +806,18 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       return inList('.cp-groups');
     });
     await look('mark-unread', {
-      expect: 'Mark as Unread on the row "Why does the nightly export skip archived rows?" gives it a red dot at its left; its title stays red from Text Color. As an unread conversation it now counts in "Active · N" and in Agent Plus\'s bell in the status bar, each one more than before.',
+      expect: 'Mark as Unread on the row "Why does the nightly export skip archived rows?" puts an envelope (✉️) after its title, before its time, and no dot, since it is not running; its title stays red from Text Color. As an unread conversation it now counts in "Active · N" and in Agent Plus\'s bell in the status bar, each one more than before.',
     }, async () => {
       await pick(row(t1.id), ['Mark as Unread']);
-      await until(() => list.evaluate((id) => /d-unread/.test((document.querySelector(`.cp-groups .cp-row[data-id="${id}"] .cp-dot`) || {}).className || ''), t1.id), 10000, 300);
+      await until(() => list.evaluate((id) => { const e = document.querySelector(`.cp-groups .cp-row[data-id="${id}"] .cp-unseen`); return !!e && !e.classList.contains('cp-hidden'); }, t1.id), 10000, 300);
       await sleep(500);
       return rowBox(t1.id);
     });
     await look('mark-read', {
-      expect: 'Mark as Read, which its menu now offers in place of Mark as Unread, takes the red dot away again; the title stays red from Text Color, and "Active · N" and the bell drop back by one.',
+      expect: 'Mark as Read, which its menu now offers in place of Mark as Unread, takes the envelope away again; the title stays red from Text Color, and "Active · N" and the bell drop back by one.',
     }, async () => {
       await pick(row(t1.id), ['Mark as Read']);
-      await until(() => list.evaluate((id) => !/d-unread/.test((document.querySelector(`.cp-groups .cp-row[data-id="${id}"] .cp-dot`) || {}).className || ''), t1.id), 10000, 300);
+      await until(() => list.evaluate((id) => { const e = document.querySelector(`.cp-groups .cp-row[data-id="${id}"] .cp-unseen`); return !e || e.classList.contains('cp-hidden'); }, t1.id), 10000, 300);
       await sleep(500);
       return rowBox(t1.id);
     });
@@ -1021,7 +1041,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     const sideRow = () => list.evaluate((id) => { const r = document.querySelector(`.cp-row[data-id="${id}"]`); return r && r._row ? String(r._row.dot) : ''; }, t0.id).catch(() => '');
     const tabAndRow = async () => union([await tab(title).boundingBox().catch(() => null), await inList(`.cp-row[data-id="${t0.id}"]`)]);
     await look('turn-running', {
-      expect: 'While the turn of a message sent from the tab runs, the tab\'s Codex logo carries a green dot, and the conversation\'s rows in the session list have a green dot.',
+      expect: 'While the turn of a message sent from the tab runs, the tab\'s Codex logo carries a solid green dot, and the conversation\'s rows in the session list have a solid green dot.',
       unchanged: 'The script turned the additions back on with Toggle after the step before, so the times, rail and toolbar controls are drawn again.',
     }, async () => {
       await showList();
@@ -1029,19 +1049,25 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       const turns = model.turns();
       await type('How is the inventory sync retry delay configured?');
       if (!await until(() => model.turns() > turns, 20000, 300)) throw new Error('the message reached no model');
-      await until(async () => ((await dotsOn(title)) || {}).working >= 6, 20000, 500);
+      await until(async () => { const d = await dotsOn(title); return d && d.working >= 6 && !d.ring; }, 20000, 500);
       await sleep(800);
       return tabAndRow();
     });
     await look('reply-unread', {
-      expect: 'With notes.txt in front when the reply lands, the conversation\'s tab carries a red dot, its rows in the list a red dot, Agent Plus\'s bell in the status bar a count of 1, '
-        + `and a notification says "${title}" finished, with a button to open it.`,
+      expect: `With notes.txt in front when the reply lands, the conversation has stopped: its tab\'s Codex logo carries no dot and the tab\'s title reads "${title} ✉️", the envelope once and last; `
+        + 'its rows in the list have no dot and an envelope after the title, before the time; Agent Plus\'s bell in the status bar shows a count of 1, '
+        + `and a notification says "${title}" finished, with an "Open" link in its text.`,
     }, async () => {
       await openNotes();
       await sleep(800);
       model.release();
-      await until(async () => { const d = await dotsOn(title); return d && d.unread >= 6 && d.working === 0; }, 60000, 500);
+      await until(async () => { const d = await dotsOn(title); return d && d.working === 0 && d.waiting === 0 && (await labelOf(title)) === `${title} ${ENVELOPE}`; }, 60000, 500);
       await until(async () => (await bellCount()) >= 1, 15000, 500);
+      /* Agent Plus announces a conversation once it has stayed stopped with an unread reply for 5 seconds. */
+      if (!await until(async () => (await toastLines()).some((l) => l.includes(`"${title}" finished`)), 20000, 500)) {
+        tell(`no "finished" notification in 20 s; the window has the focus: ${await call('return vscode.window.state.focused;').catch((e) => String(e))}`);
+      }
+      await until(() => list.evaluate((id) => [...document.querySelectorAll(`.cp-row[data-id="${id}"] .cp-unseen`)].some((e) => !e.classList.contains('cp-hidden')), t0.id), 10000, 300);
       await sleep(1500);
       return union([await tabAndRow(), await part(PARTS.statusbar), await toastsBox()]);
     });
@@ -1061,11 +1087,70 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     });
     await page.keyboard.press('Escape');
     await until(() => page.locator('.quick-input-widget').first().isHidden(), 3000, 200);
+
+    /* ═══ renaming while the reply is unread, and a long title in a narrow side bar ═══ */
+    const renameBox = page.locator('.quick-input-widget input').first();
+    const renameTo = async (name) => {
+      await start('codexPlus.renameThread', t0.id);
+      await renameBox.waitFor({ state: 'visible', timeout: 10000 });
+      await renameBox.fill(name);
+      await renameBox.press('Enter');
+    };
+    await look('rename-unread', {
+      expect: `Rename on the conversation whose reply has not been seen opens a box at the top of the window holding "${title}", selected, without the envelope its tab shows.`,
+    }, async () => {
+      await start('codexPlus.renameThread', t0.id);
+      await renameBox.waitFor({ state: 'visible', timeout: 10000 });
+      await sleep(500);
+      const offered = await renameBox.inputValue();
+      if (offered !== title) throw new Error(`the box held ${JSON.stringify(offered)}`);
+      return union([await boxIn(null, '.quick-input-widget'), await tab(title).boundingBox().catch(() => null)]);
+    });
+    const renamed = `${title} (renamed)`;
+    const sideBefore = ((await part(PARTS.sidebar)) || {}).width || 0;
+    await look('renamed-unread', {
+      expect: `After "${renamed} ✉️" is typed, the envelope at its end as if it had been left in, and Enter, the tab's title reads "${renamed} ✉️": one envelope, last, still there because the reply has not been seen. `
+        + `The conversation's rows in the session list read "${renamed}" with one envelope after the title, before the time, and none inside the title.`,
+    }, async () => {
+      await renameBox.fill(`${renamed} ${ENVELOPE}`);
+      await renameBox.press('Enter');
+      await showList();
+      if (!await until(async () => (await labelOf(renamed)) === `${renamed} ${ENVELOPE}`, 20000, 500)) throw new Error(`the tab read ${JSON.stringify(await labelOf(renamed))}`);
+      await until(() => list.evaluate((want) => [...document.querySelectorAll('.cp-row .cp-title')].some((e) => e.textContent === want), renamed), 15000, 500);
+      /* Widened so the whole new title fits in the picture. */
+      await sideTo(760);
+      await away();
+      await sleep(800);
+      return union([await tab(renamed).boundingBox().catch(() => null), await rowBox(t0.id, '.cp-section[data-key="open"]'), await rowBox(t0.id)]);
+    });
+    /* Shorter than the 120-character limit in titleOf (src/codex-files.js). */
+    const longTitle = `${title}, and where its cap is set`;
+    await look('long-title-narrow', {
+      expect: 'Renamed to a long title, with the side bar dragged narrow, the conversation\'s row in the Open sessions section shows the title cut short with an ellipsis (…), and right after the ellipsis the envelope, whole and fully visible, '
+        + 'then the time at the right edge of the row.',
+    }, async () => {
+      await renameTo(longTitle);
+      await showList();
+      await sideTo(240);
+      if (!await until(() => list.evaluate((id) => {
+        const t = document.querySelector(`.cp-groups .cp-row[data-id="${id}"] .cp-title`);
+        return !!t && t.textContent.length > 60 && t.scrollWidth > t.clientWidth;
+      }, t0.id), 15000, 500)) throw new Error('the long title was not cut short in the side bar');
+      await away();
+      await sleep(800);
+      /* The row in Open sessions: the one in Ungrouped stays highlighted from the menus used before, its time hidden. */
+      return rowBox(t0.id, '.cp-section[data-key="open"]');
+    });
+    try {
+      if (sideBefore) await sideTo(sideBefore);
+      await renameTo(title);
+      await until(async () => (await labelOf(title)) !== null, 20000, 500);
+    } catch (e) { tell(`putting the title and the side bar back failed: ${(e && e.message) || e}`); }
     await look('reply-read', {
-      expect: 'Bringing the tab to the front clears the red dot on its logo and on its rows in the list, takes the count off the bell, and closes the notification.',
+      expect: `Bringing the tab to the front takes the envelope off its title, which reads "${title}" again, and off its rows in the list; the stopped conversation has no dot on its logo or its rows. The count goes off the bell, and the notification closes.`,
     }, async () => {
       await tab(title).click();
-      await until(async () => { const d = await dotsOn(title); return d && d.unread === 0 && d.working === 0; }, 20000, 500);
+      await until(async () => { const d = await dotsOn(title); return d && d.waiting === 0 && d.working === 0 && (await labelOf(title)) === title; }, 20000, 500);
       await sleep(2000);
       return union([await tabAndRow(), await part(PARTS.statusbar)]);
     });
@@ -1101,12 +1186,12 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
 
     /* ═══ work left running after a turn ═══ */
     await look('left-running-command', {
-      expect: 'After a turn that started "sleep 30" in the background has ended, the tab\'s logo still carries a green dot, the conversation\'s rows in the list stay green, and the row below the message box '
+      expect: 'After a turn that started "sleep 30" in the background has ended, the tab\'s logo carries a hollow green ring rather than a solid dot, the conversation\'s rows in the list a green ring, and the row below the message box '
         + 'says at its right end that a command is still running.',
     }, async () => {
       model.script(t0.id, [{ call: 'exec_command', args: { cmd: 'sleep 30', yield_time_ms: 1000 } }, { reply: 'Started the job.' }]);
       await type('Start the background command and come back.');
-      if (!await until(async () => model.left() === 0 && ((await dotsOn(title)) || {}).working >= 6 && /^working/.test(await sideRow()), 40000, 500)) throw new Error('the conversation was not green after its turn');
+      if (!await until(async () => model.left() === 0 && ((await dotsOn(title)) || {}).ring && (await sideRow()) === 'background', 40000, 500)) throw new Error('the conversation had no green ring after its turn');
       await sleep(4000);
       return union([await tab(title).boundingBox(), await bottomBox(160)]);
     });
@@ -1127,17 +1212,18 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     const outside = (cmd) => ({ call: 'exec_command', args: { cmd, yield_time_ms: 1000, sandbox_permissions: 'require_escalated', justification: 'Start the job outside the sandbox.' } });
     const notices = model.sent('Codex Plus notice');
     await look('approval-waiting', {
-      expect: 'A command asked to run outside the sandbox: Codex shows its approval card above the message box, asking whether to run "setsid sleep 40 ..." with its buttons; the tab\'s logo carries a blue dot and the conversation\'s rows in the list a blue dot.',
+      expect: 'A command asked to run outside the sandbox: Codex shows its approval card in place of the message box, asking whether to run "setsid sleep 40 ..." with its buttons; the tab\'s logo carries a red dot and the conversation\'s rows in the list a red dot.',
     }, async () => {
       model.script(t0.id, [outside('setsid sleep 40 >/dev/null 2>&1 < /dev/null &'), { reply: 'Started the job.' }]);
       await type('Start the detached job and come back.');
       if (!await until(card, 20000, 300)) throw new Error('Codex showed no approval card');
-      await until(async () => ((await dotsOn(title)) || {}).prompt >= 6, 20000, 500);
+      await until(async () => ((await dotsOn(title)) || {}).waiting >= 6, 20000, 500);
+      await until(async () => (await sideRow()) === 'waiting', 10000, 300);
       await sleep(1500);
       return union([await tabAndRow(), await bottomBox(360)]);
     });
     await look('detached-running', {
-      expect: 'Once approved and the turn has ended, the tab\'s logo and the conversation\'s rows are green again, and the Agent map pill counts the detached command: "1 detached · 1 timer".',
+      expect: 'Once approved and the turn has ended, the tab\'s logo and the conversation\'s rows carry the green ring, and the Agent map pill counts the detached command: "1 detached · 1 timer".',
     }, async () => {
       await approve();
       if (!await until(async () => model.left() === 0 && /\b1 detached\b/.test(await pillText()), 40000, 500)) throw new Error(`the pill read ${JSON.stringify(await pillText())}`);
@@ -1149,7 +1235,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     }, async () => { await openMap(); return mapBox(); });
     await closeMap();
     await look('detached-end-notice', {
-      expect: 'Once "sleep 40" has ended, the conversation is sent a notice from Codex Plus that the detached command is no longer running and its exit code cannot be known; it shows at the bottom of the conversation with Codex\'s reply after it, and the green dot is gone.',
+      expect: 'Once "sleep 40" has ended, the conversation is sent a notice from Codex Plus that the detached command is no longer running and its exit code cannot be known; it shows at the bottom of the conversation with Codex\'s reply after it, and the green ring is gone.',
     }, async () => {
       if (!await until(() => model.sent('Codex Plus notice') > notices, 90000, 1000)) throw new Error('no notice reached the model in 90 s');
       await until(async () => !(((await dotsOn(title)) || {}).working >= 6), 30000, 1000);

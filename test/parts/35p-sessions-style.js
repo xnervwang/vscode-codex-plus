@@ -31,30 +31,29 @@ module.exports = async ({ eq, root }) => {
   };
   const has = (sel, decl) => rule(sel).split(';').map((d) => d.trim()).includes(decl);
 
-  /* ── the dots: Claude Code Plus's hexadecimal colours, failed in the theme's error colour ── */
-  eq([has('.cp-dot.d-working', 'background: #22c55e'), has('.cp-dot.d-workingElsewhere', 'border: 2px solid #22c55e'),
-    has('.cp-dot.d-prompt', 'background: #3b82f6'), has('.cp-dot.d-promptElsewhere', 'border: 2px solid #3b82f6'),
-    has('.cp-dot.d-unread', 'background: #ef4444'), has('.cp-dot.d-failed', 'background: var(--vscode-errorForeground)')],
-  [true, true, true, true, true, true],
-  'the dots are green #22c55e running, blue #3b82f6 waiting, red #ef4444 unread, as on Claude Code Plus\'s list and this extension\'s tabs, and failed in errorForeground as Claude Code draws it');
+  /* ── the dots: Claude Code Plus's hexadecimal colours ── */
+  eq([has('.cp-dot.d-working', 'background: #22c55e'), has('.cp-dot.d-background', 'border: 2px solid #22c55e'), has('.cp-dot.d-waiting', 'background: #ef4444')],
+    [true, true, true],
+    'the dots are green #22c55e running, a ring of that green with only background work left, red #ef4444 waiting, as on this extension\'s tabs');
   eq([has('.cp-dot.d-none', 'display: none'), has('.cp-dot.d-unknown', 'display: none')], [true, true],
     'a row with no dot takes no room for one, so its title starts where the dot would have been');
 
-  /* ── which rows have a dot: Claude Code draws one only for a conversation that is open, running, waiting or unread ── */
+  /* ── which rows have a dot ── */
   {
     const { vscode } = fake.create();
     fake.install(vscode);
     const { SessionsModel } = require('../../src/sessions-view');
-    const states = { 1: 'idle', 2: 'idle', 3: 'working', 4: 'unread', 5: 'idle' };
+    const states = { 1: 'stopped', 2: 'stopped', 3: 'working', 4: 'stopped', 5: 'stopped' };
     const threads = Object.keys(states).map((n) => ({ id: ID(n), title: `t${n}`, kind: 'user', cwd: '/w', updatedMs: Date.now() - 60e3, createdMs: Date.now() - 120e3 }));
     const reader = { threads: () => threads, sections: () => new Map(), state: (id) => (id === ID(5) ? null : { working: false }), thread: (id) => threads.find((t) => t.id === id) || null };
     const memory = { openThreads: () => [ID(1)], recentlyClosed: () => [], frontAt: () => 0 };
     const model = new SessionsModel(vscode, { memory, memento: fake.memento(), reader,
-      stateOf: (id) => ({ state: states[Number(id.slice(-12))], failed: false }),
+      stateOf: (id) => ({ activity: states[Number(id.slice(-12))], unseen: id === ID(4), failed: false }),
       settings: () => ({ recentClosedSessions: 10, hideBackgroundSessions: true }) }).model();
     const dot = (n) => model.groups.flatMap((g) => g.rows).find((r) => r.id === ID(n)).dot;
-    eq([dot(1), dot(2), dot(3), dot(4), dot(5)], ['idle', 'none', 'workingElsewhere', 'unread', 'unknown'],
-      'an idle conversation open in this window keeps its grey dot; one that is not open has none, while running, unread and not-yet-read rows keep theirs');
+    eq([dot(1), dot(2), dot(3), dot(4), dot(5)], ['none', 'none', 'working', 'none', 'unknown'],
+      'a stopped conversation has no dot, open in this window or not and with a reply not seen or not, while a running one has its dot; '
+      + 'a row whose rollout was not read has none either');
     eq(model.font, { family: "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif", size: 13 },
       'the model carries the chat font as Claude Code reads it: chat.fontFamily, or its own system stack for "default", and chat.fontSize, 13 by default');
   }
@@ -65,7 +64,7 @@ module.exports = async ({ eq, root }) => {
     account: { account: [{ label: 'Signed in with', value: 'Amazon Bedrock' }], windows: [], tokens: [] },
     closed: [], open: [row(1, { open: true, here: true, dot: 'working' })],
     groups: [{ key: 'ungrouped', label: 'Ungrouped', made: false,
-      rows: [row(1, { open: true, here: true, dot: 'working' }), row(2, { dot: 'prompt' }), row(3, { dot: 'none' })] }],
+      rows: [row(1, { open: true, here: true, dot: 'working' }), row(2, { dot: 'waiting' }), row(3, { dot: 'none' })] }],
     front: '', noGroups: false, menu: [], colors: [], font: { family: 'Fira Sans, sans-serif', size: 15 },
   };
   p.toPage({ type: 'model', model });

@@ -55,10 +55,12 @@ const linked = targets.filter((t) => !t.standsAlone);
 const { activeThread } = require('./codex-tabs');
 const { iconsFor } = require('./logo-dot');
 const { createApprovals } = require('./approvals');
+const { envelope, onEnvelopeChange } = require('./envelope');
+const { withoutEnvelope, withEnvelope } = require('./title-marks');
 
-/* As Claude Code Extras draws them on its tabs: green working, red replied and unread, blue waiting for the user, at
-   its size (radius 5.5 in a 24-unit box). */
-const TAB_DOTS = { working: '#22c55e', unread: '#ef4444', prompt: '#3b82f6' };
+/* By a conversation's activity, in Claude Code Plus's colours and at its size (radius 5.5 in a 24-unit box): green
+   working, a green ring with only background work left, red waiting for the user, and none stopped. */
+const TAB_DOTS = { working: '#22c55e', background: { ring: '#22c55e' }, waiting: '#ef4444' };
 const TAB_DOT_SIZE = { r: 5.5, gap: 1 };
 /* As long a tab title as Claude Code Extras gives one; the tab bar cuts what does not fit. */
 const TITLE_MAX = 200;
@@ -243,7 +245,9 @@ function shownIn(viewColumn) {
  */
 function newPanelThreadsTitled(title) {
   const out = new Set();
-  if (title) for (const rec of registry.values()) if (isNewPanel(rec) && rec.thread && rec.titled === title) out.add(rec.thread);
+  /* Compared without envelopes: right after one appears or goes, VS Code can still report the old tab label. */
+  const want = withoutEnvelope(title);
+  if (want) for (const rec of registry.values()) if (isNewPanel(rec) && rec.thread && withoutEnvelope(rec.titled) === want) out.add(rec.thread);
   return [...out];
 }
 
@@ -897,17 +901,20 @@ async function refreshPanels() {
   const dots = deps.settings().enabled !== false;
   const icons = logo && dots ? iconsFor({ light: logo.light.fsPath, dark: logo.dark.fsPath }, path.join(context.globalStorageUri.fsPath, 'tab-icons'),
     undefined, TAB_DOTS, TAB_DOT_SIZE) : null;
+  const mark = envelope(vscode);
   for (const [thread, set] of panels) {
     const c = now.get(thread);
     const was = last.get(thread);
-    const pair = c && icons && icons[c.state];
+    const pair = c && icons && icons[c.activity];
     for (const panel of set) {
       try {
         panel.iconPath = pair ? { light: vscode.Uri.file(pair.light), dark: vscode.Uri.file(pair.dark) } : (logo || panel.iconPath);
       } catch (_) { /* disposed */ }
       /* The tab is titled by its conversation, kept in step as Codex names or renames it: Codex itself titles only a
-         tab opened on an existing conversation, once, so one started in a tab stays "Codex". */
-      const title = c && c.title && c.title !== '(untitled)' ? String(c.title).slice(0, TITLE_MAX) : '';
+         tab opened on an existing conversation, once, so one started in a tab stays "Codex". A reply not seen adds the
+         envelope after the title, which is cut first so the envelope always shows. */
+      const bare = c && c.title && c.title !== '(untitled)' ? withoutEnvelope(c.title).slice(0, TITLE_MAX) : '';
+      const title = bare ? withEnvelope(bare, dots && !!(c && c.unseen), mark) : '';
       if (title) {
         try { if (panel.title !== title) panel.title = title; } catch (_) { /* disposed */ }
         const rec = registry.get(panel);
@@ -1312,7 +1319,9 @@ function activate(context, opts) {
   deps = opts;
   installHooks();
   context.subscriptions.push(opts.source.onDidChangeConversations(() => refreshPanels()));
-  /* The sidebar shown again, or hidden: what its page draws for its conversation is sent while it is showing. */
+  /* Light themes use the envelope's text form, so the tab titles are redrawn when the theme changes. */
+  context.subscriptions.push(onEnvelopeChange(opts.vscode, () => { refreshPanels().catch(() => { /* the next poll draws it */ }); }));
+  /* Redrawn when the sidebar is shown or hidden, since its page is sent updates only while it is visible. */
   context.subscriptions.push(onSidebarChanged(() => { refreshPanels().catch(() => { /* the next poll draws it */ }); }));
   if (typeof opts.vscode.window.onDidChangeWindowState === 'function') {
     context.subscriptions.push(opts.vscode.window.onDidChangeWindowState((w) => {

@@ -37,7 +37,8 @@ module.exports = async ({ eq, tmp, root }) => {
   const looks = { [ID(3)]: 'working', [ID(4)]: 'prompt', [ID(5)]: 'idle', [ID(6)]: 'unread' };
   const model = new SessionsModel(vscode, { memory: { openThreads: () => [ID(1)], recentlyClosed: () => [], frontAt: () => 0 }, memento: fake.memento(),
     reader: { threads: () => threads, sections: () => new Map(), state: (id) => (id === ID(7) ? null : {}), thread: () => null },
-    sidebarShowing: () => ID(2), stateOf: (id) => ({ state: looks[id] || 'idle', runningHere: id === ID(3) }),
+    sidebarShowing: () => ID(2), stateOf: (id) => ({ state: looks[id] || 'idle', runningHere: id === ID(3),
+      activity: { working: 'working', prompt: 'waiting' }[looks[id]] || 'stopped', unseen: looks[id] === 'unread' }),
     settings: () => ({ recentClosedSessions: 10, hideBackgroundSessions: true }) }).model();
   const deletable = (list) => list.map((r) => `${r.id.slice(-1)}${r.deletable ? '+' : '-'}`).sort();
   eq([deletable(model.open), deletable(model.groups.flatMap((g) => g.rows))],

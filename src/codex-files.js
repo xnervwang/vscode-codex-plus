@@ -362,6 +362,10 @@ function sessionMeta(file) {
  *   error          the newest task_complete's error, if it failed
  *   askedMs        when the latest turn asked the user something with request_user_input_async, 0 if it did not: that
  *                  question has no app-server request, and its answer is the next user message, which opens a turn
+ *   lastEndedMs    when the latest finished turn ended, kept while a later turn runs; 0 if no turn ended in these lines
+ *   lastUserMs     when the user's last message was sent (src/user-times.js typedByUser), 0 if none is in these lines
+ *
+ * Both can be older than the latest turn's start, so the walk keeps going back for them.
  */
 /* Codex's question that does not wait: the tool returns at once and the card stays on the page. */
 const ASYNC_QUESTION = 'request_user_input_async';
@@ -378,8 +382,11 @@ function rolloutState(file, lines = null) {
     }
   }
   const st = { working: false, turnId: '', startedMs: 0, endedMs: 0, durationMs: 0, context: null, tokens: null, model: '', effort: '',
-    lastTool: null, error: '', lastActivityMs: 0, aborted: false, askedMs: 0 };
+    lastTool: null, error: '', lastActivityMs: 0, aborted: false, askedMs: 0, lastEndedMs: 0, lastUserMs: 0 };
   let sawEnd = false, pastStart = false;
+  /* Not required at the top: src/user-times.js requires this module while it loads. */
+  const { typedByUser, textOf } = require('./user-times');
+  const before = () => !st.context || !st.lastEndedMs || !st.lastUserMs;
   const usage = (info) => {
     const last = info.last_token_usage || {};
     const used = +last.input_tokens || 0;
@@ -398,8 +405,12 @@ function rolloutState(file, lines = null) {
     const at = Date.parse(row.timestamp) || 0;
     if (!st.lastActivityMs && at) st.lastActivityMs = at;
     const p = row.payload && typeof row.payload === 'object' ? row.payload : {};
+    const ends = row.type === 'event_msg' && (p.type === 'task_complete' || p.type === 'turn_aborted');
+    if (ends && !st.lastEndedMs) st.lastEndedMs = p.completed_at ? p.completed_at * 1000 : at;
+    if (!st.lastUserMs && row.type === 'response_item' && p.type === 'message' && p.role === 'user' && typedByUser(textOf(p))) st.lastUserMs = at;
     if (pastStart) {
-      if (row.type === 'event_msg' && p.type === 'token_count' && p.info) { usage(p.info); if (st.context) break; }
+      if (row.type === 'event_msg' && p.type === 'token_count' && p.info && !st.context) usage(p.info);
+      if (!before()) break;
       continue;
     }
     if (row.type === 'turn_context' && !st.model) {
@@ -418,7 +429,7 @@ function rolloutState(file, lines = null) {
       } else if (p.type === 'task_started') {
         st.startedMs = p.started_at ? p.started_at * 1000 : at;
         if (!sawEnd) { st.working = true; st.turnId = String(p.turn_id || ''); }
-        if (st.model && st.context) break;
+        if (st.model && !before()) break;
         if (st.model) pastStart = true;
       }
     }

@@ -36,10 +36,10 @@ Most of what Codex Plus draws in Codex's page, message box and tabs needs the pa
 | Images in replies: a chart or screenshot the model saves, shown in the reply, and web images shown as links ([Images in replies](#images-in-replies)) | Codex conversation; Codex's context |
 | The installed skills that best fit each message, given to Codex before the turn ([Skill search](#skill-search)) | Codex's context; the line above a reply |
 | Wake-ups: prompts the model schedules to keep an idle conversation going ([Wake-ups](#wake-ups)) | Codex conversations open in this window |
-| A list of your Codex conversations laid out like Claude Code's, with groups, search, status dots and account usage ([The session list](#the-session-list)) | Codex sessions view, in the Codex Plus sidebar |
+| A list of your Codex conversations laid out like Claude Code's, with groups, search, status dots, unread envelopes and account usage ([The session list](#the-session-list)) | Codex sessions view, in the Codex Plus sidebar |
 | Archiving and deleting conversations, and deleting old archived ones ([Archive and delete](#archive-and-delete)) | Codex sessions view |
 | Pausing, resuming and clearing a conversation's goal ([Goals](#goals)) | Codex sessions view; command palette |
-| A Codex button on the tab bar, dropped and closed tabs reopened, and dots and titles on Codex tabs ([Tabs](#tabs)) | Editor tab bar and tabs |
+| A Codex button on the tab bar, dropped and closed tabs reopened, and dots, titles and unread envelopes on Codex tabs ([Tabs](#tabs)) | Editor tab bar and tabs |
 | A time on every message and reply, a rail of your own messages, your messages marked, and a Stop hook's prompt folded to one line ([In a conversation](#in-a-conversation)) | Codex conversation |
 | Each reply's context share, model, effort and duration, and the tool call and commands still running ([In a conversation](#in-a-conversation)) | Codex conversation; the row below the message box |
 | An information button, a chime button, a context meter that compacts on a click, and the Agent map ([The message box's toolbar](#the-message-boxs-toolbar)) | Codex message box's toolbar |
@@ -171,7 +171,7 @@ Open sessions also lists the conversation in Codex's sidebar while the sidebar i
 
 ### Rows
 
-Rows are 28 px high, with an 8 px status dot, a title and the time on the right. Rename replaces the time on hover. Group names have count badges, section labels are in capitals, and New in tab and New in sidebar sit side by side.
+Rows are 28 px high, with an 8 px status dot, a title, an envelope for a reply you have not read, and the time on the right. Rename replaces the time on hover. Group names have count badges, section labels are in capitals, and New in tab and New in sidebar sit side by side.
 
 A row shows how long ago you last used a conversation and the first and last day you used it, as `2d · 11/05→11/09`. The time uses `now`, `5m`, `3h`, `2d`, `1mo` or `1y`; dates in another year include the year, as in Claude Code's list. You can give a title a colour with Text Color (see "Menus and groups"). Hovering shows its group and session ID, as Claude Code Plus writes them.
 
@@ -179,11 +179,11 @@ With `codexPlus.hideBackgroundSessions` on, the default, the list omits conversa
 
 ### Status dots
 
-Each row's dot follows Claude Code's list, using Claude Code Plus's colours. Green means running, blue means waiting for you, and red means an unread reply or a failed last turn. Grey means idle and open in this window; otherwise there is no dot. Running or waiting in another window uses a ring of the same colour instead.
+Each row in the session list shows the conversation's status in Claude Code Plus's colours. A green dot means a turn is running. A green ring means the turn has ended and only work the conversation started is still running. A red dot means the conversation is waiting for your approval or answer. A stopped conversation has no dot. An envelope (✉️) between the title and the time marks a reply you have not read, regardless of the dot. The envelope sits outside the title, so it stays visible when a long title is cut short. In a light theme you see the text form (✉︎) because a colour emoji font draws ✉️ in white.
 
-A conversation stays green while something it started is still running after its turn. Hovering names the sub-agent, Codex background command, shell detached with `setsid` or `nohup`, `codex exec` or `claude -p` worker (a one-off Codex or Claude Code run started from a command line), or `claude --bg` session (a Claude Code session started in the background). Detached shells and those workers are found through `/proc`, so detection works only on Linux.
+A conversation keeps the green ring while something it started is still running after its turn. Hovering names the sub-agent, Codex background command, shell detached with `setsid` or `nohup`, `codex exec` or `claude -p` worker (a one-off Codex or Claude Code run started from a command line), or `claude --bg` session (a Claude Code session started in the background). Detached shells and those workers are found through `/proc`, so detection works only on Linux.
 
-A reply is unread if its turn ended after you last had the conversation in front of you in a focused window, either in its tab or in Codex's visible sidebar. Bringing it to the front clears the unread state in every window. Codex Plus does not use Codex's unread marks because nothing inside VS Code marks them read.
+A reply is unread if its turn ended after you last had the conversation in front of you in a focused window, either in its tab or in Codex's visible sidebar. That holds while work it started is still running, and while a later turn runs. Bringing it to the front clears the unread state in every window. Codex Plus does not use Codex's unread marks because nothing inside VS Code marks them read.
 
 ### Searching and moving rows
 
@@ -239,7 +239,7 @@ With the patch in effect, the tab bar shows Codex Plus's button instead of Codex
 
 Codex Plus reopens tabs that VS Code did not restore after a reconnect. The status bar reports how many for ten seconds, as Claude Code Plus does. `codexPlus.reopenDroppedTabs` turns this off. Ctrl+Shift+T (Cmd+Shift+T on a Mac) reopens the last closed Codex conversation while the last closed tab was a Codex tab, as Claude Code's shortcut reopens its last session. After any other tab, it runs VS Code's Reopen Closed Editor. `codexPlus.reopenClosedSessionShortcut` turns this off.
 
-A Codex tab's logo gets a dot in Claude Code Plus's colours and size: green while the conversation is working or something it started is still running, red for a reply you have not read, and blue while it waits for your permission. The tab's title follows Codex's conversation name, including for a conversation started in a tab. Its right-click menu has Rename, Mark as Unread and Add to Group, as Claude Code's tab has its three; Add to Group opens a list at the top of the window. The dots, titles and tab bar button need the patch.
+The dot on a Codex tab's logo matches Claude Code Plus's dots in colour and size. You see a green dot while a turn runs, a green ring when only work the conversation started is still running, and a red dot while the conversation waits for your permission or answer. A stopped conversation keeps Codex's own logo with no dot. The tab title follows the conversation name in Codex, including when you start the conversation in a tab. While you have an unread reply, the title ends with an envelope (✉️). In a light theme you see the text form (✉︎). The envelope appears only on screen and is not part of the conversation name. Rename opens without the envelope and does not save one you type into the new name. When you right-click a Codex tab, you get the same three actions as on a Claude Code tab: Rename, Mark as Unread and Add to Group. Add to Group opens a list at the top of the window. You need the patch for the dots, titles and tab bar button.
 
 ## In a conversation
 
@@ -309,7 +309,7 @@ The note button beside the information button in the message box's toolbar turns
 
 ## Waiting for your permission
 
-A conversation stopped for your permission shows as waiting in Agent Plus's Conversations view, puts a blue dot on its tab, and chimes. This needs the patch. Codex asks its client for approval in a request but does not save that request in its own files. Codex Plus reads requests passing through this window's extension host (the process VS Code runs extensions in), which the patch hands over, and reads the approval card on a Codex page.
+A conversation stopped for your permission shows as waiting in Agent Plus's Conversations view, puts a red dot on its tab, and chimes. This needs the patch. Codex asks its client for approval in a request but does not save that request in its own files. Codex Plus reads requests passing through this window's extension host (the process VS Code runs extensions in), which the patch hands over, and reads the approval card on a Codex page.
 
 Only requests that wait indefinitely count as waiting. These include the three `requestApproval` methods (for a command, a file change, and permissions), the older `execCommandApproval` and `applyPatchApproval` methods, a blocking input request, and an input request from an MCP server (an elicitation) for which Codex set no countdown. Requests Codex answers itself when a countdown runs out do not count. That usually happens within 90 seconds, with an empty input or a declined elicitation.
 
@@ -460,7 +460,7 @@ Codex ships a new build about every week. `Codex Plus: Show Status` tells you wh
 
 ### Turning it all off
 
-`Codex Plus: Turn Off`, `Codex Plus: Toggle On/Off`, and `codexPlus.enabled` stop drawing the times, rail, colouring, chimes, buttons, context meter in the message box's toolbar, row below the message box, and dots on tab logos. Codex is not patched or kept patched, but a patch already applied stays in Codex's files. Turning the additions off does not change their settings. Your choices return when you turn them back on.
+`Codex Plus: Turn Off`, `Codex Plus: Toggle On/Off`, and `codexPlus.enabled` stop drawing the times, rail, colouring, chimes, buttons, context meter in the message box's toolbar, row below the message box, dots on tab logos, and envelopes after tab titles. Codex is not patched or kept patched, but a patch already applied stays in Codex's files. Turning the additions off does not change their settings. Your choices return when you turn them back on.
 
 `Codex Plus: Remove the Patch from Codex` restores Codex's `out/extension.js`, `webview/index.html` and `package.json`. Uninstalling this extension also restores those files. Reload the window afterwards.
 

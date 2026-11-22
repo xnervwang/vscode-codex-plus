@@ -41,7 +41,7 @@ module.exports = async ({ eq, root }) => {
     { id: ID(2), title: 'b', kind: 'user', cwd: '/w', section: '', createdMs: 1, updatedMs: 3 }];
   const provider = new SessionsModel(vscode, { memory: { openThreads: () => [], recentlyClosed: () => [], frontAt: () => 0 }, memento: fake.memento(),
     reader: { threads: () => threads, sections: () => new Map(), state: () => ({}), thread: () => null },
-    stateOf: (id) => ({ state: id === ID(1) ? 'unread' : 'idle' }), settings: () => ({ recentClosedSessions: 10, hideBackgroundSessions: true }) });
+    stateOf: (id) => (id === ID(1) ? { state: 'unread', activity: 'stopped', unseen: true } : { state: 'idle', activity: 'stopped' }), settings: () => ({ recentClosedSessions: 10, hideBackgroundSessions: true }) });
   const rows = provider.model().groups[0].rows;
 
   /* ── the table, against the native menu it replaced ── */

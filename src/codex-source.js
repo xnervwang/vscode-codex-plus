@@ -25,6 +25,11 @@
  * (src/approvals.js), because Codex writes no approval request to a file, and only for the conversations of this
  * window. One running in another window, or started by `codex exec`, never reports it.
  *
+ * Each conversation also reports `activity`, `unseen` and `lastUserAt`; `state` stays for an older Agent Plus.
+ * `activity` is `working` during a turn, `background` after the turn while work it started still runs, `waiting` for
+ * `prompt`, and `stopped` otherwise. `unseen` marks a reply the user has not looked at; it is measured from the latest
+ * finished turn, so a later turn does not clear it. `lastUserAt` is when the user last typed a message.
+ *
  * This module opens none of Codex's files; src/codex-reader.js has the snapshot its worker thread made.
  */
 const path = require('path');
@@ -34,6 +39,7 @@ const install = require('./plugin-install');
 const { createSeen } = require('./seen');
 const { oncePerDelivery } = require('./core-link');
 const { KINDS, LEFT_EVERY_MS, SHARE_DIR } = require('./left-running');
+const { withoutEnvelope } = require('./title-marks');
 
 /* A turn whose rollout has been silent this long is no longer running, whatever its last line says: the process that
    was writing it is gone (a closed window, a crash). Long tool calls write nothing while they run, so this is generous. */
@@ -56,15 +62,17 @@ function logoOf(vscode, exists = require('fs').existsSync) {
 /*
  * The rollout is read only every POLL_MS, while this window's app-server notifies a turn start or end as it happens
  * (`heard`, src/patching.js turnHeard). After a turn/started the conversation is running, and after a turn/completed
- * the rollout's running turn counts as ended, unless the rollout shows a turn that started later.
+ * the rollout's running turn counts as ended, unless the rollout shows a turn that started later. `lastEndedMs` is the
+ * latest turn end either source has seen, even after another turn has started.
  */
 function turnOf(st, heard, now, last) {
-  if (heard && heard.running) return { working: true, endedMs: 0 };
   const heardEnd = (heard && heard.endedMs) || 0;
+  const lastEndedMs = Math.max((st && st.lastEndedMs) || 0, (st && !st.working && st.endedMs) || 0, heardEnd);
+  if (heard && heard.running) return { working: true, endedMs: 0, lastEndedMs };
   const overtaken = !!(st && st.working && heardEnd && !(st.startedMs > heardEnd));
   const working = !!(st && st.working && !overtaken && now - last < STALE_WORKING_MS);
-  if (st && st.working && !overtaken) return { working, endedMs: 0 };
-  return { working, endedMs: Math.max((st && !st.working && st.endedMs) || 0, heardEnd) };
+  if (st && st.working && !overtaken) return { working, endedMs: 0, lastEndedMs };
+  return { working, endedMs: Math.max((st && !st.working && st.endedMs) || 0, heardEnd), lastEndedMs };
 }
 
 /* The latest sign of activity in a thread. A turn the rollout shows as running stops counting once this is too old. */
@@ -78,8 +86,8 @@ const lastOf = (thread, st, heard) => Math.max((thread && thread.updatedMs) || 0
  *
  * `prompt` wins over `working`: as far as its rollout goes a turn stopped on an approval is still running, but it is
  * the user who has to act. `left` lists what the conversation started that is still running (the kinds in
- * src/left-running.js). While it is not empty, an idle or unread conversation is shown as working, as Claude Code Plus
- * does, and `ownState` keeps the state it would otherwise have.
+ * src/left-running.js). While it is not empty, an idle or unread conversation's `state` is working, as Claude Code Plus
+ * reported it, and `ownState` keeps the state it would otherwise have; its `activity` is background.
  */
 function conversationOf(thread, { unread, openHere, now = Date.now(), state = null, hasPlan = false, waiting = null, heard = null, left = [] }) {
   const st = state;
@@ -97,11 +105,15 @@ function conversationOf(thread, { unread, openHere, now = Date.now(), state = nu
   const after = !working && Array.isArray(left) ? left.slice() : [];
   const own = word;
   if (after.length && (word === 'idle' || word === 'unread')) word = 'working';
+  const waits = !!(decide || soon || asking);
   return {
     sessionId: thread.id,
-    title: thread.title || '(untitled)',
+    title: withoutEnvelope(thread.title) || '(untitled)',
     cwd: thread.cwd,
     state: word,
+    activity: waits ? 'waiting' : working ? 'working' : after.length ? 'background' : 'stopped',
+    unseen: unread.has(thread.id),
+    lastUserAt: (st && st.lastUserMs) || 0,
     running: working || after.length > 0 || openHere.has(thread.id) || now - last < RECENT_MS,
     lastActiveAt: last,
     hasPlan,
@@ -187,7 +199,7 @@ function threadOfCodexTab(vscode, patching, tab) {
   if (tab.isActive) {
     const group = ((vscode.window.tabGroups && vscode.window.tabGroups.all) || []).find((g) => g.activeTab === tab);
     const shown = group ? ask(patching, 'shownIn', [group.viewColumn], null) : null;
-    if (shown && shown.fresh && shown.title === label) return shown.thread;
+    if (shown && shown.fresh && withoutEnvelope(shown.title) === withoutEnvelope(label)) return shown.thread;
   }
   return unnamedTabThread(vscode, patching);
 }
@@ -253,6 +265,10 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
     if (typeof vscode.window.onDidChangeWindowState === 'function') {
       try { subs.push(vscode.window.onDidChangeWindowState((s) => { if (s && s.focused && markFront()) changed.fire(); })); } catch (_) { /* none */ }
     }
+    /* An approval request and its answer change `activity` without writing anything the poll could find. */
+    if (patching && typeof patching.onApprovalsChanged === 'function') {
+      try { subs.push(patching.onApprovalsChanged(() => changed.fire())); } catch (_) { /* no patch */ }
+    }
   }
 
   /* The conversations in front of the user: the active tab's, and Codex's sidebar's while isFocused() still counts it.
@@ -276,7 +292,7 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
     if (!patching || typeof patching.turnHeard !== 'function') return null;
     try { return patching.turnHeard(id); } catch (_) { return null; }
   };
-  const endedOf = (id) => turnOf(reader.state(id), heardOf(id), Date.now(), 0).endedMs;
+  const endedOf = (id) => turnOf(reader.state(id), heardOf(id), Date.now(), 0).lastEndedMs;
   /* Marks what is in front as seen now, and returns true when that cleared an unread state, so the views redraw at
      once. */
   let wasFront = [];

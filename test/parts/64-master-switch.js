@@ -150,7 +150,7 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
         conversationNavigation: false, userMessageColor: '', userMessageEdge: false }),
     userTimes: async () => ({ times: [111] }),
     source: { onDidChangeConversations: () => ({ dispose() {} }), _focus() {},
-      listConversations: async () => [{ sessionId: THREAD, state: 'working', working: true }], logo },
+      listConversations: async () => [{ sessionId: THREAD, state: 'working', activity: 'working', working: true }], logo },
     context: { globalStorageUri: vscode.Uri.file(tmp('gs')) } });
 
   await patching.refreshPanels();
