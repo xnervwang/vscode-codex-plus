@@ -3141,65 +3141,15 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     });
 
     /*
-     * codexPlus.reopenDroppedTabs. A tab closed while the window cannot reach the extension host is not recorded as
-     * closed (src/tab-memory.js), as when a remote window loses its connection, and the tab comes back once the host is
-     * up again; with the setting off it stays closed. Last, since the host restarts for it.
-     */
-    await step('a tab closed while the extension host was away', async () => {
-      const t = threads[1];
-      const tabUp = () => page.evaluate((want) => [...document.querySelectorAll('.tabs-container .tab')].some((e) => e.textContent.includes(want)), t.title);
-      /* The tab is closed the moment the extension host is told to restart, while nothing in it is left to record that.
-         Killing the host instead closes a window started for extension development, as this one is. */
-      const dropOnce = async () => {
-        await exec('codexPlus.openThreadInTab', t.id);
-        if (!await until(tabUp, 20000, 500)) throw new Error(`no tab of "${t.title}" opened`);
-        await tabNamed(t.title).click();
-        await sleep(3000);
-        const pidNow = () => call('return process.pid;', null, 300).catch(() => 0);
-        const was = await pidNow();
-        const at = Date.now();
-        call('setTimeout(() => vscode.commands.executeCommand("workbench.action.restartExtensionHost"), 50); return true;', null, 3000).catch(() => {});
-        /* The moment no host answers, between the old one going and the new one coming up. */
-        let gap = false;
-        await until(async () => { const p = await pidNow(); if (!p) { gap = true; return true; } return p !== was; }, 20000, 100);
-        await page.keyboard.press(process.platform === 'darwin' ? 'Meta+W' : 'Control+W');
-        let closed = await until(async () => !await tabUp(), 3000, 100);
-        if (!closed) {
-          await tabNamed(t.title).hover().catch(() => {});
-          await tabNamed(t.title).locator('.tab-actions .action-label').first().click({ timeout: 3000 }).catch(() => {});
-          closed = await until(async () => !await tabUp(), 3000, 100);
-        }
-        const back = await w.hostUp(at).then(() => true, () => false);
-        await until(async () => { const s = await patchState().catch(() => null); return s && s.active; }, 60000, 1000);
-        return { closed: !!closed, back, gap, closedAfterMs: Date.now() - at };
-      };
-      /* Without a moment with no host, the close may have been recorded, and what follows says nothing. */
-      const unmet = (r) => { if (r.gap) return false; note(`no moment without an extension host was seen on ${process.platform} while it restarted (${JSON.stringify(r)}), so the tab may have been closed under a host that recorded it; not checked`); return true; };
-      const first = await dropOnce();
-      check(first.closed && first.back, 'the tab is closed as the extension host restarts, and a new host starts', first);
-      if (!unmet(first)) {
-        const back = await until(tabUp, 40000, 1000);
-        check(!!back, 'once the host is back, Codex Plus reopens the tab of the conversation that was open, as VS Code did not restore it', { tabs: await tabs(), first });
-        await shot('dropped-tab-reopened');
-      }
-      await setting('reopenDroppedTabs', false);
-      const second = await dropOnce();
-      check(second.closed && second.back, 'with codexPlus.reopenDroppedTabs off, the tab is closed the same way', second);
-      if (!unmet(second)) {
-        await sleep(20000);
-        check(!await tabUp(), 'and it is not reopened', await tabs());
-      }
-      await setting('reopenDroppedTabs', undefined);
-    });
-
-    /*
      * A notice for a conversation whose tab VS Code restored behind another at a reload. VS Code builds a restored
      * webview tab's page only once it is shown, and notices go only to the conversations this window's app-server has
      * loaded (thread/loaded/list). A detached command's end is written down for the conversation behind and, to show
      * that this window sends notices at all, for the one in front. Codex gives up on a page not shown within 30 seconds
      * and puts "Codex could not start" in it, so a click after that loads nothing until the conversation is opened
      * again. With codexPlus.loadRestoredTabs on, the tab behind is shown for a moment at the start, so it gets its
-     * notice unclicked and draws when clicked later. Last, since each reload leaves the pages the steps above hold.
+     * notice unclicked and draws when clicked later. Near the end, since each reload leaves the pages the steps above hold,
+     * and before the extension host restarts for the last step: after that restart on Linux, the conversation in front was
+     * not loaded again after the reload.
      */
     await step('a notice for a tab restored behind another', async () => {
       const pair = [threads[0], threads[1]];
@@ -3324,6 +3274,58 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       check(!!drawn && !await gaveUp(), 'and the tab draws its conversation', { page: await pageSays(await frontPage()), tabs: await tabs(), toasts: await toasts() });
       await setting('loadRestoredTabs', undefined);
     });
+    /*
+     * codexPlus.reopenDroppedTabs. A tab closed while the window cannot reach the extension host is not recorded as
+     * closed (src/tab-memory.js), as when a remote window loses its connection, and the tab comes back once the host is
+     * up again; with the setting off it stays closed. Last, since the host restarts for it.
+     */
+    await step('a tab closed while the extension host was away', async () => {
+      const t = threads[1];
+      const tabUp = () => page.evaluate((want) => [...document.querySelectorAll('.tabs-container .tab')].some((e) => e.textContent.includes(want)), t.title);
+      /* The tab is closed the moment the extension host is told to restart, while nothing in it is left to record that.
+         Killing the host instead closes a window started for extension development, as this one is. */
+      const dropOnce = async () => {
+        await exec('codexPlus.openThreadInTab', t.id);
+        if (!await until(tabUp, 20000, 500)) throw new Error(`no tab of "${t.title}" opened`);
+        await tabNamed(t.title).click();
+        await sleep(3000);
+        const pidNow = () => call('return process.pid;', null, 300).catch(() => 0);
+        const was = await pidNow();
+        const at = Date.now();
+        call('setTimeout(() => vscode.commands.executeCommand("workbench.action.restartExtensionHost"), 50); return true;', null, 3000).catch(() => {});
+        /* The moment no host answers, between the old one going and the new one coming up. */
+        let gap = false;
+        await until(async () => { const p = await pidNow(); if (!p) { gap = true; return true; } return p !== was; }, 20000, 100);
+        await page.keyboard.press(process.platform === 'darwin' ? 'Meta+W' : 'Control+W');
+        let closed = await until(async () => !await tabUp(), 3000, 100);
+        if (!closed) {
+          await tabNamed(t.title).hover().catch(() => {});
+          await tabNamed(t.title).locator('.tab-actions .action-label').first().click({ timeout: 3000 }).catch(() => {});
+          closed = await until(async () => !await tabUp(), 3000, 100);
+        }
+        const back = await w.hostUp(at).then(() => true, () => false);
+        await until(async () => { const s = await patchState().catch(() => null); return s && s.active; }, 60000, 1000);
+        return { closed: !!closed, back, gap, closedAfterMs: Date.now() - at };
+      };
+      /* Without a moment with no host, the close may have been recorded, and what follows says nothing. */
+      const unmet = (r) => { if (r.gap) return false; note(`no moment without an extension host was seen on ${process.platform} while it restarted (${JSON.stringify(r)}), so the tab may have been closed under a host that recorded it; not checked`); return true; };
+      const first = await dropOnce();
+      check(first.closed && first.back, 'the tab is closed as the extension host restarts, and a new host starts', first);
+      if (!unmet(first)) {
+        const back = await until(tabUp, 40000, 1000);
+        check(!!back, 'once the host is back, Codex Plus reopens the tab of the conversation that was open, as VS Code did not restore it', { tabs: await tabs(), first });
+        await shot('dropped-tab-reopened');
+      }
+      await setting('reopenDroppedTabs', false);
+      const second = await dropOnce();
+      check(second.closed && second.back, 'with codexPlus.reopenDroppedTabs off, the tab is closed the same way', second);
+      if (!unmet(second)) {
+        await sleep(20000);
+        check(!await tabUp(), 'and it is not reopened', await tabs());
+      }
+      await setting('reopenDroppedTabs', undefined);
+    });
+
   } finally {
     watchingTrust = false;
     await trustWatch;
