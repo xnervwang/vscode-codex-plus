@@ -262,7 +262,7 @@ async function main() {
         const found = await conv.evaluate((text) => {
           const b = [...document.querySelectorAll('[data-user-message-bubble]')].find((e) => e.textContent.trim().startsWith(text));
           if (!b) return false;
-          b.scrollIntoView({ block: 'start' });
+          b.scrollIntoView({ block: 'start', container: 'nearest' });
           document.querySelector('[data-app-action-timeline-scroll]').scrollBy(0, -110);
           return true;
         }, text);
@@ -313,7 +313,7 @@ async function main() {
       await toBottom();
       await until(() => conv.evaluate(() => [...document.querySelectorAll('[data-response-annotation-target] img')].some((i) => i.naturalWidth > 0)), 30000, 500);
       await conv.evaluate(() => [...document.querySelectorAll('[data-response-annotation-target] img')].find((i) => i.naturalWidth > 0)
-        .scrollIntoView({ block: 'center' }));
+        .scrollIntoView({ block: 'center', container: 'nearest' }));
       await sleep(1000);
       await away();
       await snap('images-in-replies', await editor());
