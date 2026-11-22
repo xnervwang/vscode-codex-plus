@@ -683,8 +683,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       }), 5000, 200);
       check(!!rows && rows.length === 4 && rows.every((t) => /^(\d\d\/\d\d )?\d\d:\d\d:\d\d {2}\S/.test(t)), 'the rail\'s handle opens the list of your messages, one row each with its time', rows);
       await shot('conversation-rail-list');
-      /* VS Code's box round a webview is a few pixels taller than the webview, so a jump that scrolled more than Codex's
-         own scroller moved the whole page up under the tab bar. */
+      /* A jump that scrolls more than Codex's own scroller moves the whole page up (scrollToNode in the page script). */
       const host = await codex.parentFrame().frameElement();
       const placed = async () => ({ top: ((await host.boundingBox()) || {}).y,
         scrolled: await host.evaluate((e) => { let n = 0; for (let x = e.parentElement; x; x = x.parentElement) n += x.scrollTop; return n; }),

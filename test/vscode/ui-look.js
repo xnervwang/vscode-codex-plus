@@ -304,8 +304,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       clip = { x, y, width: Math.min(vp.width, Math.ceil(box.x + box.width + pad)) - x, height: Math.min(vp.height, Math.ceil(box.y + box.height + pad)) - y };
       if (clip.width < 4 || clip.height < 4) clip = null;
     }
-    /* One screenshot, with the close view cut out of it: a screenshot taken with a clip makes the webview under the
-       pointer see it leave, which takes away a box shown on hover, such as the rail's. */
+    /* A screenshot taken with a clip makes the webview under the pointer see it leave and close any hover box, such as
+       the rail's, so the close view is cut out of the whole-window one. */
     const png = await page.screenshot({ animations: 'disabled' }).catch((e) => { said.push(`[ui-look] no screenshot: ${e.message}`); return null; });
     if (png) fs.writeFileSync(path.join(out, full), png);
     if (clip) {
@@ -1188,8 +1188,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await toBottom();
       return bottomBox(520);
     });
-    /* After the turns above rather than with the toolbar's other steps: the meter's window is the one Codex recorded on
-       the conversation's latest turn, and the made-up turns recorded theirs before codexPlus.contextWindow was set. */
+    /* This step waits for the turns above: the meter shows the window Codex recorded on the latest turn, and the
+       made-up turns recorded theirs before codexPlus.contextWindow was set. */
     await look('context-meter-hover', {
       expect: 'Resting on the context meter shows a box with the context window it uses and where that figure came from, codexPlus.contextWindow for gpt-6.1-sol set to 600K '
         + '(a published window, which counts output, so the value Codex works with is smaller); also the tokens in use and free, where Codex compacts and how far away that is, '
@@ -1476,8 +1476,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       if (!rows) tell('the Work plan view did not show the plan\'s rows within 20 s of the tab coming to the front');
       else if (Date.now() - at > 3000) tell(`the Work plan view showed the plan ${Math.round((Date.now() - at) / 1000)} s after the tab came to the front`);
       await sleep(1000);
-      /* The view keeps a row to its title and times; a question is in the row's hover, and in the Conversations and
-         Answer views the next steps show. */
+      /* Rows show only titles and times. The question appears in the row's hover, and in the Conversations and Answer
+         views of the next steps. */
       await away();
       await page.locator('[id="workbench.parts.sidebar"] .monaco-list-row').filter({ hasText: 'Decide the default delay' }).first().hover();
       const asked = () => page.evaluate(() => !![...document.querySelectorAll('.monaco-hover, .workbench-hover')].find((e) => e.offsetParent && /Question:/.test(e.innerText)));
@@ -1528,7 +1528,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       tell(`the answer as Codex recorded it: ${JSON.stringify(lastUserText(t0.id, 'My answer to row'))}`);
       await sleep(1500);
       await toBottom();
-      /* From the top of the message the answer became, however tall the reply and the hook's prompt under it are. */
+      /* The close view starts at the user message the answer became, whatever the height of the reply below it. */
       const fb = await (await codex.frameElement()).boundingBox();
       const sent = fb && await codex.evaluate(() => {
         const b = [...document.querySelectorAll('[data-user-message-bubble]')].filter((e) => /Keep it at 30 seconds/.test(e.innerText)).pop();
