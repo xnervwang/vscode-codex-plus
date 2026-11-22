@@ -96,6 +96,9 @@ module.exports = async ({ eq, tmp }) => {
     'with no span in a window\'s log, each page start is read from that line; a log that has spans gives only those, so no start counts twice; '
       + 'and a desktop window\'s log beside another window\'s is read too');
   eq(starts[0].at, new Date(2026, 10, 22, 0, 50, 58, 232).getTime() - 5830, 'such a start began that long before its line was logged');
+  const crlf = [mounted('2026-11-22 00:50:58.232', 5830), thread('2026-11-22 00:51:30.000', 9000.5), ''].join('\r\n');
+  eq([ot.mountsIn(crlf).map((x) => x.ms), ot.spansIn(crlf).map((x) => [x.surface, x.ms])], [[5830], [['thread', 9000.5]]],
+    'VS Code\'s log files on Windows end each line with CRLF, and those lines are read the same');
   const told = ot.reportLines(starts, { zone: 'UTC', last: 5 });
   eq([/3 found/.test(told[0]), told.some((l) => /page: 2 opened, median 4\.6s, slowest 5\.8s$/.test(l)),
     told.some((l) => /Codex logged only how long it took to start/.test(l))], [true, true, true],

@@ -77,10 +77,10 @@ function parseMounted(line) {
   return { at: logged - ms, ms, surface: 'page', outcome: 'success', reason: '', background: 0, marks: {}, mounted: true };
 }
 
-/** The spans in `text`, which holds whole lines. */
+/** The spans in `text`, which holds whole lines. VS Code's log files end a line with CRLF on Windows. */
 function spansIn(text) {
   const out = [];
-  for (const line of String(text).split('\n')) {
+  for (const line of String(text).split(/\r?\n/)) {
     if (!line.includes('name=app_start')) continue;
     const s = parseSpan(line);
     if (s) out.push(s);
@@ -91,7 +91,7 @@ function spansIn(text) {
 /** The page starts in `text` from Codex's lines that a page's app mounted. */
 function mountsIn(text) {
   const out = [];
-  for (const line of String(text).split('\n')) {
+  for (const line of String(text).split(/\r?\n/)) {
     if (!line.includes('app routes mounted')) continue;
     const s = parseMounted(line);
     if (s) out.push(s);
