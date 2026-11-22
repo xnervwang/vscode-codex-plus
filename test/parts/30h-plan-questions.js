@@ -67,8 +67,11 @@ module.exports = async ({ eq, tmp }) => {
       'the snapshot carries when each plan last asked the user something, and nothing for a row waiting on the agent');
     const later = now - 1000;
     const before = fs.statSync(plans).mtimeMs;
-    fs.writeFileSync(path.join(plans, `${one.id}.json`), planOf({ asked: iso(later) }));
-    fs.utimesSync(plans, new Date(before), new Date(before));
+    const file = path.join(plans, `${one.id}.json`);
+    fs.writeFileSync(file, planOf({ asked: iso(later) }));
+    /* A write in the same clock tick as the first can leave the file's time as it was. */
+    fs.utimesSync(file, new Date(now + 5000), new Date(now + 5000));
+    eq(fs.statSync(plans).mtimeMs, before, 'writing a plan in place leaves its folder\'s time alone');
     const next = ops.snapshot({ home, previous: first.stamp });
     eq([next.same, new Map(next.asks || []).get(one.id)], [false, Date.parse(iso(later))],
       'a plan rewritten in place, its folder\'s time unchanged, moves the stamp and is read again');

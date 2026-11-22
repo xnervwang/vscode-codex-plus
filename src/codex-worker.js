@@ -30,7 +30,7 @@ const launchCache = new Map();
 const environs = new Map();
 /* The state of each rollout a snapshot read, kept while the file is unchanged (src/codex-files.js cachedRolloutState). */
 const states = new Map();
-/* When each plan last asked the user something, kept while its file's size and time are unchanged. */
+/* When each plan last asked the user something, kept while its file is the same one, of the same size and time. */
 const asks = new Map();
 
 let home = '';
@@ -67,7 +67,7 @@ function askedOf(dir, ids) {
     const file = path.join(install.planDir(dir), `${id}.json`);
     let s;
     try { s = fs.statSync(file); } catch (_) { asks.delete(file); continue; }
-    const key = `${s.size}.${s.mtimeMs}`;
+    const key = `${s.ino}.${s.size}.${s.mtimeMs}`;
     let had = asks.get(file);
     if (!had || had.key !== key) { had = { key, at: require('./workplan').latestQuestionAt(file) }; asks.set(file, had); }
     if (had.at) out.push([id, had.at]);
