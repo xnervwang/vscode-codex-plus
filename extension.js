@@ -673,7 +673,7 @@ function registerCommands(context, { source, memory, sessionsModel, sessionsView
     if (restricted()) return;
     if (await downloadPython(context, say)) await installPlugin(context, say, { interactive: true });
   });
-  reg('trustWorkPlanHooks', () => (restricted() ? undefined : trustPlugin(say, { interactive: true })));
+  reg('trustWorkPlanHooks', () => (restricted() ? undefined : trustPlugin(say, { interactive: true, command: true })));
   /*
    * The step between keeping the plugin and removing it: Codex holds it, with its marketplace entry and the trust given
    * to its hooks, and is told not to load it. Removing it instead takes all three away, so getting back from that means
@@ -1324,17 +1324,30 @@ function tokenModeLine() {
  * while the dialog was open, nothing is written and the new list is shown instead.
  */
 const TRUST_ROUNDS = 3;
-async function trustPlugin(say, { interactive }) {
+async function trustPlugin(say, { interactive, command = false }) {
   if (!trusted()) return;
   const binary = codexProgram();
-  if (!binary) return;
+  if (!binary) {
+    if (command) vscode.window.showErrorMessage('The codex program of the Codex extension was not found.');
+    return;
+  }
   for (let round = 0; round < TRUST_ROUNDS; round++) {
     const home = files.codexHome();
     const folders = (vscode.workspace.workspaceFolders || []).map((f) => f.uri.fsPath);
     const cwds = folders.length ? folders : [home];
     let st;
-    try { st = await install.hookStatus({ binary, home, cwds }); } catch (e) { say(`listing hooks failed: ${e.message}`); return; }
-    if (!st.review.length) { problem('trust', null); if (interactive) vscode.window.setStatusBarMessage('The work plan hooks are trusted.', 4000); return; }
+    try { st = await install.hookStatus({ binary, home, cwds }); } catch (e) {
+      say(`listing hooks failed: ${e.message}`);
+      if (command) vscode.window.showErrorMessage(`Could not list the work plan hooks: ${e.message}`);
+      return;
+    }
+    /* Run as a command, the answer is a notification, since the user asked; after an install, the status bar's. */
+    if (!st.review.length) {
+      problem('trust', null);
+      if (command) vscode.window.showInformationMessage('Codex Plus: Every work plan hook is trusted already.');
+      else if (interactive) vscode.window.setStatusBarMessage('The work plan hooks are trusted.', 4000);
+      return;
+    }
     const go = 'Trust them';
     const detail = `Codex runs hooks outside its sandbox and only after you trust them. These ${st.review.length} come from the work plan plugin`
       + ` in ${home}:\n\n` + st.review.map((h) => `${h.eventName}: ${h.command}`).join('\n')

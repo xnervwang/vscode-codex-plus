@@ -91,6 +91,13 @@ module.exports = async ({ eq, note, tmp, root }) => {
     eq(shown(), ['The plugin that writes work plans is not installed', 'codexPlus.installWorkPlanPlugin'],
       'with no codex program found, the row says the plugin is not installed, and clicking it tries again');
     eq([told > 0, /codex program/.test(source.planNotice().detail)], [true, true], 'and Agent Plus is told, with what failed in the detail');
+    const toldNow = async (command) => {
+      control.state.said.length = 0;
+      await vscode.commands.executeCommand(command);
+      return control.state.said.map((s) => s.message);
+    };
+    eq(await toldNow('codexPlus.trustWorkPlanHooks'), ['The codex program of the Codex extension was not found.'],
+      'Trust the Work Plan Hooks run with no codex program says so, rather than nothing');
 
     /* A codex program, and no Python on the PATH. */
     control.state.config.cliExecutable = codex;
@@ -123,6 +130,8 @@ module.exports = async ({ eq, note, tmp, root }) => {
     fs.unlinkSync(path.join(codexHome, 'untrusted'));
     await ext._ensurePlugin(context, () => {});
     eq(shown(), null, 'and once nothing is left to fix the row goes');
+    eq(await toldNow('codexPlus.trustWorkPlanHooks'), ['Codex Plus: Every work plan hook is trusted already.'],
+      'Trust the Work Plan Hooks run with nothing left to trust says so in a notification, not only in the status bar for a few seconds');
   } finally {
     process.env.PATH = realPath;
     runtime.build = realBuild;
