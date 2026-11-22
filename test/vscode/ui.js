@@ -2162,8 +2162,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         const ext = k ? require.cache[k].exports : null;`;
       const held = () => call(`${EXT} const r = ext && await ext._holdArchived([arg]); return r ? [...r] : null;`, T.id);
       /* The conversation's tab in the second window, put behind notes-b.txt. Agent Plus neither announces nor counts the
-         conversation the focused window shows in front, and under xvfb-run, with no window manager, the window opened
-         last keeps counting as focused. */
+         conversation the focused window shows in front, and in this run the window opened last counts as focused, under
+         xvfb-run and on the CI runners alike. */
       const tabOfT = () => inB('return vscode.window.tabGroups.all.flatMap((g) => g.tabs.map((t) => ({ column: g.viewColumn, '
         + 'uri: t.input && t.input.uri ? String(t.input.uri) : "" }))).find((t) => t.uri.includes(arg)) || null;', T.id).catch(() => null);
       const coverT = async () => {
@@ -2296,8 +2296,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
           check(!!red, 'this window\'s session list then shows the conversation the second window runs with the red dot', await rowDot());
           check(!!await until(async () => (await agentCount()) > counted, 15000, 500), 'and Agent Plus counts it in the status bar',
             { before: counted, now: await agentCount() });
-          /* Agent Plus shows its notification in the focused window. Under xvfb-run, with no window manager, both windows can
-             count as focused, and then which one shows it, and whether only one does, is not the test of anything. */
+          /* Agent Plus shows its notification in the focused window. In this run both windows can count as focused, under
+             xvfb-run and on the CI runners alike, and then which one shows it, and whether only one does, tests nothing. */
           const focusA = await focused(), focusB = await inB('return vscode.window.state.focused;').catch(() => null);
           if (focusA || focusB) {
             const told = await until(async () => ((await toastIn(page)) || (await toastIn(pageB))) && true, 15000, 500);
