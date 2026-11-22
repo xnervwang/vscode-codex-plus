@@ -248,7 +248,7 @@
   let ctxRow = null;
   let selection = new Set();
   let anchor = '';
-  /* The row a menu was opened on, while that menu is open: { row, alone, pointer } (aimAt). */
+  /* The row the open menu belongs to: { row, alone, pointer } (aimAt). */
   let aimed = null;
   let shownFront = '';
   let renameGroupKey = '';
@@ -689,9 +689,9 @@
     if (aimed.alone) { anchor = r._row.id; select([r._row.id]); }
     highlight(r, false);
   }
-  /* Once the menu is gone the row it was opened on no longer looks chosen, as in Claude Code Plus's list: what aimAt
-     selected only for the menu is let go, and so is the highlight a right-click gave it. A keyboard's highlight stays,
-     as the place the next key moves from. */
+  /* Once the menu is gone its row no longer looks chosen, as in Claude Code Plus's list: aimAt's selection made only for
+     the menu is undone, and so is the highlight a right-click added. A keyboard's highlight stays, as the place the next
+     key moves from. */
   function letGoAim() {
     const a = aimed;
     aimed = null;

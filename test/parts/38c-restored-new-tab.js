@@ -110,7 +110,7 @@ module.exports = async ({ eq, tmp, root }) => {
         'each restored tab is that conversation\'s for the session list and Agent Plus, the tab not resolved yet included');
     } finally { src.dispose(); }
 
-    /* Codex resolves the tab opened on a conversation when it comes to the front, after this extension started. */
+    /* The tab opened on a conversation is resolved only when it comes to the front, after this extension has started. */
     const backNamed = panelOf('restored named tab');
     keepUri(backNamed, NAMED_URI);
     globalThis.__codexExtrasPanel(backNamed, NAMED, two.provider, `/local/${NAMED}`);

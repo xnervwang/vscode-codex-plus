@@ -155,7 +155,7 @@ module.exports = async ({ eq, root }) => {
   const title = $(`.cp-group[data-key="ungrouped"] .cp-row[data-id="${ID(3)}"] .cp-title`);
   eq(title.isContentEditable, true, 'Rename edits the title where it is drawn');
   title.textContent = '  A better   title ';
-  /* The caret at the end of a title longer than its row scrolls the title sideways while it is edited. */
+  /* While a title too long for its row is edited with the caret at its end, the title scrolls sideways. */
   title.scrollLeft = 120;
   title.bubble('keydown', { key: 'Enter' });
   eq([posted, title.isContentEditable], [[{ kind: 'rename', id: ID(3), title: 'A better title' }], false], 'and Enter sends the new title');

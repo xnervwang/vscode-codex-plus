@@ -1554,7 +1554,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     const unreadTitles = () => list.evaluate(() => [...document.querySelectorAll('.cp-group .cp-row')]
       .filter((r) => [...r.querySelectorAll('.cp-unseen')].some((x) => getComputedStyle(x).display !== 'none')).map((r) => r.querySelector('.cp-title').textContent))
       .catch(() => null);
-    /* A page that is new in this window and shows a message box and no turns. */
+    /* A page new in this window with a message box but no turns yet. */
     const newPageSince = (before) => until(async () => {
       for (const f of page.frames()) {
         if (before.has(f)) continue;
