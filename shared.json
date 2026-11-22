@@ -1,5 +1,5 @@
 {
-  "core": "365202a4fc8a1fd67c89cecd4cac8371c9a0abee",
+  "core": "6a548254497ab98f00498fc568bf42d685189aef",
   "files": [
     {
       "path": "build/sync-shared.js",
@@ -84,7 +84,7 @@
     {
       "path": "src/token-mode.js",
       "from": "src/token-mode.js",
-      "sha256": "21900f03eabd49c256e1f7dfa8dbacafe7584554d415401f59d9c6fd3a6ceeda"
+      "sha256": "0d9ba9f0576150496f549a7ce98d0ea887f7957fff44ecb967d650acc3989ba9"
     },
     {
       "path": "src/page/kit.js",
@@ -154,7 +154,7 @@
     {
       "path": "codex-plugin/agent-work-plan/hooks/skill_route.py",
       "from": "shared/plugin/hooks/skill_route.py",
-      "sha256": "fce28c92d9e6a5e8ea8b26432bc946f1554f4feb265ad246ce92dd27be28c104"
+      "sha256": "681bd9a4aaaa66b07e89359e342ce6b6b7ed3dbe7a9da85e58fb56a6a4104b6d"
     },
     {
       "path": "codex-plugin/agent-work-plan/hooks/plan_agent.py",
