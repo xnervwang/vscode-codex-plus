@@ -155,8 +155,11 @@ module.exports = async ({ eq, root }) => {
   const title = $(`.cp-group[data-key="ungrouped"] .cp-row[data-id="${ID(3)}"] .cp-title`);
   eq(title.isContentEditable, true, 'Rename edits the title where it is drawn');
   title.textContent = '  A better   title ';
+  /* The caret at the end of a title longer than its row scrolls the title sideways while it is edited. */
+  title.scrollLeft = 120;
   title.bubble('keydown', { key: 'Enter' });
   eq([posted, title.isContentEditable], [[{ kind: 'rename', id: ID(3), title: 'A better title' }], false], 'and Enter sends the new title');
+  eq(title.scrollLeft, 0, 'and the title is drawn from its first letter again, not left where the caret scrolled it');
 
   /* Conversation 1 is listed twice, in Open sessions and in Ungrouped. */
   const openRow1 = $(`.cp-section[data-key="open"] .cp-row[data-id="${ID(1)}"]`);

@@ -745,6 +745,8 @@
       const text = tidy(span.textContent.replace(/\s+/g, ' ').trim());
       span.contentEditable = 'false';
       span.classList.remove('cp-editing');
+      /* Typing to the end of a long title scrolled it sideways, and it would stay so, its start out of sight. */
+      span.scrollLeft = 0;
       done(commit && text && text !== was ? text : '');
     };
     const onKey = (e) => {
