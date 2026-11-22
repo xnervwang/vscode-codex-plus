@@ -551,7 +551,12 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await shot('tab-bar-sidebar');
       await exec('workbench.action.closeAuxiliaryBar');
       check(!!await until(async () => !await auxiliaryShowsCodex(), 10000, 300), 'the secondary sidebar closes');
-      await exec('codexPlus.openCodex');
+      /* Opening the sidebar goes through a vscode:// link, and VS Code may ask before an extension opens one. */
+      await start('codexPlus.openCodex');
+      const allow = page.locator('.monaco-dialog-box').filter({ hasText: 'open this URI' }).first();
+      if (await allow.waitFor({ state: 'visible', timeout: 8000 }).then(() => true, () => false)) {
+        await allow.locator('.dialog-buttons .monaco-button').filter({ hasText: 'Open' }).first().click({ timeout: 5000 });
+      }
       check(!!await until(auxiliaryShowsCodex, 15000, 500), 'with codexPlus.tabBarButton "sidebar", Codex Plus: Open Codex shows Codex in the secondary sidebar too');
       await exec('workbench.action.closeAuxiliaryBar');
       await setting('tabBarButton', 'tab');
