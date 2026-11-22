@@ -23,7 +23,9 @@
  * ended after the user last had the conversation in front of them in a focused window (src/seen.js; Codex's own read
  * receipts stay unread for good inside VS Code). `idle` is the rest. `prompt` comes from the patch instead
  * (src/approvals.js), because Codex writes no approval request to a file, and only for the conversations of this
- * window. One running in another window, or started by `codex exec`, never reports it.
+ * window. For one running in another window or in Codex's terminal interface it comes from the marks the plugin's
+ * PermissionRequest hook leaves (src/waiting-marks.js). One started by `codex exec` never waits: exec refuses every
+ * approval request at once.
  *
  * Each conversation also reports `activity`, `unseen` and `lastUserAt`; `state` stays for an older Agent Plus.
  * `activity` is `working` during a turn, `background` after the turn while work it started still runs, `waiting` for
@@ -40,6 +42,7 @@ const { createSeen } = require('./seen');
 const { oncePerDelivery } = require('./core-link');
 const { KINDS, LEFT_EVERY_MS, SHARE_DIR } = require('./left-running');
 const { withoutEnvelope } = require('./title-marks');
+const waitingMarks = require('./waiting-marks');
 
 /* A turn whose rollout has been silent this long is no longer running, whatever its last line says: the process that
    was writing it is gone (a closed window, a crash). Long tool calls write nothing while they run, so this is generous. */
@@ -269,9 +272,10 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
     if (typeof vscode.window.onDidChangeWindowState === 'function') {
       try { subs.push(vscode.window.onDidChangeWindowState((s) => { if (s && s.focused && markFront()) changed.fire(); })); } catch (_) { /* none */ }
     }
-    /* An approval request and its answer change `activity` without writing anything the poll could find. */
+    /* An approval request and its answer change `activity` without writing anything the poll could find. The marks are
+       read again too, so the one of a request answered here goes at once. */
     if (patching && typeof patching.onApprovalsChanged === 'function') {
-      try { subs.push(patching.onApprovalsChanged(() => changed.fire())); } catch (_) { /* no patch */ }
+      try { subs.push(patching.onApprovalsChanged(() => { readMarks(); changed.fire(); })); } catch (_) { /* no patch */ }
     }
     /* Showing Codex's sidebar again brings its conversation to the front without any tab change, and nothing else
        would mark it read until the next tab change or read of the list. */
@@ -332,9 +336,57 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
     return out;
   };
   /* What the patch knows about requests this conversation is stopped on, or null without the patch. */
-  const waitingOn = (id) => {
+  const askedHere = (id) => {
     if (!patching || typeof patching.approvalsOf !== 'function') return null;
     try { return patching.approvalsOf(id); } catch (_) { return null; }
+  };
+  /*
+   * The marks of approvals asked for anywhere (src/waiting-marks.js), read on every poll and whenever this window's
+   * requests change. `askedAt` keeps, for each marked thread, the last time this window's app-server had an approval of
+   * it outstanding.
+   */
+  let marks = new Map(), marksKey = '[]';
+  const askedAt = new Map();
+  const marksDir = () => install.planDir(files.codexHome());
+  const rootOf = (id) => {
+    let t = reader.thread(id);
+    for (let i = 0; t && t.parent && i < 20; i++) t = reader.thread(t.parent) || null;
+    return t;
+  };
+  /* The approvals of `id` its marks still stand for, removing the ones that are over. */
+  const markedFor = (id) => {
+    const list = marks.get(String(id || '').toLowerCase());
+    if (!list || !list.length) return 0;
+    const root = rootOf(id);
+    if (root && root.origin === 'exec') return 0;
+    const own = askedHere(id);
+    const { count, over } = waitingMarks.counted(list, { state: reader.state(id), askedHereAt: askedAt.get(id) || 0,
+      askedHere: !!(own && (own.decide || own.soon)) });
+    if (over.length) {
+      waitingMarks.remove(over);
+      marks.set(String(id).toLowerCase(), list.filter((m) => !over.includes(m.file)));
+    }
+    return count;
+  };
+  function readMarks(now = Date.now()) {
+    marks = waitingMarks.read(marksDir(), { now });
+    for (const id of marks.keys()) {
+      const own = askedHere(id);
+      if (own && (own.decide || own.soon)) askedAt.set(id, now);
+    }
+    for (const id of [...askedAt.keys()]) if (!marks.has(id)) askedAt.delete(id);
+    for (const id of [...marks.keys()]) markedFor(id);
+    const key = waitingMarks.keyOf(marks);
+    const moved = key !== marksKey;
+    marksKey = key;
+    return moved;
+  }
+  /* What `id` is stopped on: this window's own requests, and as many more as the marks of other places say. */
+  const waitingOn = (id) => {
+    const own = askedHere(id);
+    const marked = markedFor(id);
+    if (!marked) return own;
+    return { ...(own || { decide: 0, soon: 0 }), decide: Math.max((own && own.decide) || 0, marked) };
   };
   /* Shapes of Codex tabs whose thread could not be read, already said once. */
   const unreadable = new Set();
@@ -472,13 +524,15 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
     /* Other repeating work is done on this poll rather than on a timer of its own (src/archive-sweep.js tick). */
     try { onPoll(); } catch (e) { log(`codex source: ${(e && e.message) || e}`); }
     const here = openThreads();
-    const extra = [...new Set([...here, ...kidsOf([...here, sidebarInFront()]), ...wanted])];
+    let marked = false;
+    try { marked = readMarks(); } catch (e) { log(`approval marks: ${(e && e.message) || e}`); }
+    const extra = [...new Set([...here, ...kidsOf([...here, sidebarInFront()]), ...wanted, ...marks.keys()])];
     return reader.refresh({ home: files.codexHome(), extra, force }).then((moved) => {
       // An answered request is dropped: the reader keeps that state, so asking again would read the rollout afresh
       // every pass for a row that has not changed.
       for (const id of [...wanted]) if (reader.state(id)) wanted.delete(id);
       const cleared = markFront();
-      if (tell || cleared || moved) changed.fire();
+      if (tell || cleared || moved || marked) changed.fire();
     }).catch((e) => log(`codex source: ${(e && e.message) || e}`));
   }
   /*
