@@ -85,6 +85,13 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
   fs.mkdirSync(skill, { recursive: true });
   fs.writeFileSync(path.join(skill, 'SKILL.md'), '---\nname: inventory-sync-retry\ndescription: Where the inventory sync sets its retry '
     + 'delay and back-off, and how to change the retry delay of the sync job.\n---\n\nRead config/sync.yaml first.\n');
+  /* A Claude Code plugin with a skill of its own, which the skill search reads only with codexPlus.skillRoutingClaudePlugins. */
+  const pluginAt = path.join(profile.home, '.claude', 'plugins', 'cache', 'test-market', 'export-tools', '1.0.0');
+  fs.mkdirSync(path.join(pluginAt, 'skills', 'nightly-export-check'), { recursive: true });
+  fs.writeFileSync(path.join(pluginAt, 'skills', 'nightly-export-check', 'SKILL.md'), '---\nname: nightly-export-check\ndescription: How the nightly export bucket check '
+    + 'decides which archived rows to skip, and where its skip list is kept.\n---\n\nRead export/check.yaml first.\n');
+  fs.writeFileSync(path.join(profile.home, '.claude', 'plugins', 'installed_plugins.json'), JSON.stringify({ version: 2,
+    plugins: { 'export-tools@test-market': [{ scope: 'user', installPath: pluginAt, version: '1.0.0' }] } }));
   const wakeupFile = path.join(plans, `${t0.id}.wakeup`);
   const setWakeup = (everyMinutes, setAgo = 0) => {
     const w = JSON.parse(fs.readFileSync(wakeupFile, 'utf8'));
@@ -651,7 +658,9 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       expect: 'The Codex Plus side bar shows the Codex sessions view. From the top: an "Open sessions" section listing the conversation just started in a tab (there is no "Account & usage" section, since the made-up provider has no account; the next step is about that), '
         + 'a session manager with "New in tab" and "New in sidebar" side by side (each with a plus icon), a filter row (a funnel, "Active · N", a search icon and "New group"), '
         + 'and an "Ungrouped" group with four conversations: the one just started and the three made-up ones, "Can you find where the retry delay for the inventory sync is set?", '
-        + '"Why does the nightly export skip archived rows?" and "Add a dry-run flag to the cleanup script". Each row has its title and at the right how long ago it was used with its first and last day, as "1m · 11/20→11/21"; none of these conversations is running or waiting, so no row has a dot, and each title starts at the row\'s left padding. '
+        + '"Why does the nightly export skip archived rows?" and "Add a dry-run flag to the cleanup script". Each row has its title and at the right how long ago it was used with its first and last day, as "1m · 11/20→11/21". '
+        + '"Can you find where the retry delay for the inventory sync is set?" has a red dot before its title, as its work plan asks the user a question put after the user\'s last message in it; '
+        + 'none of the others is running or waiting, so they have no dot, and each title starts at the row\'s left padding. '
         + 'Section labels are in capitals. The conversation just started, whose tab is in front, is drawn as the current one in both places it is listed, Open sessions and Ungrouped: '
         + 'the list\'s selection background and its title in bold. No other row has that background or a bold title.',
     }, async () => {
@@ -943,6 +952,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     /* ═══ a conversation in a tab ═══ */
     await look('resume-in-tab', {
       expect: `Resume in Tab opens "${title}" in a tab of the editor group there, titled by the conversation, showing its four messages and replies and the message box at the bottom. `
+        + 'The tab\'s Codex logo carries a red dot, for the question its work plan put to the user after the user\'s last message. '
         + `In the session list on the left, "${title}" is now the current conversation: its row in Open sessions and its row in Ungrouped have the selection background and a bold title, `
         + 'and no other row has either, the conversation that was in front before included.',
     }, async () => {
@@ -1111,6 +1121,26 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     await page.keyboard.press('Escape');
     await until(() => page.locator('.quick-input-widget').first().isHidden(), 3000, 200);
 
+    /* ═══ the unread envelope in the light themes (src/envelope.js) ═══ */
+    const lightUnread = (theme) => ({
+      expect: `In ${theme}, with the reply still unread, the tab's title ends in the envelope's text form ✉︎, an outline glyph in the theme's text colour rather than a white emoji, `
+        + 'and the conversation\'s rows in the session list and its row in Agent Plus\'s Conversations panel at the bottom each have one such envelope after the title, clearly visible on the light background.',
+    });
+    const inLight = (theme) => async () => {
+      await setting('colorTheme', theme, 'workbench');
+      if (!await until(async () => (await labelOf(title)) === `${title} \u2709\uFE0E`, 15000, 500)) throw new Error(`the tab read ${JSON.stringify(await labelOf(title))}`);
+      await showList();
+      await exec('agentPlus.showConversations');
+      await away();
+      await sleep(1500);
+      return union([await tab(title).boundingBox().catch(() => null), await part(PARTS.sidebar), await part(PARTS.panel)]);
+    };
+    await look('unread-light-theme', lightUnread('Default Light Modern'), inLight('Default Light Modern'));
+    await look('unread-high-contrast-light', lightUnread('Default High Contrast Light'), inLight('Default High Contrast Light'));
+    await setting('colorTheme', 'Default Dark Modern', 'workbench');
+    await exec('workbench.action.closePanel');
+    await until(async () => (await labelOf(title)) === `${title} ${ENVELOPE}`, 15000, 500);
+
     /* ═══ renaming while the reply is unread, and a long title in a narrow side bar ═══ */
     const renameBox = page.locator('.quick-input-widget input').first();
     const renameTo = async (name) => {
@@ -1146,6 +1176,33 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await sleep(800);
       return union([await tab(renamed).boundingBox().catch(() => null), await rowBox(t0.id, '.cp-section[data-key="open"]'), await rowBox(t0.id)]);
     });
+    const kept = `${title} (kept short)`;
+    await look('rename-envelope-anywhere', {
+      expect: `Renamed, while the reply is unread, to "✉️ ✉️ ${title} ✉️ (kept short)", with envelopes typed at the start and in the middle, the tab's title reads "${kept} ✉️": `
+        + `none of the typed envelopes is kept, and one envelope is drawn last. The conversation's rows in the session list read "${kept}" with one envelope after the title.`,
+    }, async () => {
+      await renameTo(`${ENVELOPE} ${ENVELOPE} ${title} ${ENVELOPE} (kept short)`);
+      if (!await until(async () => (await labelOf(kept)) === `${kept} ${ENVELOPE}`, 20000, 500)) throw new Error(`the tab read ${JSON.stringify(await labelOf(kept))}`);
+      await showList();
+      await away();
+      await sleep(800);
+      return union([await tab(kept).boundingBox().catch(() => null), await rowBox(t0.id, '.cp-section[data-key="open"]'), await rowBox(t0.id)]);
+    });
+    await look('rename-unread-pencil', {
+      expect: `The pencil on the conversation's row in the session list, while the reply is unread, turns the title into an edit field holding "${kept}" alone, selected, with no envelope inside the field; the envelope stays drawn after it.`,
+    }, async () => {
+      await showList();
+      await away();
+      await row(t0.id).hover();
+      await sleep(400);
+      await row(t0.id).locator('.cp-act[data-act="rename"]').click({ timeout: 5000 });
+      if (!await until(() => list.evaluate(() => !!document.querySelector('.cp-editing')), 5000, 200)) throw new Error('the title was not put in an edit field');
+      const editing = await list.evaluate(() => (document.querySelector('.cp-editing') || {}).textContent || '');
+      tell(`the edit field holds ${JSON.stringify(editing)}`);
+      return rowBox(t0.id);
+    });
+    await page.keyboard.press('Escape');
+    await until(() => list.evaluate(() => !document.querySelector('.cp-editing')), 5000, 200);
     /* Shorter than the 120-character limit in titleOf (src/codex-files.js). */
     const longTitle = `${title}, and where its cap is set`;
     await look('long-title-narrow', {
@@ -1206,7 +1263,18 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await toBottom();
       return bottomBox(520);
     });
-    /* This step waits for the turns above: the meter shows the window Codex recorded on the latest turn, and the
+    await look('skill-search-claude-plugin', {
+      expect: 'With codexPlus.skillRoutingClaudePlugins set to "*", a message about the nightly export bucket check gets a reply whose line above it names the skill nightly-export-check, '
+        + 'which only a Claude Code plugin installed in the made-up home holds (export-tools), not Codex.',
+    }, async () => {
+      await setting('skillRoutingClaudePlugins', ['*']);
+      await sleep(1000);
+      await sendAndWait('Where does the nightly export bucket check skip archived rows?');
+      await toBottom();
+      return bottomBox(520);
+    });
+    await setting('skillRoutingClaudePlugins', undefined);
+        /* This step waits for the turns above: the meter shows the window Codex recorded on the latest turn, and the
        made-up turns recorded theirs before codexPlus.contextWindow was set. */
     await look('context-meter-hover', {
       expect: 'Resting on the context meter shows a box with the context window it uses and where that figure came from, codexPlus.contextWindow for gpt-6.1-sol set to 600K '
@@ -1281,6 +1349,26 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await toBottom();
       return bottomBox(520);
     });
+    model.script(null);
+    await look('detached-end-notice-off', {
+      expect: 'With codexPlus.detachedEndNotices off, in the Custom token mode where it is used, a second detached command, "setsid sleep 8", approved and left running, ends with no notice: '
+        + 'the conversation ends with Codex\'s reply that it started the short job, and no Codex Plus notice after it.',
+    }, async () => {
+      await setting('tokenMode', 'custom', 'agentPlus');
+      await setting('detachedEndNotices', false);
+      const before = model.sent('Codex Plus notice');
+      model.script(t0.id, [outside('setsid sleep 8 >/dev/null 2>&1 < /dev/null &'), { reply: 'Started the short job.' }]);
+      await type('Start the short detached job and come back.');
+      if (!await until(card, 20000, 300)) throw new Error('Codex showed no approval card');
+      await approve();
+      await until(() => model.left() === 0, 20000, 500);
+      await sleep(45000);
+      tell(`Codex Plus notices sent while codexPlus.detachedEndNotices was off: ${model.sent('Codex Plus notice') - before}`);
+      await toBottom();
+      return bottomBox(420);
+    });
+    await setting('detachedEndNotices', undefined);
+    await setting('tokenMode', undefined, 'agentPlus');
     model.script(null);
     await look('subagent-agent-map', {
       expect: 'After a turn that started a sub-agent, the pill has a green dot and counts it ("1 agent"), and the Agent map lists the sub-agent by its name with a solid green dot, since it is still running, and when it was last active.',
@@ -1401,6 +1489,22 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     }
 
     /* ═══ a wake-up ═══ */
+    await look('wake-ups-off', {
+      expect: 'With codexPlus.wakeUps off, in the Custom token mode where it is used, a wake-up that falls due is not sent: after a minute and a half the conversation still ends as it did, '
+        + 'with no message beginning "[Wake-up set in this conversation".',
+    }, async () => {
+      await setting('tokenMode', 'custom', 'agentPlus');
+      await setting('wakeUps', false);
+      const before = model.sent(WAKEUP_LINE);
+      setWakeup(1, 120);
+      await sleep(90000);
+      tell(`wake-ups that reached the model while codexPlus.wakeUps was off: ${model.sent(WAKEUP_LINE) - before}`);
+      setWakeup(45);
+      await toBottom();
+      return bottomBox(420);
+    });
+    await setting('wakeUps', undefined);
+    await setting('tokenMode', undefined, 'agentPlus');
     await look('wake-up-sent', {
       unchanged: 'The script turned codexPlus.replyImages back on after the step before, so the reply\'s images are drawn again.',
       expect: 'A wake-up due on the idle conversation is sent into it as a message whose first line reads "[Wake-up set in this conversation: sent by its timer, not by the user, ...]" followed by the prompt '
@@ -1427,6 +1531,16 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       return toolbar();
     });
     model.script(null);
+    await look('low-context-outline-off', {
+      expect: 'With codexPlus.lowContextOutline off, the meter still reads about 86% but has no outline round it.',
+    }, async () => {
+      await setting('lowContextOutline', false);
+      if (!await until(() => codex.evaluate(() => !document.querySelector('.codex-extras-ctx-low')), 10000, 300)) throw new Error('the outline stayed');
+      await sleep(500);
+      return toolbar();
+    });
+    await setting('lowContextOutline', undefined);
+    await until(() => codex.evaluate(() => !!document.querySelector('.codex-extras-ctx-low')), 10000, 300);
     await look('compact-on-click', {
       expect: 'A click on the meter starts a compaction: the conversation shows Codex\'s note that the context was compacted, and the meter reads much less afterwards, with no outline.',
     }, async () => {
@@ -1521,6 +1635,23 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await sleep(1500);
       return union([await tabsBox(), await part(PARTS.editor)]);
     });
+    await look('reopen-shortcut-off', {
+      expect: `With codexPlus.reopenClosedSessionShortcut off, Ctrl+Shift+T after "${freshTitle}" is closed again is VS Code's own Reopen Closed Editor: the tab closed last comes back, in front, on the address it had.`,
+    }, async () => {
+      await setting('reopenClosedSessionShortcut', false);
+      await tab(freshTitle).click();
+      await exec('workbench.action.closeActiveEditor');
+      await sleep(1000);
+      await tab(title).click();
+      await sleep(500);
+      const before = await tabs();
+      await page.keyboard.press('Control+Shift+T');
+      await sleep(5000);
+      const t = await frontTab();
+      tell(`the tab in front after the shortcut: ${JSON.stringify(t)}; tabs before: ${JSON.stringify(before).slice(0, 300)}`);
+      return union([await tabsBox(), await part(PARTS.editor)]);
+    });
+    await setting('reopenClosedSessionShortcut', undefined);
 
     /* ═══ Agent Plus ═══ */
     await look('work-plan-view', {

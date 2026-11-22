@@ -151,6 +151,8 @@ async function testStage() {
   const model = await fakeModel.start();
   const made = fakeHome.write(p.codexHome, { folder: p.folder, modelUrl: model.url });
   fakeHome.wakeup(p.codexHome, made.threads[0].id);
+  /* What a stage needs in place before its window starts. */
+  if (typeof ui.prepare === 'function') ui.prepare({ profile: p, fakeHome });
   fs.writeFileSync(path.join(p.folder, 'notes.txt'), 'A file to have an editor open, so the tab bar has its buttons.\n');
   fs.mkdirSync(path.join(p.user, 'User'), { recursive: true });
   fs.writeFileSync(path.join(p.user, 'User', 'settings.json'), JSON.stringify({
@@ -166,7 +168,7 @@ async function testStage() {
     /* Draw modal dialogs, such as Delete's confirmation, inside the window so Playwright can read them and click their
        buttons. VS Code's default is the system dialog on every platform. */
     'window.dialogStyle': 'custom',
-    ...(LOOK ? ui.LOOK_SETTINGS : {}),
+    ...(LOOK ? ui.LOOK_SETTINGS : ui.SETTINGS || {}),
   }, null, 2));
 
   try {

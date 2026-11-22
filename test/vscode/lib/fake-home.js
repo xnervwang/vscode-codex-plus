@@ -40,12 +40,15 @@ function withPlan(text) {
   return lines.join('\n');
 }
 
-function write(home, { folder, modelUrl }) {
+/* Writes a rollout for each of `threads` under `top` of `home`, the conversation i of the list dated `ago(i)` days back,
+   and returns the files written. */
+function rollouts(home, { folder, threads, top = 'sessions', ago = (i) => i, edit = (text) => text }) {
   const cwd = JSON.stringify(folder).slice(1, -1);
   const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'cxp-fake-'));
+  const written = [];
   try {
-    THREADS.forEach((t, i) => {
-      const made = render.write(path.join(scratch, String(i)), { days: [[i, render.FOUR.length]] });
+    threads.forEach((t, i) => {
+      const made = render.write(path.join(scratch, String(i)), { days: [[ago(i), render.FOUR.length]] });
       const sessions = path.join(made.codexHome, 'sessions');
       for (const rel of fs.readdirSync(sessions, { recursive: true })) {
         const from = path.join(sessions, rel);
@@ -53,19 +56,33 @@ function write(home, { folder, modelUrl }) {
         const text = fs.readFileSync(from, 'utf8').split(render.THREAD).join(t.id).split(render.CWD).join(cwd)
           .split('"model_provider":"openai"').join(`"model_provider":"${PROVIDER}"`)
           .split(render.FOUR[0].user).join(t.title);
-        const to = path.join(home, 'sessions', path.dirname(rel), path.basename(rel).split(render.THREAD).join(t.id));
+        const to = path.join(home, top, path.dirname(rel), path.basename(rel).split(render.THREAD).join(t.id));
         fs.mkdirSync(path.dirname(to), { recursive: true });
-        fs.writeFileSync(to, i === 0 ? withPlan(text) : text);
+        fs.writeFileSync(to, edit(text, i));
+        written.push(to);
       }
     });
   } finally {
     fs.rmSync(scratch, { recursive: true, force: true });
   }
+  return written;
+}
+
+function write(home, { folder, modelUrl }) {
+  rollouts(home, { folder, threads: THREADS, edit: (text, i) => (i === 0 ? withPlan(text) : text) });
   fs.writeFileSync(path.join(home, 'config.toml'), [
     `model = "${render.MODEL}"`, `model_provider = "${PROVIDER}"`, 'model_reasoning_effort = "high"', '',
     `[model_providers.${PROVIDER}]`, 'name = "Made-up model for the tests"', `base_url = "${modelUrl}"`, 'wire_api = "responses"',
     'requires_openai_auth = false', '', '[analytics]', 'enabled = false', ''].join('\n'));
   return { home, threads: THREADS };
+}
+
+/* Conversations Codex archived some time ago: each rollout under archived_sessions/, its turns and its file's time
+   `days` days back. */
+function archived(home, { folder, threads }) {
+  const files = rollouts(home, { folder, threads, top: 'archived_sessions', ago: (i) => threads[i].days });
+  files.forEach((f) => { const t = threads.find((x) => f.includes(x.id)); const at = new Date(Date.now() - t.days * 86400e3); fs.utimesSync(f, at, at); });
+  return files;
 }
 
 /* A wake-up of `thread`, as the work plan's set_wakeup tool writes one (src/wakeup.js), so the Agent map has a timer. */
@@ -76,4 +93,4 @@ function wakeup(home, thread, { everyMinutes = 45, prompt = 'Check whether the n
   fs.writeFileSync(path.join(dir, `${thread}.wakeup`), JSON.stringify({ everyMinutes, prompt, setAt: now, expiresAt: now + 7 * 86400 }));
 }
 
-module.exports = { write, wakeup, THREADS, PLAN_BLOCK };
+module.exports = { write, wakeup, archived, THREADS, PLAN_BLOCK };

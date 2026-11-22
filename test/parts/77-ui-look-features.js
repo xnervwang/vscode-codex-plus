@@ -7,7 +7,8 @@
  * The feature list of the look run (test/vscode/ui-look-features.json) against the scenes of test/vscode/ui-look.js and
  * this extension's package.json.
  *
- * The step names are taken from the look('<name>', ...) calls in the source, since loading ui-look.js needs Playwright.
+ * The step names are taken from the look('<name>', ...) calls in the source, since loading ui-look.js needs Playwright,
+ * and a feature's `checks` from the step('<name>', ...) calls of ui.js, the window test that CI runs.
  */
 const fs = require('fs');
 const path = require('path');
@@ -21,16 +22,21 @@ module.exports = async ({ eq, root }) => {
   const settings = (Array.isArray(pkg.contributes.configuration) ? pkg.contributes.configuration : [pkg.contributes.configuration])
     .flatMap((s) => Object.keys(s.properties));
 
+  const windowTest = fs.readFileSync(path.join(root, 'test', 'vscode', 'ui.js'), 'utf8');
+  const checked = new Set([...windowTest.matchAll(/\bstep\(\s*'((?:[^'\\]|\\.)+)'/g)].map((m) => m[1].replace(/\\'/g, "'")));
   eq(features.filter((f) => !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(f.id) || typeof f.what !== 'string' || !f.what
-    || !['steps', 'settings', 'commands'].every((k) => Array.isArray(f[k]))).map((f) => f.id), [],
+    || !['steps', 'settings', 'commands'].every((k) => Array.isArray(f[k])) || (f.checks !== undefined && !Array.isArray(f.checks))).map((f) => f.id), [],
   'every feature has a lower-case hyphenated id, a line saying what it is, and lists of steps, settings and commands');
   const ids = features.map((f) => f.id);
   eq(ids.filter((id, i) => ids.indexOf(id) !== i), [], 'and no two features share an id');
-  eq(features.filter((f) => !f.steps.length && !(typeof f.notInWindow === 'string' && f.notInWindow)).map((f) => f.id), [],
-    'each feature is reached by at least one step, or says why the window cannot show it');
-  eq(features.filter((f) => f.steps.length && f.notInWindow).map((f) => f.id), [], 'and none does both');
+  const reached = (f) => f.steps.length || (f.checks || []).length;
+  eq(features.filter((f) => !reached(f) && !(typeof f.notInWindow === 'string' && f.notInWindow)).map((f) => f.id), [],
+    'each feature is reached by at least one look step or window test step, or says why the window cannot show it');
+  eq(features.filter((f) => reached(f) && f.notInWindow).map((f) => f.id), [], 'and none does both');
   eq(features.flatMap((f) => f.steps.filter((s) => !steps.has(s)).map((s) => `${f.id}: ${s}`)), [],
     'every step a feature names is a look step of ui-look.js');
+  eq(features.flatMap((f) => (f.checks || []).filter((s) => !checked.has(s)).map((s) => `${f.id}: ${s}`)), [],
+    'and every check it names is a step of the window test, ui.js');
   const named = new Set(features.flatMap((f) => f.steps));
   eq([...steps].filter((s) => !named.has(s)), [], 'and every look step of ui-look.js serves some feature');
   const listedSettings = new Set(features.flatMap((f) => f.settings));
@@ -39,4 +45,11 @@ module.exports = async ({ eq, root }) => {
   eq(commands.filter((c) => !listedCommands.has(c)), [], `each of the ${commands.length} commands in package.json is in a feature`);
   eq([...listedSettings].filter((s) => !settings.includes(s)).concat([...listedCommands].filter((c) => !commands.includes(c))), [],
     'and the list names no setting or command package.json does not have');
+  /* Given a value through a setting() helper of either test, one whose name ends in "setting" or "Setting" and whose first
+     argument is the setting's name, or among the settings a window starts with. */
+  const both = windowTest + source;
+  const changed = new Set([...both.matchAll(/\b\w*[sS]etting\(\s*'([A-Za-z]+)'/g)].map((m) => `codexPlus.${m[1]}`)
+    .concat([...both.matchAll(/'(codexPlus\.[A-Za-z]+)'\s*:/g)].map((m) => m[1])));
+  eq(features.filter((f) => !f.notInWindow).flatMap((f) => f.settings.filter((s) => !changed.has(s)).map((s) => `${f.id}: ${s}`)), [],
+    'every setting of a feature the window shows is given a value other than its default by some step of ui.js or ui-look.js');
 };
