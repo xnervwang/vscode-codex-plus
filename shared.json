@@ -1,5 +1,5 @@
 {
-  "core": "07b54ac5f4265bd7d04c84bb8116dc09ff95e9fb",
+  "core": "48d1c6c5417bb605e6074aa3b369d1346909dc96",
   "files": [
     {
       "path": "build/sync-shared.js",
@@ -34,7 +34,7 @@
     {
       "path": "src/files.js",
       "from": "src/files.js",
-      "sha256": "30c89cbf83b01b55957920fb006725c54cc2ff81edc7e25fbbe93665810ebc3c"
+      "sha256": "42003eedc979c6a80411939e433da1118133b5d53df6df0528e8be0a9d00baf2"
     },
     {
       "path": "src/edits.js",
