@@ -2062,8 +2062,17 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       } finally {
         model.script(null);
         watching = false;
+        /* The conversation's tab first, and then the window, waited for until its extension host has exited: the
+           second window of a later step loads this conversation, and Codex's app-server there refuses it while another
+           one still has it ("already has an active writer"). */
+        await inC(`const mine = vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((t) => t.input && t.input.uri && String(t.input.uri).includes(arg));
+          if (mine.length) await vscode.window.tabGroups.close(mine); return mine.length;`, T.id, 15000).catch(() => {});
+        await sleep(1500);
         await inC('setTimeout(() => vscode.commands.executeCommand("workbench.action.closeWindow"), 200); return true;', undefined, 15000).catch(() => {});
         await until(() => pageC.isClosed(), 30000, 500);
+        const alive = (pid) => { try { process.kill(pid, 0); return true; } catch (e) { return !!(e && e.code === 'EPERM'); } };
+        if (!await until(() => !alive(hostC.pid), 30000, 500)) note(`the second window's extension host (pid ${hostC.pid}) was still running 30 s after its window closed`);
+        await sleep(2000);
         await trustC;
         await page.bringToFront().catch(() => {});
       }
