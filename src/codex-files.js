@@ -360,8 +360,9 @@ function sessionMeta(file) {
  *   model, effort  from the newest turn_context
  *   lastTool       { name, startedMs, endedMs } of the newest tool call, for the working line
  *   error          the newest task_complete's error, if it failed
- *   askedMs        when the latest turn asked the user something with request_user_input_async, 0 if it did not: that
- *                  question has no app-server request, and its answer is the next user message, which opens a turn
+ *   askedMs        when the latest turn asked the user something with request_user_input_async and no user message
+ *                  came after it, 0 otherwise: that question has no app-server request. Its answer is a user message,
+ *                  sent into the turn while it runs or opening the next one
  *   lastEndedMs    when the latest finished turn ended, kept while a later turn runs; 0 if no turn ended in these lines
  *   lastUserMs     when the user's last message was sent (src/user-times.js typedByUser), 0 if none is in these lines
  *
@@ -369,6 +370,8 @@ function sessionMeta(file) {
  */
 /* Codex's question that does not wait: the tool returns at once and the card stays on the page. */
 const ASYNC_QUESTION = 'request_user_input_async';
+/* What the page sends when the user answers that card while the turn still runs: a user message of this block alone. */
+const QUESTION_REPLY = /^\s*<send_user_message_question_reply>/;
 
 function rolloutState(file, lines = null) {
   if (!lines) {
@@ -383,7 +386,7 @@ function rolloutState(file, lines = null) {
   }
   const st = { working: false, turnId: '', startedMs: 0, endedMs: 0, durationMs: 0, context: null, tokens: null, model: '', effort: '',
     lastTool: null, error: '', lastActivityMs: 0, aborted: false, askedMs: 0, lastEndedMs: 0, lastUserMs: 0 };
-  let sawEnd = false, pastStart = false;
+  let sawEnd = false, pastStart = false, replied = false;
   /* Not required at the top: src/user-times.js requires this module while it loads. */
   const { typedByUser, textOf } = require('./user-times');
   const before = () => !st.context || !st.lastEndedMs || !st.lastUserMs;
@@ -433,7 +436,12 @@ function rolloutState(file, lines = null) {
         if (st.model) pastStart = true;
       }
     }
-    if (row.type === 'response_item' && p.type === 'function_call' && p.name === ASYNC_QUESTION && !st.startedMs && !st.askedMs) {
+    /* The lines run newest first, so a user message met before the question came after it and answered it. */
+    if (!st.startedMs && row.type === 'response_item' && p.type === 'message' && p.role === 'user') {
+      const text = textOf(p);
+      if (QUESTION_REPLY.test(text) || typedByUser(text)) replied = true;
+    }
+    if (row.type === 'response_item' && p.type === 'function_call' && p.name === ASYNC_QUESTION && !st.startedMs && !st.askedMs && !replied) {
       st.askedMs = at;
     }
     if (row.type === 'response_item' && !st.lastTool) {
