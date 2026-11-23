@@ -1512,10 +1512,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       if (apWaits) {
         const done = await until(async () => { const d = await dotsOn(title); return d && d.working === 0 && d; }, 30000, 500);
         const stopped = await panelSays(title, 'stopped', null, 30000);
-        /* On Windows a Codex page brought to the front some seconds after a queued turn ended was seen never to draw that
-           turn, and the steps after this one read the newest turn the page draws; so the tab stays behind as long as the
-           notice was once waited for. */
-        await sleep(25000);
+        await sleep(8000);
         check(!!done && stopped.ok && !(await toastsAbout(title, mark)).length, 'once the queued turn has ended too, it is not announced either, its tab being in this window',
           { dots: await dotsOn(title), row: stopped.row, notifications: await toastsAbout(title, mark) });
         note('this Agent Plus announces no conversation the focused window shows, so that the reply after a queued turn is announced once '
@@ -2862,8 +2859,18 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     await step('a closed conversation brought back', async () => {
       const t = threads[0];
       await tabNamed(title).click();
-      const had = await until(newestInFront, 30000, 1000);
-      if (!had) throw new Error(`the tab of "${title}" did not come to the front with its turns`);
+      const shown = await until(newestInFront, 30000, 1000);
+      if (!shown) throw new Error(`the tab of "${title}" did not come to the front with its turns`);
+      /* The newest turn the rollout says started, by the key the page gives a turn. The page just brought to the front can
+         still be drawing its last turn, as one queued behind another, so what it shows first is not taken for the newest. */
+      const rollout = walk(path.join(profile.codexHome, 'sessions')).find((f) => f.endsWith('.jsonl') && path.basename(f).includes(t.id));
+      let latest = '';
+      if (rollout) {
+        for (const l of fs.readFileSync(rollout, 'utf8').split('\n')) {
+          try { const r = JSON.parse(l); if (r.type === 'event_msg' && r.payload && r.payload.type === 'task_started' && r.payload.turn_id) latest = String(r.payload.turn_id); } catch (_) { /* a line being written */ }
+        }
+      }
+      const had = latest ? `history-content:turn:${latest}` : shown;
       const closedIds = () => list.evaluate(() => [...document.querySelectorAll('.cp-section[data-key="closed"] .cp-row')].map((r) => r.dataset.id)).catch(() => null);
       const firstClosed = (id) => until(async () => { if (!await showList()) return null; const r = await closedIds(); return r && r[0] === id && r; }, 20000, 500);
       const cameBack = (label, turn) => until(async () => { const x = await frontTab(); return x && bare(x.label) === label && (await newestInFront()) === turn && x; }, 60000, 1000);
