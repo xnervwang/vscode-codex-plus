@@ -40,6 +40,22 @@ module.exports = async ({ eq, tmp, root }) => {
   eq(cw.valueFor({ 'openai.gpt-6.1-sol': '2M' }, 'gpt-6.1-sol'), { key: 'openai.gpt-6.1-sol', shown: 1050000, text: '1.05M', value: 921000 },
     'a window over the published one is the published one');
   eq(cw.valueFor({ 'gpt-6.1-sol': '100K' }, 'gpt-6.1-sol'), null, 'and one that leaves no room for input is not used');
+
+  /* ── a value someone else wrote into config.toml ── */
+  eq([cw.handWritten({ map: MAP, model: 'openai.gpt-6.1-sol', inFile: 872000 }),
+    cw.handWritten({ map: MAP, model: 'openai.gpt-6.1-sol', inFile: 921000 }).same,
+    cw.handWritten({ map: { 'gpt-6-luna': '512K' }, model: 'gpt-6.2-sol', inFile: 872000 }).want,
+    cw.handWritten({ map: MAP, model: 'openai.gpt-6.1-sol', inFile: 872000, ours: 872000 }),
+    cw.handWritten({ map: {}, model: 'openai.gpt-6.1-sol', inFile: 872000 }),
+    cw.handWritten({ map: MAP, model: 'openai.gpt-6.1-sol', inFile: 0 })],
+  [{ model: 'openai.gpt-6.1-sol', file: 872000, want: { key: 'gpt-6.1-sol', shown: 1050000, text: '1.05M', value: 921000 }, same: false },
+    true, null, null, null, null],
+  'a value in config.toml this extension did not write is one to ask about, with the setting\'s value for the default model, '
+    + 'which can be none; it agrees when the two are equal; nothing is asked about a value of ours, an empty setting or no value');
+  const back = [['gpt-6.2-sol', 872000], ['openai.gpt-6.1-sol', 500000], ['gpt-6.1-sol', 950000], ['my-model', 123456]];
+  eq(back.map(([m, v]) => { const t = cw.textFor(m, v); return [t, cw.valueFor({ [m]: t }, m).value]; }),
+    [['1M', 872000], ['628K', 500000], ['1.049M', 921000], ['123456', 123456]],
+    'the setting\'s text for a value gives that value back, with the output added for a published model and held to the most it takes');
   eq(['openai.gpt-6.2-sol', 'gpt-6.2-astra', 'gpt-5.5'].map((m) => cw.valueFor({ [m]: '1.05M' }, m).value), [921000, 921000, 921000],
     'GPT-6.2 Sol, GPT-6.2 Astra and GPT-5.5 publish the same window, so theirs loses its output too');
 
@@ -191,6 +207,39 @@ module.exports = async ({ eq, tmp, root }) => {
     requests.length = 0;
     await tick(4500);
     eq(requests.filter((r) => r[0] === 'config/value/write'), [UNSET], 'a change of the default model to one with no entry takes the value back out');
+
+    const writes = () => requests.filter((r) => r[0] === 'config/value/write');
+    const askedNow = () => control.state.said.filter((s) => /did not write/.test(s.message));
+    const toml = (v, extra = '') => fs.writeFileSync(path.join(home, 'config.toml'),
+      `model = "openai.gpt-6.1-sol"\nmodel_context_window = ${v}\nmodel_provider = "amazon-bedrock"\n${extra}`);
+    control.answer('did not write', (m, b) => b[1]);
+    control.state.said.length = 0;
+    requests.length = 0;
+    toml(800000);
+    await tick(4500);
+    eq([askedNow().length, askedNow()[0] && askedNow()[0].buttons], [1, ['Keep 800K', 'Replace with 921K']],
+      'a value written into config.toml by hand is put to the user once, in a notification with both values on its buttons');
+    eq(writes(), [SET], 'and Replace writes the setting\'s value over it');
+
+    control.state.answers.length = 0;
+    control.answer('did not write', (m, b) => b[0]);
+    control.state.said.length = 0;
+    requests.length = 0;
+    toml(700000);
+    await tick(4500);
+    eq([askedNow().length, control.state.config.contextWindow['gpt-6.1-sol'], writes().length, (globalState.get(cw.APPLIED_KEY) || {}).value],
+      [1, '828K', 0, 700000], 'Keep records the value in the setting for the default model and leaves config.toml as it is');
+    changed({ affectsConfiguration: (k) => k === 'codexPlus' || k === 'codexPlus.contextWindow' });
+    await tick(2000);
+    eq([writes().length, control.state.said.filter((s) => /applies to conversations you start/.test(s.message)).length], [0, 0],
+      'and the change of the setting that follows writes nothing and says nothing about a new window');
+
+    await globalState.update(cw.APPLIED_KEY, { value: 0 });
+    control.state.said.length = 0;
+    toml(700000, '# again\n');
+    await tick(4500);
+    eq([askedNow().length, (globalState.get(cw.APPLIED_KEY) || {}).value, writes().length], [0, 700000, 0],
+      'a value by hand that equals the setting\'s is taken as this extension\'s without asking');
   } finally {
     for (const d of subs) { try { d.dispose(); } catch (_) { /* gone */ } }
     ext.deactivate();

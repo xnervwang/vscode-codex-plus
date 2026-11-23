@@ -128,6 +128,31 @@ async function applyTopLevel({ ask, memento, map, model, inFile, log = () => {} 
   return { state: target ? 'ours' : 'none', value: target };
 }
 
+/*
+ * A model_context_window in config.toml that this extension did not write, while the setting has entries: applyTopLevel
+ * leaves such a value alone, and the setting then applies to no model. The result is what to put to the user: `file`
+ * is the value in config.toml and `want` the setting's value for the default model (null when it has none). `same` is
+ * set when the two agree, so the value can be taken as this extension's without asking. null when there is no such
+ * value or the setting is empty.
+ */
+function handWritten({ map, model, inFile, ours = 0 }) {
+  const now = +inFile || 0;
+  if (!now || now === (+ours || 0) || !model || !map || typeof map !== 'object' || !Object.keys(map).length) return null;
+  const want = valueFor(map, model);
+  return { model: String(model), file: now, want, same: !!want && want.value === now };
+}
+
+/*
+ * The setting's text for `model` that valueFor turns back into `value`. For a model with a published window that is the
+ * value plus the model's output; a value over the largest input the model takes becomes that input.
+ */
+function textFor(model, value) {
+  const p = published(model);
+  const n = p ? Math.min(+value || 0, p.input) + p.output : Math.floor(+value || 0);
+  const short = tokensText(n);
+  return parseWindow(short) === n ? short : String(n);
+}
+
 const STARTS = new Set(['thread/start', 'thread/resume', 'thread/fork']);
 /** Whether a page's request opens a conversation: a start, a prewarmed start, a resume or a fork. */
 const opens = (request, kind) => kind === 'prewarm' || STARTS.has(request && request.method);
@@ -195,4 +220,4 @@ function windowFrom({ model, reported, map, top = 0, applied = null }) {
 }
 
 module.exports = { APPLIED_KEY, PUBLISHED, CODEX, FALLBACK, baseName, tokensText, published, codexWindow, parseWindow, entryFor, valueFor,
-  applyTopLevel, opens, overrideFor, addOverride, windowFrom };
+  applyTopLevel, handWritten, textFor, opens, overrideFor, addOverride, windowFrom };

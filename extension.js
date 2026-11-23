@@ -251,10 +251,51 @@ function applyContextWindow(context, say) {
       const data = (r && r.result && Array.isArray(r.result.data)) ? r.result.data : [];
       listedDefault = String((data.find((m) => m && m.isDefault) || {}).model || '');
     }
-    return contextWindow.applyTopLevel({ ask: askAppServer, memento: context.globalState, map: windowTable(), model: startingModel(),
-      inFile: modelSettingsNow().window, log: say });
+    const model = startingModel();
+    const inFile = modelSettingsNow().window;
+    const r = await contextWindow.applyTopLevel({ ask: askAppServer, memento: context.globalState, map: windowTable(), model, inFile, log: say });
+    if (r && r.state === 'theirs') offerHandWindow(context, say, model, inFile);
+    return r;
   }).catch((e) => say(`writing the context window into Codex's config: ${e.message}`));
   return windowWriting;
+}
+/*
+ * A model_context_window that someone else wrote into config.toml keeps the setting from applying (handWritten). Each
+ * window asks once per value whether to keep it, recorded as the setting's value for the default model, or to replace
+ * it with the setting's; a value equal to the setting's is taken as this extension's without asking.
+ */
+const handWindowAsked = new Set();
+let handWindowKept = false;
+function offerHandWindow(context, say, model, inFile) {
+  const map = windowTable();
+  const applied = context.globalState.get(contextWindow.APPLIED_KEY) || {};
+  const found = contextWindow.handWritten({ map, model, inFile, ours: +applied.value || 0 });
+  if (!found) return;
+  const key = (contextWindow.entryFor(map, model) || {}).key || String(model);
+  const record = (text) => context.globalState.update(contextWindow.APPLIED_KEY, { value: found.file, model: String(model), key, text });
+  if (found.same) { record(found.want.text); return; }
+  const asked = `${model}|${found.file}|${found.want ? found.want.value : 0}`;
+  if (handWindowAsked.has(asked)) return;
+  handWindowAsked.add(asked);
+  const t = contextWindow.tokensText;
+  const keep = `Keep ${t(found.file)}`;
+  const other = found.want ? `Replace with ${t(found.want.value)}` : 'Remove it';
+  const instead = found.want
+    ? `replace it with the ${t(found.want.value)} the setting gives${found.want.text !== t(found.want.value) ? ` (${found.want.text})` : ''}`
+    : 'remove it from config.toml so that the setting applies to your other models';
+  vscode.window.showInformationMessage(`Codex Plus: config.toml sets model_context_window to ${t(found.file)}, which this extension `
+    + `did not write, so codexPlus.contextWindow is not applied. Keep ${t(found.file)} and record it in the setting for ${model}, `
+    + `or ${instead}?`, keep, other).then(async (pick) => {
+    if (pick === keep) {
+      const text = contextWindow.textFor(model, found.file);
+      handWindowKept = true;
+      await record(text);
+      await cfg().update('contextWindow', Object.assign({}, windowTable(), { [key]: text }), vscode.ConfigurationTarget.Global);
+    } else if (pick === other) {
+      await context.globalState.update(contextWindow.APPLIED_KEY, { value: found.file });
+      await applyContextWindow(context, say);
+    }
+  }, (e) => say(`asking about the context window in config.toml: ${e.message}`));
 }
 /* The page-request hook that adds the context window override (src/context-window.js overrideFor). */
 function windowOverride(context, say) {
@@ -471,7 +512,11 @@ async function activate(context) {
     else if (e.affectsConfiguration('chat.fontFamily') || e.affectsConfiguration('chat.fontSize')) sessionsModel.refresh();
     if (e.affectsConfiguration(`${CONFIG}.enabled`)) ownTabBar();
     if (e.affectsConfiguration(`${CONFIG}.skillsListBudget`) || e.affectsConfiguration(`${CONFIG}.disabledSkills`)) applySkillSettings(context, say);
-    if (e.affectsConfiguration(`${CONFIG}.contextWindow`)) { applyContextWindow(context, say); tellWindowChange(); }
+    if (e.affectsConfiguration(`${CONFIG}.contextWindow`)) {
+      applyContextWindow(context, say);
+      /* Keeping config.toml's value leaves every conversation's window as it was. */
+      if (handWindowKept) handWindowKept = false; else tellWindowChange();
+    }
     /* A change of mode only unloads or reloads the plugin, so it does not ask again to trust the hooks. If the plugin
        was never installed, because the first start was in Interface features, it is installed as at start-up. */
     if (modeChanged) {
