@@ -34,7 +34,10 @@
  *                and the Work plan line on the context meter's hover
  *   links        another conversation a reply names, by its title in corner brackets and by its id, drawn as links in
  *                the theme's link colour; a click brings that conversation's tab to the front, and with
- *                codexPlus.conversationLinks off there are none
+ *                codexPlus.conversationLinks off there are none. A link to a conversation a second window shows is
+ *                taken by that window, which brings its tab forward while this one opens nothing; a link to another
+ *                agent's conversation, from a source registered as claude-code in the test, names that agent and
+ *                reaches that source's reveal
  *   the brief    a click on the conversation in Agent Plus's Conversations panel shows the brief its plan holds in the
  *                Answer view; the arrow on its row and the page's button each go back to the conversation's tab
  *   the sidebar  a conversation resumed in Codex's sidebar: each reply's stamp inside its column
@@ -1960,6 +1963,152 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       check(!!back, 'and back on, the links are drawn again', await links());
       model.script(null);
       await closeTabsOf(other.id);
+    });
+
+    /* The links to other conversations in a reply of the conversation in `codex`, for the two steps below: `want` is
+       "<agent>:<id>" as the page marks a link. */
+    const mentionLinks = (want) => codex.evaluate((w) => [...document.querySelectorAll('[data-codex-extras="convo-link"]')]
+      .filter((a) => a.getAttribute('data-agent-plus-mention') === w).map((a) => a.textContent), want).catch((e) => ({ error: String(e) }));
+    const replyNaming = async (text) => {
+      await tabNamed(title).click();
+      await until(async () => { const t = await frontTab(); return t && bare(t.label) === title; }, 15000, 500);
+      model.script(threads[0].id, [{ reply: text }]);
+      await codex.locator(COMPOSER).first().click();
+      await page.keyboard.type('Which one was that?');
+      await page.keyboard.press('Enter');
+    };
+    const toBottom = () => codex.evaluate(() => { const s = document.querySelector('[data-app-action-timeline-scroll]'); if (s) s.scrollTop = s.scrollHeight; }).catch(() => {});
+    const tabsIn = (folder) => call('return vscode.window.tabGroups.all.flatMap((g) => g.tabs.map((t) => ({ label: t.label, '
+      + 'active: t.isActive, front: t.isActive && g.isActive, uri: t.input && t.input.uri ? String(t.input.uri) : "" })));', undefined, 60000, folder).catch(() => []);
+
+    /* A link to a conversation that a second window shows in a tab. Agent Plus's open finds no tab of it here and asks
+       the other windows (<shared home>/open): the second window takes the request, brings the tab to the front and
+       itself with VS Code's command line. Before the steps that reload the window or restart its extension host. */
+    await step('a link to a conversation another window shows', async () => {
+      if (!codex) throw new Error('the conversation did not open');
+      const T = threads[1];
+      const folderC = path.join(path.dirname(profile.folder), 'ws-links');
+      fs.mkdirSync(folderC, { recursive: true });
+      fs.writeFileSync(path.join(folderC, 'notes-links.txt'), 'A file for the window a link opens a conversation in.\n');
+      await call(`const mine = vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((t) => t.input && t.input.uri && String(t.input.uri).includes(arg));
+        if (mine.length) await vscode.window.tabGroups.close(mine); return mine.length;`, T.id);
+      const opening = Date.now();
+      await call('await vscode.commands.executeCommand("vscode.openFolder", vscode.Uri.file(arg), { forceNewWindow: true }); return true;', folderC);
+      const pageC = await w.pageOf(path.basename(folderC), 90000);
+      const hostC = pageC ? await w.hostUp(opening, folderC).catch(() => null) : null;
+      check(!!pageC && !!hostC, 'a second window opens on a folder of its own, with the test helper in it', { pageC: !!pageC, hostC: !!hostC });
+      if (!pageC || !hostC) {
+        if (pageC) await pageC.keyboard.press(process.platform === 'darwin' ? 'Meta+Shift+W' : 'Control+Shift+W').catch(() => {});
+        return;
+      }
+      w.pin(profile.folder);
+      const inC = (body, arg, ms = 60000) => call(body, arg, ms, folderC);
+      let watching = true;
+      const trustC = (async () => {
+        while (watching && !pageC.isClosed()) {
+          try {
+            const box = pageC.locator('.monaco-dialog-box').filter({ hasText: 'Trust the work plan hooks in Codex?' }).first();
+            if (await box.isVisible()) await box.locator('.dialog-buttons .monaco-button').filter({ hasText: 'Cancel' }).first().dispatchEvent('click');
+          } catch (_) { /* closing */ }
+          await sleep(500);
+        }
+      })();
+      const OPENS = path.join(profile.home, '.agent-work-plan', 'open');
+      const taken = () => {
+        let names = [];
+        try { names = fs.readdirSync(OPENS).filter((n) => n.endsWith('.done')); } catch (_) { return []; }
+        const read = (f) => { try { return JSON.parse(fs.readFileSync(path.join(OPENS, f), 'utf8')); } catch (_) { return null; } };
+        return names.map((n) => { const id = n.slice(0, -5), ask = read(`${id}.taken`) || {}, done = read(n) || {};
+          return { id, session: ask.sessionId, from: ask.from, by: done.by, shown: done.shown }; });
+      };
+      const tabOfT = async (folder) => (await tabsIn(folder)).find((x) => x.uri.includes(T.id) || bare(x.label) === T.title) || null;
+      const focusedIn = (folder) => call('return vscode.window.state.focused;', undefined, 15000, folder).catch(() => null);
+      try {
+        await until(() => inC('const mine = vscode.extensions.getExtension("xnervwang.codex-plus"); return !!(mine && mine.isActive);'), 60000, 1000);
+        await inC('await vscode.commands.executeCommand("codexPlus.openThreadInTab", arg); return true;', T.id);
+        const inTab = await until(() => tabOfT(folderC), 30000, 500);
+        check(!!inTab && !await tabOfT(profile.folder), 'the conversation the link names is open in a tab of the second window and in none here',
+          { c: await tabsIn(folderC), here: await tabOfT(profile.folder) });
+        /* Behind a text file there, so that bringing it to the front shows. */
+        await inC('await vscode.window.showTextDocument(vscode.Uri.file(arg), { preview: false }); return true;', path.join(folderC, 'notes-links.txt'));
+        const behind = await until(async () => { const t = await tabOfT(folderC); return t && !t.active && t; }, 15000, 500);
+        check(!!behind, 'and is behind a text file there', await tabsIn(folderC));
+        await page.bringToFront().catch(() => {});
+        await replyNaming(`That is 「${T.title}」, open in the other window.`);
+        const drawn = await until(async () => { await toBottom(); const l = await mentionLinks(`codex:${T.id}`); return Array.isArray(l) && l.length && l; }, 45000, 500);
+        check(!!drawn && drawn[0] === T.title, 'the reply here names it in corner brackets, drawn as a link to it', drawn || await mentionLinks(`codex:${T.id}`));
+        const tabsHere = (await tabsIn(profile.folder)).length, requests = taken().length;
+        const focusBefore = { here: await focusedIn(profile.folder), there: await focusedIn(folderC) };
+        await codex.locator(`[data-codex-extras="convo-link"][data-agent-plus-mention="codex:${T.id}"]`).first().click();
+        const fronted = await until(async () => { const t = await tabOfT(folderC); return t && t.active && t; }, 20000, 500);
+        const took = taken().slice(requests).find((r) => r.session === T.id) || null;
+        check(!!fronted && !!took && !!took.by && took.by !== took.from && took.shown === true,
+          'a click on it is taken by the second window, which brings the conversation\'s tab to the front there', { fronted, took, c: await tabsIn(folderC) });
+        await sleep(1500);
+        const here = await tabsIn(profile.folder);
+        check(here.length === tabsHere && !here.some((x) => x.uri.includes(T.id) || bare(x.label) === T.title),
+          'and this window opens no tab, of that conversation or any other', { before: tabsHere, here });
+        /* Agent Plus brings the second window to the front with VS Code's command line, which only the window system can
+           be asked about. Each window's vscode.window.state.focused says which one it gives the focus to, where that
+           reading tells the two apart before the click. */
+        if (focusBefore.here === true && focusBefore.there === false) {
+          const moved = await until(async () => (await focusedIn(folderC)) === true && (await focusedIn(profile.folder)) === false, 15000, 500);
+          check(!!moved, 'and the second window takes the focus from this one', { before: focusBefore, after: { here: await focusedIn(profile.folder), there: await focusedIn(folderC) } });
+        } else {
+          note(`before the click this window ${focusBefore.here ? 'had' : 'did not have'} the focus and the second window ${focusBefore.there ? 'had' : 'did not have'} it on `
+            + `${process.platform}, so whether the second window took it was not judged; its request answered shown: ${took ? took.shown : 'none'}`);
+        }
+        await pageC.screenshot({ path: path.join(shotsDir, `${String(++shotNo).padStart(2, '0')}-conversation-link-other-window.png`) }).catch(() => {});
+      } finally {
+        model.script(null);
+        watching = false;
+        await inC('setTimeout(() => vscode.commands.executeCommand("workbench.action.closeWindow"), 200); return true;', undefined, 15000).catch(() => {});
+        await until(() => pageC.isClosed(), 30000, 500);
+        await trustC;
+        await page.bringToFront().catch(() => {});
+      }
+    });
+
+    /* A link to a conversation of another agent: a source registered with Agent Plus from the test helper as
+       "claude-code", which lists one conversation machine-wide, none in this window, and records what Agent Plus asks it
+       to reveal. Removed again at the end, so the steps after this one see Codex alone. */
+    await step('a link to another agent\'s conversation', async () => {
+      if (!codex) throw new Error('the conversation did not open');
+      const elsewhere = path.join(path.dirname(profile.folder), 'claude-code-elsewhere');
+      const Z = { sessionId: 'feedf00d-2222-4333-8444-555555555555', title: 'Tune the cache of the pricing service', cwd: elsewhere,
+        state: 'idle', activity: 'stopped', running: false, unseen: false, lastActiveAt: Date.now() - 180000 };
+      const reg = await call(`const ap = vscode.extensions.getExtension('xnervwang.agent-plus').exports.agentPlus;
+        const changed = new vscode.EventEmitter();
+        const st = globalThis.__cxpOtherAgent = { list: arg, revealed: [], changed };
+        const r = ap.registerSource({ protocol: 1, id: 'claude-code', label: 'Claude Code', onDidChangeConversations: changed.event,
+          listConversations: async () => [], listAllConversations: async () => st.list.map((c) => Object.assign({}, c)),
+          reveal: async (sessionId, row) => { st.revealed.push({ sessionId, title: row && row.title, cwd: row && row.cwd }); return true; } });
+        st.registration = r.registration;
+        changed.fire();
+        return { accepted: r.accepted, code: r.code, reason: r.reason, features: ap.features };`, [Z]);
+      check(!!reg && reg.accepted && (reg.features || []).includes('allConversations'),
+        'a source standing for Claude Code registers with Agent Plus from the test helper, and Agent Plus offers every agent\'s conversations', reg);
+      try {
+        const want = `claude-code:${Z.sessionId}`;
+        await replyNaming(`That is 「${Z.title}」 in Claude Code, thread ${Z.sessionId}.`);
+        const drawn = await until(async () => { await toBottom(); const l = await mentionLinks(want); return Array.isArray(l) && l.length >= 2 && l; }, 45000, 500);
+        check(!!drawn && drawn.includes(Z.title) && drawn.includes(Z.sessionId), 'the reply\'s 「title」 and id of the other agent\'s conversation are each drawn as a link to it',
+          drawn || await mentionLinks(want));
+        const link = codex.locator(`[data-codex-extras="convo-link"][data-agent-plus-mention="${want}"]`).filter({ hasText: Z.title }).first();
+        await link.hover();
+        const tip = await until(() => codex.evaluate(() => { const b = document.querySelector('[data-codex-extras="label"]'); return b && b.textContent; }).catch(() => ''), 5000, 200);
+        check(!!tip && tip.startsWith(`${Z.title}\nClaude Code conversation ${Z.sessionId.slice(0, 8)}`), 'hovering it names that agent, Claude Code', tip);
+        const tabsHere = (await tabsIn(profile.folder)).length;
+        await link.click();
+        const revealed = await until(async () => { const r = await call('return globalThis.__cxpOtherAgent.revealed;'); return r && r.length && r; }, 15000, 300);
+        check(!!revealed && revealed.length === 1 && revealed[0].sessionId === Z.sessionId && revealed[0].title === Z.title && revealed[0].cwd === elsewhere,
+          'a click on it goes through agentPlus.openConversation to that agent\'s own reveal, with its id, title and folder', revealed);
+        check((await tabsIn(profile.folder)).length === tabsHere, 'and opens no tab here', await tabsIn(profile.folder));
+        await shot('conversation-link-other-agent');
+      } finally {
+        model.script(null);
+        await call('const st = globalThis.__cxpOtherAgent; if (st && st.registration) st.registration.dispose(); delete globalThis.__cxpOtherAgent; return true;').catch(() => {});
+      }
     });
 
     await step('the brief', async () => {
