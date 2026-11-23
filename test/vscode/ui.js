@@ -624,6 +624,17 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
   try {
     await w.hostUp();
 
+    /* The look run's list of the Agent Plus settings, commands and views each feature uses, against the Agent Plus this
+       window has installed. */
+    await step('the feature list against the Agent Plus installed', async () => {
+      const featureList = require('./lib/feature-list');
+      const dir = fs.readdirSync(profile.exts).filter((n) => /^xnervwang\.agent-plus-\d/.test(n)).sort().pop();
+      if (!dir) throw new Error(`no Agent Plus in ${profile.exts}`);
+      const pkg = JSON.parse(fs.readFileSync(path.join(profile.exts, dir, 'package.json'), 'utf8'));
+      const gaps = featureList.agentPlusGaps(featureList.load(), pkg);
+      check(!gaps.length, `every setting, command and view of the Agent Plus ${pkg.version} installed here is in ui-look-features.json once`, gaps);
+    });
+
     await step('the patch', async () => {
       const st = await until(async () => { const s = await patchState(); return s && s.targets.every(([, x]) => x === 'patched') && s; }, 120000, 1000);
       check(!!st, 'Codex Plus patches Codex\'s host bundle, its page and its manifest on the first start', await patchState());

@@ -13,8 +13,9 @@
 const fs = require('fs');
 const path = require('path');
 
-module.exports = async ({ eq, root }) => {
-  const features = JSON.parse(fs.readFileSync(path.join(root, 'test', 'vscode', 'ui-look-features.json'), 'utf8'));
+module.exports = async ({ eq, note, root }) => {
+  const list = require(path.join(root, 'test', 'vscode', 'lib', 'feature-list')).load();
+  const { features } = list;
   const source = fs.readFileSync(path.join(root, 'test', 'vscode', 'ui-look.js'), 'utf8');
   const steps = new Set([...source.matchAll(/\blook\(\s*'([a-z0-9-]+)'/g)].map((m) => m[1]));
   const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
@@ -52,4 +53,16 @@ module.exports = async ({ eq, root }) => {
     .concat([...both.matchAll(/'(codexPlus\.[A-Za-z]+)'\s*:/g)].map((m) => m[1])));
   eq(features.filter((f) => !f.notInWindow).flatMap((f) => f.settings.filter((s) => !changed.has(s)).map((s) => `${f.id}: ${s}`)), [],
     'every setting of a feature the window shows is given a value other than its default by some step of ui.js or ui-look.js');
+
+  /* Agent Plus's settings, commands and views, against the Agent Plus found: the copy installed beside this one
+     (VSCODE_EXTENSIONS), AGENT_WORK_PLAN_DIR, or its checkout beside this repository. */
+  const { agentPlusGaps } = require(path.join(root, 'test', 'vscode', 'lib', 'feature-list'));
+  const installed = (() => {
+    try { const d = fs.readdirSync(process.env.VSCODE_EXTENSIONS || '').filter((n) => /^xnervwang\.agent-plus-\d/.test(n)).sort().pop(); return d ? path.join(process.env.VSCODE_EXTENSIONS, d) : ''; } catch (_) { return ''; }
+  })();
+  const apDir = [installed, process.env.AGENT_WORK_PLAN_DIR, path.join(root, '..', 'vscode-agent-plus')].find((d) => d && fs.existsSync(path.join(d, 'package.json')));
+  if (!apDir) { note('no Agent Plus found to hold the feature list\'s Agent Plus settings, commands and views against'); return; }
+  const apPkg = JSON.parse(fs.readFileSync(path.join(apDir, 'package.json'), 'utf8'));
+  eq(agentPlusGaps(list, apPkg), [], `and every setting, command and view of Agent Plus ${apPkg.version} is listed once: under a feature that uses it, `
+    + 'or in agentPlusOther with why it is not this extension\'s');
 };

@@ -41,7 +41,7 @@ const pixels = require('./lib/pixels');
 const { codexBinary } = require('../../src/appserver');
 
 const { sleep, until } = win;
-const FEATURES = JSON.parse(fs.readFileSync(path.join(__dirname, 'ui-look-features.json'), 'utf8'));
+const FEATURES = require('./lib/feature-list').load().features;
 /* Added to the settings run.js writes: a window as large as the screen, no secondary side bar until a step opens one
    (Codex's would otherwise open there at start-up, beside every shot), and a context window the meter's hover can say
    it took from this extension's setting. */
