@@ -3447,9 +3447,15 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
           await checkCurrent(t.id, 'the conversation moved into a group with its tab in front');
         } else check(false, 'Add to Group in the tab\'s menu offers the group Release 1.2', await page.locator('.quick-input-widget').innerText().catch(() => ''));
       }
-      await call('vscode.commands.executeCommand(\'codexPlus.renameThread\', arg); return true;', t.id);
-      const back = page.locator('.quick-input-widget input').first();
-      if (await back.waitFor({ state: 'visible', timeout: 10000 }).then(() => true, () => false)) { await back.fill(title); await back.press('Enter'); }
+      /* The name put back for the steps after this one. On macOS the box has gone again before the name could be typed
+         into it, once, so it is asked for again. */
+      for (let tries = 0; tries < 3; tries++) {
+        await call('vscode.commands.executeCommand(\'codexPlus.renameThread\', arg); return true;', t.id);
+        const back = page.locator('.quick-input-widget input').first();
+        if (!await back.waitFor({ state: 'visible', timeout: 10000 }).then(() => true, () => false)) continue;
+        if (await back.fill(title, { timeout: 5000 }).then(() => true, () => false)) { await back.press('Enter'); break; }
+        note(`the box to rename the conversation back to "${title}" went before the name was typed into it; asked for again`);
+      }
     });
 
     /*
