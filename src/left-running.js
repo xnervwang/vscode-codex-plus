@@ -62,6 +62,10 @@ const LAUNCH_TAIL = 8 << 20;
 /* Per rollout: the claude --bg calls remembered until their output is read, and the job ids kept. */
 const MAX_CALLS = 500;
 const MAX_JOBS = 20;
+/* What exec_command answers when its command is still running after yield_time_ms: write_stdin on that session id reads
+   the rest of its output, in calls of their own. */
+const STILL_RUNNING = /Process running with session ID (\d+)/g;
+const MAX_SESSIONS = 200;
 
 const read = (file, enc) => { try { return fs.readFileSync(file, enc); } catch (_) { return null; } };
 
@@ -312,14 +316,15 @@ function commandOf(argsText) {
 /*
  * The job ids of the `claude --bg` sessions the commands in a rollout launched, read on from where the last call left
  * off (`cache`, by file). A launch counts only in the output of a command that ran `claude … --bg`: a command that
- * printed an older launch back, a grep of a log say, leaves the very same line.
+ * printed an older launch back, a grep of a log say, leaves the very same line. Such a command still running when
+ * exec_command answers has the rest of its output read by write_stdin calls on its session, which count as well.
  */
 function launches(file, cache) {
   let st;
   try { st = fs.statSync(file); } catch (_) { cache.delete(file); return new Set(); }
   let c = cache.get(file);
   if (!c || st.size < c.pos) {
-    c = { pos: Math.max(0, st.size - LAUNCH_TAIL), calls: new Set(), jobs: new Set(), mid: st.size > LAUNCH_TAIL };
+    c = { pos: Math.max(0, st.size - LAUNCH_TAIL), calls: new Set(), sessions: new Set(), jobs: new Set(), mid: st.size > LAUNCH_TAIL };
     cache.set(file, c);
   }
   if (st.size - c.pos > LAUNCH_TAIL) { c.pos = st.size - LAUNCH_TAIL; c.mid = true; }
@@ -338,9 +343,10 @@ function launches(file, cache) {
   c.pos += end + 1;
   for (const line of buf.toString('utf8', from, end).split('\n')) {
     const call = line.includes('"function_call"') && line.includes('--bg');
-    const out = !call && line.includes('function_call_output') && (line.includes('backgrounded') || line.includes('claude attach')
-      || line.includes('claude logs') || line.includes('claude stop'));
-    if (!call && !out) continue;
+    const poll = !call && c.sessions.size > 0 && line.includes('"function_call"') && line.includes('write_stdin');
+    const out = !call && !poll && line.includes('function_call_output') && (line.includes('backgrounded') || line.includes('claude attach')
+      || line.includes('claude logs') || line.includes('claude stop') || line.includes('Process running with session ID'));
+    if (!call && !poll && !out) continue;
     let row;
     try { row = JSON.parse(line); } catch (_) { continue; }
     const p = row && row.payload;
@@ -348,8 +354,18 @@ function launches(file, cache) {
     if (call && p.type === 'function_call' && BG_CMD.test(commandOf(p.arguments))) {
       c.calls.add(p.call_id);
       if (c.calls.size > MAX_CALLS) c.calls.delete(c.calls.values().next().value);
+    } else if (poll && p.type === 'function_call' && p.name === 'write_stdin') {
+      let a = null;
+      try { a = JSON.parse(p.arguments); } catch (_) { /* not ours */ }
+      if (a && c.sessions.has(String(a.session_id))) {
+        c.calls.add(p.call_id);
+        if (c.calls.size > MAX_CALLS) c.calls.delete(c.calls.values().next().value);
+      }
     } else if (out && p.type === 'function_call_output' && c.calls.has(p.call_id)) {
       const text = outputText(p.output);
+      STILL_RUNNING.lastIndex = 0;
+      for (const m of text.matchAll(STILL_RUNNING)) c.sessions.add(m[1]);
+      while (c.sessions.size > MAX_SESSIONS) c.sessions.delete(c.sessions.values().next().value);
       for (const re of [ID_AFTER, ID_IN_HINT]) {
         re.lastIndex = 0;
         for (const m of text.matchAll(re)) c.jobs.add(m[1]);

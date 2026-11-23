@@ -113,6 +113,27 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
     eq([...left.launches(launchFile, cache)], ['abcd1234'], 'a launch is read from the output of a command that ran claude --bg, and not from one that printed it back');
     fs.appendFileSync(launchFile, rows([call('c3', 'cd /w && claude --bg "second"'), output('c3', 'backgrounded · 1234abcd\n')]));
     eq([...left.launches(launchFile, cache)].sort(), ['1234abcd', 'abcd1234'], 'and the file is read on from where it was left');
+
+    /* exec_command answers after yield_time_ms while the command still runs, and write_stdin on its session reads the
+       rest; the shapes are those of a Codex 26.1117 rollout, the texts replaced. */
+    const stdin = (id, session) => ({ timestamp: new Date().toISOString(), type: 'response_item',
+      payload: { type: 'function_call', name: 'write_stdin', call_id: id, arguments: JSON.stringify({ session_id: session, chars: '', yield_time_ms: 30000 }) } });
+    const running = (id, session) => ({ timestamp: new Date().toISOString(), type: 'response_item',
+      payload: { type: 'function_call_output', call_id: id, output: `Chunk ID: 1\nWall time: 1.0 seconds\nProcess running with session ID ${session}\nOutput:\n` } });
+    const polled = path.join(rolloutDir, 'rollout-polled.jsonl');
+    fs.writeFileSync(polled, rows([
+      call('p1', 'sleep 15 && claude --bg "run the checks" 2>&1 | tail -3'), running('p1', 72310),
+      stdin('p2', 72310), output('p2', '  claude attach 5678cdef   open in this terminal\n  claude logs 5678cdef      show recent output\n'),
+      call('p3', 'sleep 30'), running('p3', 72311),
+      stdin('p4', 72311), output('p4', 'backgrounded · 9999aaaa\n'),
+      stdin('p5', 40000), output('p5', 'backgrounded · 8888bbbb\n'),
+    ]));
+    const fresh = new Map();
+    eq([...left.launches(polled, fresh)], ['5678cdef'],
+      'a launch whose output a later write_stdin read, the command having still run when exec_command answered, is found too; '
+        + 'one in the output of another command\'s session, or of a session no --bg command ran in, is not');
+    fs.appendFileSync(polled, rows([stdin('p6', 72310), output('p6', 'backgrounded · 4321dcba\n')]));
+    eq([...left.launches(polled, fresh)].sort(), ['4321dcba', '5678cdef'], 'and the session is kept as the file is read on');
   });
 
   await section('the worker\'s pass', async () => {
