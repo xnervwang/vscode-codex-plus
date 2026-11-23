@@ -34,6 +34,7 @@ Most of what Codex Plus draws in Codex's page, message box and tabs needs the pa
 | Answers to plan questions, sent from Agent Plus into the conversation ([Answering a plan question](#answering-a-plan-question)) | Agent Plus's Answer view; Codex's message box |
 | Your time zone, told to Codex when it runs on another machine ([Your time zone](#your-time-zone)) | Codex's context |
 | Images in replies: a chart or screenshot the model saves, shown in the reply, and web images shown as links ([Images in replies](#images-in-replies)) | Codex conversation; Codex's context |
+| Codex's own list of skills: the share of the context it gets, and skills left out of it ([Codex's own list of skills](#codexs-own-list-of-skills)) | Codex's `config.toml` |
 | Wake-ups: prompts the model schedules to keep an idle conversation going ([Wake-ups](#wake-ups)) | Codex conversations open in this window |
 | A list of your Codex conversations laid out like Claude Code's, with groups, search, status dots, unread envelopes and account usage ([The session list](#the-session-list)) | Codex sessions view, in the Codex Plus sidebar |
 | Archiving and deleting conversations, and deleting old archived ones ([Archive and delete](#archive-and-delete)) | Codex sessions view |
@@ -89,7 +90,17 @@ Whether the setting is on or off, the patch shows a web image as a plain link. T
 
 ## Codex's own list of skills
 
-When `codexPlus.skillsListBudget` is not 0, Codex Plus writes it into Codex's `config.toml` as `skills.max_context_tokens`. Codex's own default is 2% of the model's context window, about 50 characters per description with a hundred or more skills. At 10,000 tokens, the most Codex takes, each description gets about 195 characters. Every turn's context then carries a skills list of up to that many tokens. The default value, 0, leaves Codex's setting alone.
+On each turn, Codex puts a list of installed skills in the model's context. Each skill gets one line with its name, description and the path to its `SKILL.md` file. Codex lists skills from its own skills folders and plugins.
+
+Codex budgets the list in tokens, counting about 4 bytes per token. If `skills.max_context_tokens` is set in `config.toml`, Codex uses that value up to a maximum of 10k tokens. Otherwise, the budget is 2% of the model's context window.
+
+When `codexPlus.skillsListBudget` is nonzero, Codex Plus writes its value to `skills.max_context_tokens` in Codex's `config.toml`. The default value of `0` leaves Codex's setting alone.
+
+If the list exceeds the budget, Codex keeps each skill's name and path first. It divides the remaining space among the descriptions, one character per description at a time, so long descriptions are cut to about the same length. If the names and paths alone exceed the budget, Codex drops all descriptions and leaves out skills from the end of the list.
+
+How much of each description the model sees depends on the model's context window, the number of installed skills and the lengths of their names and paths. On one machine with 322 skills installed, the 475k-token context window Codex gives `gpt-6.1-sol` made a default budget of about 9,500 tokens, enough for about 24 characters per description. At the 10k-token maximum, each description would keep about 30 characters.
+
+Codex does not read `~/.claude/skills`, Claude Code's folder for personal skills. Skills in that folder are absent from Codex's list, and Codex Plus does not add them.
 
 `codexPlus.disabledSkills` names skills to turn off. Codex Plus writes each as a `[[skills.config]]` entry with `enabled = false`. Codex leaves the skill out of its list and does not run it when you name it with `$name`. Name a plugin's skill with its plugin, as `Plugin-name:skill-name`. Removing a name removes only the entry this setting added. A value you wrote into `config.toml` yourself is never changed.
 
