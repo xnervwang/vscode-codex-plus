@@ -62,8 +62,8 @@ function diff(a, b, masks = []) {
 function baselines({ out, check, note, platform = process.platform }) {
   const dir = (kind) => { const d = path.join(out, kind, platform); fs.mkdirSync(d, { recursive: true }); return d; };
   const results = [];
-  /* `png` is the crop as a PNG buffer. */
-  function compare(name, png, { masks = [] } = {}) {
+  /* `png` is the crop as a PNG buffer; `detail`, if given, is added to a failure, as where the element was drawn. */
+  function compare(name, png, { masks = [], detail = '' } = {}) {
     fs.writeFileSync(path.join(dir('actual'), `${name}.png`), png);
     const approved = path.join(ROOT, platform, `${name}.png`);
     if (!fs.existsSync(approved)) {
@@ -86,7 +86,7 @@ function baselines({ out, check, note, platform = process.platform }) {
     const left = a.width * a.height - d.compared;
     check(ok, `${name} is drawn as approved for ${platform} (${d.differ} of ${d.compared} px differ, ${allowed} allowed${left ? `, ${left} masked` : ''}`
       + `${off ? ', one pixel off in size and compared on the part both have' : ''})`,
-      ok ? undefined : `see diff/${platform}/${name}.png`);
+      ok ? undefined : `see diff/${platform}/${name}.png${detail ? `; ${detail}` : ''}`);
     results.push({ name, state: ok ? 'same' : 'differs', differ: d.differ, compared: d.compared, allowed });
   }
   return { compare, results };

@@ -1083,7 +1083,9 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         await clearToasts();
         const left = (await toasts()).filter(Boolean);
         if (left.length) note(`${name}: notifications still on screen before its crop: ${JSON.stringify(left).slice(0, 300)}`);
-        if (r && frameBox) base.compare(name, await crop({ x: frameBox.x + r.x0 - 2, y: frameBox.y + r.y0 - 2, width: r.x1 - r.x0 + 4, height: r.y1 - r.y0 + 4 }));
+        /* Where it was drawn, to the fraction of a pixel, since a glyph drawn half a pixel lower differs on every column. */
+        if (r && frameBox) base.compare(name, await crop({ x: frameBox.x + r.x0 - 2, y: frameBox.y + r.y0 - 2, width: r.x1 - r.x0 + 4, height: r.y1 - r.y0 + 4 }),
+          { detail: `drawn at ${JSON.stringify({ frame: { x: frameBox.x, y: frameBox.y }, ...r })}` });
       }
 
       await codex.locator('.codex-extras-rail-handle').first().click();
