@@ -67,7 +67,7 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
   // removes from config.toml.
   const listed = ['pre_tool_use:0:0', 'permission_request:0:0', 'post_tool_use:0:0', 'post_tool_use:0:1', 'post_tool_use:0:2',
     'session_start:0:0', 'session_start:0:1', 'session_start:0:2', 'user_prompt_submit:0:0', 'user_prompt_submit:0:1',
-    'user_prompt_submit:0:2', 'user_prompt_submit:0:3', 'user_prompt_submit:0:4', 'stop:0:0', 'stop:0:1', 'stop:0:2', 'stop:0:3',
+    'user_prompt_submit:0:2', 'user_prompt_submit:0:3', 'stop:0:0', 'stop:0:1', 'stop:0:2',
     'subagent_stop:0:0', 'interrupt:0:0']
     .map((k) => `${install.PLUGIN_ID}:hooks/hooks.json:${k}`);
   eq(install.hookKeys().sort(), listed.sort(), 'the hook trust keys computed for uninstalling are the ones Codex lists');
@@ -134,8 +134,8 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
     encoding: 'utf8', env: { ...process.env, PYTHONDONTWRITEBYTECODE: '1', CODEX_HOME: mcpHome } });
   const replies = r.stdout.trim().split('\n').filter(Boolean).map((l) => JSON.parse(l));
   eq(replies.map((x) => x.id), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], 'the MCP server answers every request and no notification');
-  eq(replies[1].result.tools.map((t) => t.name), ['set_row', 'add_row', 'set_summary', 'set_status', 'skill_search', 'set_wakeup', 'clear_wakeup'],
-    'it offers set_row, add_row, set_summary, set_status, skill_search, set_wakeup and clear_wakeup');
+  eq(replies[1].result.tools.map((t) => t.name), ['set_row', 'add_row', 'set_summary', 'set_status', 'set_wakeup', 'clear_wakeup'],
+    'it offers set_row, add_row, set_summary, set_status, set_wakeup and clear_wakeup');
   eq(replies[2].result.isError, false, 'add_row creates the plan');
   eq(JSON.parse(fs.readFileSync(plan, 'utf8')).nodes[0].state, 'doing', 'with the row in it');
   eq(replies[3].result.isError, true, 'a move to waiting without waiting_on is refused, as by the row command');

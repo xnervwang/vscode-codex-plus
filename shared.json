@@ -1,5 +1,5 @@
 {
-  "core": "11db2e25ca1ff553ba74cfb3a8b4dc65bf9ff6a4",
+  "core": "0a667270ea883fdb47ffdb9917087006e2bdb3ca",
   "files": [
     {
       "path": "build/sync-shared.js",
@@ -84,7 +84,7 @@
     {
       "path": "src/token-mode.js",
       "from": "src/token-mode.js",
-      "sha256": "0d9ba9f0576150496f549a7ce98d0ea887f7957fff44ecb967d650acc3989ba9"
+      "sha256": "e330e82078bdada9056d3e194637769ad9708d3b46732b22bd81037792f45410"
     },
     {
       "path": "src/page/kit.js",
@@ -114,7 +114,7 @@
     {
       "path": "codex-plugin/agent-work-plan/hooks/plan_common.py",
       "from": "shared/plugin/hooks/plan_common.py",
-      "sha256": "04c95fda86b28629d978d1f9e1ce4925b8b6f4f257ec00bac6af810a74246664"
+      "sha256": "6ddcecbdc5d750e90445038146b1d87338a974efa0abb2c69e1d728a89b9e4e7"
     },
     {
       "path": "codex-plugin/agent-work-plan/hooks/plan-row.py",
@@ -157,14 +157,9 @@
       "sha256": "3aeb151a47428caec2d9dfce14975e3af3dbeec3c0640c0c3ce1a83122eef350"
     },
     {
-      "path": "codex-plugin/agent-work-plan/hooks/skill_route.py",
-      "from": "shared/plugin/hooks/skill_route.py",
-      "sha256": "681bd9a4aaaa66b07e89359e342ce6b6b7ed3dbe7a9da85e58fb56a6a4104b6d"
-    },
-    {
       "path": "codex-plugin/agent-work-plan/hooks/plan_agent.py",
       "from": "shared/plugin/codex/plan_agent.py",
-      "sha256": "e0c48cab2912c2ad27b617558a39a9c7cb5c45634da75512f8bea8f590ca4df3"
+      "sha256": "a294907c29cbce086d2055589d2271aad6dad0ee8c832e500f44f2bc50eee477"
     },
     {
       "path": "codex-plugin/agent-work-plan/skills/maintain/SKILL.md",

@@ -1514,11 +1514,6 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await hookSetting('workPlan', false, (h) => h.enabled === false);
       await hookSetting('conversationBrief', false, (h) => h.brief === false);
       await hookSetting('tellCodexYourTimeZone', false, (h) => h.tellTimeZone === false);
-      await hookSetting('skillRouting', false, (h) => h.skillRoute === false);
-      await hookSetting('skillRoutingCount', 2, (h) => h.skillRouteCount === 2);
-      await hookSetting('skillRoutingVectorSearch', true, (h) => h.skillRouteVector === true);
-      await hookSetting('skillRoutingExtraFolders', ['~/test-skills'], (h) => JSON.stringify(h.skillRouteExtraDirs) === '["~/test-skills"]');
-      await hookSetting('skillRoutingClaudePlugins', ['*'], (h) => JSON.stringify(h.skillRouteClaudePlugins) === '["*"]');
       await hookSetting('workPlanOfferMinTurns', 1, (h) => h.offerMinTurns === 1);
       await hookSetting('workPlanOfferMinToolCalls', 4, (h) => h.offerMinToolCalls === 4);
       await hookSetting('workPlanQuietWhenReplyMatches', '^GPT says:', (h) => h.quietWhenReplyMatches === '^GPT says:');
@@ -1527,7 +1522,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       const planNow = await until(async () => { const r = await planRows(); return !r.some((x) => x.includes('Work plan of ')) && r; }, 15000, 500);
       check(!!planNow, 'with codexPlus.workPlan off, Agent Plus\'s Work plan view shows no Codex conversation\'s plan', await planRows());
       for (const key of set) await setting(key, undefined);
-      check(!!await until(() => { const h = hooks(); return h && h.enabled === true && h.skillRoute === true && h.skillRouteCount === 5 && h; }, 15000, 300),
+      check(!!await until(() => { const h = hooks(); return h && h.enabled === true && h.brief === true && h.tellTimeZone === true && h.offerMinTurns === 3 && h; }, 15000, 300),
         'back at their defaults, the hooks are given those again', hooks());
       await agentSetting('tokenMode', undefined);
       await checkPlan(planTitle(threads[0].id), 'with codexPlus.workPlan back on');
@@ -2076,9 +2071,9 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       /* The hooks read their settings from a file under CODEX_HOME on every message, so a mode chosen in the status bar
          has to be in that file at once. */
       const file = path.join(profile.codexHome, 'plugins', 'data', 'agent-work-plan-codex-extras', 'config.json');
-      const hooks = () => { try { const h = JSON.parse(fs.readFileSync(file, 'utf8')); return [h.enabled, h.tellTimeZone, h.brief, h.skillRoute]; } catch (_) { return null; } };
+      const hooks = () => { try { const h = JSON.parse(fs.readFileSync(file, 'utf8')); return [h.enabled, h.tellTimeZone, h.brief]; } catch (_) { return null; } };
       const before = hooks();
-      check(JSON.stringify(before) === '[true,true,true,true]', 'with no mode chosen, which is All features, the hooks are given every feature', before);
+      check(JSON.stringify(before) === '[true,true,true]', 'with no mode chosen, which is All features, the hooks are given every feature', before);
       await exec('notifications.clearAll');
       const entry = page.locator('.statusbar-item').filter({ has: page.locator('.codicon-dashboard') }).first();
       check(await entry.waitFor({ state: 'visible', timeout: 15000 }).then(() => true, () => false), 'Agent Plus shows the token mode in the status bar');
@@ -2095,8 +2090,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await shot('token-mode-list');
       await list.filter({ hasText: 'Essential features' }).first().click();
       const after = await until(() => { const h = hooks(); return h && h[2] === false && h; }, 15000, 250);
-      check(JSON.stringify(after) === '[true,true,false,false]',
-        'choosing Essential features rewrites the hooks\' settings at once: the work plan and the time zone on, the brief and the skill search off', after);
+      check(JSON.stringify(after) === '[true,true,false]',
+        'choosing Essential features rewrites the hooks\' settings at once: the work plan and the time zone on, the brief off', after);
       const shown = await until(async () => { const t = (await entry.innerText().catch(() => '')).trim(); return t === 'Essential' && t; }, 10000, 250);
       check(shown === 'Essential', 'and the entry shows the new mode', shown);
       await shot('token-mode-essential');

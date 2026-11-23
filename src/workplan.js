@@ -76,8 +76,6 @@ function liveSessions(home = files.codexHome()) {
  *                again after it, and the injection gives the whole plan again
  *   .briefed     what the Stop hook last asked about the brief, so it does not ask it again
  *   .injected    what the plan looked like when the injection hook last showed it, so an unchanged plan is one line
- *   .routed      which skills the conversation was given in full since its last compaction, so the skill search only
- *                names them (route-skills.py)
  *
  * The row command also moves rows closed for a day to closed/<session id>.json (CLOSED_DIR), deleted with the rest.
  *
@@ -86,7 +84,7 @@ function liveSessions(home = files.codexHome()) {
  * left by a writer killed before its rename.
  */
 const SIDE_SUFFIXES = ['.json', '.offered', '.nudged', '.settled', '.turn', '.watermark', '.tz', '.wakeup', '.woke', '.compacted',
-  '.briefed', '.injected', '.routed', '.images-told'];
+  '.briefed', '.injected', '.images-told'];
 const CLOSED_DIR = 'closed';
 const SIDE_FILE = new RegExp('^[0-9a-f][0-9a-f-]{7,}(?:' + SIDE_SUFFIXES.map((s) => s.replace('.', '\\.')).join('|') + ')$', 'i');
 const PLAN_FILE = /^[0-9a-f][0-9a-f-]{7,}\.json$/i;
@@ -187,6 +185,35 @@ function removeSideFiles(dir, ids) {
   return failed;
 }
 
+/*
+ * The skill search of releases before this one kept its index, log and locks in SKILL_SEARCH_DIR here, and a
+ * <session id>.routed per conversation. Only those two are deleted, once per plan directory: `doneFile` lists the
+ * directories already cleared, and a directory with a deletion that failed is tried again on the next call.
+ */
+const SKILL_SEARCH_DIR = 'skill-route';
+const ROUTED_FILE = /^[0-9a-f][0-9a-f-]{7,}\.routed$/i;
+function removeSkillSearchLeftovers({ dir = planDir(), doneFile }) {
+  let done = [];
+  try { const v = JSON.parse(fs.readFileSync(doneFile, 'utf8')); if (Array.isArray(v)) done = v; } catch (_) { /* none yet */ }
+  if (done.includes(dir)) return null;
+  const out = { folder: false, files: 0, failed: '' };
+  let names = [];
+  try { names = fs.readdirSync(dir); } catch (e) { if (e.code !== 'ENOENT') out.failed = e.message; }
+  for (const name of names) {
+    const file = path.join(dir, name);
+    try {
+      const st = fs.lstatSync(file);
+      if (name === SKILL_SEARCH_DIR && st.isDirectory()) { fs.rmSync(file, { recursive: true, force: true }); out.folder = true; }
+      else if (ROUTED_FILE.test(name) && st.isFile()) { fs.unlinkSync(file); out.files++; }
+    } catch (e) { if (e.code !== 'ENOENT' && !out.failed) out.failed = `${name}: ${e.message}`; }
+  }
+  if (!out.failed) {
+    fs.mkdirSync(path.dirname(doneFile), { recursive: true });
+    fs.writeFileSync(doneFile, JSON.stringify(done.concat(dir)));
+  }
+  return out;
+}
+
 /** The states that mean a row still needs something done to it. */
 const OPEN_STATES = ['discussing', 'todo', 'doing', 'waiting', 'parked'];
 
@@ -226,7 +253,7 @@ function latestQuestionAt(file) {
 
 module.exports = {
   latestQuestionAt,
-  planDir, liveSessions, sweepOrphans, removeSideFiles,
+  planDir, liveSessions, sweepOrphans, removeSideFiles, removeSkillSearchLeftovers, SKILL_SEARCH_DIR,
   DATA_ROOT, PLAN_DIR, PLAN_FILE, SIDE_SUFFIXES, CLOSED_DIR, SETTLED_MS, LOCK_STALE_MS, OPEN_STATES,
   STATES, MAX_DETAIL_LINES, MAX_DETAIL_CHARS, WAITING_ON, MAX_QUESTION_CHARS,
 };

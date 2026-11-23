@@ -17,12 +17,11 @@
  * The same pass notes where Codex compacted the conversation's context, as the number of the user's messages that came
  * before each compaction, which places it in the page's list of those messages under the same condition.
  *
- * It also notes, per turn, for the line under each reply: the model and effort, how much of the context window the last
- * model call used, and the skills the skill search injected. It notes when each of the user's messages in the turn was
- * sent and each reply written, and how long the turn took once it ended. A token_count or a message carries no turn id,
- * so it belongs to the turn whose task_started or turn_context came last before it. The page places all of these by the
- * turn id Codex puts on each turn, not by position, which is what lets a stamp carry seconds where the conversation's
- * counts do not line up.
+ * It also notes, per turn, for the line under each reply: the model and effort, and how much of the context window the
+ * last model call used. It notes when each of the user's messages in the turn was sent and each reply written, and how
+ * long the turn took once it ended. A token_count or a message carries no turn id, so it belongs to the turn whose
+ * task_started or turn_context came last before it. The page places all of these by the turn id Codex puts on each
+ * turn, not by position, which is what lets a stamp carry seconds where the conversation's counts do not line up.
  *
  * A rollout is append-only, so a conversation is read once and then only its new bytes: the cache keeps the size the
  * file had, the offset of the first incomplete line and the times found so far. A file that shrank, or one whose first
@@ -56,23 +55,6 @@ const INJECTED = /^\s*<(?!hook_prompt[\s>])[a-z][a-z0-9_]*(?:\s[^>]*)?>/;
 const HOOK_PROMPT = /^\s*<hook_prompt[\s>]/;
 /* True when the user typed this message: it is neither one Codex wrote nor a Stop hook's prompt. */
 const typedByUser = (text) => !INJECTED.test(text) && !HOOK_PROMPT.test(text);
-/*
- * First words of the block the skill search injects (MARK in codex-plugin/agent-work-plan/hooks/skill_route.py).
- * Codex records it in the rollout as a developer message, one line per skill under that first line, each
- * "- <name>: <description> (file: <path>)".
- */
-const ROUTE_MARK = 'Skills that may fit this message';
-/*
- * The line the hook puts right under that first line when some of the turn's skills were given in full earlier in the
- * conversation: every skill of the turn in order, "<name> (given earlier)" for those, then ORDER_END (ORDER_LINE,
- * GIVEN_EARLIER and ORDER_END in route-skills.py). The full lines that follow it are the rest, already on it.
- */
-const ORDER_LINE = 'In order of fit: ';
-const GIVEN_EARLIER = ' (given earlier)';
-const ORDER_END = '. Those given earlier';
-/* The hook gives a turn at most ten skills. */
-const SKILLS_KEPT = 10;
-
 const cache = new Map();
 
 function textOf(payload) {
@@ -104,12 +86,10 @@ function timesIn(lines, into = [], compactions = [], turns = { byId: new Map(), 
     const turnish = line.includes('"token_count"') || line.includes('"turn_context"') || line.includes('"task_started"')
       || line.includes('"task_complete"') || line.includes('"turn_aborted"');
     const reply = line.includes('"assistant"');
-    const routed = line.includes(ROUTE_MARK);
-    if (!compacted && !turnish && !reply && !routed && !line.includes('"user"')) continue;
+    if (!compacted && !turnish && !reply && !line.includes('"user"')) continue;
     let row;
     try { row = JSON.parse(line); } catch (_) { continue; }
     if (turnish && row) noteTurn(row, turns);
-    if (routed && row) { noteSkills(row, turns); continue; }
     if (row && row.type === 'compacted') {
       const at = Date.parse(row.timestamp);
       compactions.push({ after: into.length, at: Number.isFinite(at) ? at : 0 });
@@ -124,41 +104,6 @@ function timesIn(lines, into = [], compactions = [], turns = { byId: new Map(), 
     if (Number.isFinite(at)) into.push(at); else broken = true;
   }
   return { times: into, compactions, turns, broken };
-}
-
-/*
- * Records the skill names of a routing block on the turn named in the message's metadata, else on the current turn.
- * Only the lines that directly follow the block's first line count, so another hook's text in the same message adds
- * nothing; when the first of them is ORDER_LINE, it alone names them all.
- */
-function noteSkills(row, turns) {
-  const p = row.type === 'response_item' && row.payload;
-  if (!p || p.type !== 'message' || p.role !== 'developer') return;
-  const meta = p.internal_chat_message_metadata_passthrough;
-  const id = String((meta && typeof meta === 'object' && meta.turn_id) || turns.current || '');
-  const e = id ? turns.byId.get(id) : null;
-  if (!e) return;
-  const names = [];
-  for (const part of Array.isArray(p.content) ? p.content : []) {
-    const text = part && typeof part.text === 'string' ? part.text : '';
-    const at = text.indexOf(ROUTE_MARK);
-    if (at < 0) continue;
-    const below = text.slice(at).split('\n').slice(1);
-    if (below.length && below[0].startsWith(ORDER_LINE)) {
-      const end = below[0].indexOf(ORDER_END);
-      for (const item of below[0].slice(ORDER_LINE.length, end < 0 ? undefined : end).split(', ')) {
-        const name = item.endsWith(GIVEN_EARLIER) ? item.slice(0, -GIVEN_EARLIER.length) : item;
-        if (name && names.length < SKILLS_KEPT) names.push(name.slice(0, 120));
-      }
-      continue;
-    }
-    for (const l of below) {
-      const m = /^- ([^\s:][^:]*(?::[^\s:][^:]*)?): /.exec(l);
-      if (!m) break;
-      if (names.length < SKILLS_KEPT) names.push(m[1].slice(0, 120));
-    }
-  }
-  if (names.length) e.skills = names;
 }
 
 /* A message's time, on the turn begun last before it. */
@@ -195,16 +140,12 @@ function noteTurn(row, turns) {
   if (e && used && window) { e.used = used; e.window = window; }
 }
 
-/**
- * `ctx 33% · gpt-6.1-sol high · skills web-fetching, disk-cleanup` for one turn, or '' when nothing about it is known. A
- * plugin's skill is shown without its plugin prefix.
- */
+/** `ctx 33% · gpt-6.1-sol high` for one turn, or '' when nothing about it is known. */
 function turnFigure(e) {
   const parts = [];
   if (e.used && e.window) parts.push(`ctx ${Math.round(100 * e.used / e.window)}%`);
   const model = [String(e.model || '').replace(/^openai\./, ''), e.effort].filter(Boolean).join(' ');
   if (model) parts.push(model);
-  if (e.skills && e.skills.length) parts.push(`skills ${e.skills.map((n) => n.split(':').pop()).join(', ')}`);
   return parts.join(' · ');
 }
 
@@ -282,4 +223,4 @@ function userTimes(rollout) {
 
 function forget() { cache.clear(); }
 
-module.exports = { MAX_BYTES, MAX_TIMES, TURNS_SENT, INJECTED, HOOK_PROMPT, typedByUser, ROUTE_MARK, ORDER_LINE, GIVEN_EARLIER, ORDER_END, textOf, wholeLines, timesIn, turnFigures, turnTimes, userTimes, rolloutMarks, forget };
+module.exports = { MAX_BYTES, MAX_TIMES, TURNS_SENT, INJECTED, HOOK_PROMPT, typedByUser, textOf, wholeLines, timesIn, turnFigures, turnTimes, userTimes, rolloutMarks, forget };

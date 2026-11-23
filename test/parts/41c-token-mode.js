@@ -11,7 +11,7 @@ const path = require('path');
 const fake = require('../fake-vscode');
 const fixture = require('../fixture');
 
-const KEYS = ['codexPlus.workPlan', 'codexPlus.tellCodexYourTimeZone', 'codexPlus.conversationBrief', 'codexPlus.skillRouting', 'codexPlus.wakeUps',
+const KEYS = ['codexPlus.workPlan', 'codexPlus.tellCodexYourTimeZone', 'codexPlus.conversationBrief', 'codexPlus.wakeUps',
   'codexPlus.detachedEndNotices'];
 
 /* A codex program whose app-server acts on the requests as Codex does: plugin/install copies the plugin into its cache,
@@ -74,8 +74,8 @@ module.exports = async ({ eq, note, tmp, root }) => {
   const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
   const props = Object.assign({}, ...[].concat(pkg.contributes.configuration).map((c) => c.properties || {}));
   eq(KEYS.filter((k) => !(props[k].markdownDescription || '').endsWith(` ${tm.ONLY_IN_CUSTOM}`)), [],
-    'each of the six settings the token mode decides ends its description saying it is used only in Custom, with a link to the mode');
-  eq(tm.SWITCHES.filter((s) => s.extension === 'xnervwang.codex-plus').map((s) => s.key), KEYS, 'and they are the six src/token-mode.js lists for Codex Plus');
+    'each of the five settings the token mode decides ends its description saying it is used only in Custom, with a link to the mode');
+  eq(tm.SWITCHES.filter((s) => s.extension === 'xnervwang.codex-plus').map((s) => s.key), KEYS, 'and they are the five src/token-mode.js lists for Codex Plus');
   eq(tm.SWITCHES.filter((s) => s.key.startsWith('codexPlus.')).every((s) => props[s.key] && props[s.key].default === s.default), true,
     'with the defaults this extension declares');
   const readme = fs.readFileSync(path.join(root, 'README.md'), 'utf8');
@@ -114,11 +114,11 @@ module.exports = async ({ eq, note, tmp, root }) => {
     const close = () => { for (const d of subs) { try { d.dispose(); } catch (_) { /* gone */ } } ext.deactivate(); };
     return { vscode, control, ext, install, home, context, source: registered[0], hooks, change, close };
   };
-  const given = (h) => [h.enabled, h.tellTimeZone, h.brief, h.skillRoute];
+  const given = (h) => [h.enabled, h.tellTimeZone, h.brief];
 
   /* ── What the hooks are given and what the source reports, in each mode ── */
   {
-    const off = { workPlan: false, tellCodexYourTimeZone: false, conversationBrief: false, skillRouting: false, wakeUps: false,
+    const off = { workPlan: false, tellCodexYourTimeZone: false, conversationBrief: false, wakeUps: false,
       detachedEndNotices: false };
     const got = {};
     for (const mode of ['interface', 'essential', 'all', 'custom']) {
@@ -130,17 +130,17 @@ module.exports = async ({ eq, note, tmp, root }) => {
     got.unset = [given(unset.hooks()), unset.source.features];
     unset.close();
     eq(got, {
-      interface: [[false, false, false, false], ['openHere', 'shows'], 'Token mode: Interface features (agentPlus.tokenMode); in Codex: work plan off, time-zone note off, conversation brief off, skill suggestions off, wake-ups off, notices when a detached command stops off'],
-      essential: [[true, true, false, false], ['openHere', 'shows'], 'Token mode: Essential features (agentPlus.tokenMode); in Codex: work plan on, time-zone note on, conversation brief off, skill suggestions off, wake-ups off, notices when a detached command stops off'],
-      all: [[true, true, true, true], ['brief', 'openHere', 'shows'], 'Token mode: All features (agentPlus.tokenMode); in Codex: work plan on, time-zone note on, conversation brief on, skill suggestions on, wake-ups on, notices when a detached command stops on'],
-      custom: [[false, false, false, false], ['openHere', 'shows'], 'Token mode: Custom (agentPlus.tokenMode); in Codex: work plan off, time-zone note off, conversation brief off, skill suggestions off, wake-ups off, notices when a detached command stops off'],
-      unset: [[true, true, true, true], ['brief', 'openHere', 'shows']],
+      interface: [[false, false, false], ['openHere', 'shows'], 'Token mode: Interface features (agentPlus.tokenMode); in Codex: work plan off, time-zone note off, conversation brief off, wake-ups off, notices when a detached command stops off'],
+      essential: [[true, true, false], ['openHere', 'shows'], 'Token mode: Essential features (agentPlus.tokenMode); in Codex: work plan on, time-zone note on, conversation brief off, wake-ups off, notices when a detached command stops off'],
+      all: [[true, true, true], ['brief', 'openHere', 'shows'], 'Token mode: All features (agentPlus.tokenMode); in Codex: work plan on, time-zone note on, conversation brief on, wake-ups on, notices when a detached command stops on'],
+      custom: [[false, false, false], ['openHere', 'shows'], 'Token mode: Custom (agentPlus.tokenMode); in Codex: work plan off, time-zone note off, conversation brief off, wake-ups off, notices when a detached command stops off'],
+      unset: [[true, true, true], ['brief', 'openHere', 'shows']],
     }, 'every setting turned off: each mode decides as its table says, Custom follows the settings, and nothing set is All features');
   }
 
   /* ── A change of mode, and of a setting outside Custom ── */
   {
-    const w = await start({ conversationBrief: false, skillRouting: false });
+    const w = await start({ conversationBrief: false });
     let fired = 0;
     w.source.onDidChangeConversations(() => { fired++; });
     const before = [given(w.hooks()), w.source.features];
@@ -150,8 +150,8 @@ module.exports = async ({ eq, note, tmp, root }) => {
     const custom = [given(w.hooks()), w.source.features, fired];
     w.change({ 'agentPlus.tokenMode': 'all' });
     const all = [given(w.hooks()), w.source.features, fired];
-    eq([before, essential, custom, all], [[[true, true, true, true], ['brief', 'openHere', 'shows']], [[true, true, false, false], ['openHere', 'shows'], 1],
-      [[true, true, false, false], ['openHere', 'shows'], 2], [[true, true, true, true], ['brief', 'openHere', 'shows'], 3]],
+    eq([before, essential, custom, all], [[[true, true, true], ['brief', 'openHere', 'shows']], [[true, true, false], ['openHere', 'shows'], 1],
+      [[true, true, false], ['openHere', 'shows'], 2], [[true, true, true], ['brief', 'openHere', 'shows'], 3]],
     'a change of mode rewrites config.json at once and tells Agent Plus the conversations changed; back in Custom the settings are as they were');
     eq(w.control.state.said.filter((s) => /token mode/.test(s.message)).length, 0, 'changing the mode itself says nothing');
 

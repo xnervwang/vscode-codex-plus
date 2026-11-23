@@ -24,8 +24,7 @@
  * Notifications stay on screen, since an error notification is one of the things the reader looks for. LOOK.md beside
  * this file is what the reader is given; it comes from Agent Plus with the other shared files (build/sync-shared.js).
  *
- * Unlike ui.js, it trusts the work plan plugin's hooks when asked, so the skill search, the plan's injection and its
- * Stop hook run.
+ * Unlike ui.js, it trusts the work plan plugin's hooks when asked, so the plan's injection and its Stop hook run.
  */
 const cp = require('child_process');
 const fs = require('fs');
@@ -80,18 +79,6 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
   /* A row left doing at the end of a turn makes the plugin's Stop hook ask for the plan to be brought up to date, which
      Codex draws as a prompt of the user's with "Hook feedback" under it. */
   writePlan('doing');
-  /* A skill only the default extra folder of codexPlus.skillRoutingExtraFolders holds, for the skill search to name. */
-  const skill = path.join(profile.home, '.claude', 'skills', 'inventory-sync-retry');
-  fs.mkdirSync(skill, { recursive: true });
-  fs.writeFileSync(path.join(skill, 'SKILL.md'), '---\nname: inventory-sync-retry\ndescription: Where the inventory sync sets its retry '
-    + 'delay and back-off, and how to change the retry delay of the sync job.\n---\n\nRead config/sync.yaml first.\n');
-  /* A Claude Code plugin with a skill of its own, which the skill search reads only with codexPlus.skillRoutingClaudePlugins. */
-  const pluginAt = path.join(profile.home, '.claude', 'plugins', 'cache', 'test-market', 'export-tools', '1.0.0');
-  fs.mkdirSync(path.join(pluginAt, 'skills', 'nightly-export-check'), { recursive: true });
-  fs.writeFileSync(path.join(pluginAt, 'skills', 'nightly-export-check', 'SKILL.md'), '---\nname: nightly-export-check\ndescription: How the nightly export bucket check '
-    + 'decides which archived rows to skip, and where its skip list is kept.\n---\n\nRead export/check.yaml first.\n');
-  fs.writeFileSync(path.join(profile.home, '.claude', 'plugins', 'installed_plugins.json'), JSON.stringify({ version: 2,
-    plugins: { 'export-tools@test-market': [{ scope: 'user', installPath: pluginAt, version: '1.0.0' }] } }));
   const wakeupFile = path.join(plans, `${t0.id}.wakeup`);
   const setWakeup = (everyMinutes, setAgo = 0) => {
     const w = JSON.parse(fs.readFileSync(wakeupFile, 'utf8'));
@@ -1276,26 +1263,11 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     await codex.locator(hookBubble).last().click().catch(() => {});
     writePlan('done');
     await look('reply-duration', {
-      expect: 'Above the last reply its time is followed, when Codex shows no "Worked for" of its own, by how long the turn took, and then its figures, as "14:02:11  3s · ctx 0% · gpt-6.1-sol medium"; '
-        + 'after them the same line names the skill "inventory-sync-retry" that the skill search gave Codex.',
+      expect: 'Above the last reply its time is followed, when Codex shows no "Worked for" of its own, by how long the turn took, and then its figures, as "14:02:11  3s · ctx 0% · gpt-6.1-sol medium".',
     }, async () => {
       await toBottom();
       return bottomBox(520);
     });
-    await look('skill-search-claude-plugin', {
-      expect: 'With codexPlus.skillRoutingClaudePlugins set to "*", a message about the nightly export bucket check, sent after one other message, gets a reply whose line above it names the skill nightly-export-check, '
-        + 'which only a Claude Code plugin installed in the made-up home holds (export-tools), not Codex.',
-    }, async () => {
-      await setting('skillRoutingClaudePlugins', ['*']);
-      /* A message after the change finds the skill index out of date and has it rebuilt in the background, answering
-         from the old one meanwhile (search_text in the plugin's skill_route.py), so the question goes in the next one. */
-      await sendAndWait('Thanks, that helps.');
-      await sleep(5000);
-      await sendAndWait('Where does the nightly export bucket check skip archived rows?');
-      await toBottom();
-      return bottomBox(520);
-    });
-    await setting('skillRoutingClaudePlugins', undefined);
         /* This step waits for the turns above: the meter shows the window Codex recorded on the latest turn, and the
        made-up turns recorded theirs before codexPlus.contextWindow was set. */
     await look('context-meter-hover', {

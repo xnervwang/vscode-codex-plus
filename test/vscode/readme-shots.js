@@ -75,10 +75,8 @@ function demoId(id) {
 const TITLE = 'Import bank statements';
 const TITLES = { '01a1c321-8585-7621-93b0-f7d7106ca508': 'Import bank statements' };
 
-/*
- * Codex Plus shows above a reply the skills the skill search named for that turn. In the pack those are the skills
- * installed where it was recorded, so the search's block is left out of the copy.
- */
+/* The pack's rollouts carry the skill lists an earlier release injected on the machine they were recorded on, naming
+   that machine's skills and paths, so those blocks are left out of the copy. */
 const routed = (line) => line.includes('"role":"developer"') && line.includes('Skills that may fit this message');
 
 function lastTime(lines) {

@@ -1,6 +1,6 @@
 # Codex Plus
 
-Codex Plus is a VS Code extension that adds features to Codex, OpenAI's VS Code extension (`openai.chatgpt`). It adds a work plan for each Codex conversation alongside your conversations in Agent Plus's views, and a sidebar list of Codex conversations laid out like Claude Code's list. It also adds times, a rail of your own messages, a context meter, chimes and dots on tabs to Codex's conversation page, message box and tabs, plus skill search and wake-ups for Codex itself. It depends on Agent Plus (`xnervwang.agent-plus`), which VS Code installs along with it, and it installs a work plan plugin into Codex and edits Codex's installed files.
+Codex Plus is a VS Code extension that adds features to Codex, OpenAI's VS Code extension (`openai.chatgpt`). It adds a work plan for each Codex conversation alongside your conversations in Agent Plus's views, and a sidebar list of Codex conversations laid out like Claude Code's list. It also adds times, a rail of your own messages, a context meter, chimes and dots on tabs to Codex's conversation page, message box and tabs, plus wake-ups for Codex itself. It depends on Agent Plus (`xnervwang.agent-plus`), which VS Code installs along with it, and it installs a work plan plugin into Codex and edits Codex's installed files.
 
 ## Getting started
 
@@ -34,7 +34,6 @@ Most of what Codex Plus draws in Codex's page, message box and tabs needs the pa
 | Answers to plan questions, sent from Agent Plus into the conversation ([Answering a plan question](#answering-a-plan-question)) | Agent Plus's Answer view; Codex's message box |
 | Your time zone, told to Codex when it runs on another machine ([Your time zone](#your-time-zone)) | Codex's context |
 | Images in replies: a chart or screenshot the model saves, shown in the reply, and web images shown as links ([Images in replies](#images-in-replies)) | Codex conversation; Codex's context |
-| The installed skills that best fit each message, given to Codex before the turn ([Skill search](#skill-search)) | Codex's context; the line above a reply |
 | Wake-ups: prompts the model schedules to keep an idle conversation going ([Wake-ups](#wake-ups)) | Codex conversations open in this window |
 | A list of your Codex conversations laid out like Claude Code's, with groups, search, status dots, unread envelopes and account usage ([The session list](#the-session-list)) | Codex sessions view, in the Codex Plus sidebar |
 | Archiving and deleting conversations, and deleting old archived ones ([Archive and delete](#archive-and-delete)) | Codex sessions view |
@@ -88,60 +87,11 @@ In Codex, reply images are thumbnails up to 10rem high. The patch displays each 
 
 Whether the setting is on or off, the patch shows a web image as a plain link. The link text is the image's alt text, or its address if there is no alt text. Codex Plus does not fetch it. With a ChatGPT login, Codex checks the address with OpenAI's service and can load the image before the patch turns it into a link. Turn `codexPlus.replyImages` off and the patch shows other images as `[Image]`, with the path on hover. If it sent the note earlier in the conversation, it tells the model in the next message that the panel no longer shows images. The setting has no effect when `codexPlus.enabled` is off.
 
-## Skill search
-
-Before each turn, Codex Plus puts the installed skills that best fit your message in front of Codex. It includes their full descriptions and the path of each one's `SKILL.md`, under a line asking the model to check that a skill fits before reading it. The names of those skills appear on the line above that turn's reply, after its context share, model and effort.
-
-Codex's own list of skills cuts every description to about 50 characters once a hundred or so skills are installed. It silently drops what its budget cannot hold (see "Codex's own list of skills" below).
-
-Codex Plus searches these folders that Codex reads:
-
-- The repository's `.agents/skills` and `.codex/skills`, from the working folder up to the repository's root
-- `$CODEX_HOME/skills` (`~/.codex/skills` by default)
-- `~/.agents/skills`
-- Codex's system skills
-- `/etc/codex/skills`
-- The skills of every plugin that Codex's `config.toml` enables
-
-It also searches each folder in `codexPlus.skillRoutingExtraFolders` (`~/.claude/skills` by default). It searches the Claude Code plugins named in `codexPlus.skillRoutingClaudePlugins` (none by default).
-
-Codex Plus leaves out skills turned off in `config.toml`'s `[[skills.config]]` and skills whose `agents/openai.yaml` sets `allow_implicit_invocation: false`. It also leaves out a skill you name with `$name` in your message, because Codex puts that skill's whole `SKILL.md` in front of the model itself. Skills with the same name or description appear once, using the copy Codex reads first. Messages under six characters get no skills.
-
-The keyword search runs on your machine and uses BM25, a standard formula for ranking text by keywords. It searches words, 4-letter pieces of words, and pairs of Chinese or Japanese characters. A skill's name weighs more than its description. Keyword search uses no network or credentials.
-
-When skills change, the next turn notices and rebuilds the index in the background. It uses the old index until the rebuild finishes. Rebuilding 244 skills takes about a third of a second.
-
-If Codex Plus gave a skill in full earlier in the conversation with the same description and path, it does not give it again unless the conversation has since been compacted or rolled back. In the text given to Codex, a line lists every skill the search found, best fit first, and marks those given earlier. A sub-agent, a conversation Codex starts from another conversation to do part of its work, always gets every skill in full.
-
-To find skills already given, the hook reads what was added since the previous turn to the conversation log, the file Codex writes for each conversation (a rollout). It saves what it found in `<conversation ID>.routed` beside the plan. That file is deleted with the conversation.
-
-Each turn costs one Python process, which Codex starts for the plugin's hook. The process compares modification times of the skill files it indexed and reads that index, about 1 MB for 250 skills. With 244 skills, it took 44 ms at the median and 53 ms at the 95th percentile, not counting Python's own start-up. The skills put in front of Codex add about 1,550 input tokens when all are new to the conversation ([Typical values](#typical-values)).
-
-On 2026-11-16, one machine had nine Codex conversations with more than one turn, totaling 81 turns. Skill blocks used 57% of the characters they would have used if every skill were given in full on each turn.
-
-Skill search needs the work plan plugin with its hooks trusted. `codexPlus.skillRouting` turns it off. `codexPlus.skillRoutingCount` sets how many skills are given (5 by default).
-
-After Codex Plus updates the plugin, Codex asks once more whether to trust the plugin's hooks, because the skill search's hook is new.
-
-### Search by meaning
-
-Search by meaning is off unless `codexPlus.skillRoutingVectorSearch` is on. Even then, it runs only while Codex's model provider is Amazon Bedrock. It sends only your message text, up to 1,500 characters, to `cohere.embed-v4` on the Bedrock account and region Codex uses. Bedrock bills it as embedding, and it adds nothing to the conversation. It signs the request with the credentials Codex is set up with: the provider's `credential_export` command, its `profile`, or the standard AWS variables. The credentials are never written to disk.
-
-Each skill's name and description are sent when the index is built, and again only after they change. Search by meaning uses `HTTPS_PROXY` when it is set. A turn waits at most 1.5 seconds for it, network included, and falls back to keyword search on any failure. A lasting failure (no credentials, access denied, or the model not offered in the region) turns it off for six hours, or until the provider, region, or setting changes.
-
-### The skill_search tool
-
-`skill_search` is a read-only tool of the plugin's MCP server. It runs the same search with words the model chooses, so the model can rephrase, try synonyms, or turn a request made in another language into English keywords.
-
-### What is logged
-
-`skill-route/route.log` in the work plan plugin's data folder records the skills each turn got, which were given in full or by name only, whether keyword search or search by meaning found them, how long it took, and which `SKILL.md` files the turn then read. It never records the words of a message. The log stays under 256 KB, with one older file.
-
-### Codex's own list of skills
+## Codex's own list of skills
 
 When `codexPlus.skillsListBudget` is not 0, Codex Plus writes it into Codex's `config.toml` as `skills.max_context_tokens`. Codex's own default is 2% of the model's context window, about 50 characters per description with a hundred or more skills. At 10,000 tokens, the most Codex takes, each description gets about 195 characters. Every turn's context then carries a skills list of up to that many tokens. The default value, 0, leaves Codex's setting alone.
 
-`codexPlus.disabledSkills` names skills to turn off. Codex Plus writes each as a `[[skills.config]]` entry with `enabled = false`. Codex leaves the skill out of its list and does not run it when you name it with `$name`; skill search leaves it out too. Name a plugin's skill with its plugin, as `Plugin-name:skill-name`. Removing a name removes only the entry this setting added. A value you wrote into `config.toml` yourself is never changed.
+`codexPlus.disabledSkills` names skills to turn off. Codex Plus writes each as a `[[skills.config]]` entry with `enabled = false`. Codex leaves the skill out of its list and does not run it when you name it with `$name`. Name a plugin's skill with its plugin, as `Plugin-name:skill-name`. Removing a name removes only the entry this setting added. A value you wrote into `config.toml` yourself is never changed.
 
 ## Wake-ups
 
@@ -247,7 +197,7 @@ Codex Plus draws these additions into Codex's own page. Each needs the patch and
 
 The time appears above every message and reply block in your own time zone, including a message you send while a turn runs. It replaces Codex's time below a reply and beside your message. A time read from the conversation log includes seconds (`HH:MM:SS`); one read from the clock Codex shows on its page has only `HH:MM`. Messages from another day start with `MM/DD HH:MM:SS`, or include the year (`YYYY/MM/DD`) if it is not this year. `codexPlus.timestamps` turns the times off.
 
-Beside each reply's time, you see that turn's share of the context window (see [The context meter](#the-context-meter)), model and effort, for example `14:02:11  ctx 33% · gpt-6.1-sol high`, then the names of the skills that [skill search](#skill-search) gave the turn, as `· skills web-fetching`. Codex Plus matches them by the turn ID Codex puts on the reply; `codexPlus.turnFigures` turns them off. When Codex shows no "Worked for" of its own, the time also includes the turn's duration, for example `14:02:11  9s · ctx 33% · …`. Codex draws "Worked for" only when a turn did something before its reply. `codexPlus.replyDuration` turns the added duration off.
+Beside each reply's time, you see that turn's share of the context window (see [The context meter](#the-context-meter)), model and effort, for example `14:02:11  ctx 33% · gpt-6.1-sol high`. Codex Plus matches them by the turn ID Codex puts on the reply; `codexPlus.turnFigures` turns them off. When Codex shows no "Worked for" of its own, the time also includes the turn's duration, for example `14:02:11  9s · ctx 33% · …`. Codex draws "Worked for" only when a turn did something before its reply. `codexPlus.replyDuration` turns the added duration off.
 
 ![A time above each message, and above a reply its context share, model and effort](images/shots/reply-figures.png)
 
@@ -339,7 +289,7 @@ How the page finds the approval card is documented in [docs/codex-page.md](docs/
 
 ## What it costs in tokens
 
-In an ordinary turn without a work plan, Codex Plus adds about 700 tokens to what Codex sends the model; with a work plan, it adds about 800 to 1,200 tokens. Nearly all of the 700 tokens are skill search. The plan adds about 90 tokens to a message when it has not changed since the previous message, which is about half of all messages, and about 520 tokens (the median) when it has changed. These figures count the text itself; how they were measured is under [Typical values](#typical-values).
+The plan adds about 90 tokens to a message when it has not changed since the previous message, which is about half of all messages, and about 520 tokens (the median) when it has changed. These figures count the text itself; how they were measured is under [Typical values](#typical-values).
 
 A request at the end of a turn (an end-of-turn reminder or one of the brief's requests, under [Added now and then](#added-now-and-then)) has a separate cost: Codex answers it with two more model calls that each send the whole context again, and those calls are not included above. The work plan's text, given at the start of the turn, asks for the status before the final reply, so Codex sends the `set_status` call with the turn's other tool calls.
 
@@ -348,16 +298,15 @@ A request at the end of a turn (an end-of-turn reminder or one of the brief's re
 | Work plan | Off, plugin not loaded | On | On | `codexPlus.workPlan` |
 | Time zone | Off | On | On | `codexPlus.tellCodexYourTimeZone` |
 | Conversation brief | Off | Off | On | `codexPlus.conversationBrief` |
-| Skill search | Off | Off | On | `codexPlus.skillRouting` |
 | Wake-ups | Off | Off | On | `codexPlus.wakeUps` |
 | Detached command notices | Off | Off | On | `codexPlus.detachedEndNotices` |
 | `claude --bg` session notices | Off | Off | On | `codexPlus.detachedEndNotices` |
 
-Codex Plus follows Agent Plus's `agentPlus.tokenMode` setting, which defaults to All features. Outside Custom, the six settings in the table's Custom column have no effect. Changing modes does not change them. Changing one of those settings outside Custom shows a notice with a Switch to Custom button.
+Codex Plus follows Agent Plus's `agentPlus.tokenMode` setting, which defaults to All features. Outside Custom, the five settings in the table's Custom column have no effect. Changing modes does not change them. Changing one of those settings outside Custom shows a notice with a Switch to Custom button.
 
 In Interface features, Codex does not load the work plan plugin, just as when you run `Codex Plus: Stop Loading the Work Plan Plugin`. Choosing another mode loads it again unless you stopped loading it yourself. Changes to plugin loading, the work plan skill in Codex's skill list, and the `work_plan` tools (see Sent with every call) apply only to conversations started after the mode change.
 
-In a running conversation, a mode change applies from the next message to work plan injection and reminders, conversation brief requests, the time zone, skill search, and wake-ups. `Codex Plus: Show Status` shows the mode and which of the five features run. The information button in a conversation's message box names the mode.
+In a running conversation, a mode change applies from the next message to work plan injection and reminders, conversation brief requests, the time zone, and wake-ups. `Codex Plus: Show Status` shows the mode and which of the five features run. The information button in a conversation's message box names the mode.
 
 The tables below show the text Codex Plus adds to what Codex sends the model. All of it comes from the work plan plugin Codex Plus installs into Codex; what Codex Plus draws in VS Code sends nothing to the model. Text added to a conversation stays in context and goes with every later model call until compaction replaces the conversation with a summary. A token is about four characters of English.
 
@@ -366,7 +315,6 @@ The tables below show the text Codex Plus adds to what Codex sends the model. Al
 | What | When | At most | Turned off by |
 | --- | --- | --- | --- |
 | The work plan | Each message, while the conversation's plan has a row that is not `done` or `dropped`. The whole block, with what the states mean and how to change a row, on the conversation's first message and the first after each compaction; a short head in its place otherwise; one line when no row has changed since the message before | 6,000 characters, the brief included; the one line is about 160 characters and the plan's path (240 with the brief on) | `codexPlus.workPlan` |
-| Skill search | Each message of six characters or more | 15,000 bytes | `codexPlus.skillRouting`; `codexPlus.skillRoutingCount` sets how many skills |
 
 ### Added now and then
 
@@ -385,7 +333,7 @@ The tables below show the text Codex Plus adds to what Codex sends the model. Al
 | A detached command has stopped | On Linux, when a command a conversation left running detached is gone: one notice for the commands that stopped close together, in All features token mode or in Custom while `codexPlus.detachedEndNotices` is on. If the conversation is idle, the notice starts a turn | About 200 characters, and up to 370 more per command | `codexPlus.detachedEndNotices` |
 | A `claude --bg` session has changed | When a `claude --bg` session a conversation started finishes, fails, is stopped, dies or waits for an answer: one notice for the sessions that changed close together, under the same setting. If the conversation is idle, the notice starts a turn | About 200 characters, and up to 440 more per session | `codexPlus.detachedEndNotices` |
 
-- The work plan, the skill search and the wake-up prompt are cut or refused at those sizes by the plugin. The reminders have no cut: each is fixed text with at most six row titles of 60 characters.
+- The work plan and the wake-up prompt are cut or refused at those sizes by the plugin. The reminders have no cut: each is fixed text with at most six row titles of 60 characters.
 - Rows closed more than a day ago are moved out of the plan file to `closed/<thread id>.json` beside it, so reading the plan after a compaction costs less too; Agent Plus's views read both files.
 
 ### Sent with every call
@@ -393,14 +341,13 @@ The tables below show the text Codex Plus adds to what Codex sends the model. Al
 | What | When | At most | Turned off by |
 | --- | --- | --- | --- |
 | The work plan skill in Codex's list of skills | Every call | Its name and a 573-character description, which Codex shortens to fit the list's budget | `Codex Plus: Stop Loading the Work Plan Plugin`, or the Interface features token mode |
-| The `work_plan` MCP server's seven tools | Codex 0.167 finds MCP tools through its tool search, so their definitions join the context once a search returns them | 8,631 characters for all seven | `Codex Plus: Stop Loading the Work Plan Plugin`, or the Interface features token mode |
+| The `work_plan` MCP server's six tools | Codex 0.167 finds MCP tools through its tool search, so their definitions join the context once a search returns them | 7,583 characters for all six | `Codex Plus: Stop Loading the Work Plan Plugin`, or the Interface features token mode |
 | Codex's own list of skills, when `codexPlus.skillsListBudget` is not 0 | Every call | That many tokens | `codexPlus.skillsListBudget` at 0, the default |
 
 ### Costing nothing
 
 - Everything Codex Plus and Agent Plus draw in VS Code.
 - The exceptions are two actions in VS Code that start Codex's own model calls: clicking the context meter compacts the conversation, and Resume Goal lets the goal start turns.
-- The search by meaning, off by default, sends your message to `cohere.embed-v4` on Bedrock: billed there as embedding, nothing added to the conversation.
 - Hovering the context meter shows, for the conversation in front, how many times the work plan was added since the last compaction, how many characters that came to, and about what share of the context in use.
 
 ### Typical values
@@ -413,8 +360,6 @@ Measured on 2026-11-16 on one machine, with the hooks in this repository. Tokens
 | The work plan, short head | Median 1,416 characters (about 520 tokens), 90th percentile 3,584 | The same plans, with one row added; the two Codex plans gave 808 and 1,958 characters |
 | The work plan, one line | 343 characters (about 90 tokens), 102 of them the plan's path | The same plans, with the brief on |
 | Messages whose plan is unchanged since the message before | 50% | 2,773 messages with the plan in 32 Claude Code conversations, from 2026-11-11 22:40 to 2026-11-16 01:12 UTC, counted as unchanged when the hook gave the one line, which it does when the rows differ only in how long each has been in its state (the plan text shows that time) |
-| Skill search, every skill new to the conversation | Median 3,880 characters, about 1,550 tokens | 740 real messages, each as the first of its conversation, of which 700 got skills; 248 skills, keyword search |
-| Skill search, per turn | Median about 690 tokens (1,869 characters); given in full every turn, about 1,290 | The 81 turns of the nine Codex conversations with more than one turn, in order, with skills given earlier named instead of given again |
 
 ## CPU and disk
 
@@ -466,7 +411,7 @@ Codex ships a new build about every week. `Codex Plus: Show Status` tells you wh
 
 `Codex Plus: Remove the Patch from Codex` restores Codex's `out/extension.js`, `webview/index.html` and `package.json`. Uninstalling this extension also restores those files. Reload the window afterwards.
 
-The Interface features token mode, set with `agentPlus.tokenMode` or from Agent Plus's token mode entry in the status bar, makes the work plan, skill search, brief, time zone and wake-ups add nothing. Codex is set not to load the plugin, as with Stop Loading. Any other mode loads it again unless you stopped loading it yourself.
+The Interface features token mode, set with `agentPlus.tokenMode` or from Agent Plus's token mode entry in the status bar, makes the work plan, brief, time zone and wake-ups add nothing. Codex is set not to load the plugin, as with Stop Loading. Any other mode loads it again unless you stopped loading it yourself.
 
 `Codex Plus: Stop Loading the Work Plan Plugin` keeps the plugin, its marketplace entry and the trust you gave its hooks. It sets `enabled = false` under `[plugins."agent-work-plan@codex-extras"]` in `config.toml`, so Codex does not load it. Run `Codex Plus: Install the Work Plan Plugin into Codex` to load it again; the install at start-up does not do that. Uninstalling this extension instead removes all three, as described next.
 

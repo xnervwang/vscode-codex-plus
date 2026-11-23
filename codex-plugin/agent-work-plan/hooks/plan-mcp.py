@@ -15,9 +15,6 @@ arguments as the row command, and two more that write the conversation's brief a
 Every call is handed to plan-row.py's run(), so the rules for what a row or the brief may say live in one place. A path it is given must be a plan file in this plugin's data directory of the Codex home the server was started
 for, named by a thread id: the tools write only there.
 
-skill_search is read-only: it searches every installed skill with the words the model gives it (skill_route.py),
-including skills missing from Codex's own list.
-
 set_wakeup and clear_wakeup keep a conversation's wake-up, <thread id>.wakeup in the same data directory: the Codex Plus
 extension reads it in every window and, when it is due, queues the prompt for that conversation (src/wakeup.js there).
 """
@@ -33,7 +30,6 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from plan_path import (BRIEF_WIDTH, PLAN_NAME, PLUGIN_DIR_NAME, SESSION_NAME, STATES, STATUS_PARTS, WAITING_ON,  # noqa: E402
                        WAKEUP_SUFFIX, codex_home, write_atomic)
-import skill_route  # noqa: E402
 
 
 def load_row_command():
@@ -102,20 +98,6 @@ TOOLS = [
                      "properties": dict({"plan": PLAN}, **{part: {"type": "string", "description": "%s, at most %d wide." % (
                          says, BRIEF_WIDTH[part])} for part, says in zip(STATUS_PARTS, (
                              "What you are doing", "The latest progress", "Who it waits on, or the next step"))})}},
-    {"name": "skill_search", "description": "Search every skill installed for Codex by what you want to do, including "
-     "skills that the skills list leaves out or cuts short. Write the query in your own words: rephrase the request, try "
-     "synonyms, and turn a request made in another language into English keywords; when nothing fits, search again "
-     "with other words. Returns each match's name, full description and SKILL.md path. Read a SKILL.md only if it fits "
-     "the task.",
-     "annotations": {"title": "Search the installed skills", "readOnlyHint": True, "destructiveHint": False,
-                     "idempotentHint": True, "openWorldHint": False},
-     "inputSchema": {"type": "object", "required": ["query"], "additionalProperties": False, "properties": {
-         "query": {"type": "string", "description": "What you are looking for, in words."},
-         "count": {"type": "integer", "minimum": 1, "maximum": skill_route.SEARCH_COUNT_MAX,
-                   "description": "How many skills to return; 5 when left out."},
-         "cwd": {"type": "string", "description": "The working directory, so that the repository's own skills are "
-                 "searched too."},
-     }}},
     {"name": "set_wakeup", "description": "Set a recurring wake-up for this conversation: every every_minutes minutes "
      "(5 when left out), the prompt is sent to it as a new message as soon as it is idle, so work it still has to do "
      "carries on after a turn ends instead of waiting for the user. It works while the conversation is open in a VS Code "
@@ -171,17 +153,6 @@ def plan_path(value):
     return path
 
 
-def search(args):
-    query = args.get("query")
-    if not isinstance(query, str) or not query.strip():
-        raise Refused("query is the words to search for, and it is empty.")
-    count = args.get("count", 5)
-    if isinstance(count, bool) or not isinstance(count, int) or count < 1:
-        raise Refused("count is a whole number of 1 or more, not %r." % (count,))
-    cwd = args.get("cwd") if isinstance(args.get("cwd"), str) else ""
-    return skill_route.search_text(PLAN_DIR, query, min(count, skill_route.SEARCH_COUNT_MAX), cwd)
-
-
 def wakeup_file(args):
     thread = args.get("thread") or os.environ.get("CODEX_THREAD_ID") or ""
     if not isinstance(thread, str) or not SESSION_NAME.match(thread):
@@ -220,8 +191,6 @@ def clear_wakeup(args):
 def call(name, args):
     if not isinstance(args, dict):
         raise Refused("The arguments are not an object.")
-    if name == "skill_search":
-        return search(args)
     if name == "set_wakeup":
         return set_wakeup(args)
     if name == "clear_wakeup":
@@ -261,8 +230,7 @@ def respond(msg):
                 "capabilities": {"tools": {}},
                 "serverInfo": {"name": "work_plan", "version": "1.0.0"},
                 "instructions": "Changes rows of this conversation's work plan and writes its brief; the plan file's "
-                                "path is in the work plan block at the start of each turn. skill_search searches every "
-                                "installed skill, including the ones the skills list leaves out or cuts short."}
+                                "path is in the work plan block at the start of each turn."}
     if method == "tools/list":
         return {"tools": TOOLS}
     if method == "tools/call":

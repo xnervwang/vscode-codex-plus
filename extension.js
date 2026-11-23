@@ -301,14 +301,23 @@ function writeHookSettings(context) {
       replyImages: settings().replyImages && supported.verified(codexVersion()),
       brief: runs('conversationBrief'),
       compactTokenLimit: codexConfig.compactLimit(files.codexHome()),
-      skillRoute: runs('skillRouting'),
-      skillRouteVector: c.get('skillRoutingVectorSearch', false),
-      skillRouteCount: c.get('skillRoutingCount', 5),
-      skillRouteExtraDirs: c.get('skillRoutingExtraFolders', ['~/.claude/skills']),
-      skillRouteClaudePlugins: c.get('skillRoutingClaudePlugins', []),
     }, { marker: context.globalStorageUri && context.globalStorageUri.fsPath });
     install.writeClientZone(files.codexHome(), context.globalState.get('codexPlus.clientTimeZone'));
   } catch (e) { log.appendLine(`could not write the hooks' settings: ${e.message}`); }
+}
+
+/* The record of plan directories already cleared sits in global storage, on the machine Codex runs on: globalState is
+   kept by the client, and one client may connect to several machines. */
+function removeSkillSearchLeftovers(context, say) {
+  if (!context.globalStorageUri) return;
+  try {
+    const r = workplan.removeSkillSearchLeftovers({ dir: install.planDir(files.codexHome()),
+      doneFile: path.join(context.globalStorageUri.fsPath, 'skill-search-leftovers-cleared.json') });
+    if (r && r.failed) say(`deleting what the skill search left in the plan directory: ${r.failed}`);
+    else if (r && (r.folder || r.files)) {
+      say(`deleted what the skill search left in the plan directory: ${r.folder ? `${workplan.SKILL_SEARCH_DIR}/ and ` : ''}${r.files} .routed file(s)`);
+    }
+  } catch (e) { say(`deleting what the skill search left in the plan directory: ${e.message}`); }
 }
 
 async function activate(context) {
@@ -540,6 +549,7 @@ async function activate(context) {
         if (r.deleted) say(`removed ${r.deleted} plan file(s) of conversations that no longer exist`);
         else if (r.why) say(`plan cleanup: ${r.why}`);
       }).catch((e) => say(`plan cleanup: ${e.message}`));
+      removeSkillSearchLeftovers(context, say);
       if (archiveSweeper) archiveSweeper.start();
     }, 60000);
     try {
@@ -1472,7 +1482,8 @@ function deactivate() {
    `_ensurePlugin` (the start-up install of the plugin), `_reopenDropped` (reopening dropped tabs) and `_loadRestored`
    (codexPlus.loadRestoredTabs) run after a delay during activation, so the tests call them directly. `_tokenModeLine`
    is Show Status's line for the token mode. `_sweepArchived` runs the pass over archived conversations that activation
-   starts a minute in, and `_holdArchived` says which of the conversations given that pass would leave alone. */
+   starts a minute in, and `_holdArchived` says which of the conversations given that pass would leave alone.
+   `_removeSkillSearchLeftovers` is the deletion of the skill search's files that activation runs a minute in too. */
 module.exports = { activate, deactivate, _settings: settings, _ensurePlugin: ensurePlugin, _reopenDropped: reopenDropped, _loadRestored: loadRestored,
   _tokenModeLine: tokenModeLine, _sweepArchived: () => (archiveSweeper ? archiveSweeper.run() : Promise.resolve(null)),
-  _holdArchived: (ids) => (holdArchived ? holdArchived(ids) : Promise.resolve(null)) };
+  _holdArchived: (ids) => (holdArchived ? holdArchived(ids) : Promise.resolve(null)), _removeSkillSearchLeftovers: removeSkillSearchLeftovers };

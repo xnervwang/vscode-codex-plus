@@ -63,11 +63,11 @@ module.exports = async ({ eq, tmp, root }) => {
 
   /* The sweep (src/workplan.js) deletes side files by suffix, so a new suffix has to be added there too. */
   const hooks = path.join(root, 'codex-plugin', 'agent-work-plan', 'hooks');
-  const python = ['plan_common.py', 'plan_agent.py', 'route-skills.py'].map((f) => fs.readFileSync(path.join(hooks, f), 'utf8')).join('\n');
+  const python = ['plan_common.py', 'plan_agent.py'].map((f) => fs.readFileSync(path.join(hooks, f), 'utf8')).join('\n');
   const suffixes = [...python.matchAll(/^\w+_SUFFIX = "(\.\w+)"/gm)].map((m) => m[1]).filter((x) => x !== '.lock');
   const { SIDE_SUFFIXES } = require(path.join(root, 'src', 'workplan.js'));
-  eq([suffixes.includes('.compacted') && suffixes.includes('.briefed') && suffixes.includes('.routed'), suffixes.filter((x) => !SIDE_SUFFIXES.includes(x))], [true, []],
-    'every file the hooks keep beside a plan, the brief\'s two and the skill search\'s included, is one the sweep removes with its conversation');
+  eq([suffixes.includes('.compacted') && suffixes.includes('.briefed'), suffixes.filter((x) => !SIDE_SUFFIXES.includes(x))], [true, []],
+    'every file the hooks keep beside a plan, the brief\'s two included, is one the sweep removes with its conversation');
 
   const custom = { 'agentPlus.tokenMode': 'custom' };
   const turned = await run(root, tmp, custom, { conversationBrief: false });
