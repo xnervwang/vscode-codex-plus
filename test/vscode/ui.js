@@ -1493,9 +1493,13 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       model.release();
       if (apWaits) {
         const done = await until(async () => { const d = await dotsOn(title); return d && d.working === 0 && d; }, 30000, 500);
-        await sleep(8000);
-        check(!!done && !(await toastsAbout(title, mark)).length, 'once the queued turn has ended too, it is not announced either, its tab being in this window',
-          { dots: await dotsOn(title), notifications: await toastsAbout(title, mark) });
+        const stopped = await panelSays(title, 'stopped', null, 30000);
+        /* On Windows a Codex page brought to the front some seconds after a queued turn ended was seen never to draw that
+           turn, and the steps after this one read the newest turn the page draws; so the tab stays behind as long as the
+           notice was once waited for. */
+        await sleep(25000);
+        check(!!done && stopped.ok && !(await toastsAbout(title, mark)).length, 'once the queued turn has ended too, it is not announced either, its tab being in this window',
+          { dots: await dotsOn(title), row: stopped.row, notifications: await toastsAbout(title, mark) });
         note('this Agent Plus announces no conversation the focused window shows, so that the reply after a queued turn is announced once '
           + 'was not checked here: that takes a conversation no window shows');
       } else if (inFocus) {
