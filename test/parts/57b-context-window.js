@@ -33,13 +33,15 @@ module.exports = async ({ eq, tmp, root }) => {
   const MAP = { 'gpt-6.1-sol': '1.05M', 'gpt-6-luna': '512K', 'my-model': '200000' };
   eq(['gpt-6.1-sol', 'openai.gpt-6.1-sol', 'us.openai.gpt-6.1-sol', 'gpt-6-luna', 'my-model', 'gpt-6-sol']
     .map((m) => { const v = cw.valueFor(MAP, m); return v && [v.key, v.text, v.value]; }),
-  [['gpt-6.1-sol', '1.05M', 917000], ['gpt-6.1-sol', '1.05M', 917000], ['gpt-6.1-sol', '1.05M', 917000],
+  [['gpt-6.1-sol', '1.05M', 921000], ['gpt-6.1-sol', '1.05M', 921000], ['gpt-6.1-sol', '1.05M', 921000],
     ['gpt-6-luna', '512K', 384000], ['my-model', '200000', 200000], null],
   'a published model\'s window loses its 128K of output and stays under the largest input Bedrock took; a Bedrock name finds its model; '
     + 'a model with no published window is written as given; a model with no entry has none');
-  eq(cw.valueFor({ 'openai.gpt-6.1-sol': '2M' }, 'gpt-6.1-sol'), { key: 'openai.gpt-6.1-sol', shown: 1050000, text: '1.05M', value: 917000 },
+  eq(cw.valueFor({ 'openai.gpt-6.1-sol': '2M' }, 'gpt-6.1-sol'), { key: 'openai.gpt-6.1-sol', shown: 1050000, text: '1.05M', value: 921000 },
     'a window over the published one is the published one');
   eq(cw.valueFor({ 'gpt-6.1-sol': '100K' }, 'gpt-6.1-sol'), null, 'and one that leaves no room for input is not used');
+  eq(['openai.gpt-6.2-sol', 'gpt-6.2-astra', 'gpt-5.5'].map((m) => cw.valueFor({ [m]: '1.05M' }, m).value), [921000, 921000, 921000],
+    'GPT-6.2 Sol, GPT-6.2 Astra and GPT-5.5 publish the same window, so theirs loses its output too');
 
   /* ── config.toml's value, for the model a new conversation starts with ── */
   const memento = fake.memento();
@@ -47,13 +49,13 @@ module.exports = async ({ eq, tmp, root }) => {
   let refuse = false;
   const ask = async (method, params) => { sent.push([method, params]); return refuse ? { outcome: 'failed', reason: 'no' } : { outcome: 'done', result: {} }; };
   const top = async (map, model, inFile) => { sent.length = 0; const r = await cw.applyTopLevel({ ask, memento, map, model, inFile }); return [r.state, sent.slice()]; };
-  const SET = ['config/value/write', { keyPath: 'model_context_window', value: 917000, mergeStrategy: 'upsert' }];
+  const SET = ['config/value/write', { keyPath: 'model_context_window', value: 921000, mergeStrategy: 'upsert' }];
   const UNSET = ['config/value/write', { keyPath: 'model_context_window', value: null, mergeStrategy: 'replace' }];
   eq(await top({}, 'openai.gpt-6.1-sol', 0), ['none', []], 'with the table empty nothing is written');
   eq(await top(MAP, 'gpt-5.5', 0), ['none', []], 'nor while the model new conversations start with has no entry');
   eq(await top(MAP, 'openai.gpt-6.1-sol', 0), ['ours', [SET]], 'its entry is written as model_context_window');
-  eq(await top(MAP, 'openai.gpt-6.1-sol', 917000), ['ours', []], 'and not again while it is there');
-  eq(await top(MAP, 'gpt-5.5', 917000), ['none', [UNSET]], 'a change to a model with no entry takes the value back out');
+  eq(await top(MAP, 'openai.gpt-6.1-sol', 921000), ['ours', []], 'and not again while it is there');
+  eq(await top(MAP, 'gpt-5.5', 921000), ['none', [UNSET]], 'a change to a model with no entry takes the value back out');
   eq(await top({}, 'gpt-5.5', 0), ['none', []], 'and then nothing is left to take out');
   eq(await top(MAP, 'openai.gpt-6.1-sol', 500000), ['theirs', []], 'a value the user wrote is not replaced');
   eq(await top({}, 'openai.gpt-6.1-sol', 500000), ['theirs', []], 'nor taken out');
@@ -61,7 +63,7 @@ module.exports = async ({ eq, tmp, root }) => {
   eq((await top(MAP, 'openai.gpt-6.1-sol', 0))[0], 'failed', 'a write Codex refuses is reported');
   refuse = false;
   eq((await top(MAP, 'openai.gpt-6.1-sol', 0))[0], 'ours', 'and made again next time');
-  eq(memento.get(cw.APPLIED_KEY), { value: 917000, model: 'openai.gpt-6.1-sol', key: 'gpt-6.1-sol', text: '1.05M' },
+  eq(memento.get(cw.APPLIED_KEY), { value: 921000, model: 'openai.gpt-6.1-sol', key: 'gpt-6.1-sol', text: '1.05M' },
     'what was written is remembered, with the entry it came from');
 
   /* ── the override added to a page's request ── */
@@ -71,16 +73,16 @@ module.exports = async ({ eq, tmp, root }) => {
   eq([ov('thread/start', {}), ov('thread/start', { model: 'gpt-6-luna' }), ov('thread/start', { model: 'gpt-5.5' }),
     ov('thread/resume', { threadId: 't1' }), ov('thread/resume', { threadId: 't2' }), ov('thread/fork', { threadId: 't1' }),
     ov('thread/resume', { threadId: 'zz' }), ov('turn/start', { threadId: 't1' }), ov('thread/start', {}, {}, 'prewarm')],
-  [917000, 384000, 0, 384000, 917000, 384000, 0, 0, 917000],
+  [921000, 384000, 0, 384000, 921000, 384000, 0, 0, 921000],
   'with nothing in config.toml: a start takes its model\'s value, or the default model\'s; a resume or a fork the value of the '
     + 'conversation\'s own model; a model with no entry, or a conversation whose model is not known, nothing; a turn nothing; a prewarm as a start');
-  const ours = { top: 917000, ours: 917000 };
+  const ours = { top: 921000, ours: 921000 };
   eq([ov('thread/start', {}, ours), ov('thread/start', { model: 'gpt-6-luna' }, ours), ov('thread/resume', { threadId: 't3' }, ours),
     ov('thread/resume', { threadId: 't1' }, ours), ov('thread/start', { model: 'gpt-6-sol' }, ours), ov('thread/resume', { threadId: 't4' }, ours)],
   [0, 384000, 272000, 384000, 272000, 0],
   'with this extension\'s value in config.toml: nothing for the model it was written for, another model\'s own value, '
     + 'Codex\'s own default for a model Codex lists that has no entry, and nothing for a model Codex does not list, which it holds to its default itself');
-  eq([ov('thread/start', { model: 'gpt-6-luna' }, { top: 500000, ours: 0 }), ov('thread/resume', { threadId: 't2' }, { top: 500000, ours: 917000 })],
+  eq([ov('thread/start', { model: 'gpt-6-luna' }, { top: 500000, ours: 0 }), ov('thread/resume', { threadId: 't2' }, { top: 500000, ours: 921000 })],
     [0, 0], 'a value the user wrote into config.toml is never overridden');
   eq(ov('thread/start', { model: 'gpt-6-luna', config: { model_context_window: 123456 } }), 0, 'nor one the page itself sent');
   const req = { id: 2, method: 'thread/start', params: { model: 'gpt-6-luna', config: { 'features.x': true } } };
@@ -94,9 +96,9 @@ module.exports = async ({ eq, tmp, root }) => {
   /* ── where the window a conversation reports comes from ── */
   const from = (model, reported, over = {}) => cw.windowFrom({ model, reported, map: MAP, ...over });
   eq([from('openai.gpt-6.1-sol', 828400), from('gpt-6-luna', 364800), from('openai.gpt-6.1-sol', 475000, { map: {} }),
-    from('gpt-6-sol', 828400, { top: 917000, applied: { value: 917000, key: 'gpt-6.1-sol', text: '1.05M' } }),
+    from('gpt-6-sol', 828400, { top: 921000, applied: { value: 921000, key: 'gpt-6.1-sol', text: '1.05M' } }),
     from('gpt-6-sol', 475000, { top: 500000 }), from('openai.gpt-6.1-sol', 258400), from('made-up', 190000, { map: {} }),
-    from('gpt-5.6-sol', 258400, { top: 917000, applied: { value: 917000, key: 'gpt-6.1-sol', text: '1.05M' } }),
+    from('gpt-5.6-sol', 258400, { top: 921000, applied: { value: 921000, key: 'gpt-6.1-sol', text: '1.05M' } }),
     from('openai.gpt-6.1-sol', 475000, { top: 500000 })],
   [{ kind: 'setting', model: 'gpt-6.1-sol', asked: '1.05M', used: 872000, most: true },
     { kind: 'setting', model: 'gpt-6-luna', asked: '512K', used: 384000, most: false },
@@ -185,7 +187,7 @@ module.exports = async ({ eq, tmp, root }) => {
     eq([usage.usage.window, usage.usage.line, usage.usage.windowFrom && usage.usage.windowFrom.kind], [828400, Math.floor(828400 * 0.9 / 0.95), 'setting'],
       'the meter takes the window Codex reports, compacts at 90% of the value Codex uses, and carries where the window came from');
 
-    fs.writeFileSync(path.join(home, 'config.toml'), 'model = "gpt-5.5"\nmodel_context_window = 917000\nmodel_provider = "amazon-bedrock"\n');
+    fs.writeFileSync(path.join(home, 'config.toml'), 'model = "gpt-5.5"\nmodel_context_window = 921000\nmodel_provider = "amazon-bedrock"\n');
     requests.length = 0;
     await tick(4500);
     eq(requests.filter((r) => r[0] === 'config/value/write'), [UNSET], 'a change of the default model to one with no entry takes the value back out');

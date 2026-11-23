@@ -32,11 +32,13 @@ const APPLIED_KEY = 'codexPlus.contextWindowWritten';
 
 /*
  * Windows the vendor publishes, which count output as well as input. The value written is the published window minus
- * the model's maximum output, and never more than `input`, the largest input Amazon Bedrock accepted from
- * openai.gpt-6.1-sol (it took 917,822 tokens and refused about 923,000). `source` was read on 2026-11-10.
+ * the model's maximum output, and never more than `input`: the smallest of the largest inputs Amazon Bedrock accepted
+ * from these models, which took 921,610 to 921,857 tokens and refused one more (OpenAI gives 922,000 as the maximum
+ * input). `source` was read on 2026-11-23.
  */
 const PUBLISHED = [
-  { models: ['gpt-6.1-sol', 'gpt-6.1-terra', 'gpt-6-astra', 'gpt-6-luna'], window: 1050000, output: 128000, input: 917000,
+  { models: ['gpt-6.2-sol', 'gpt-6.2-astra', 'gpt-6.1-sol', 'gpt-6.1-terra', 'gpt-6-astra', 'gpt-6-sol', 'gpt-6-luna',
+    'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna', 'gpt-5.5'], window: 1050000, output: 128000, input: 921000,
     source: 'https://developers.openai.com/api/docs/models' },
 ];
 /*
