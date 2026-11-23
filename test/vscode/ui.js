@@ -2355,7 +2355,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         const focusBefore = { here: await focusedIn(profile.folder), there: await focusedIn(folderC) };
         await codex.locator(`[data-codex-extras="convo-link"][data-agent-plus-mention="codex:${T.id}"]`).first().click();
         const fronted = await until(async () => { const t = await tabOfT(folderC); return t && t.active && t; }, 20000, 500);
-        const took = taken().slice(requests).find((r) => r.session === T.id) || null;
+        /* The window that takes the request brings the tab forward before it records that it did. */
+        const took = await until(() => taken().slice(requests).find((r) => r.session === T.id) || null, 15000, 300);
         check(!!fronted && !!took && !!took.by && took.by !== took.from && took.shown === true,
           'a click on it is taken by the second window, which brings the conversation\'s tab to the front there', { fronted, took, c: await tabsIn(folderC) });
         await sleep(1500);
@@ -3738,7 +3739,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         const before1 = taken().length;
         await openFromB(X);
         const fronted = await until(async () => { const t = await tabOf(profile.folder, X); return t && t.active && t; }, 20000, 500);
-        const took = taken().filter((r) => r.session === X.id).pop();
+        /* As above, the record that this window took the request comes after the tab is forward. */
+        const took = await until(() => (taken().length > before1 && taken().filter((r) => r.session === X.id).pop()) || null, 15000, 300);
         const notOpen = (await toastsIn(pageB)).filter((x) => /is not open/.test(x));
         check(!!fronted && taken().length > before1 && !!took && !!took.by && took.by !== took.from && took.shown === true,
           'Go to the conversation in the second window, for one a tab of this window shows, is taken by this window, which brings that tab forward',
