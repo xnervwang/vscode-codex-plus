@@ -948,6 +948,22 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await sleep(1500);
       return part(PARTS.sidebar);
     });
+    await look('chosen-after-closing', {
+      expect: `"${t1.title}" was opened with a click on its row in the session list, and its tab was then closed while it was in front. `
+        + 'None of its rows in the list has the selection background, an outline, a bold title or its rename button showing; '
+        + 'only the conversation now in front, when it is one of Codex\'s, is drawn as the current one.',
+    }, async () => {
+      await showList();
+      await row(t1.id).click();
+      if (!await until(async () => (await tab(t1.title).count()) > 0, 30000, 500)) throw new Error('the click on its row opened no tab');
+      await sleep(1500);
+      await call(`const mine = vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((x) => x.input && x.input.uri && String(x.input.uri).includes(arg));
+        if (mine.length) await vscode.window.tabGroups.close(mine); return mine.length;`, t1.id);
+      await showList();
+      await away();
+      await sleep(1500);
+      return part(PARTS.sidebar);
+    });
 
     /* ═══ a conversation in a tab ═══ */
     await look('resume-in-tab', {

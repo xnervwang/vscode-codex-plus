@@ -2264,6 +2264,28 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       return null;
     }, 90000, 500);
 
+    /* A click on a row opens its conversation and chooses the row. Once the tab is closed while in front, no row of the
+       conversation is left looking chosen: current, selected, or highlighted with its buttons shown. */
+    await step('a conversation opened from its row in the session list and closed', async () => {
+      const t = threads[1];
+      const closeIt = () => call(`const mine = vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((x) => x.input && x.input.uri && String(x.input.uri).includes(arg));
+        if (mine.length) await vscode.window.tabGroups.close(mine); return mine.length;`, t.id);
+      const chosen = () => list.evaluate((id) => [...document.querySelectorAll(`.cp-row[data-id="${id}"]`)].map((r) => ['cp-current', 'cp-selected', 'cp-hl']
+        .filter((c) => r.classList.contains(c)).join(' ')).filter(Boolean), t.id).catch(() => null);
+      await closeIt();
+      if (!await showList()) throw new Error('the session list did not open');
+      await row(t).click();
+      check(!!await until(() => agentFront() === `codex ${t.id}`, 30000, 500), 'a click on a conversation\'s row in the session list opens it in front',
+        { agentPlus: agentFront(), tabs: await tabs() });
+      await checkCurrent(t.id, 'the conversation opened from its row');
+      check(await closeIt() > 0, 'its tab is closed while in front', await tabs());
+      await showList();
+      const clear = await until(async () => { const c = await chosen(); return Array.isArray(c) && !c.length; }, 15000, 500);
+      check(!!clear, 'once its tab is closed, none of the conversation\'s rows in the list is drawn current, selected or highlighted',
+        { classes: await chosen(), front: agentFront() });
+      await shot('list-after-closing-a-row-opened');
+    });
+
     /*
      * Codex's own New Codex Agent, the command behind its New button and the + of VS Code's Chat Sessions view. It
      * opens Codex's New URI with no fragment, in the group of the text editor last focused, where this extension's

@@ -201,6 +201,28 @@ module.exports = async ({ eq, root }) => {
   eq($$('.cp-menu-item[data-status]')[1].focused, true, 'the arrow keys move through the status filter\'s menu');
   $$('.cp-menu-item[data-status]')[1].bubble('keydown', { key: 'Escape' });
 
+  /* ── a row a click chose, once its conversation is no longer in front ── */
+  const chosen = (n) => [...$$(`.cp-row[data-id="${ID(n)}"]`)].flatMap((r) => ['cp-current', 'cp-selected', 'cp-hl'].filter((c) => r.classList.contains(c))).sort();
+  const withFront = (id) => Object.assign(JSON.parse(JSON.stringify(model)), { front: id });
+  toPage({ type: 'model', model });
+  posted.length = 0;
+  $(`.cp-group[data-key="ungrouped"] .cp-row[data-id="${ID(4)}"] .cp-title`).bubble('click');
+  toPage({ type: 'model', model: withFront(ID(4)) });
+  eq(chosen(4), ['cp-current', 'cp-hl', 'cp-selected'], 'a row clicked is selected and highlighted, and drawn current once its conversation is in front');
+  toPage({ type: 'model', model: withFront('') });
+  eq([chosen(4), posted.filter((m) => m.kind === 'select').pop()], [[], { kind: 'select', ids: [] }],
+    'once that conversation is not in front, as when its tab was closed, nothing of its row looks chosen');
+  $(`.cp-group[data-key="ungrouped"] .cp-row[data-id="${ID(3)}"] .cp-title`).bubble('click');
+  toPage({ type: 'model', model: withFront(ID(1)) });
+  eq(chosen(3), [], 'a row clicked whose conversation never comes to the front here, as when another window shows it, lets go once the front changes');
+  $(`.cp-group[data-key="ungrouped"] .cp-row[data-id="${ID(4)}"] .cp-title`).bubble('click');
+  toPage({ type: 'model', model: withFront(ID(4)) });
+  $(`.cp-group[data-key="ungrouped"] .cp-row[data-id="${ID(3)}"]`).bubble('click', { ctrlKey: true });
+  toPage({ type: 'model', model: withFront('') });
+  eq([chosen(4).includes('cp-selected'), chosen(3).includes('cp-selected')], [true, true],
+    'a selection made with Ctrl stays when the conversation clicked first leaves the front');
+  page.bubble('keydown', { key: 'Escape' });
+
   /* ── nothing at all ── */
   toPage({ type: 'model', model: { account: null, closed: [], open: [], groups: [], front: '', noGroups: true } });
   eq([shown($('.cp-null')), $('.cp-null').textContent, $$('.cp-section').filter(shown).map((s) => s.dataset.key), shown($('[data-send="newGroup"]'))],
