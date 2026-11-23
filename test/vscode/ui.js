@@ -3669,10 +3669,18 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         check(!!ok, `${what}: no row is drawn for a conversation open nowhere, and only ${front ? `"${front.title}"` : 'no conversation'} is drawn as current`,
           misdrawn(looks, ids, f).map((r) => ({ ...r, open: ids.includes(r.id) })));
       };
+      /* A way that fails is cleaned up after, so that what it left open is not read as left behind by the ways after it:
+         menus closed, every Codex tab closed and the sidebar shut, with the text file in front again. */
       const way = async (name, fn) => {
         try { await fn(); } catch (e) {
           check(false, `${name}: ran to its end`, String((e && e.stack) || e).split('\n').slice(0, 3).join(' | '));
           await shot(`rows-no-longer-open-${name.replace(/\W+/g, '-')}-error`);
+          await closeMenus().catch(() => {});
+          await call(`const mine = vscode.window.tabGroups.all.flatMap((g) => g.tabs)
+            .filter((t) => t.input && typeof t.input.viewType === 'string' && /conversationEditor$/.test(t.input.viewType));
+            if (mine.length) await vscode.window.tabGroups.close(mine); return mine.length;`).catch(() => 0);
+          await exec('workbench.action.closeAuxiliaryBar').catch(() => {});
+          await openNotes().catch(() => {});
         }
       };
       const allowUri = async () => {
@@ -3762,13 +3770,35 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
           await closeTab(A);
           await after('a row picked with a modifier click, then another clicked and its tab closed', [], null);
         });
+        /*
+         * The list's menu closes when its page loses the focus, as VS Code's own menus do, and the page of the tab the
+         * click opened takes the focus once it has drawn; so the page is waited for, and a menu that closed at once is
+         * opened again. Esc closes an open submenu before the menu, and in a short window the menu can open over the
+         * pointer and open the submenu under it, so Esc is pressed until the menu has gone.
+         */
         await way('a menu closed', async () => {
           await groupRow(B).click();
           await opened(B, 'a click on its row');
-          await groupRow(B).click({ button: 'right' });
-          if (!await until(() => list.evaluate(() => !!document.querySelector('.cp-ctx')), 5000, 100)) throw new Error('no menu opened');
-          await page.keyboard.press('Escape');
-          if (!await until(() => list.evaluate(() => !document.querySelector('.cp-ctx')), 5000, 100)) throw new Error('the menu did not close');
+          await frameWhere((want) => !!document.querySelector('[data-codex-composer-root]') && document.body.innerText.includes(want), 30000, B.title.slice(0, 30));
+          const menuUp = () => list.evaluate(() => !!document.querySelector('.cp-ctx')).catch(() => false);
+          let tries = 0;
+          for (; tries < 3 && !await menuUp(); tries++) {
+            if (tries) await sleep(1000);
+            await groupRow(B).click({ button: 'right' });
+            await until(menuUp, 3000, 100);
+          }
+          if (!await menuUp()) throw new Error('no menu opened in three right-clicks');
+          if (tries > 1) note(`a row's menu closed: it opened on right-click ${tries}, the menu before having closed as the list lost the focus`);
+          let escapes = 0;
+          for (; escapes < 3 && await menuUp(); escapes++) {
+            await page.keyboard.press('Escape');
+            await until(async () => !await menuUp(), 1500, 100);
+          }
+          if (await menuUp()) {
+            await closeMenus();
+            note(`a row's menu closed: ${escapes} presses of Esc left it open, so it was closed by a click beside it in the list`);
+          } else if (escapes > 1) note(`a row's menu closed: it took ${escapes} presses of Esc, the first closing a submenu`);
+          if (await menuUp()) throw new Error('the menu did not close');
           await after('a row\'s menu closed with nothing picked', [B], B);
           await closeTab(B);
           await after('a row\'s menu closed with nothing picked, then its tab closed in front', [], null);
