@@ -220,11 +220,11 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     return { now: Date.now(), log: window.__cxpToastLog.slice() };
   }).catch(() => ({ now: 0, log: [] }));
   const toastMark = async () => (await toastLog()).now;
-  /* The toasts since `mark` that name the conversation titled `t`, alone or among several. */
+  /* The toasts since `mark` that name the conversation titled `t`. */
   const toastsAbout = async (t, mark) => (await toastLog()).log.filter((x) => x.at >= mark && x.text.includes(`"${t}"`)).map((x) => x.text);
-  /* Waits for a toast since `mark` saying `"<t>" <words>`, or naming `t` among several conversations. */
+  /* Waits for a toast since `mark` saying `"<t>" <words>`. */
   const toastSaid = (t, words, mark, ms = 20000) => until(async () => (await toastsAbout(t, mark))
-    .find((x) => x.includes(`"${t}" ${words}`) || /conversations need you/.test(x)) || '', ms, 300);
+    .find((x) => x.includes(`"${t}" ${words}`)) || '', ms, 300);
   /* Clicks Open on the notification about `t`: a button of it, or a link in its text in an older Agent Plus. A toast left
      alone moves into VS Code's notification list after some ten seconds, where it is clicked instead. */
   const openFromToast = async (t) => {
