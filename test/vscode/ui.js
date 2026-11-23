@@ -62,6 +62,7 @@
  *   elsewhere    a conversation in a folder the window does not open: in Agent Plus's list of every conversation, and,
  *                marked unread, archived and unarchived, not announced as finished
  *   installed    with this window's build taken for one installed over, the end of a detached command still told
+ *   token mode   what reaches the made-up model in each of Agent Plus's token modes, with the plugin's hooks trusted
  *
  * Every step saves a screenshot to <out>/shots, and crops of the parts this extension draws are compared with the
  * approved copies (lib/baseline.js).
@@ -4754,6 +4755,125 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         check(!await tabUp(), 'and it is not reopened', await tabs());
       }
       await setting('reopenDroppedTabs', undefined);
+    });
+
+    /*
+     * Agent Plus's token mode in each mode in turn, without a reload, by what reaches the made-up model: All, Essential,
+     * Interface, Custom with the time-zone note and the brief off, and All again. In each, a turn of a conversation
+     * already running and the first turn of a new one. Last of all, since it trusts the work plan plugin's hooks, which
+     * no step before it runs with.
+     */
+    await step('what the model is given in each token mode', async () => {
+      const hooksFile = path.join(PLANS_DIR, 'config.json');
+      const hooksNow = () => { try { const h = JSON.parse(fs.readFileSync(hooksFile, 'utf8')); return [h.enabled, h.tellTimeZone, h.brief]; } catch (_) { return null; } };
+      const setZone = (z) => fs.writeFileSync(path.join(PLANS_DIR, 'client-time-zone.json'), JSON.stringify({ timeZone: z }) + '\n');
+      const trust = await call(`${OWN} const install = own('plugin-install'), files = own('codex-files');
+        const binary = own('appserver').codexBinary(vscode.extensions.getExtension('openai.chatgpt').extensionPath);
+        const home = files.codexHome(), cwds = (vscode.workspace.workspaceFolders || []).map((f) => f.uri.fsPath);
+        const st = await install.hookStatus({ binary, home, cwds });
+        const r = await install.trustHooks({ binary, home, cwds, shown: st.review.map((h) => ({ key: h.key, currentHash: h.currentHash })) });
+        const after = await install.hookStatus({ binary, home, cwds });
+        return { total: st.total, trusted: r.trusted, left: after.review.length };`, null, 180000).catch((e) => ({ error: String(e) }));
+      if (!trust || !trust.total) { note(`the work plan plugin has no hooks here (${JSON.stringify(trust)}), so what each token mode gives the model was not checked`); return; }
+      check(!trust.left, 'the work plan plugin\'s hooks are trusted, for this step', trust);
+      /* The quiet after a turn: no request for 4 s. */
+      const quiet = async () => {
+        let n = model.seen.length, at = Date.now();
+        await until(() => { if (model.seen.length !== n) { n = model.seen.length; at = Date.now(); } return Date.now() - at > 4000; }, 90000, 300);
+      };
+      /* Types `text` into `frame` and resolves to what the request of the turn that carried it held, once the turn is over;
+         a side request such as the one for a title offers no tools. */
+      const turnIn = async (frame, text, zone) => {
+        const before = model.seen.length;
+        await frame.locator(COMPOSER).first().click();
+        await page.keyboard.type(text);
+        setZone(zone);
+        await page.keyboard.press('Enter');
+        const got = await until(() => model.seen.slice(before).find((x) => x.context && x.context.tools > 0 && x.context.said.includes(text)), 60000, 300);
+        await quiet();
+        const file = path.join(out, `token-mode-${text.replace(/\W+/g, '-').toLowerCase().slice(0, 60)}.json`);
+        /* The request itself, or with none found the last few, for a reader to see what Codex sent. */
+        fs.writeFileSync(file, got ? model.bodyWith(text) : JSON.stringify(model.lastBodies(6).map((b) => { try { return JSON.parse(b); } catch (_) { return b; } }), null, 1));
+        return got ? got.context : null;
+      };
+      await exec('workbench.action.closeAllEditors');
+      const BEGIN = 'Token mode checks begin here.';
+      const first = await newTabPage();
+      if (!first) throw new Error('no new conversation page opened');
+      await emptyBox(first);
+      await turnIn(first, BEGIN, 'UTC');
+      const id = await until(() => rolloutWith(BEGIN), 30000, 500);
+      if (!id) throw new Error('the conversation the checks run in has no rollout');
+      /* A row not yet started, which the Stop hook leaves alone. */
+      fs.writeFileSync(path.join(PLANS_DIR, `${id}.json`), JSON.stringify({ nodes: [{ title: 'Check each token mode', state: 'todo',
+        since: new Date().toISOString().replace(/\.\d+Z$/, '+00:00') }] }));
+      await exec('agentPlus.refreshWorkPlan');
+      const running = async () => {
+        await exec('codexPlus.openThreadInTab', id);
+        return until(async () => { const f = await frontPage(); return f && await f.evaluate((w) => document.body.innerText.includes(w), BEGIN).catch(() => false) && f; }, 30000, 500);
+      };
+      const MODES = [
+        { mode: 'all', zone: 'Asia/Tokyo', on: { plan: true, zone: true, brief: true } },
+        { mode: 'essential', zone: 'Europe/Berlin', on: { plan: true, zone: true, brief: false } },
+        { mode: 'interface', zone: 'America/New_York', on: { plan: false, zone: false, brief: false } },
+        { mode: 'custom', zone: 'Asia/Kolkata', own: { tellCodexYourTimeZone: false, conversationBrief: false }, on: { plan: true, zone: false, brief: false } },
+        { mode: 'all', zone: 'Australia/Sydney', again: true, on: { plan: true, zone: true, brief: true } },
+      ];
+      const results = [];
+      try {
+        for (const [i, m] of MODES.entries()) {
+          const name = `${m.mode}${m.again ? ' again' : ''}`;
+          console.log(`  -- ${name}`);
+          await agentSetting('tokenMode', m.mode);
+          for (const [k, v] of Object.entries(m.own || {})) await setting(k, v);
+          const want = [m.on.plan, m.on.zone, m.on.brief];
+          const given = await until(() => { const h = hooksNow(); return JSON.stringify(h) === JSON.stringify(want) && h; }, 15000, 300) || hooksNow();
+          /* Interface features unloads the plugin, so its hooks' settings say nothing there. */
+          if (m.mode !== 'interface') check(JSON.stringify(given) === JSON.stringify(want), `${name}: the hooks' settings say work plan ${m.on.plan}, time zone ${m.on.zone}, brief ${m.on.brief}`, given);
+          /* Interface features has Codex skip the plugin and leaves a mark beside the plans; the next mode loads it again and
+             takes the mark away (src/plugin-install.js followTokenMode). */
+          const unload = m.mode === 'interface', marker = path.join(PLANS_DIR, require('../../src/plugin-install').UNLOADED_MARKER);
+          const followed = await until(() => fs.existsSync(marker) === unload, 60000, 500);
+          check(!!followed, `${name}: ${unload ? 'Codex is told to skip the work plan plugin, and the mark of the mode doing so is left' : 'the plugin is loaded, with no mark of a mode unloading it'}`,
+            { marked: fs.existsSync(marker) });
+          await sleep(3000);
+          const r = { mode: name };
+          const f = await running();
+          r.running = f ? await turnIn(f, `Token mode check, ${name}, a running conversation.`, m.zone) : null;
+          /* Codex reads which plugins a conversation it has loaded runs when a conversation starts (extension.js
+             followTokenMode), so the one already running gets the plugin back from Interface features only once a new
+             one has started, which the turn after the new conversation below checks. */
+          if (i > 0 && MODES[i - 1].mode === 'interface') {
+            note(`${name}: the first turn of the conversation already running after Interface features carried ${JSON.stringify(r.running)}`);
+          } else {
+            check(!!r.running && ['plan', 'zone', 'brief'].every((k) => r.running[k] === m.on[k]) && !r.running.images,
+              `${name}: a turn of a conversation already running carries the work plan: ${m.on.plan}, the time-zone note: ${m.on.zone}, `
+              + `the brief's request for a status: ${m.on.brief}, and no note on images`, r.running || model.seen.slice(-3).map((x) => x.context));
+          }
+          const fresh = await newTabPage();
+          if (fresh) {
+            await emptyBox(fresh);
+            r.fresh = await turnIn(fresh, `Token mode check, ${name}, a new conversation.`, m.zone);
+            const plugin = m.mode !== 'interface';
+            check(!!r.fresh && r.fresh.images === plugin && r.fresh.skill === plugin && r.fresh.zone === m.on.zone && !r.fresh.plan,
+              `${name}: the first turn of a new conversation carries the note on images and the work plan skill in Codex's list of skills: ${plugin}, `
+              + `the time-zone note: ${m.on.zone}, and no work plan, it having none`,
+              r.fresh || model.seen.slice(-3).map((x) => x.context));
+            await exec('workbench.action.closeActiveEditor');
+          } else check(false, `${name}: a new conversation opens`, await tabs());
+          const f2 = await running();
+          r.runningAgain = f2 ? await turnIn(f2, `Token mode check, ${name}, the running conversation again.`, m.zone) : null;
+          /* The time-zone note is said again only when something has made the last one stale (tell-time-zone.py). */
+          check(!!r.runningAgain && r.runningAgain.plan === m.on.plan && r.runningAgain.brief === m.on.brief && !r.runningAgain.zone && !r.runningAgain.images,
+            `${name}: after a new conversation has started, a turn of the one already running carries the work plan: ${m.on.plan}, the brief's request `
+            + 'for a status: ' + m.on.brief + ', and neither the time-zone note it was given a turn before nor a note on images', r.runningAgain);
+          results.push(r);
+          for (const k of Object.keys(m.own || {})) await setting(k, undefined);
+        }
+      } finally {
+        fs.writeFileSync(path.join(out, 'token-modes.json'), JSON.stringify(results, null, 2) + '\n');
+        await agentSetting('tokenMode', undefined);
+      }
     });
 
   } finally {

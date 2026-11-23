@@ -156,7 +156,7 @@
       "agentPlus": { "settings": ["agentPlus.notifications.enabled", "agentPlus.notifications.finished", "agentPlus.notifications.waiting"],
         "commands": ["agentPlus.showAttention", "agentPlus.openAttention"] } },
     { "id": "token-mode", "what": "Agent Plus's token mode entry in the status bar: its hover, the list of modes and the switch to another",
-      "steps": ["token-mode-list", "token-mode-essential"], "settings": [], "commands": [],
+      "steps": ["token-mode-list", "token-mode-essential"], "checks": ["what the model is given in each token mode"], "settings": [], "commands": [],
       "agentPlus": { "settings": ["agentPlus.tokenMode"], "commands": ["agentPlus.chooseTokenMode"] } },
     { "id": "show-status", "what": "Show Status writing what is installed, patched and running to the Codex Plus output channel",
       "steps": ["show-status"], "settings": [], "commands": ["codexPlus.status"] },

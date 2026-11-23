@@ -17,6 +17,9 @@
  * any other conversation (a sub-agent's, or a codex exec's) is held until releaseOthers(). left() counts the steps not yet sent;
  * script(null) goes back to the usual reply for every conversation. sent(text) counts the requests whose body held `text`,
  * among the last BODIES_KEPT.
+ *
+ * Each entry of `seen` also says what the request's input carries after the conversation's last reply (`context`): the
+ * text the user typed, and which of the notes the work plan plugin's hooks add are there.
  */
 const http = require('http');
 
@@ -35,6 +38,32 @@ function threadOf(body) {
 
 const BODIES_KEPT = 40;
 
+/* The notes of the work plan plugin's hooks, by what each starts with or asks for: the plan (inject-work-plan.py), the
+   brief's request for a status (plan_agent.py status_ahead), the time zone (tell-time-zone.py) and the images in replies
+   (tell-reply-images.py). `skill` is the work plan skill in Codex's list of skills, anywhere in the request. */
+const CONTEXT = { plan: /This conversation's work plan/, brief: /call set_status/, zone: /The user is in [A-Za-z_]+\/[A-Za-z_]+ \(/,
+  images: /This panel shows images in your replies/ };
+const SKILL = /Keep this conversation's work plan up to date/;
+const textsOf = (items) => items.flatMap((it) => (it && Array.isArray(it.content) ? it.content : []))
+  .map((c) => (c && typeof c.text === 'string' ? c.text : '')).filter(Boolean);
+function contextOf(body) {
+  let ask;
+  try { ask = JSON.parse(body); } catch (_) { return null; }
+  const input = Array.isArray(ask.input) ? ask.input : [];
+  let i = input.length;
+  while (i > 0 && !(input[i - 1] && input[i - 1].role === 'assistant')) i--;
+  const after = input.slice(i), text = JSON.stringify(after);
+  /* Codex sends its tools in an additional_tools item of the input rather than at the top. */
+  const tools = (Array.isArray(ask.tools) ? ask.tools.length : 0)
+    + input.filter((it) => it && it.type === 'additional_tools' && Array.isArray(it.tools)).reduce((n, it) => n + it.tools.length, 0);
+  const out = { tools,
+    typed: textsOf(after.filter((it) => it && it.role === 'user')).join('\n').slice(-4000), skill: SKILL.test(body),
+    /* Each user message on its own: a request for a title quotes the message inside a prompt of its own. */
+    said: after.filter((it) => it && it.role === 'user').map((it) => textsOf([it]).join('\n').trim().slice(0, 500)) };
+  for (const [k, re] of Object.entries(CONTEXT)) out[k] = re.test(text);
+  return out;
+}
+
 function opened() {
   let open;
   const promise = new Promise((r) => { open = r; });
@@ -51,7 +80,7 @@ async function start({ reply = 'Done. The cap is configurable.' } = {}) {
     req.on('data', (d) => { body += d; });
     req.on('end', async () => {
       const thread = threadOf(body);
-      seen.push({ method: req.method, url: req.url, bytes: body.length, thread });
+      seen.push({ method: req.method, url: req.url, bytes: body.length, thread, context: contextOf(body) });
       bodies.push(body);
       if (bodies.length > BODIES_KEPT) bodies.shift();
       if (req.method !== 'POST' || !/\/responses$/.test(req.url.replace(/\?.*/, ''))) {
@@ -98,6 +127,9 @@ async function start({ reply = 'Done. The cap is configurable.' } = {}) {
   return { port: server.address().port, url: `http://127.0.0.1:${server.address().port}/v1`, seen, hold, release, close, script, releaseOthers,
     left: () => (scripted ? scripted.steps.length : 0),
     sent: (text) => bodies.filter((b) => b.includes(text)).length,
+    /* The newest kept body that holds `text`, for a failure's detail. */
+    bodyWith: (text) => bodies.slice().reverse().find((b) => b.includes(text)) || '',
+    lastBodies: (n) => bodies.slice(-n),
     turns: () => seen.filter((s) => s.method === 'POST' && /\/responses/.test(s.url)).length };
 }
 
