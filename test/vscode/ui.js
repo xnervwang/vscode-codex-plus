@@ -398,6 +398,18 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     }
     return null;
   };
+  /* Whether the page VS Code shows is Codex's own "Codex could not start", which Codex puts in a page that has not
+     started within 30 s of its creation. */
+  const gaveUpInFront = async () => {
+    for (const f of page.frames()) {
+      try {
+        if (!await f.evaluate(() => document.title === 'Codex could not start')) continue;
+        const host = f.parentFrame() && await f.parentFrame().frameElement();
+        if (host && await host.isVisible()) return true;
+      } catch (_) { /* gone */ }
+    }
+    return false;
+  };
   const pageSays = (f) => (f ? f.evaluate(() => ({ turns: document.querySelectorAll('[data-turn-key]').length, text: document.body.innerText.slice(0, 200) }))
     .catch((e) => ({ error: String(e) })) : null);
   const tabNamed = (label) => page.locator('.tabs-container .tab').filter({ hasText: label }).first();
@@ -3232,6 +3244,15 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     await step('a closed conversation brought back', async () => {
       const t = threads[0];
       await tabNamed(title).click();
+      /* The reload two steps up restored this tab behind others, and where the steps since took more than the 30 s Codex
+         gives a page to start, Codex has put "Codex could not start" in it, as the step on a tab restored behind another
+         checks. A closed conversation is brought back from a tab that shows it, so this one is opened again first. */
+      if (await until(async () => (await gaveUpInFront()) || ((await frontPage()) && 'page'), 10000, 500) === true) {
+        note(`the tab of "${title}", restored behind others at the reload and not shown within 30 s of it, has Codex's "Codex could not start", so it is opened again`);
+        await call(`const mine = vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((x) => x.input && x.input.uri && String(x.input.uri).includes(arg));
+          if (mine.length) await vscode.window.tabGroups.close(mine); return mine.length;`, t.id);
+        await exec('codexPlus.openThreadInTab', t.id);
+      }
       const shown = await until(newestInFront, 30000, 1000);
       if (!shown) throw new Error(`the tab of "${title}" did not come to the front with its turns`);
       /* The newest turn the rollout says started, by the key the page gives a turn. The page just brought to the front can
