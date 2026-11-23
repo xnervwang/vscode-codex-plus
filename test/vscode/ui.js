@@ -1130,18 +1130,32 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       check(seen.buttons === 2 && seen.meter, 'the information and chime buttons and the context meter are by the message box', seen);
       check(/1 timer/.test(seen.pill), 'the Agent map pill names the wake-up the conversation has', seen.pill);
       /* Each crop is one control, so none takes in Codex's buttons or the gap before the pill, which moves by a pixel. */
-      const frameBox = await (await codex.frameElement()).boundingBox();
-      for (const [name, sel] of [['composer-buttons', '[data-codex-extras="bar-button"]'], ['composer-meter', '[data-codex-extras="meter"]'], ['composer-pill', '[data-codex-extras="agents"]']]) {
+      const drawnAt = async (sel) => {
+        const frame = await (await codex.frameElement()).boundingBox().catch(() => null);
         const r = await codex.evaluate((q) => {
           const all = [...document.querySelectorAll(q)].map((e) => e.getBoundingClientRect()).filter((b) => b.width > 0);
           return all.length ? { x0: Math.min(...all.map((b) => b.left)), y0: Math.min(...all.map((b) => b.top)), x1: Math.max(...all.map((b) => b.right)), y1: Math.max(...all.map((b) => b.bottom)) } : null;
-        }, sel);
+        }, sel).catch(() => null);
+        return frame && r ? { frame: { x: frame.x, y: frame.y }, ...r } : null;
+      };
+      for (const [name, sel] of [['composer-buttons', '[data-codex-extras="bar-button"]'], ['composer-meter', '[data-codex-extras="meter"]'], ['composer-pill', '[data-codex-extras="agents"]']]) {
         await clearToasts();
         const left = (await toasts()).filter(Boolean);
         if (left.length) note(`${name}: notifications still on screen before its crop: ${JSON.stringify(left).slice(0, 300)}`);
+        /* The page's frame has been measured a pixel off where the window drew it, once, so the frame and the control are
+           measured before and after the screenshot, and taken again until both readings agree. */
+        let at = null, png = null;
+        for (let tries = 0; tries < 5; tries++) {
+          const before = await drawnAt(sel);
+          if (!before) break;
+          png = await crop({ x: before.frame.x + before.x0 - 2, y: before.frame.y + before.y0 - 2, width: before.x1 - before.x0 + 4, height: before.y1 - before.y0 + 4 });
+          const after = await drawnAt(sel);
+          at = { before, after };
+          if (JSON.stringify(before) === JSON.stringify(after)) break;
+          await sleep(300);
+        }
         /* Where it was drawn, to the fraction of a pixel, since a glyph drawn half a pixel lower differs on every column. */
-        if (r && frameBox) base.compare(name, await crop({ x: frameBox.x + r.x0 - 2, y: frameBox.y + r.y0 - 2, width: r.x1 - r.x0 + 4, height: r.y1 - r.y0 + 4 }),
-          { detail: `drawn at ${JSON.stringify({ frame: { x: frameBox.x, y: frameBox.y }, ...r })}` });
+        if (png) base.compare(name, png, { detail: `drawn at ${JSON.stringify(at)}` });
       }
 
       await codex.locator('.codex-extras-rail-handle').first().click();
