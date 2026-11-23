@@ -119,10 +119,10 @@ module.exports = async ({ eq, root }) => {
   /* ── clicks, keys and the hover ── */
   posted.length = 0;
   $(`.cp-group[data-key="ungrouped"] .cp-row[data-id="${ID(4)}"] .cp-title`).bubble('click');
-  eq(posted.map((m) => [m.kind, m.ids || m.id]), [['select', [ID(4)]], ['open', ID(4)]], 'a click selects a row and opens its conversation');
+  eq(posted.map((m) => [m.kind, m.ids || m.id]), [['select', []], ['open', ID(4)]], 'a click empties the selection and opens the row\'s conversation');
   posted.length = 0;
   $(`.cp-group[data-key="ungrouped"] .cp-row[data-id="${ID(3)}"]`).bubble('click', { ctrlKey: true });
-  eq(posted.map((m) => [m.kind, m.ids]), [['select', [ID(4), ID(3)]]], 'a click with Ctrl adds it to the selection and opens nothing');
+  eq(posted.map((m) => [m.kind, m.ids]), [['select', [ID(3)]]], 'a click with Ctrl adds it to the selection and opens nothing');
   page.bubble('keydown', { key: 'Escape' });
   eq(posted.pop(), { kind: 'select', ids: [] }, 'Esc clears the selection');
   page.bubble('keydown', { key: 'Escape' });
@@ -208,18 +208,18 @@ module.exports = async ({ eq, root }) => {
   posted.length = 0;
   $(`.cp-group[data-key="ungrouped"] .cp-row[data-id="${ID(4)}"] .cp-title`).bubble('click');
   toPage({ type: 'model', model: withFront(ID(4)) });
-  eq(chosen(4), ['cp-current', 'cp-hl', 'cp-selected'], 'a row clicked is selected and highlighted, and drawn current once its conversation is in front');
+  eq(chosen(4), ['cp-current'], 'a row clicked is neither selected nor highlighted, and is drawn current once its conversation is in front');
   toPage({ type: 'model', model: withFront('') });
   eq([chosen(4), posted.filter((m) => m.kind === 'select').pop()], [[], { kind: 'select', ids: [] }],
     'once that conversation is not in front, as when its tab was closed, nothing of its row looks chosen');
   $(`.cp-group[data-key="ungrouped"] .cp-row[data-id="${ID(3)}"] .cp-title`).bubble('click');
   toPage({ type: 'model', model: withFront(ID(1)) });
-  eq(chosen(3), [], 'a row clicked whose conversation never comes to the front here, as when another window shows it, lets go once the front changes');
+  eq(chosen(3), [], 'a row clicked whose conversation never comes to the front here, as when another window shows it, is not left chosen');
   $(`.cp-group[data-key="ungrouped"] .cp-row[data-id="${ID(4)}"] .cp-title`).bubble('click');
   toPage({ type: 'model', model: withFront(ID(4)) });
   $(`.cp-group[data-key="ungrouped"] .cp-row[data-id="${ID(3)}"]`).bubble('click', { ctrlKey: true });
   toPage({ type: 'model', model: withFront('') });
-  eq([chosen(4).includes('cp-selected'), chosen(3).includes('cp-selected')], [true, true],
+  eq([chosen(4).includes('cp-selected'), chosen(3).includes('cp-selected')], [false, true],
     'a selection made with Ctrl stays when the conversation clicked first leaves the front');
   page.bubble('keydown', { key: 'Escape' });
 

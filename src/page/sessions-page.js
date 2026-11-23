@@ -248,9 +248,6 @@
   let ctxRow = null;
   let selection = new Set();
   let anchor = '';
-  /* The conversation a plain click chose and opened, the one in front at that click, and whether the one opened has
-     been in front since (letGoOpened). */
-  let opened = '', openedFrom = '', openedShown = false;
   /* The row the open menu belongs to: { row, alone, pointer } (aimAt). */
   let aimed = null;
   let shownFront = '';
@@ -335,8 +332,6 @@
   /* The conversation in front is drawn as the current one, and its row in OPEN SESSIONS is scrolled to once. */
   function front() {
     const id = (model && model.front) || '';
-    if (opened && id === opened) openedShown = true;
-    else if (opened && (openedShown || id !== openedFrom)) letGoOpened();
     for (const r of root.querySelectorAll('.cp-row.cp-current')) if (r.dataset.id !== id) r.classList.remove('cp-current');
     if (!id) { shownFront = ''; return; }
     for (const r of rowsOf(id)) r.classList.add('cp-current');
@@ -725,17 +720,6 @@
     hl = r || null;
     if (hl) { hl.classList.add('cp-hl'); if (scroll) hl.scrollIntoView({ block: 'nearest' }); }
   }
-  /* A row a plain click chose looks chosen while its conversation is in front, and lets go once it is not, as when its
-     tab is closed or another one comes forward. One that never came to the front here, as when another window shows
-     it, lets go once the front changes. */
-  function letGoOpened() {
-    const id = opened;
-    opened = '';
-    openedShown = false;
-    if (!id) return;
-    if (selection.size === 1 && selection.has(id)) select([]);
-    if (hl && hl._row && hl._row.id === id) highlight(null);
-  }
   function openRow(r) {
     if (!r || !r._row) return;
     send({ kind: 'open', id: r._row.id, where: r._row.sidebar ? 'sidebar' : 'tab' });
@@ -886,7 +870,6 @@
     if (!r || r._editing) return;
     const id = r._row.id;
     if (e.ctrlKey || e.metaKey) {
-      opened = '';
       const next = new Set(selection);
       if (next.has(id)) next.delete(id); else next.add(id);
       anchor = id;
@@ -897,15 +880,13 @@
     if (e.shiftKey && anchor) {
       const list = visibleRows();
       const a = list.findIndex((x) => x._row.id === anchor), b = list.indexOf(r);
-      if (a >= 0 && b >= 0) { opened = ''; select(list.slice(Math.min(a, b), Math.max(a, b) + 1).map((x) => x._row.id)); highlight(r); return; }
+      if (a >= 0 && b >= 0) { select(list.slice(Math.min(a, b), Math.max(a, b) + 1).map((x) => x._row.id)); highlight(r); return; }
     }
+    /* As in Claude Code's list, a plain click empties the selection and opens the row, which the host then draws as the
+       current one; only Ctrl and Shift choose rows, so nothing is left looking chosen once the conversation goes. */
     anchor = id;
-    letGoOpened();
-    select([id]);
-    highlight(r);
-    opened = id;
-    openedFrom = (model && model.front) || '';
-    openedShown = openedFrom === id;
+    select([]);
+    highlight(null);
     openRow(r);
   });
   /* A right-click on a row or a group header opens the page's menu and cancels the event. VS Code opens its own menu

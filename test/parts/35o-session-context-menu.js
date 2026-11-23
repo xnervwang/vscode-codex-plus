@@ -73,7 +73,7 @@ module.exports = async ({ eq, root }) => {
   rightClick(rowEl('ungrouped', 3));
   clickAway();
   eq(marked(3), [], 'a menu closed with nothing picked leaves its row unselected too');
-  rowEl('ungrouped', 3).bubble('click', { button: 0 });
+  rowEl('ungrouped', 3).bubble('click', { button: 0, ctrlKey: true });
   rowEl('ungrouped', 4).bubble('click', { button: 0, ctrlKey: true });
   rightClick(rowEl('ungrouped', 4));
   clickAway();
@@ -304,7 +304,7 @@ module.exports = async ({ eq, root }) => {
   const swallowed = [gone(), posted.length];
   rowEl('ungrouped', 3).bubble('mousedown', { button: 0 });
   rowEl('ungrouped', 3).bubble('click');
-  eq([swallowed, posted.map((m) => (m.kind === 'select' ? `select ${m.ids.length}` : m.kind))], [[true, 1], ['select 0', 'select 1', 'open']],
+  eq([swallowed, posted.map((m) => (m.kind === 'select' ? `select ${m.ids.length}` : m.kind))], [[true, 1], ['select 0', 'select 0', 'open']],
     'a click outside the menu only closes it, as Claude Code\'s does, and lets go of the row it had selected; the next click opens the row');
   const closes = [];
   rightClick(rowEl('ungrouped', 4));
