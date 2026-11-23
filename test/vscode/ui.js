@@ -1821,7 +1821,9 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
             map: { text: /\b1 codex exec\b/, listed: (r) => r.work.some((x) => x.kind === 'codexExec' && green(x) && /codex exec/.test(x.text)) } });
         }
         /* The stand-ins write the session record Claude Code keeps for a running process, which is what Codex Plus
-           reads, under this window's own HOME. */
+           reads, under this window's own HOME. The --bg one returns only once its session has written its record, as
+           claude --bg prints its hint once the session is up: by then the session has left the command's process group,
+           which Codex can kill the moment the command exits. */
         const fakeBin = path.join(profile.home, 'fake-claude');
         fs.mkdirSync(fakeBin, { recursive: true });
         const fakeClaude = path.join(fakeBin, 'claude'), fakeSession = path.join(fakeBin, 'claude-bg-session');
@@ -1831,6 +1833,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
           'mkdir -p "$sessions"',
           'if [ "$1" = "--bg" ]; then',
           `  env -u CODEX_THREAD_ID setsid '${fakeSession}' "$sessions" < /dev/null > /dev/null 2>&1 &`,
+          '  i=0; while [ ! -s "$sessions/$!.json" ] && [ $i -lt 100 ]; do sleep 0.05; i=$((i+1)); done',
           "  echo 'backgrounded · 1a2b3c4d'",
           '  exit 0',
           'fi',
