@@ -292,7 +292,7 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
 
   await section('the extension', async () => {
     const ext = fs.readFileSync(path.join(root, 'extension.js'), 'utf8');
-    eq(/scanLeft: \(\) => !standsDown\(\)/.test(ext), true, 'a window that stands down for a newer build, or for an uninstall, does not scan');
+    eq(/scanLeft: \(\) => keepsShared\(\)/.test(ext), true, 'a window that stands down for a newer build scans only while no window runs the installed one, and one being uninstalled never does');
     const readme = fs.readFileSync(path.join(root, 'README.md'), 'utf8');
     eq(/still running after (its|the) turn/i.test(readme), true, 'the README says so in its features');
   });

@@ -377,10 +377,18 @@ async function activate(context) {
   reader = new CodexReader({ log: say });
   context.subscriptions.push(reader);
   /* A conversation is shown as working while something it started is still running (src/left-running.js). A window
-     running an older build than the installed one leaves this scan to the windows running the installed build. */
+     running an older build than the installed one leaves this scan, the end notices and wake-ups to the windows running
+     the installed build, and keeps them while no window does (src/uninstall-plan.js keepsShared). */
+  const keepsShared = () => {
+    const s = standsDown();
+    if (!s) return true;
+    let others = [];
+    try { others = windowEntries.others(install.planDir(files.codexHome())); } catch (_) { /* none readable */ }
+    return uninstallPlan.keepsShared({ standing: s, build: String(loadedStamp || '') }, others);
+  };
   /* The notice a conversation gets once a command it left running detached is no longer running (src/detached-ends.js). */
   const sharedDir = () => path.join(install.planDir(files.codexHome()), SHARE_DIR);
-  const endsOn = () => runs('detachedEndNotices') && trusted() && !standsDown();
+  const endsOn = () => runs('detachedEndNotices') && trusted() && keepsShared();
   const ends = detachedEnds.createDetachedEnds({ dir: sharedDir,
     ask: (m, p) => patching.hostRequest(m, p), log: say, enabled: endsOn,
     ran: (thread, cmd, startMs) => {
@@ -402,7 +410,7 @@ async function activate(context) {
   };
   const source = createCodexSource(vscode, { log: say, reader, patching, trusted, enabled: () => runs('workPlan'),
     briefs: () => runs('conversationBrief'), seen: createSeen(context.globalState),
-    scanLeft: () => !standsDown() && settings().enabled !== false, onPoll: () => { publishWindow(); if (archiveSweeper) archiveSweeper.tick(); }, onScan,
+    scanLeft: () => keepsShared() && settings().enabled !== false, onPoll: () => { publishWindow(); if (archiveSweeper) archiveSweeper.tick(); }, onScan,
     holdSeen: () => loadingTabs });
   context.subscriptions.push(source);
   planSource = source;
@@ -481,7 +489,8 @@ async function activate(context) {
   const shownHere = () => [...new Set([...memory.openThreads(), patching.sidebarShowing()].filter(Boolean))];
   let published = false;
   const writeEntry = windowEntries.publisher(install.planDir(files.codexHome()), () => ({ name: vscode.workspace.name || '',
-    folders: (vscode.workspace.workspaceFolders || []).map((f) => f.uri.fsPath), sessions: shownHere() }), { log: say });
+    folders: (vscode.workspace.workspaceFolders || []).map((f) => f.uri.fsPath), sessions: shownHere(),
+    build: String(loadedStamp || ''), installed: !standsDown() }), { log: say });
   publishWindow = () => { if (trusted() && standsDown() !== 'uninstalling' && writeEntry()) published = true; };
   context.subscriptions.push({ dispose: () => {
     publishWindow = () => {};
@@ -562,7 +571,7 @@ async function activate(context) {
      (src/wakeup.js). Only over Codex's own connection: hostRequest answers 'unavailable' until the patch hands it over,
      and a short-lived app-server would queue for a conversation nobody has open. */
   const wakes = wakeup.createWakeups({ dir: () => install.planDir(files.codexHome()), ask: (m, p) => patching.hostRequest(m, p),
-    log: say, enabled: () => runs('wakeUps') && trusted() && !standsDown() });
+    log: say, enabled: () => runs('wakeUps') && trusted() && keepsShared() });
   context.subscriptions.push(wakes.start(), patching.onAppServerNotification((m, p) => {
     wakes.heard(m, p).catch(() => { /* asked again next time */ });
     /* A goal changed, by a command here, by the model or by Codex itself: the list reads the goals database again. */
