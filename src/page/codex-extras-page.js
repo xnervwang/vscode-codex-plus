@@ -768,16 +768,19 @@
   }
   var WORK_META = { detached: 'detached', command: 'background terminal', codexExec: 'codex exec', claudeWorker: 'claude -p', claudeBg: 'claude --bg' };
   var CMD_SHOWN = 120, CMD_HOVER = 500;
+  /* A command line with its program named by the last part of its path, as Claude Code Plus titles its cards: a program
+     run by its full path, such as the codex in Codex's extension folder, would otherwise fill the title with the path. */
+  var titleOf = function (cmd) { return cmd.replace(/^[\/~]\S*\/([^\/\s]+)(?=\s|$)/, '$1'); };
   function jobCard(d, open) {
     var cmd = String(d.cmd || '');
-    var c = mapCard({ kind: 'detached', dot: 'working', title: cutTo(cmd, CMD_SHOWN) || '(command line not read)', meta: workMeta('detached', d),
+    var c = mapCard({ kind: 'detached', dot: 'working', title: cutTo(titleOf(cmd), CMD_SHOWN) || '(command line not read)', meta: workMeta('detached', d),
       note: cutTo(cmd, CMD_HOVER) }, open);
     c.setAttribute(MARK, 'map-job');
     return c;
   }
   function workCard(w, open) {
     var cmd = String(w.cmd || ''), word = WORK_META[w.kind] || w.kind;
-    var title = w.kind === 'claudeWorker' || w.kind === 'claudeBg' ? w.name || (w.kind === 'claudeBg' ? w.job : cmd) || word : cmd || word;
+    var title = w.kind === 'claudeWorker' || w.kind === 'claudeBg' ? w.name || (w.kind === 'claudeBg' ? w.job : titleOf(cmd)) || word : titleOf(cmd) || word;
     var c = mapCard({ kind: 'work', dot: 'working', title: cutTo(title, CMD_SHOWN), meta: workMeta(word, w, w.job ? ['job ' + w.job] : []),
       note: cutTo(cmd, CMD_HOVER) }, open);
     c.setAttribute(MARK, 'map-bg');

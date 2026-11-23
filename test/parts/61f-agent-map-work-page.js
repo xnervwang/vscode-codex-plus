@@ -45,7 +45,7 @@ const now = Date.now();
 const job = { pid: 4100, startMs: now - 60e3, cmd: 'python3 driver.py --all' };
 const W = {
   command: { kind: 'command', pid: 11, startMs: now - 90e3, cmd: '/bin/bash -lc npm run watch', name: '', job: '' },
-  codexExec: { kind: 'codexExec', pid: 40, startMs: now - 80e3, cmd: 'codex exec --skip-git-repo-check Wait for the job.', name: '', job: '' },
+  codexExec: { kind: 'codexExec', pid: 40, startMs: now - 80e3, cmd: '/tmp/x/exts/openai.chatgpt-26.1117.41037-linux-x64/bin/linux-x86_64/codex exec --skip-git-repo-check Wait for the job.', name: '', job: '' },
   claudeWorker: { kind: 'claudeWorker', pid: 50, startMs: now - 70e3, cmd: 'claude -p go', name: 'night worker', job: '' },
   claudeBg: { kind: 'claudeBg', pid: 60, startMs: now - 50e3, cmd: '', name: 'night suite', job: 'abcd1234' },
 };
@@ -114,11 +114,13 @@ module.exports = async ({ eq, root }) => {
     ['working', 'working', 'working', 'working'], 'each with a green dot');
   const lines = rows.map((r) => [(r.querySelectorAll('[data-codex-extras-name]')[0] || {}).textContent,
     ((r.querySelectorAll('[data-codex-extras-meta]')[0] || {}).textContent || '').replace(/ · started .*$/, ''), String(r.getAttribute('aria-label') || '').split('\n')[0].replace(/ · started .*$/, '')]);
-  eq(lines, [['/bin/bash -lc npm run watch', 'background terminal · pid 11', '/bin/bash -lc npm run watch'],
-    ['codex exec --skip-git-repo-check Wait for the job.', 'codex exec · pid 40', 'codex exec --skip-git-repo-check Wait for the job.'],
+  eq(lines, [['bash -lc npm run watch', 'background terminal · pid 11', '/bin/bash -lc npm run watch'],
+    ['codex exec --skip-git-repo-check Wait for the job.', 'codex exec · pid 40',
+      '/tmp/x/exts/openai.chatgpt-26.1117.41037-linux-x64/bin/linux-x86_64/codex exec --skip-git-repo-check Wait for the job.'],
     ['night worker', 'claude -p · pid 50', 'claude -p go'], ['night suite', 'claude --bg · job abcd1234 · pid 60', 'claude --bg · job abcd1234 · pid 60']],
-  'a background terminal and a codex exec are titled by their command line, a claude -p worker and a claude --bg session by their name, '
-  + 'each over what it is, its pid and when it started, with its command line on hover, or the second line for a session that has none');
+  'a background terminal and a codex exec are titled by their command line, its program named by the last part of its path, a claude -p worker '
+  + 'and a claude --bg session by their name, each over what it is, its pid and when it started, with the whole command line on hover, or the second '
+  + 'line for a session that has none');
   const jobs = p.q('[data-codex-extras="map-work"] [data-codex-extras="map-job"]');
   eq(jobs.map((r) => (r.querySelectorAll('[data-codex-extras-dot]')[0] || { getAttribute: () => '' }).getAttribute('data-codex-extras-dot')), ['working'],
     'a detached command has the green dot too');
