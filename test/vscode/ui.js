@@ -1815,11 +1815,14 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       if (process.platform === 'linux') {
         const outside = (cmd) => ({ call: 'exec_command', args: { cmd, yield_time_ms: 1000, sandbox_permissions: 'require_escalated',
           justification: 'Start the job outside the sandbox.' } });
+        /* Codex ends a command's process group when the command exits, and the job sent to the background is in that group
+           until setsid has run in it; so the command returns only once the job leads a session of its own. */
+        const detach = (cmd) => `${cmd} p=$!; i=0; while [ "$(cut -d' ' -f6 /proc/$p/stat 2>/dev/null)" != "$p" ] && [ $i -lt 100 ]; do sleep 0.05; i=$((i+1)); done`;
         await leftCase({ name: 'detached shell', words: 'A command it detached is still running', ask: true, ms: 70000,
-          notice: 'sleep 45; true', steps: [outside("setsid nohup bash -c 'sleep 45; true' >/dev/null 2>&1 &"), { reply: 'Started the job.' }],
+          notice: 'sleep 45; true', steps: [outside(detach("setsid nohup bash -c 'sleep 45; true' >/dev/null 2>&1 &")), { reply: 'Started the job.' }],
           map: { text: /\b1 detached\b/, listed: (r) => r.jobs.some((j) => green(j) && /sleep 45/.test(j.text)) } });
         await leftCase({ name: 'program setsid started', words: 'A command it detached is still running', ask: true, ms: 70000,
-          notice: 'sleep 47', steps: [outside('setsid sleep 47 >/dev/null 2>&1 < /dev/null &'), { reply: 'Started the job.' }],
+          notice: 'sleep 47', steps: [outside(detach('setsid sleep 47 >/dev/null 2>&1 < /dev/null &')), { reply: 'Started the job.' }],
           map: { text: /\b1 detached\b/, listed: (r) => r.jobs.some((j) => green(j) && /sleep 47/.test(j.text)) },
           during: async () => {
             const pill = await until(async () => { const t = await pillText(); return /\b1 detached\b/.test(t) && t; }, 20000, 500);
