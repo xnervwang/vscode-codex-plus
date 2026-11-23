@@ -2383,6 +2383,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         await inC(`const mine = vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((t) => t.input && t.input.uri && String(t.input.uri).includes(arg));
           if (mine.length) await vscode.window.tabGroups.close(mine); return mine.length;`, T.id, 15000).catch(() => {});
         await sleep(1500);
+        /* Again, as closing the window's last Codex tab can start a page of Codex's there. */
+        await served([page, pageC]);
         await inC('setTimeout(() => vscode.commands.executeCommand("workbench.action.closeWindow"), 200); return true;', undefined, 15000).catch(() => {});
         await until(() => pageC.isClosed(), 30000, 500);
         const alive = (pid) => { try { process.kill(pid, 0); return true; } catch (e) { return !!(e && e.code === 'EPERM'); } };
