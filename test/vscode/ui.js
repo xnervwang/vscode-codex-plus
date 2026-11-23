@@ -55,6 +55,8 @@
  *                hook's mark, the hook run here with what Codex sends it; on Linux also a real request, approved there)
  *                gives it the red dot and Agent Plus's count here; archived from here, it is neither deleted here nor
  *                taken by the daily pass while that window shows it, and is once that window has closed
+ *   background   a codex exec run in the window's folder, left out of the session list until
+ *                codexPlus.hideBackgroundSessions is turned off
  *
  * Every step saves a screenshot to <out>/shots, and crops of the parts this extension draws are compared with the
  * approved copies (lib/baseline.js).
@@ -64,6 +66,7 @@ const path = require('path');
 const win = require('./lib/window');
 const { baselines } = require('./lib/baseline');
 const pixels = require('./lib/pixels');
+const fakeHome = require('./lib/fake-home');
 const { codexBinary } = require('../../src/appserver');
 
 const { sleep, until } = win;
@@ -972,6 +975,28 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await dragSide(narrow - await sideWidth());
       const back = await sideWidth();
       if (Math.abs(back - narrow) > 1) note(`the side bar went back to ${back} px, not the ${narrow} px it had`);
+    });
+
+    /* A run of codex exec in the window's folder (lib/fake-home.js BACKGROUND). codexPlus.hideBackgroundSessions, on by
+       default, leaves it out of the session list; turned off, without a reload, the list shows it, and turned on again
+       leaves it out. */
+    await step('background sessions in the session list', async () => {
+      if (!await showList()) throw new Error('the session list did not open');
+      const bg = fakeHome.BACKGROUND;
+      const listed = () => list.evaluate((want) => !!document.querySelector(`.cp-row[data-id="${want}"]`), bg.id).catch(() => null);
+      const kind = () => call(`${OWN} const t = (own('codex-files').listThreads() || []).find((x) => x.id === arg);
+        return t ? { kind: t.kind, source: t.source, cwd: t.cwd } : null;`, bg.id).catch((e) => String(e));
+      const known = await until(async () => { const k = await kind(); return k && k.kind === 'background' && k; }, 30000, 1000);
+      check(!!known, 'Codex lists the codex exec run among its threads, in the window\'s folder, and Codex Plus takes it for a background one', await kind());
+      check(await listed() === false, 'with codexPlus.hideBackgroundSessions on, the session list leaves it out', await listed());
+      await setting('hideBackgroundSessions', false);
+      try {
+        const shown = await until(async () => (await showList()) && (await listed()) === true, 20000, 500);
+        check(!!shown, 'turned off, without a reload, the session list shows it', await listed());
+        await shot('session-list-background-shown');
+      } finally { await setting('hideBackgroundSessions', undefined); }
+      const gone = await until(async () => (await showList()) && (await listed()) === false, 20000, 500);
+      check(!!gone, 'and turned back on, it leaves it out again', await listed());
     });
 
     /* The sweep run.js set up for (prepare below), which runs a minute after the window started: the conversation archived

@@ -67,7 +67,7 @@
     { "id": "find-thread", "what": "Find a Codex Conversation by Title or ID, a quick pick over this workspace's conversations",
       "steps": ["find-thread"], "settings": [], "commands": ["codexPlus.findThread"] },
     { "id": "background-sessions", "what": "Listing the conversations Codex starts by itself, such as sub-agents, indented under the conversation that started them once codexPlus.hideBackgroundSessions is off",
-      "steps": ["subagent-row-indented"], "settings": ["codexPlus.hideBackgroundSessions"], "commands": [] },
+      "steps": ["subagent-row-indented"], "checks": ["background sessions in the session list"], "settings": ["codexPlus.hideBackgroundSessions"], "commands": [] },
     { "id": "archive-delete", "what": "Archive and Unarchive, the collapsed Archived sessions group, the archived row's menu, and Delete with its confirmation",
       "steps": ["archived-section", "archived-row-menu", "delete-confirmation", "deleted"], "settings": [],
       "commands": ["codexPlus.archiveThread", "codexPlus.unarchiveThread", "codexPlus.deleteThread"] },
