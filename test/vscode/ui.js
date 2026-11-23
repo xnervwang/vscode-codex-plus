@@ -40,6 +40,9 @@
  *                reaches that source's reveal
  *   the brief    a click on the conversation in Agent Plus's Conversations panel shows the brief its plan holds in the
  *                Answer view; the arrow on its row and the page's button each go back to the conversation's tab
+ *   a question   Codex's asynchronous question answered while its turn still runs, on its card or by a message typed
+ *                into the message box: once the turn has ended no red dot on the tab, on the list row or in Agent Plus's
+ *                panel, and no count; left unanswered, the red dot on all three and the count
  *   the sidebar  a conversation resumed in Codex's sidebar: each reply's stamp inside its column
  *   archived     the conversation in the tab archived while open: the tab keeps its turns, read-only, and opening it
  *                from the list unarchives it and gives the tab its message box back
@@ -2440,6 +2443,153 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       planFor(id, planTitle(id));
       await exec('agentPlus.refreshWorkPlan');
       await exec('notifications.clearAll');
+    });
+
+    /*
+     * Codex's asynchronous question (request_user_input_async): the tool returns at once, its card stays above the
+     * message box and the turn goes on. In Codex 26.1117 an answer given while the turn runs, picked on the card or typed
+     * into the message box, is a user message sent into that turn, so the conversation does not wait once the turn has
+     * ended; a question left unanswered does.
+     */
+    await step('a question answered while its turn runs', async () => {
+      if (!codex || !list) throw new Error('the conversation or the session list did not open');
+      const id = threads[0].id;
+      const sessions = path.join(profile.codexHome, 'sessions');
+      const rolloutRows = () => {
+        try {
+          const file = fs.readdirSync(sessions, { recursive: true }).map((r) => path.join(sessions, String(r))).find((f) => f.endsWith(`${id}.jsonl`));
+          return fs.readFileSync(file, 'utf8').trim().split('\n').map((l) => { try { return JSON.parse(l); } catch (_) { return null; } }).filter(Boolean);
+        } catch (_) { return []; }
+      };
+      /* The turn of the rollout that asked `question`: whether it has ended, and the texts of the user messages between
+         the question and that end, which is where an answer given while the turn runs lands. */
+      const turnAsking = (question) => {
+        const rows = rolloutRows();
+        const at = rows.findIndex((r) => r.type === 'response_item' && (r.payload || {}).type === 'function_call'
+          && r.payload.name === 'request_user_input_async' && String(r.payload.arguments || '').includes(question));
+        if (at < 0) return null;
+        const after = rows.slice(at + 1);
+        const end = after.findIndex((r) => r.type === 'event_msg' && /^(task_complete|turn_aborted)$/.test((r.payload || {}).type));
+        const users = after.slice(0, end < 0 ? after.length : end).filter((r) => r.type === 'response_item' && (r.payload || {}).type === 'message'
+          && r.payload.role === 'user').map((r) => (r.payload.content || []).map((c) => c.text || '').join(''));
+        return { ended: end >= 0, users };
+      };
+      /* For a failure's detail: the rollout's last rows, and how many model calls the fake model has had. */
+      const lastRows = () => ({ calls: model.turns(), rows: rolloutRows().slice(-10).map((r) => { const p = r.payload || {};
+        return [r.type, p.type, p.role || p.name || '', (p.content || []).map((c) => c.text || '').join('').slice(0, 80)].filter(Boolean).join(' '); }) });
+      const REPLY_BLOCK = '<send_user_message_question_reply>';
+      const OPTIONS = ['64 MB', '128 MB'];
+      const cardOf = (question) => codex.locator('[data-codex-composer-request-navigation]').filter({ hasText: question }).first();
+      /* The card has a box of its own for a written answer inside the same composer, ahead of the message box. */
+      const messageBox = () => codex.locator(`${COMPOSER}:not([data-codex-composer-request-navigation] *)`).first();
+      const red = (d) => !!d && d.waiting >= 6;
+      /* Codex's chatgpt.followUpQueueMode is "queue" by default, which keeps a message sent while a turn runs for a turn
+         of its own; with "steer" the message goes into the turn that runs. Its Ctrl+Shift+Enter, which does the same for
+         one message, sent nothing in this window. */
+      const followUps = (mode) => call(`await vscode.workspace.getConfiguration('chatgpt').update('followUpQueueMode', arg, vscode.ConfigurationTarget.Global); return true;`,
+        mode);
+      /* Agent Plus's count follows its list pass, which a source's change or its 30 s tick brings; Refresh brings one now.
+         Read once three readings agree. */
+      const countNow = async () => {
+        await exec('agentPlus.refreshWorkPlan');
+        let last = -1, same = 0;
+        await until(async () => { const c = await agentCount(); same = c === last ? same + 1 : 0; last = c; return same >= 2; }, 15000, 700);
+        return last;
+      };
+      const askCase = async ({ name, question, answer }) => {
+        await tabNamed(title).click();
+        await until(async () => (await frontPage()) === codex, 10000, 300);
+        await clearToasts();
+        if (answer === 'typed') await followUps('steer');
+        model.script(id, [{ call: 'request_user_input_async', args: { questions: [{ title: question, options: OPTIONS }] } }, { reply: `Noted (${name}).` }]);
+        model.hold();
+        const turns = model.turns();
+        await messageBox().click();
+        await page.keyboard.type(`Ask me which cache size to use (${name}), and go on.`);
+        await page.keyboard.press('Enter');
+        if (!await until(() => model.turns() > turns, 20000, 300)) throw new Error(`${name}: the message reached no model`);
+        /* Counted while its turn runs, which Agent Plus never counts, so what is counted is the other conversations. */
+        const counted = await countNow();
+        /* The question goes out and the model's next answer is held: once Codex has made that call, the turn waits on the
+           model and is still running while the user answers. */
+        model.release();
+        model.hold();
+        const card = cardOf(question);
+        const shown = await card.waitFor({ state: 'visible', timeout: 20000 }).then(() => true, () => false);
+        if (!await until(() => model.turns() >= turns + 2, 20000, 200)) throw new Error(`${name}: Codex made no model call after the question: ${JSON.stringify(lastRows())}`);
+        const radios = shown ? await card.locator('button[role="radio"]').evaluateAll((bs) => bs.map((b) => b.getAttribute('aria-label'))) : [];
+        check(shown && OPTIONS.every((o) => radios.includes(o)), `${name}: while the turn runs, Codex's page shows the question's card above the message box, with its options`,
+          { radios, page: await pageSays(codex) });
+        await shot(`question-${name.replace(/\W+/g, '-')}-card`);
+        if (answer === 'card') {
+          /* With one question the pick is the answer, sent a moment later; a click on Send meanwhile takes the pick back. */
+          await card.locator(`button[role="radio"][aria-label="${OPTIONS[1]}"]`).first().click({ timeout: 5000 });
+          const sent = await until(() => { const t = turnAsking(question); return t && t.users.some((u) => u.includes(REPLY_BLOCK) && u.includes(OPTIONS[1])) && t; }, 15000, 500);
+          check(!!sent && !sent.ended, `${name}: ${OPTIONS[1]} picked on the card goes into the running turn, as a user message holding the ${REPLY_BLOCK} block`,
+            { turn: turnAsking(question), card: await card.isVisible().catch(() => false), ...lastRows() });
+        } else if (answer === 'typed') {
+          const typed = `Take ${OPTIONS[0]} (${name}).`;
+          await messageBox().click();
+          await page.keyboard.type(typed);
+          await page.keyboard.press('Enter');
+          const sent = await until(() => { const t = turnAsking(question); return t && t.users.some((u) => u.includes(typed) && !u.includes(REPLY_BLOCK)) && t; }, 15000, 500);
+          await followUps(undefined);
+          check(!!sent && !sent.ended, `${name}: with chatgpt.followUpQueueMode "steer", a message typed into the message box, the card left alone, goes into the running turn as a plain user message`,
+            { turn: turnAsking(question), card: await card.isVisible().catch(() => false), ...lastRows() });
+        }
+        /* Behind notes.txt when the turn ends, so that Agent Plus does not spare the count of the conversation in front. */
+        await openNotes();
+        await sleep(800);
+        model.release();
+        const over = await until(() => { const t = turnAsking(question); return t && t.ended && t; }, 30000, 500);
+        check(!!over, `${name}: the turn ends`, { turn: turnAsking(question), ...lastRows() });
+        const waits = !answer;
+        const lit = await until(async () => { const d = await dotsOn(title); return red(d) && d; }, waits ? 20000 : 15000, 500);
+        const dots = lit || await dotsOn(title);
+        if (waits) check(!!lit, `${name}: once the turn has ended, the tab's logo carries the red dot`, dots);
+        else check(!lit && !!dots && dots.waiting === 0, `${name}: once the turn has ended, the tab's logo has no red dot in the 15 s after`, dots);
+        await shot(`question-${name.replace(/\W+/g, '-')}-ended`);
+        if (await showList()) {
+          const l = await until(async () => { const x = await listDot(id, '.cp-group'); return (waits ? listDotIs(x, 'waiting') : !!x && x.word !== 'waiting' && x.look !== 'red') && x; }, 10000, 500);
+          check(!!l, `${name}: and the conversation's row in the session list ${waits ? 'has the red dot' : 'has no red dot'}`, await listDot(id, '.cp-group'));
+        }
+        const p = await panelSays(title, waits ? 'waiting' : 'stopped', null);
+        check(p.ok, `${name}: and its row in Agent Plus's Conversations panel ${waits ? 'a red circle: waiting' : 'no circle: stopped, not waiting'}`, p.row);
+        /* The reply landed behind another tab, and an unread reply is counted too. */
+        if (envelopes(await labelOf(title)) && await showList()) {
+          retried(await pick(threads[0], ['Codex Plus: Mark as Read']), 'Mark as Read');
+          await until(async () => (await labelOf(title)) === title, 15000, 500);
+        }
+        const settled = await countNow();
+        const more = waits ? settled > counted || await until(async () => (await agentCount()) > counted, 15000, 500)
+          : settled > counted || (await exec('agentPlus.refreshWorkPlan'), await until(async () => (await agentCount()) > counted, 6000, 500));
+        check(waits ? !!more : !more, `${name}: and, its reply marked as read, Agent Plus ${waits ? 'counts it among the conversations that need the user' : 'does not count it'}`,
+          { before: counted, settled, now: await agentCount(), label: await labelOf(title), reported: attentionOf(id) });
+      };
+      try {
+        await askCase({ name: 'answered on the card', question: 'Which cache size, picked on the card?', answer: 'card' });
+        await askCase({ name: 'answered by typing', question: 'Which cache size, answered in the message box?', answer: 'typed' });
+        await askCase({ name: 'left unanswered', question: 'Which cache size, left unanswered?', answer: null });
+        /* The card of a turn that has ended is gone from the page; the user's next message is what answers it. */
+        model.script(null);
+        await tabNamed(title).click();
+        await until(async () => (await frontPage()) === codex, 10000, 300);
+        await messageBox().click();
+        await page.keyboard.type('Use 128 MB.');
+        await page.keyboard.press('Enter');
+        const answered = await until(() => {
+          const rows = rolloutRows();
+          const at = rows.findIndex((r) => r.type === 'response_item' && (r.payload || {}).role === 'user' && JSON.stringify(r.payload.content || []).includes('Use 128 MB.'));
+          return at >= 0 && rows.slice(at).some((r) => r.type === 'event_msg' && (r.payload || {}).type === 'task_complete');
+        }, 30000, 500);
+        check(!!answered && !!await until(async () => { const d = await dotsOn(title); return d && !red(d) && d.working === 0 && d; }, 15000, 500),
+          'left unanswered: the user\'s next message, once its turn has ended, takes the red dot away', { answered: !!answered, dots: await dotsOn(title), ...lastRows() });
+      } finally {
+        model.script(null);
+        model.release();
+        await followUps(undefined).catch(() => {});
+        await exec('notifications.clearAll');
+      }
     });
 
     await step('a conversation in Codex\'s sidebar', async () => {
