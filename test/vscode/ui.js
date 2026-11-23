@@ -4673,9 +4673,13 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
           if (!key) return false;
           const mod = require.cache[key].exports, own = mod.loadAll;
           mod.loadAll = (o) => own({ ...o, sleep: async (ms) => {
-            const t0 = Date.now(), label = frontLabel(), had = marked(label);
+            const t0 = Date.now();
             await o.sleep(ms);
-            while (had && marked(frontLabel()) && Date.now() - t0 < 15000) await o.sleep(50);
+            /* A tab just restored has Codex's short title until Codex Plus draws the envelope after it, which on a slow
+               machine comes after the loader has brought the tab forward. */
+            while (!marked(frontLabel()) && Date.now() - t0 < 10000) await o.sleep(50);
+            const label = frontLabel(), had = marked(label), t1 = Date.now();
+            while (had && marked(frontLabel()) && Date.now() - t1 < 15000) await o.sleep(50);
             rec.holds.push({ ms: t0 - rec.t0, label: label.slice(0, 48), had, held: Date.now() - t0, cleared: had && !marked(frontLabel()) });
           } }).finally(() => { rec.loaded = Date.now() - rec.t0; });
           rec.wrapped = Date.now() - rec.t0;
