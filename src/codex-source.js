@@ -93,9 +93,10 @@ const lastOf = (thread, st, heard) => Math.max((thread && thread.updatedMs) || 0
  * reported it, and `ownState` keeps the state it would otherwise have; its `activity` is background.
  *
  * `planAsked` is when its work plan last put a question to the user (src/workplan.js latestQuestionAt). Later than the
- * user's last message, the activity is waiting, over a turn still running, as Agent Plus's Conversations panel has it
- * (activityOf in its src/conversations.js), so the tab and the session list draw the panel's red dot. `state` is left
- * alone: an older Agent Plus reads its `prompt` as a permission prompt, and finds the question in the plan itself.
+ * user's last message, the activity is waiting once the turn has ended, since the question reaches the user in that
+ * turn's reply, as Agent Plus's Conversations panel has it (activityOf in its src/conversations.js), so the tab and the
+ * session list draw the panel's red dot. `state` is left alone: an older Agent Plus reads its `prompt` as a permission
+ * prompt, and finds the question in the plan itself.
  */
 function conversationOf(thread, { unread, openHere, now = Date.now(), state = null, hasPlan = false, waiting = null, heard = null, left = [],
   planAsked = 0 }) {
@@ -107,7 +108,7 @@ function conversationOf(thread, { unread, openHere, now = Date.now(), state = nu
   /* A question asked with request_user_input_async waits for the user once its turn has ended (src/codex-files.js). */
   const asking = !working && !!(st && st.askedMs);
   const lastUser = (st && st.lastUserMs) || 0;
-  const planned = !!(lastUser && planAsked > lastUser);
+  const planned = !working && !!(lastUser && planAsked > lastUser);
   let word = 'idle';
   if (decide || soon) word = 'prompt';
   else if (working) word = 'working';

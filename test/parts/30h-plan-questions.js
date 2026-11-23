@@ -39,8 +39,8 @@ module.exports = async ({ eq, tmp }) => {
     'a turn over whose plan asked the user something after the user last wrote is waiting');
   eq(pick(conversationOf(th, { ...none, state: ended, planAsked: lastUser - 3 * 86400e3 })), ['stopped', 'idle'],
     'one asked days before the user last wrote is not');
-  eq(pick(conversationOf(th, { ...none, state: running, planAsked: lastUser + 30e3 })), ['waiting', 'working'],
-    'a new question outranks a turn still running, as in Agent Plus');
+  eq(pick(conversationOf(th, { ...none, state: running, planAsked: lastUser + 30e3 })), ['working', 'working'],
+    'a new question waits for the turn still running to end, as in Agent Plus');
   eq(pick(conversationOf(th, { ...none, state: ended, left: ['command'], planAsked: lastUser + 30e3 })), ['waiting', 'working'],
     'and background work still running');
   eq(pick(conversationOf(th, { ...none, state: { ...ended, lastUserMs: 0 }, planAsked: now - 1000 })), ['stopped', 'idle'],
