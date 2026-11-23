@@ -127,7 +127,7 @@
       "checks": ["a claude --bg session whose job id a later poll reads"], "settings": [], "commands": [] },
     { "id": "detached-end-notice", "what": "The notice sent into the conversation once a detached command it started stops",
       "steps": ["detached-end-notice", "detached-end-notice-off"],
-      "settings": ["codexPlus.detachedEndNotices"], "commands": [] },
+      "checks": ["work left running after a turn"], "settings": ["codexPlus.detachedEndNotices"], "commands": [] },
     { "id": "claude-bg-notice", "what": "The notice sent into the conversation when a claude --bg session it started finishes, fails, is stopped, dies or waits for an answer",
       "steps": [], "settings": [], "commands": [],
       "notInWindow": "The look run starts no claude --bg session, and the notice is drawn as the detached command's one is, which detached-end-notice shows; ui.js checks that it is sent." },

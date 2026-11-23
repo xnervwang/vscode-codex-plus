@@ -61,6 +61,7 @@
  *                reported as waiting until the turn ends
  *   elsewhere    a conversation in a folder the window does not open: in Agent Plus's list of every conversation, and,
  *                marked unread, archived and unarchived, not announced as finished
+ *   installed    with this window's build taken for one installed over, the end of a detached command still told
  *
  * Every step saves a screenshot to <out>/shots, and crops of the parts this extension draws are compared with the
  * approved copies (lib/baseline.js).
@@ -1972,6 +1973,30 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         await leftCase({ name: 'claude --bg session', words: 'A claude --bg session it started is still busy', ask: true, ms: 70000,
           steps: [outside(`'${fakeClaude}' --bg 'Run the suite.'`), { reply: 'Started a session.' }],
           map: { text: /\b1 claude --bg\b/, listed: (r) => r.work.some((x) => x.kind === 'claudeBg' && green(x) && /window test session/.test(x.text) && /job 1a2b3c4d/.test(x.text)) } });
+
+        /* Every window on a build installed over: this copy's manifest gets an install stamp other than the one it was
+           loaded with (src/installed-copies.js replacedSince), as when the same version is installed again over it. With
+           no window running the installed build, this one still notes the end of a command left running detached and
+           tells the conversation (src/uninstall-plan.js keepsShared). */
+        const selfDir = path.join(profile.exts, fs.readdirSync(profile.exts).find((d) => d.startsWith('xnervwang.codex-plus-')));
+        const manifest = path.join(selfDir, 'package.json'), had = fs.readFileSync(manifest, 'utf8');
+        const hostPid = await call('return process.pid;');
+        const entry = () => { try { return JSON.parse(fs.readFileSync(path.join(PLANS_DIR, 'windows', `${hostPid}.json`), 'utf8')); } catch (_) { return null; } };
+        try {
+          const pkg = JSON.parse(had);
+          const meta = pkg.__metadata || {};
+          pkg.__metadata = Object.assign({}, meta, { installedTimestamp: (meta.installedTimestamp || Date.now()) + 1 });
+          fs.writeFileSync(manifest, JSON.stringify(pkg, null, 2));
+          const over = await until(() => { const e = entry(); return e && e.installed === false && e; }, 30000, 500);
+          check(!!over, 'with another install stamp in its manifest, this window takes its build for one installed over, and its entry among the windows says so',
+            { entry: entry(), stamp: meta.installedTimestamp });
+          if (over) {
+            await leftCase({ name: 'detached shell in a window installed over', words: 'A command it detached is still running', ask: true, ms: 70000,
+              notice: 'sleep 33; true', steps: [outside(detach("setsid nohup bash -c 'sleep 33; true' >/dev/null 2>&1 &")), { reply: 'Started the job.' }] });
+          }
+        } finally { fs.writeFileSync(manifest, had); }
+        const installed = await until(() => { const e = entry(); return e && e.installed === true && e; }, 30000, 500);
+        check(!!installed, 'with its manifest put back, the window takes its build for the installed one again', entry());
       } else {
         note(`a detached shell, a program setsid started, a codex exec and claude -p and claude --bg sessions are found through /proc, which ${process.platform} does not have, `
           + 'so none of them is made here; the red dot is checked in the step on a conversation waiting for you');
