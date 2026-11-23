@@ -59,7 +59,7 @@ function contextOf(body) {
   const out = { tools,
     typed: textsOf(after.filter((it) => it && it.role === 'user')).join('\n').slice(-4000), skill: SKILL.test(body),
     /* Each user message on its own: a request for a title quotes the message inside a prompt of its own. */
-    said: after.filter((it) => it && it.role === 'user').map((it) => textsOf([it]).join('\n').trim().slice(0, 500)) };
+    said: after.filter((it) => it && it.role === 'user').map((it) => textsOf([it]).join('\n').trim().slice(0, 2000)) };
   for (const [k, re] of Object.entries(CONTEXT)) out[k] = re.test(text);
   return out;
 }

@@ -1837,7 +1837,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       /* With `panel`, Agent Plus's Conversations panel is read too: its row's red circle while Codex asks, and its green ring
          after the turn. Whether it has the envelope depends on the focus, so that is left out. */
       const leftCase = async ({ name, words, steps, ask, end, ms = 45000, during, notice, map, panel = false }) => {
-        const notices = model.sent('Codex Plus notice');
+        const from = model.seen.length;
         const counted = await bellCount();
         model.script(id, steps);
         await send(`Start the ${name} and come back.`);
@@ -1891,9 +1891,12 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         const gone = await until(async () => { const g = await now(); return g.green === 0 && !/^(working|background)$/.test(g.rowDot || '') && !g.running.includes(words) && g; }, ms, 1000);
         check(!!gone, `${name}: once that has finished, the green leaves both`, gone || { ...await now(), ...await why() });
         if (notice) {
-          const told = await until(() => model.sent('Codex Plus notice') > notices && model.sent(notice) > 0, 60000, 1000);
-          check(!!told, `${name}: and the conversation is sent a notice that it is no longer running, naming it and saying its exit code `
-            + 'cannot be known', { notices: model.sent('Codex Plus notice'), named: model.sent(notice), exitCode: model.sent('exit code cannot be known') });
+          /* A message of its own after the last reply: every request carries the conversation's earlier notices and the
+             command itself in its history. */
+          const told = () => model.seen.slice(from).find((x) => x.context && x.context.said.some((t) => t.includes('Codex Plus notice') && t.includes(notice)));
+          const got = await until(told, 60000, 1000);
+          check(!!got && got.context.said.some((t) => /exit code cannot be known/.test(t)), `${name}: and the conversation is sent a notice that it is no longer running, `
+            + 'naming it and saying its exit code cannot be known', got ? got.context.said : model.seen.slice(from).map((x) => x.context && x.context.said));
           await until(async () => !(await dotsOn(title) || {}).working, 30000, 1000);
         }
       };
