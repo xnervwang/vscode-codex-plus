@@ -415,17 +415,30 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
   };
   const newTabPage = async () => {
     await openNotes();
-    await until(async () => { const b = await codexButtons(); return b.length === 1 && b[0] === TITLES.tab; }, 15000, 500);
+    const buttons = await until(async () => { const b = await codexButtons(); return b.length === 1 && b[0] === TITLES.tab && b; }, 15000, 500);
     const before = new Set(page.frames());
     await codexButton().click();
     /* Codex keeps the page of its hidden sidebar, which also shows a message box and no turns. */
-    return until(async () => {
+    const fresh = await until(async () => {
       for (const f of page.frames()) {
         if (before.has(f)) continue;
         try { if (await f.evaluate(() => !!document.querySelector('[data-codex-composer-root]') && !document.querySelector('[data-turn-key]') && innerWidth > 600)) return f; } catch (_) { /* gone */ }
       }
       return null;
     }, 90000, 500);
+    /* On CI this has failed with nothing to say why, so what the window held is kept. */
+    if (!fresh) {
+      await shot('new-tab-page-missing');
+      const frames = [];
+      for (const f of page.frames()) {
+        const seen = await f.evaluate(() => ({ url: location.href.slice(0, 120), width: innerWidth, composer: !!document.querySelector('[data-codex-composer-root]'),
+          turns: document.querySelectorAll('[data-turn-key]').length, title: document.title })).catch((e) => ({ error: String(e).slice(0, 80) }));
+        frames.push(Object.assign({ new: !before.has(f) }, seen));
+      }
+      note(`the tab bar button opened no new conversation page: buttons before the click ${JSON.stringify(buttons || await codexButtons())}, `
+        + `tabs ${JSON.stringify(await tabs().catch(() => null))}, frames ${JSON.stringify(frames)}`);
+    }
+    return fresh;
   };
   const visibleNativeMenu = () => page.evaluate(() => !![...document.querySelectorAll('.context-view .monaco-menu, .monaco-menu-container')].find((e) => e.offsetParent));
   const auxiliaryShowsCodex = () => page.evaluate(() => {
