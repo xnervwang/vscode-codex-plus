@@ -139,7 +139,7 @@
       "agentPlus": { "settings": ["agentPlus.workPlanView"], "commands": ["agentPlus.refreshWorkPlan", "agentPlus.openWorkPlanFile", "agentPlus.showWorkPlanDetail"],
         "views": ["agentPlus.workPlan"] } },
     { "id": "conversations-view", "what": "Codex conversations in Agent Plus's Conversations view, with their state and the questions in their plans",
-      "steps": ["conversations-view"], "checks": ["the dot on a tab", "a question the work plan put to the user", "a question answered while its turn runs"],
+      "steps": ["conversations-view"], "checks": ["a question the work plan put while the turn runs", "the dot on a tab", "a question the work plan put to the user", "a question answered while its turn runs"],
       "settings": [], "commands": [],
       "agentPlus": { "settings": ["agentPlus.conversationsView"], "commands": ["agentPlus.showConversations", "agentPlus.goToConversation"],
         "views": ["agentPlus.conversations", "agentPlus.answer"] } },

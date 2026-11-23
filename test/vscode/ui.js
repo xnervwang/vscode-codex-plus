@@ -57,6 +57,8 @@
  *                taken by the daily pass while that window shows it, and is once that window has closed
  *   background   a codex exec run in the window's folder, left out of the session list until
  *                codexPlus.hideBackgroundSessions is turned off
+ *   mid-turn     a question the work plan puts while the turn runs: the dot stays green, and it is neither counted nor
+ *                reported as waiting until the turn ends
  *   elsewhere    a conversation in a folder the window does not open: in Agent Plus's list of every conversation, and,
  *                marked unread, archived and unarchived, not announced as finished
  *
@@ -2555,6 +2557,60 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await shot('plan-question-old');
       planFor(id, planTitle(id));
       await exec('agentPlus.refreshWorkPlan');
+      await exec('notifications.clearAll');
+    });
+
+    /* A question the work plan puts while a turn still runs reaches the user in the reply that turn ends with, so until
+       the turn ends the conversation is not waiting for them: its tab's dot stays green, and Agent Plus neither counts it
+       nor tells the other windows it waits, nor shows a notification. Once the turn ends, the dot turns red, Agent Plus
+       counts it, and tells the other windows it waits on a question in its plan, which is the notice another window
+       shows; this window, which has its tab, shows none. */
+    await step('a question the work plan put while the turn runs', async () => {
+      if (!codex || !list) throw new Error('the conversation or the session list did not open');
+      const id = threads[0].id;
+      await tabNamed(title).click();
+      await until(async () => (await frontPage()) === codex, 10000, 300);
+      const decided = await toDecide();
+      model.hold();
+      const turns = model.turns();
+      let mid = null;
+      try {
+        await codex.locator(COMPOSER).first().click();
+        await page.keyboard.type('One more turn on the cache, please.');
+        await page.keyboard.press('Enter');
+        if (!await until(() => model.turns() > turns, 20000, 300)) throw new Error('the message reached no model');
+        await openNotes();
+        const green = await until(async () => { const d = await dotsOn(title); return d && d.working >= 6 && d.waiting === 0 && d; }, 20000, 500);
+        check(!!green, 'while the turn runs, its tab carries the green dot', await dotsOn(title));
+        await clearToasts();
+        const counted = await agentCount(), mark = await toastMark();
+        /* Asked a moment after the message, which the rollout has from the turn's start. */
+        await sleep(1500);
+        askInPlan(id, Date.now());
+        await exec('agentPlus.refreshWorkPlan');
+        /* Agent Plus has read the question once its Conversations entry counts one more to decide. */
+        const read = await until(async () => (await toDecide()) > decided, 20000, 500);
+        await sleep(7000);
+        mid = { read: !!read, dot: await dotsOn(title), row: (await showList()) ? await listDot(id, '.cp-group') : null, count: [counted, await agentCount()],
+          reported: attentionOf(id), notifications: await toastsAbout(title, mark) };
+        check(mid.read && !!mid.dot && mid.dot.working >= 6 && mid.dot.waiting === 0 && listDotIs(mid.row, 'working') && mid.count[1] <= counted
+          && !waitsOn(id, { kind: 'planQuestion' }) && !mid.notifications.length,
+        'a question its work plan puts while the turn still runs leaves the tab\'s dot and its row\'s green, is not counted, not reported to the other '
+          + 'windows as waiting, and not announced', mid);
+        await shot('plan-question-mid-turn');
+      } finally { model.release(); }
+      const red = await until(async () => { const d = await dotsOn(title); return d && d.waiting >= 6 && d; }, 30000, 500);
+      check(!!red, 'once the turn ends, the tab\'s dot turns red', await dotsOn(title));
+      const counted = mid ? mid.count[0] : 0;
+      check(!!await until(async () => (await agentCount()) > counted, 15000, 500), 'and Agent Plus counts it', { before: counted, now: await agentCount() });
+      if (apWaits) {
+        const told = await until(() => waitsOn(id, { kind: 'planQuestion' }), 15000, 500);
+        check(!!told, 'and reports it to the other windows as waiting on a question in its plan', attentionOf(id));
+      } else if (await focused()) check(!!await toastSaid(title, 'is waiting for you', 0), 'and says in a notification that it is waiting for you', await toastsAbout(title, 0));
+      await shot('plan-question-turn-ended');
+      planFor(id, planTitle(id));
+      await exec('agentPlus.refreshWorkPlan');
+      await readBack();
       await exec('notifications.clearAll');
     });
 
