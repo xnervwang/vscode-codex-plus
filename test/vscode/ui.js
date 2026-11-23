@@ -1263,9 +1263,11 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
          for the message box, and every click after it. The pointer goes to the top of the conversation, above the hover,
          which reaches up over the middle of it. */
       const talk = await codex.locator('[data-app-action-timeline-scroll]').first().boundingBox();
-      await page.mouse.move(talk ? talk.x + 30 : 0, talk ? talk.y + 15 : 0);
-      /* For a hover left open: whether the page still thinks the pointer is over the meter or the hover, and what is
-         under the point the pointer moved to. */
+      /* In steps, as a hand moves it: a single jump of the pointer has once left Codex's page taking the pointer for still
+         being on the meter (its :hover kept), so it never heard the pointer leave. */
+      await page.mouse.move(talk ? talk.x + 30 : 0, talk ? talk.y + 15 : 0, { steps: 6 });
+      /* For a hover left open: whether the page still takes the pointer for being on the meter or the hover, and what is
+         under the point the pointer went to. */
       const hoverState = () => codex.evaluate(() => {
         const b = document.querySelector('[data-codex-extras="context"]'), m = document.querySelector('[data-codex-extras="meter"]');
         const t = document.querySelector('[data-app-action-timeline-scroll]'), tr = t && t.getBoundingClientRect();
@@ -1293,7 +1295,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       const backOn = await until(async () => { const b = await barNow(); return b.meter !== null && /timer/.test(b.pill || '') && b; }, 10000, 300);
       check(!!backOn, 'toggled off and on with the pointer resting on the meter, the meter and the Agent map pill are both back within 10 s', backOn || await barNow());
       await shot('toggled-on-over-meter');
-      await page.mouse.move(talk ? talk.x + 30 : 0, talk ? talk.y + 15 : 0);
+      await page.mouse.move(talk ? talk.x + 30 : 0, talk ? talk.y + 15 : 0, { steps: 6 });
     });
 
     await step('the dot on a tab', async () => {
