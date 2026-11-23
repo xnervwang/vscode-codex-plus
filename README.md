@@ -223,6 +223,18 @@ Your messages have a bar down their leading edge in the theme's focus colour. `c
 
 A Stop hook can prompt Codex to continue a turn. Its bubble appears on your side with "Hook feedback" underneath. Codex Plus folds it to one dim line. It drops the bubble background and skips your message bar and text colour. Folding has no separate setting. Click the line to show the whole prompt, then click it again to fold it.
 
+When a reply names another of your conversations, Codex Plus shows the name as a link in the theme's link colour. Agent Plus gives Codex Plus the conversations of every agent it knows, including Claude Code. Codex Plus leaves the reply alone while Codex is writing it and adds the links about half a second after Codex finishes.
+
+A whole title between 「 and 」 matches if it has at least 4 characters or at least 2 Chinese, Japanese or Korean characters. Without brackets, the whole title must be at least 10 characters wide, with Chinese, Japanese and Korean characters counting double, and no letter or digit immediately before or after it. A full conversation ID also matches, as do its first 8 characters if no other conversation's ID starts with them.
+
+Codex Plus skips the conversation the reply belongs to, placeholder titles such as "untitled" and "New chat", code blocks and text that is already a link. In inline code, only IDs can become links. An ID next to a slash or followed by a file extension stays unlinked.
+
+Hover over a link to see the conversation's title, its agent, the first 8 characters of its ID and how long ago it was active. If several conversations have the same title, the link opens the one that was active most recently, and the hover lists the others.
+
+Clicking a link opens the conversation through Agent Plus. If a VS Code window already shows the conversation, that window brings it to the front. If no window shows it, Agent Plus follows its usual rule for that agent, which for Codex offers "Open it here".
+
+`codexPlus.conversationLinks` is on by default. Turn it off to disable the links. The links add nothing to what Codex sends the model.
+
 Codex Plus adds a row below the message box. At its right end, it shows the tool call running now, such as `exec_command running for 2m55s (since 11:11:18)`, while Codex's row for that call is out of view. When Codex's row is in view, it already says this. The same place counts commands Codex started that are still running, such as a build or a `sleep` left in the background, until Codex reports that the process ended.
 
 `Codex Plus: Show Status` lists each still-running command, when it started and which conversation it belongs to. Codex Plus sees only this window's Codex. If you reload the window while a command runs, it learns of that command only when it ends. `codexPlus.turnFigures` turns off the tool-call display and command count too.
