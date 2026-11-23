@@ -100,10 +100,18 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
   /* CODEX_PLUS_UI_STEPS, a regular expression, runs only the steps whose names match it. The steps a later one relies
      on (the patch, tab bar, session list) have to match too. */
   const only = process.env.CODEX_PLUS_UI_STEPS ? new RegExp(process.env.CODEX_PLUS_UI_STEPS) : null;
+  /* A step's error in one line: its first lines and, for a Playwright timeout, the end of its call log, which says what
+     kept the action from happening (another element taking the click, an element never stable), and where it was thrown. */
+  const failure = (e) => {
+    const lines = String((e && e.stack) || e).split('\n');
+    const said = lines.filter((l) => !/^\s+at /.test(l)), at = lines.filter((l) => /^\s+at /.test(l)).slice(0, 3);
+    const kept = said.length > 10 ? [...said.slice(0, 4), '…', ...said.slice(-6)] : said;
+    return [...kept, ...at].map((l) => l.trim()).join(' | ');
+  };
   const step = async (name, fn) => {
     if (only && !only.test(name)) { note(`${name}: not run, as CODEX_PLUS_UI_STEPS leaves it out`); return; }
     console.log(`\n── ${name}`);
-    try { await fn(); } catch (e) { check(false, `${name}: ran to its end`, String((e && e.stack) || e).split('\n').slice(0, 4).join(' | ')); await shot(`${name}-error`); }
+    try { await fn(); } catch (e) { check(false, `${name}: ran to its end`, failure(e)); await shot(`${name}-error`); }
   };
 
   /* ── what the window and the extension host say ── */
@@ -1150,10 +1158,21 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
          which reaches up over the middle of it. */
       const talk = await codex.locator('[data-app-action-timeline-scroll]').first().boundingBox();
       await page.mouse.move(talk ? talk.x + 30 : 0, talk ? talk.y + 15 : 0);
+      /* For a hover left open: whether the page still takes the pointer for being on the meter or the hover, and what is
+         under the point the pointer went to. */
+      const hoverState = () => codex.evaluate(() => {
+        const b = document.querySelector('[data-codex-extras="context"]'), m = document.querySelector('[data-codex-extras="meter"]');
+        const t = document.querySelector('[data-app-action-timeline-scroll]'), tr = t && t.getBoundingClientRect();
+        const at = tr ? { x: Math.round(tr.left + 30), y: Math.round(tr.top + 15) } : null;
+        const under = at ? document.elementFromPoint(at.x, at.y) : null;
+        const rect = (e) => { if (!e) return null; const r = e.getBoundingClientRect(); return [r.left, r.top, r.width, r.height].map(Math.round); };
+        return { open: !!b && getComputedStyle(b).display !== 'none', box: rect(b), meter: rect(m), meterHovered: !!m && m.matches(':hover'),
+          boxHovered: !!b && b.matches(':hover'), under: under ? `${under.tagName} ${String(under.className || '').slice(0, 60)}` : null, at };
+      }).catch((e) => String(e));
       check(!!await until(() => codex.evaluate(() => {
         const b = document.querySelector('[data-codex-extras="context"]');
         return !b || getComputedStyle(b).display === 'none';
-      }), 5000, 200), 'and closes once the pointer leaves the meter');
+      }), 5000, 200), 'and closes once the pointer leaves the meter', await hoverState());
 
       /* Toggled off and on with the pointer resting on the meter. The meter is taken out from under the pointer, so the
          page still counts the pointer as on it when the controls come back, and the map arrives after them. */
@@ -3430,7 +3449,9 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         check(!!unread, `Mark as Unread in ${how} puts the envelope after the tab's title, though the tab is in front`, await labelOf(named));
         await openNotes();
         await tabNamed(named).click();
-        check(!!await until(async () => (await labelOf(named)) === named, 20000, 500), `and going to it again after leaving it takes the envelope away (${how})`, await labelOf(named));
+        /* Codex Plus counts nothing as read while the window has no focus, so whether it had is in the detail. */
+        check(!!await until(async () => (await labelOf(named)) === named, 20000, 500), `and going to it again after leaving it takes the envelope away (${how})`,
+          { label: await labelOf(named), front: await frontTab(), focused: await focused().catch(() => null) });
       }
       if (await tried('a right-click on the conversation\'s tab offers Add to Group', () => contextPick(named, 'Codex Plus: Add to Group'))) {
         const pickBox = page.locator('.quick-input-widget .quick-input-list .monaco-list-row').filter({ hasText: 'Release 1.2' }).first();
