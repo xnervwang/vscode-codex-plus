@@ -273,7 +273,7 @@ The Agent map requires the patch. It appears as a pill like Claude Code's, for e
 
 Clicking the pill opens a dialog with a section for each kind of item. The wake-up section lists the interval, next wake-up time, end and prompt alongside a Remove button. The goal section shows its state and tokens alongside the Pause, Resume and Clear controls. Each sub-agent shows when it was last active and has a status dot with the same four states as in the session list. An envelope beside a sub-agent marks an unread reply, and clicking the sub-agent opens it in a tab. Each running item has a green dot. The dialog shows command lines for detached commands, background terminals and `codex exec` runs, while `claude -p` workers and `claude --bg` sessions appear under the names Claude Code gives them. Pressing Esc or clicking outside the dialog closes it.
 
-![The Agent map with a wake-up and a detached command](images/shots/agent-map.png)
+![The Agent map with the conversation's own row, a detached command left running and a wake-up](images/shots/agent-map.png)
 
 ## Chimes
 
