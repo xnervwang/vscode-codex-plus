@@ -1015,7 +1015,9 @@
     else if (msg.type === 'startRename' && typeof msg.id === 'string') startRename(rowFor(msg.id));
     else if (msg.type === 'startRenameGroup' && typeof msg.key === 'string') renameGroup(msg.key);
   });
-  window.addEventListener('blur', () => { hideHover(); closeMenu(); closeCtx(); });
+  /* The row the arrow keys are on looks hovered, with its buttons showing; once the list has lost the focus, as to the
+     tab Enter opened, nothing there says which row the keys were on. */
+  window.addEventListener('blur', () => { hideHover(); closeMenu(); closeCtx(); highlight(null); });
   window.addEventListener('resize', closeCtx);
   filter();
   send({ kind: 'ready' });

@@ -86,8 +86,8 @@ const registry = new Map();
 const PAGE_KEEP = 8;
 let deps = null;
 let last = new Map();
-/* The thread Codex's sidebar last started following, as the broadcast says, or ''. It is never cleared: the broadcast
-   only ever says a thread started being followed. */
+/* The thread Codex's sidebar last started following, as the broadcast says, or ''. It is cleared once no page shows that
+   thread any more, as when the sidebar starts a new conversation. */
 let sidebar = '';
 /* What `sidebar` was before each broadcast moved it, by the conversation it moved to. */
 const sidebarBefore = new Map();
@@ -1335,8 +1335,13 @@ function installHooks() {
     refreshPanels().catch(() => { /* the next poll draws it */ });
   };
   globalThis.__codexExtrasBroadcast = (method, params) => {
-    if (!deps || method !== 'thread-stream-following-changed' || !params || !params.following) return;
+    if (!deps || method !== 'thread-stream-following-changed' || !params) return;
     const thread = String(params.conversationId || '');
+    if (params.following === false) {
+      if (thread && sidebar === thread) { sidebar = ''; sidebarChanged(); }
+      return;
+    }
+    if (!params.following) return;
     /* sidebarChanged redraws the pages too (activate), which sends the sidebar's page its conversation's times. */
     if (thread && !panelsOf(thread).length) {
       sidebarBefore.delete(thread);

@@ -96,14 +96,17 @@ const EDITS = [
   /*
    * From 26.1117 Codex's host keeps the conversations itself and has no broadcasts between windows. A page that starts
    * showing a conversation retains it in that store instead, at the moment the older builds broadcast that the window
-   * started following it.
+   * started following it. Codex calls the retain's callback with false once the last page showing the conversation has
+   * let go of it, which is handed over as no longer followed.
    */
   {
     name: 'window broadcasts',
     shapes: [
       {
         re: /retainActiveConversation\(([\w$]+),([\w$]+)\)\{/g,
-        to: (m, id) => `${m}${call('__codexExtrasBroadcast', `"thread-stream-following-changed",{conversationId:${id},following:!0}`)};`,
+        to: (m, id, cb) => `${m}${call('__codexExtrasBroadcast', `"thread-stream-following-changed",{conversationId:${id},following:!0}`)};`
+          + `if(typeof ${cb}==="function"){let cxKeep=${cb};${cb}=(cxOn)=>{if(cxOn===!1)`
+          + `${call('__codexExtrasBroadcast', `"thread-stream-following-changed",{conversationId:${id},following:!1}`)};return cxKeep(cxOn)}}`,
         note: 'a page retaining a conversation in the host\'s store (26.1117 on)',
       },
       {

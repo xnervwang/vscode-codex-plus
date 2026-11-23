@@ -3586,6 +3586,243 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     });
 
     /*
+     * The session list's rows as each way of opening and closing conversations leaves them, read as a person sees them
+     * (Claude Code Plus's ui.js has the same step): no row of a conversation open nowhere is drawn current, selected, as
+     * the row the arrow keys are on, or other than plain, and the rows of the conversation in front are the current ones.
+     * The ways: a row clicked and its tab closed in front; two opened and the first closed behind the second; one
+     * brought forward from Open sessions and closed; one resumed in Codex's sidebar, which then starts a new
+     * conversation; one opened with the arrow keys and Enter; a row picked with a modifier click before another is
+     * opened; a row's menu closed with nothing picked; one opened from its menu; a row dragged and let go over no group.
+     * Tabs are closed by their close buttons, as a person closes them. Before the pointer leaves the list it is moved to
+     * a spot of the list that is no row, since a page is told the pointer left a row only by a move within the page.
+     */
+    await step('rows of conversations no longer open', async () => {
+      if (!list) throw new Error('the session list did not open');
+      const [A, B] = threads;
+      const MOD = process.platform === 'darwin' ? 'Meta' : 'Control';
+      const groupRow = (t) => list.locator(`.cp-group .cp-row[data-id="${t.id}"]`).first();
+      const openRow = (t) => list.locator(`.cp-section[data-key="open"] .cp-row[data-id="${t.id}"]`).first();
+      const tabOf = async (t) => (await codexTabsNow()).find((x) => x.route === `/local/${t.id}`);
+      const opened = async (t, how) => {
+        if (!await until(async () => { const x = await tabOf(t); return !!x && x.active; }, 30000, 300)) throw new Error(`${how} did not bring "${t.title}" to the front in a tab`);
+      };
+      /* Every row as a person sees it: the list's classes for the current row, the rows picked for an action on several
+         and the row the arrow keys or a right-click are on, the background and outline its styles draw, whether its
+         buttons show, and where the keyboard focus is. */
+      const rowLooks = () => list.evaluate(() => {
+        const a = document.activeElement;
+        const focusOn = !document.hasFocus() ? 'elsewhere' : !a || a === document.body ? 'body' : a.closest('.cp-row') ? `row ${a.closest('.cp-row').dataset.id}`
+          : String(a.className || a.tagName).slice(0, 40);
+        return [...document.querySelectorAll('.cp-row[data-id]')].map((r) => {
+          const s = getComputedStyle(r), acts = r.querySelector('.cp-actions'), g = r.closest('.cp-group'), sec = r.closest('.cp-section');
+          return { id: r.dataset.id, where: g ? g.dataset.key : sec ? sec.dataset.key : '?', shown: r.getClientRects().length > 0,
+            title: ((r.querySelector('.cp-title') || {}).textContent || '').slice(0, 32),
+            current: r.classList.contains('cp-current'), selected: r.classList.contains('cp-selected'), highlighted: r.classList.contains('cp-hl'),
+            hover: r.matches(':hover'), focus: focusOn === `row ${r.dataset.id}` && a === r, background: s.backgroundColor,
+            outline: s.outlineStyle !== 'none' && parseFloat(s.outlineWidth) > 0 ? `${s.outlineWidth} ${s.outlineColor}` : '',
+            buttons: !!acts && getComputedStyle(acts).visibility === 'visible', focusOn };
+        });
+      }).catch(() => []);
+      const drawnRow = (r) => r.background !== 'rgba(0, 0, 0, 0)' || !!r.outline || r.buttons;
+      /* A row of a conversation open nowhere drawn current, selected, highlighted or other than plain; and a row drawn
+         current for another conversation than the one in front, or not drawn so for that one. */
+      const misdrawn = (looks, open, front) => looks.filter((r) => (!open.includes(r.id) && (r.current || r.selected || r.highlighted || drawnRow(r)))
+        || r.current !== (r.id === front));
+      /* The pointer onto a spot of the list that is no row: a section's or a group's header found in the page, or a
+         corner. */
+      const pointerOffRows = async () => {
+        const box = await (await list.frameElement()).boundingBox();
+        const at = await list.evaluate(() => {
+          const free = ([x, y]) => { const e = document.elementFromPoint(x, y); return !!e && !e.closest('.cp-row'); };
+          const heads = [...document.querySelectorAll('[data-toggle], .cp-group-head')].map((h) => h.getBoundingClientRect())
+            .filter((r) => r.height > 0 && r.top >= 0 && r.bottom <= innerHeight).map((r) => [r.left + Math.min(40, r.width / 2), r.top + r.height / 2]);
+          return [...heads, [8, innerHeight - 8], [innerWidth - 8, innerHeight - 8]].find(free) || null;
+        });
+        if (!at) throw new Error('the list has no spot off its rows to rest the pointer on');
+        await page.mouse.move(box.x + at[0], box.y + at[1], { steps: 4 });
+        await sleep(200);
+      };
+      const closeTab = async (t) => {
+        const x = await tabOf(t);
+        if (!x) throw new Error(`no tab shows "${t.title}"`);
+        await pointerOffRows();
+        const at = await page.evaluate((want) => [...document.querySelectorAll('.tabs-container .tab')].findIndex((e) => {
+          const n = e.querySelector('.label-name');
+          return String((n ? n.textContent : e.innerText) || '').replace(/\u2709[\uFE0E\uFE0F]?/g, ' ').replace(/\s+/g, ' ').trim() === want;
+        }), bare(x.label));
+        if (at < 0) throw new Error(`no tab in the tab bar is labelled "${bare(x.label)}"`);
+        const tab = page.locator('.tabs-container .tab').nth(at);
+        await tab.hover();
+        await tab.locator('.tab-actions .action-label').first().click({ timeout: 5000 });
+        if (!await until(async () => !(await tabOf(t)), 15000, 300)) throw new Error(`the tab of "${t.title}" did not close`);
+      };
+      const looked = [];
+      let n = 0;
+      /* `open`: the conversations open now; `front`: the one drawn as current, or null. */
+      const after = async (what, open, front) => {
+        await pointerOffRows();
+        const ids = open.map((t) => t.id), f = front ? front.id : null;
+        let looks = [];
+        const ok = await until(async () => { looks = await rowLooks(); return looks.length && !misdrawn(looks, ids, f).length; }, 15000, 300);
+        await shot(`rows-no-longer-open-${++n}`);
+        looked.push({ n, what, open: ids, front: f, looks });
+        check(!!ok, `${what}: no row is drawn for a conversation open nowhere, and only ${front ? `"${front.title}"` : 'no conversation'} is drawn as current`,
+          misdrawn(looks, ids, f).map((r) => ({ ...r, open: ids.includes(r.id) })));
+      };
+      const way = async (name, fn) => {
+        try { await fn(); } catch (e) {
+          check(false, `${name}: ran to its end`, String((e && e.stack) || e).split('\n').slice(0, 3).join(' | '));
+          await shot(`rows-no-longer-open-${name.replace(/\W+/g, '-')}-error`);
+        }
+      };
+      const allowUri = async () => {
+        const allow = page.locator('.monaco-dialog-box').filter({ hasText: 'open this URI' }).first();
+        if (await allow.waitFor({ state: 'visible', timeout: 8000 }).then(() => true, () => false)) {
+          await allow.locator('.dialog-buttons .monaco-button').filter({ hasText: 'Open' }).first().click({ timeout: 5000 });
+        }
+      };
+
+      try {
+        await exec('workbench.action.closeAuxiliaryBar');
+        await exec('workbench.action.closeAllEditors');
+        await openNotes();
+        if (!await showList()) throw new Error('the session list did not open');
+        /* A selection an earlier step left: Escape in the list ends it, as it does for a person. */
+        await list.locator('.cp-root').first().focus();
+        await page.keyboard.press('Escape');
+        await page.keyboard.press('Escape');
+
+        await way('a row clicked', async () => {
+          await groupRow(A).click();
+          await opened(A, 'a click on its row');
+          await after('a row clicked', [A], A);
+          await closeTab(A);
+          await after('a row clicked and its tab closed in front', [], null);
+        });
+        await way('two opened', async () => {
+          await groupRow(A).click();
+          await opened(A, 'a click on its row');
+          await groupRow(B).click();
+          await opened(B, 'a click on its row');
+          await closeTab(A);
+          await after('two opened from the list and the first closed behind the second', [B], B);
+        });
+        await way('from Open sessions', async () => {
+          await groupRow(A).click();
+          await opened(A, 'a click on its row');
+          await openRow(B).click();
+          await opened(B, 'a click on its row in Open sessions');
+          await closeTab(B);
+          await after('one brought forward from Open sessions and closed in front', [A], A);
+          await closeTab(A);
+          await after('the last tab closed', [], null);
+        });
+        await way('the sidebar', async () => {
+          try {
+            await openNotes();
+            retried(await pick(B, ['Codex Plus: Resume in Sidebar']), 'Resume in Sidebar');
+            await allowUri();
+            const side = await frameWhere((want) => innerWidth < 800 && document.body.innerText.includes(want) && !!document.querySelector('[data-turn-key]'), 60000, B.title.slice(0, 30));
+            if (!side) throw new Error('Codex\'s sidebar did not show the conversation');
+            /* With a text file in front, Codex Plus counts the sidebar's conversation as the one in front. */
+            await after('one resumed in Codex\'s sidebar from its row\'s menu', [B], B);
+            await list.locator('.cp-new[data-send="newInSidebar"]').first().click();
+            await allowUri();
+            if (!await until(() => side.evaluate(() => !!document.querySelector('[data-codex-composer-root]') && !document.querySelector('[data-turn-key]')).catch(() => false), 30000, 500)) {
+              throw new Error('the sidebar did not start a new conversation');
+            }
+            await after('the sidebar then started a new conversation', [], null);
+          } finally {
+            await exec('workbench.action.closeAuxiliaryBar');
+          }
+        });
+        await way('the arrow keys', async () => {
+          const rowsNow = async () => (await rowLooks()).filter((r) => r.shown);
+          await list.locator('.cp-root').first().focus();
+          await page.keyboard.press('ArrowDown');
+          for (let i = 0; i < 40; i++) {
+            const rows = await rowsNow(), at = rows.findIndex((r) => r.highlighted), to = rows.findIndex((r) => r.id === A.id);
+            if (at === to) break;
+            if (at < 0 || to < 0) throw new Error(`no row ${at < 0 ? 'is highlighted by the arrow keys' : 'shows the conversation'}`);
+            await page.keyboard.press(at < to ? 'ArrowDown' : 'ArrowUp');
+            await until(async () => (await rowsNow()).findIndex((r) => r.highlighted) !== at, 3000, 100);
+          }
+          await page.keyboard.press('Enter');
+          await opened(A, 'Enter on its row');
+          await after('one opened with the arrow keys and Enter', [A], A);
+          await closeTab(A);
+          await after('one opened with the arrow keys and Enter, its tab closed in front', [], null);
+        });
+        await way('a modifier click', async () => {
+          await groupRow(B).click({ modifiers: [MOD] });
+          if (!await until(async () => (await rowLooks()).some((r) => r.id === B.id && r.selected), 5000, 200)) note(`a ${MOD} click did not pick a row of the session list here`);
+          await groupRow(A).click();
+          await opened(A, 'a click on its row');
+          await after('a row picked with a modifier click, then another clicked', [A], A);
+          await closeTab(A);
+          await after('a row picked with a modifier click, then another clicked and its tab closed', [], null);
+        });
+        await way('a menu closed', async () => {
+          await groupRow(B).click();
+          await opened(B, 'a click on its row');
+          await groupRow(B).click({ button: 'right' });
+          if (!await until(() => list.evaluate(() => !!document.querySelector('.cp-ctx')), 5000, 100)) throw new Error('no menu opened');
+          await page.keyboard.press('Escape');
+          if (!await until(() => list.evaluate(() => !document.querySelector('.cp-ctx')), 5000, 100)) throw new Error('the menu did not close');
+          await after('a row\'s menu closed with nothing picked', [B], B);
+          await closeTab(B);
+          await after('a row\'s menu closed with nothing picked, then its tab closed in front', [], null);
+        });
+        await way('the menu', async () => {
+          retried(await pick(A, ['Codex Plus: Resume in Tab']), 'Resume in Tab');
+          await opened(A, 'Resume in Tab');
+          await after('one opened from its menu', [A], A);
+          await closeTab(A);
+          await after('one opened from its menu, its tab closed in front', [], null);
+        });
+        /* Let go on another row of the list, which takes no drop, two rows away: let go outside the list's page, the page
+           is never told the drag ended. The page draws its drag image (.cp-drag) only once a drag has started. */
+        await way('a drag', async () => {
+          let dragged = null, during = null;
+          const box = await (await list.frameElement()).boundingBox();
+          for (const t of [B, A]) {
+            const b = await groupRow(t).boundingBox();
+            if (!b) continue;
+            const x = b.x + Math.min(60, b.width / 3), y = b.y + b.height / 2;
+            const to = await list.evaluate(({ x, y, h, id }) => {
+              for (const d of [2 * h, -2 * h, 3 * h, -3 * h]) {
+                const e = y + d > 4 && y + d < innerHeight - 4 ? document.elementFromPoint(x, y + d) : null;
+                const r = e && e.closest('.cp-row[data-id]');
+                if (r && r.dataset.id !== id && !e.closest('.cp-group-head')) return y + d;
+              }
+              return null;
+            }, { x: x - box.x, y: y - box.y, h: b.height, id: t.id });
+            if (to === null) continue;
+            await page.mouse.move(x, y);
+            await page.mouse.down();
+            await page.mouse.move(x, y + Math.sign(to - (y - box.y)) * 6, { steps: 3 });
+            await page.mouse.move(x, box.y + to, { steps: 6 });
+            during = { looks: await rowLooks(), image: await list.evaluate(() => !!document.querySelector('.cp-drag')).catch(() => false) };
+            await page.mouse.up();
+            if (during.image) { dragged = t; break; }
+          }
+          if (!dragged) note('no drag started here: the list drew no drag image while the pointer moved with its button held');
+          else {
+            const picked = during.looks.filter((r) => r.selected || r.highlighted).map((r) => `${r.id} ${r.where}`);
+            check(!picked.length, `while "${dragged.title}" is dragged, the list picks no row: the drag carries the row without selecting it`, picked);
+          }
+          await after(`a row dragged and let go over no group${dragged ? `, "${dragged.title}"` : ''}`, [], null);
+          const dropMarks = await list.evaluate(() => document.querySelectorAll('.cp-drop, .cp-drag').length).catch(() => -1);
+          check(dropMarks === 0, 'and once it is let go no group is left marked as a drop target and the drag image is gone', dropMarks);
+        });
+        fs.writeFileSync(path.join(out, 'rows-no-longer-open.json'), JSON.stringify(looked, null, 1));
+      } finally {
+        await exec('workbench.action.closeAuxiliaryBar');
+        await exec('workbench.action.closeAllEditors');
+      }
+    });
+
+    /*
      * A notice for a conversation whose tab VS Code restored behind another at a reload. VS Code builds a restored
      * webview tab's page only once it is shown, and notices go only to the conversations this window's app-server has
      * loaded (thread/loaded/list). A detached command's end is written down for the conversation behind and, to show

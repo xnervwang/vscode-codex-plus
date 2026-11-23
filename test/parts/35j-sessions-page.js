@@ -132,6 +132,15 @@ module.exports = async ({ eq, root }) => {
   posted.length = 0;
   page.bubble('keydown', { key: 'Enter' });
   eq(posted, [{ kind: 'open', id: ID(2), where: 'tab' }], 'the arrow keys move through the rows on screen and Enter opens the one reached');
+  const hl = () => $$('.cp-row.cp-hl').map((r) => r.dataset.id);
+  const reached = hl();
+  for (const fn of listeners.blur || []) fn({ type: 'blur' });
+  eq([reached, hl()], [[ID(2)], []],
+    'the row the keys reached stays highlighted while the list has the focus, and once the list loses it, as to the tab Enter put in front, '
+    + 'no row is left drawn as hovered with its buttons showing');
+  page.bubble('keydown', { key: 'ArrowDown' });
+  eq(hl().length, 1, 'and an arrow key in the list afterwards highlights a row again');
+  page.bubble('keydown', { key: 'Escape' });
   const r2 = $('.cp-group[data-key="section:a"] .cp-row');
   r2.bubble('mouseover');
   eq(shown($('.cp-hover')), false, 'the hover box waits, as a tooltip does');

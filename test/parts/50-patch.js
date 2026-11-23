@@ -88,6 +88,28 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
     eq([r.error || '', got, seen], ['', [['thread-stream-following-changed', 't-1', true]], ['t-1']],
       'window broadcasts, 26.1117\'s shape: a conversation a page retains is handed over as followed, and Codex still keeps it');
   }
+  {
+    /* 26.1117's store: each page that shows a conversation retains it, and the callback hears true for the first and
+       false once the last has let go. */
+    const r = applyEdits('class S{retainActiveConversation(t,r){let n=this.interests.get(t)??new Set;this.interests.set(t,n);let o=Symbol();'
+      + 'return n.add(o),n.size===1&&r(!0),()=>{this.interests.get(t)!==n||!n.delete(o)||n.size!==0||(this.interests.delete(t),r(!1))}}}',
+    host.EDITS.filter((e) => e.name === 'window broadcasts'), 'Codex');
+    const got = [], heard = [];
+    if (!r.error) {
+      const box = vm.createContext({ globalThis: null, Symbol, Set, Map });
+      box.globalThis = box;
+      box.__codexExtrasBroadcast = (method, params) => got.push([params.conversationId, params.following]);
+      const s = vm.runInContext(`${r.out};const s=new S();s.interests=new Map();s`, box);
+      const tab = s.retainActiveConversation('t-1', (on) => heard.push(on));
+      const side = s.retainActiveConversation('t-1', (on) => heard.push(on));
+      tab();
+      got.push('one let go');
+      side();
+    }
+    eq([r.error || '', got, heard], ['', [['t-1', true], ['t-1', true], 'one let go', ['t-1', false]], [true, false]],
+      'window broadcasts, 26.1117\'s shape: once the last page showing a conversation lets go of it, that is handed over as no longer followed, '
+      + 'and Codex\'s own callback still hears both');
+  }
 
   /* Apply and restore on a copy, never on the installed files. */
   if (installs.length) {
@@ -352,6 +374,12 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
   globalThis.__codexExtrasBroadcast('thread-stream-following-changed', { conversationId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee', following: true });
   eq([focused, patching.sidebarThread()], [['aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'], 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'],
     'following one with no tab here puts it in front (the sidebar), and is remembered for isFocused()');
+  globalThis.__codexExtrasBroadcast('thread-stream-following-changed', { conversationId: thread, following: false });
+  const kept = patching.sidebarThread();
+  globalThis.__codexExtrasBroadcast('thread-stream-following-changed', { conversationId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee', following: false });
+  eq([kept, patching.sidebarThread()], ['aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee', ''],
+    'once no page shows the sidebar\'s conversation, as when the sidebar starts a new one, the sidebar shows none; another conversation let go changes nothing');
+  globalThis.__codexExtrasBroadcast('thread-stream-following-changed', { conversationId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee', following: true });
   disposed();
   eq(patching.canDeliver(thread), false, 'a closed panel takes no more answers');
   const f = patching.figuresOf({ state: 'working', lastTurnMs: 130000, context: { used: 85000, window: 258400 }, model: 'openai.gpt-6.1-sol', effort: 'ultra',
