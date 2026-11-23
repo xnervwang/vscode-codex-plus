@@ -12,8 +12,9 @@
  *
  * script(thread, steps) answers the next requests of conversation `thread` with `steps` in order, then with the usual
  * reply: { call, namespace, args } is a tool call, { reply } a message; either may give inputTokens, the input the
- * response reports using (1200 otherwise). While a script is set, a request from any other
- * conversation (a sub-agent's, or a codex exec's) is held until releaseOthers(). left() counts the steps not yet sent;
+ * response reports using (1200 otherwise). args may be a function of the request's body, its JSON text, returning the
+ * arguments, for a call that answers what an earlier tool output in the turn said. While a script is set, a request from
+ * any other conversation (a sub-agent's, or a codex exec's) is held until releaseOthers(). left() counts the steps not yet sent;
  * script(null) goes back to the usual reply for every conversation. sent(text) counts the requests whose body held `text`,
  * among the last BODIES_KEPT.
  */
@@ -66,8 +67,9 @@ async function start({ reply = 'Done. The cap is configurable.' } = {}) {
       if (scripted && thread === scripted.thread) step = scripted.steps.shift() || null;
       else if (scripted && others) await others.promise;
       if (step && step.call) {
+        const args = typeof step.args === 'function' ? step.args(body) : step.args;
         const call = { type: 'function_call', id: `fc_fake_${n}`, call_id: `call_fake_${n}`, name: step.call,
-          ...(step.namespace ? { namespace: step.namespace } : {}), arguments: JSON.stringify(step.args || {}) };
+          ...(step.namespace ? { namespace: step.namespace } : {}), arguments: JSON.stringify(args || {}) };
         sse(res, 'response.output_item.added', { output_index: 0, item: call });
         sse(res, 'response.output_item.done', { output_index: 0, item: call });
       } else {

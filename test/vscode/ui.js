@@ -1866,6 +1866,155 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       model.script(null);
     });
 
+    /* A claude --bg launch whose command waits before it starts the session: exec_command answers after yield_time_ms
+       with the command still running, and the job id comes in the output of a later write_stdin poll on its session.
+       On Linux the stand-in is a claude script, as in the step above; macOS has no setsid and Windows no sh, so there the
+       command only prints the hint line, as in the next step, and the session's record is written here for a process
+       started here. */
+    await step('a claude --bg session whose job id a later poll reads', async () => {
+      if (!codex || !list) throw new Error('the conversation or the session list did not open');
+      const id = threads[0].id, job = '9c8d7e6f', mark = 'Run the polled suite.', words = 'A claude --bg session it started is still busy';
+      const linux = process.platform === 'linux';
+      const sessions = path.join(env.CLAUDE_CONFIG_DIR || path.join(profile.home, '.claude'), 'sessions');
+      fs.mkdirSync(sessions, { recursive: true });
+      const record = (pid) => JSON.stringify({ pid, sessionId: '0b1c2d3e-0000-4000-8000-0000000000c1', kind: 'bg', entrypoint: 'cli', status: 'busy',
+        jobId: job, name: 'window test polled session' });
+      const rowNow = () => list.evaluate((want) => {
+        const r = document.querySelector(`.cp-row[data-id="${want}"]`);
+        return r && r._row ? { dot: String(r._row.dot || ''), running: String(r._row.running || '') } : null;
+      }, id).catch(() => null);
+      const now = async () => {
+        const d = await dotsOn(title), r = await rowNow(), l = await listDot(id);
+        return { tab: !!d && d.working >= 6 && d.ring, row: !!r && r.dot === 'background' && listDotIs(l, 'background'), green: d ? d.working : -1,
+          running: (r && r.running) || '', rowDot: r && r.dot, drawn: l };
+      };
+      const pillNow = () => codex.evaluate(() => {
+        const p = document.querySelector('[data-codex-extras="agents"]');
+        const d = p && p.querySelector('[data-codex-extras-dot]');
+        return p ? { dot: d ? d.getAttribute('data-codex-extras-dot') : '', text: p.textContent } : null;
+      }).catch(() => null);
+      const mapWork = async () => {
+        await clearToasts();
+        await codex.locator('[data-codex-extras="agents"]').first().click().catch(() => {});
+        await until(() => codex.evaluate(() => !!document.querySelector('[data-codex-extras="map-dialog"]')).catch(() => false), 5000, 200);
+        const rows = await codex.evaluate(() => [...document.querySelectorAll('[data-codex-extras="map-dialog"] [data-codex-extras="map-bg"]')].map((e) => {
+          const d = e.querySelector('[data-codex-extras-dot]');
+          return { kind: e.getAttribute('data-codex-extras-kind'), dot: d ? d.getAttribute('data-codex-extras-dot') : '', text: e.textContent };
+        })).catch(() => null);
+        await page.keyboard.press('Escape');
+        await until(() => codex.evaluate(() => !document.querySelector('[data-codex-extras="map-dialog"]')).catch(() => true), 3000, 200);
+        return rows;
+      };
+      /* The launch command's output and the outputs of the write_stdin calls on its session, from the rollout. */
+      const polled = () => {
+        let rows;
+        try {
+          const dir = path.join(profile.codexHome, 'sessions');
+          const file = fs.readdirSync(dir, { recursive: true }).map((r) => path.join(dir, String(r))).find((f) => f.endsWith(`${id}.jsonl`));
+          rows = fs.readFileSync(file, 'utf8').split('\n').filter(Boolean).map((l) => { try { return JSON.parse(l).payload || {}; } catch (_) { return {}; } });
+        } catch (_) { return null; }
+        const text = (o) => (typeof o === 'string' ? o : o && typeof o.content === 'string' ? o.content
+          : Array.isArray(o && o.content) ? o.content.map((x) => (x && x.text) || '').join('') : '');
+        const args = (p) => { try { return JSON.parse(p.arguments) || {}; } catch (_) { return {}; } };
+        const outOf = (callId) => text((rows.find((p) => p.type === 'function_call_output' && p.call_id === callId) || {}).output);
+        const launch = rows.find((p) => p.type === 'function_call' && p.name === 'exec_command' && String(args(p).cmd || '').includes(mark));
+        if (!launch) return null;
+        const first = outOf(launch.call_id);
+        const session = (/Process running with session ID (\d+)/.exec(first) || [])[1] || '';
+        const polls = session ? rows.filter((p) => p.type === 'function_call' && p.name === 'write_stdin' && String(args(p).session_id) === session) : [];
+        return { first, session, polls: polls.map((p) => outOf(p.call_id)) };
+      };
+      /* The last session exec_command reported still running, which is this turn's: the body holds the whole conversation. */
+      const sessionIn = (body) => {
+        const all = [...String(body).matchAll(/Process running with session ID (\d+)/g)];
+        return all.length ? Number(all[all.length - 1][1]) : 0;
+      };
+
+      const quiet = await until(async () => { const g = await now(); return g.green === 0 && !g.running && g; }, 60000, 1000);
+      if (!quiet) note(`polled claude --bg: before the turn the conversation still shows work left running: ${JSON.stringify(await now())}`);
+      let keeper = null, cmd;
+      if (linux) {
+        const bin = path.join(profile.home, 'fake-claude-polled');
+        fs.mkdirSync(bin, { recursive: true });
+        const claude = path.join(bin, 'claude'), session = path.join(bin, 'claude-bg-session');
+        fs.writeFileSync(claude, [
+          '#!/bin/sh',
+          'sessions="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/sessions"',
+          'mkdir -p "$sessions"',
+          `env -u CODEX_THREAD_ID setsid '${session}' "$sessions" < /dev/null > /dev/null 2>&1 &`,
+          'i=0; while [ ! -s "$sessions/$!.json" ] && [ $i -lt 100 ]; do sleep 0.05; i=$((i+1)); done',
+          `printf 'backgrounded · ${job}\\n  claude attach ${job}   open in this terminal\\n  claude logs ${job}     show recent output\\n'`,
+          `printf '  claude stop ${job}     stop this session\\n'`, ''].join('\n'), { mode: 0o755 });
+        /* The session lasts while its record does, so the step ends it by removing the record. */
+        fs.writeFileSync(session, [
+          '#!/bin/sh',
+          `printf '${record('%s').replace('"%s"', '%s')}\\n' $$ > "$1/$$.json"`,
+          'i=0; while [ -e "$1/$$.json" ] && [ $i -lt 240 ]; do sleep 0.5; i=$((i+1)); done', ''].join('\n'), { mode: 0o755 });
+        cmd = `sleep 15 && '${claude}' --bg '${mark}' 2>&1 | tail -3`;
+      } else {
+        keeper = require('child_process').spawn(process.execPath, ['-e', 'setTimeout(() => {}, 180000)'], { stdio: 'ignore' });
+        fs.writeFileSync(path.join(sessions, `${keeper.pid}.json`), record(keeper.pid));
+        const hint = `echo 'claude logs ${job}  show recent output' # claude --bg '${mark}'`;
+        cmd = process.platform === 'win32' ? `Start-Sleep -Seconds 15; ${hint}` : `sleep 15 && ${hint}`;
+      }
+      const mine = () => {
+        try {
+          return fs.readdirSync(sessions).filter((n) => n.endsWith('.json')).map((n) => path.join(sessions, n)).filter((f) => {
+            try { return JSON.parse(fs.readFileSync(f, 'utf8')).jobId === job; } catch (_) { return false; }
+          });
+        } catch (_) { return []; }
+      };
+      try {
+        model.script(id, [
+          { call: 'exec_command', args: { cmd, yield_time_ms: 1000,
+            ...(linux ? { sandbox_permissions: 'require_escalated', justification: 'Start the session outside the sandbox.' } : {}) } },
+          { call: 'write_stdin', args: (body) => ({ session_id: sessionIn(body), chars: '', yield_time_ms: 30000 }) },
+          { reply: 'Started a session.' }]);
+        await exec('notifications.clearAll');
+        await tabNamed(title).click();
+        await codex.locator(COMPOSER).first().click();
+        await page.keyboard.type('Start the polled claude --bg session and come back.');
+        await page.keyboard.press('Enter');
+        /* Codex asks before a command runs outside its sandbox, and on Windows before any command. */
+        let asked = 0;
+        const sent = await until(async () => {
+          if (await codex.evaluate(() => !!document.querySelector('[data-codex-approval-surface]')).catch(() => false)) {
+            asked++;
+            await clearToasts();
+            const buttons = codex.locator('[data-codex-approval-surface] button');
+            const yes = buttons.filter({ hasText: /^(Yes|Allow once|Allow this time|Approve|Run)\b/ }).first();
+            if (await yes.count()) await yes.click();
+            const submit = buttons.filter({ hasText: /^Submit$/ }).first();
+            if (await submit.count()) await submit.click();
+            await sleep(1000);
+            return false;
+          }
+          return model.left() === 0;
+        }, 120000, 500);
+        const r = await until(() => { const x = polled(); return x && x.polls.some((t) => t.includes(job)) && x; }, 15000, 500) || polled();
+        check(!!sent && !!r && !!r.session && !r.first.includes(job) && r.polls.some((t) => t.includes(job)),
+          'polled claude --bg: exec_command answers while the command still waits, and the job id is only in what a later write_stdin on its session reads',
+          { left: model.left(), asked, rollout: r && { first: r.first.slice(0, 300), session: r.session, polls: r.polls.map((t) => t.slice(0, 300)) } });
+
+        const after = await until(async () => { const g = await now(); return g.tab && g.row && g.running.includes(words) && g; }, 60000, 500);
+        const g = after || await now();
+        check(g.tab, 'polled claude --bg: after the turn the tab\'s logo shows the green ring', g);
+        check(g.row && g.running.includes(words), `polled claude --bg: and the conversation's row in the session list a green ring, its hover saying "${words}"`, g);
+        await shot('polled-claude-bg');
+        const pill = await until(async () => { const q = await pillNow(); return q && q.dot === 'working' && /\b1 claude --bg\b/.test(q.text) && q; }, 20000, 500);
+        const listed = await mapWork();
+        check(!!pill && !!listed && listed.some((x) => x.kind === 'claudeBg' && x.dot === 'working' && /window test polled session/.test(x.text) && x.text.includes(`job ${job}`)),
+          'polled claude --bg: the Agent map pill is green and counts it, and its dialog lists the session by its name and job id with a green dot',
+          { pill: pill || await pillNow(), listed });
+      } finally {
+        model.script(null);
+        for (const f of mine()) fs.rmSync(f, { force: true });
+        if (keeper) keeper.kill();
+      }
+      const gone = await until(async () => { const x = await now(); return x.green === 0 && !/^(working|background)$/.test(x.rowDot || '') && !x.running.includes(words) && x; }, 60000, 1000);
+      check(!!gone, 'polled claude --bg: once its record is gone, the green leaves the tab and the row', gone || await now());
+    });
+
     /* The news of a claude --bg session the conversation launched (src/bg-ends.js). The launch is a command whose
        output has the hint line claude --bg prints, and the session is its record under this window's HOME, so no Claude
        Code runs, and the check runs where there is no /proc too. */
