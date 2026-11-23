@@ -3447,6 +3447,14 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         await call(`const mine = vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((x) => x.input && x.input.uri && String(x.input.uri).includes(arg));
           if (mine.length) await vscode.window.tabGroups.close(mine); return mine.length;`, t.id);
         await exec('codexPlus.openThreadInTab', t.id);
+        /* This page is closed below while it may still be fetching the rest of its code, so it is let finish first: no file
+           reaches it for 3 s. */
+        const fresh = await until(frontPage, 60000, 500);
+        if (fresh) {
+          await fresh.evaluate(() => { const g = globalThis; g.__cxpLastFile = performance.now();
+            try { new PerformanceObserver(() => { g.__cxpLastFile = performance.now(); }).observe({ type: 'resource' }); } catch (_) { /* none */ } }).catch(() => {});
+          await until(() => fresh.evaluate(() => performance.now() - globalThis.__cxpLastFile > 3000).catch(() => true), 60000, 500);
+        }
       }
       const shown = await until(newestInFront, 30000, 1000);
       if (!shown) throw new Error(`the tab of "${title}" did not come to the front with its turns`);
