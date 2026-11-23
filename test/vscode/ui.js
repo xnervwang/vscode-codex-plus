@@ -57,6 +57,8 @@
  *                taken by the daily pass while that window shows it, and is once that window has closed
  *   background   a codex exec run in the window's folder, left out of the session list until
  *                codexPlus.hideBackgroundSessions is turned off
+ *   elsewhere    a conversation in a folder the window does not open: in Agent Plus's list of every conversation, and,
+ *                marked unread, archived and unarchived, not announced as finished
  *
  * Every step saves a screenshot to <out>/shots, and crops of the parts this extension draws are compared with the
  * approved copies (lib/baseline.js).
@@ -2724,6 +2726,35 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       const f = got.found;
       check(!!f && f.title === other.title && path.basename(f.cwd || '') === 'elsewhere' && f.label === 'Codex' && Number(f.lastActiveAt) > 0,
         'Agent Plus\'s list of every conversation has the Codex conversation in a folder this window does not open, with its title, folder and last activity', got);
+    });
+
+    /* Opening a conversation, setting its goal or unarchiving it writes to it without a reply, and Codex Plus gives Agent
+       Plus the end of its latest turn (lastReplyAt), so that this does not pass for a turn that ran between two reads.
+       The conversation in another folder ended two days ago; marked unread, archived and unarchived, it is running again
+       by its last activity, with a reply not seen, and is not announced as finished. */
+    await step('a conversation unarchived with a reply not seen', async () => {
+      const other = fakeHome.ELSEWHERE;
+      const reported = () => attentionOf(other.id);
+      const shelved = () => { try { return fs.readdirSync(path.join(profile.codexHome, 'archived_sessions'), { recursive: true }).some((n) => String(n).includes(other.id)); } catch (_) { return false; } };
+      await exec('notifications.clearAll');
+      await exec('codexPlus.markThreadUnread', other.id);
+      await sleep(5000);
+      check(!reported().length, 'a conversation whose turn ended two days ago, marked unread, is not among the conversations Agent Plus\'s windows report', reported());
+      await exec('codexPlus.archiveThread', other.id);
+      check(!!await until(shelved, 20000, 500), 'archived, its rollout moves to archived_sessions/', shelved());
+      await sleep(4000);
+      const mark = await toastMark();
+      await exec('codexPlus.unarchiveThread', other.id);
+      const back = await until(() => !shelved() && reported().some((x) => x.activity === 'stopped'), 30000, 500);
+      check(!!back, 'unarchived, it is running again by its last activity: Agent Plus\'s windows report it, stopped with a reply not seen', reported());
+      /* Past Agent Plus's stable period and a batch. */
+      await sleep(12000);
+      const said = await toastsAbout(other.title, mark);
+      if (await focused()) {
+        check(!said.some((x) => x.includes(`"${other.title}" finished`)), 'and Agent Plus does not announce it as finished, as no turn of it ran', said);
+      } else note(`the window does not have the system's focus on ${process.platform}, where Agent Plus shows no notification, so the unarchived conversation was not checked for one`);
+      await exec('codexPlus.markThreadRead', other.id);
+      await exec('notifications.clearAll');
     });
 
     await step('a conversation in Codex\'s sidebar', async () => {
