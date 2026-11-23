@@ -12,6 +12,7 @@
  *   sessionForTab, onDidFocus,     which conversation is in front, and whether a reported one still is
  *   isFocused
  *   listConversations              every conversation a person started, from the reader's latest snapshot
+ *   listAllConversations           the same without the archived ones, for Agent Plus's notices
  *   reveal                         bring one to the front: only a tab already in this window
  *   canDeliver, deliverAnswer      typing an answer into one, through the patch to Codex (src/patching.js)
  *   planNotice, timeZone           the row above the plan (the plugin missing, no Python, its hooks not trusted), which
@@ -590,6 +591,21 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
     return reader.busy ? Promise.resolve(reader.busy).then(go, go) : go();
   }
 
+  /* The conversations a person started that `keep` keeps, from the reader's latest snapshot, in the protocol's terms. */
+  async function listed(keep) {
+    const snap = await reader.ready(files.codexHome());
+    const threads = ((snap && snap.threads) || []).filter((t) => t.kind === 'user' && keep(t));
+    markFront();
+    const unread = new Set(threads.filter((t) => seen.unread(t.id, endedOf(t.id))).map((t) => t.id));
+    const openHere = new Set(openThreads());
+    const kids = childIndex(), now = Date.now();
+    const out = threads.map((t) => conversationOf(t, { unread, openHere, state: reader.state(t.id),
+      hasPlan: enabled() && reader.hasPlan(t.id), waiting: waitingOn(t.id), heard: heardOf(t.id), left: leftOf(t.id, kids, now),
+      planAsked: planAskedOf(t.id) }));
+    if (snap && !snap.readable) out.problem = 'Codex\'s list of conversations could not be read from ' + files.codexHome();
+    return out;
+  }
+
   const source = {
     protocol: PROTOCOL,
     /* ['brief'] while the conversation brief and the work plan both run. */
@@ -623,19 +639,11 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
       if (tab && threadOfCodexTab(vscode, patching, tab) === sessionId) return true;
       return !leftSidebar && sidebarInFront() === sessionId;
     },
-    async listConversations() {
-      const snap = await reader.ready(files.codexHome());
-      const threads = ((snap && snap.threads) || []).filter((t) => t.kind === 'user');
-      markFront();
-      const unread = new Set(threads.filter((t) => seen.unread(t.id, endedOf(t.id))).map((t) => t.id));
-      const openHere = new Set(openThreads());
-      const kids = childIndex(), now = Date.now();
-      const out = threads.map((t) => conversationOf(t, { unread, openHere, state: reader.state(t.id),
-        hasPlan: enabled() && reader.hasPlan(t.id), waiting: waitingOn(t.id), heard: heardOf(t.id), left: leftOf(t.id, kids, now),
-        planAsked: planAskedOf(t.id) }));
-      if (snap && !snap.readable) out.problem = 'Codex\'s list of conversations could not be read from ' + files.codexHome();
-      return out;
-    },
+    listConversations() { return listed(() => true); },
+    /* For Agent Plus's notices and the conversations it gives to extensions that link to them: every conversation not
+       archived, from every folder. Read receipts and plan questions are shared by every window; what only this window
+       knows (an approval it was asked, a tab it shows) can only add to them. */
+    listAllConversations() { return listed((t) => !t.archived); },
     /* Any thread's state, sub-agents included, computed the same way listConversations computes a conversation's;
        null when the thread is not in the snapshot or its rollout has not been read. */
     threadState(id) {

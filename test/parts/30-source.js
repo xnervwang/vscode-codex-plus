@@ -113,6 +113,11 @@ module.exports = async ({ ok, bad, eq, tmp }) => {
       const by = new Map(list.map((c) => [c.title, c]));
       eq([by.get('Working here').state, by.get('Unread elsewhere').state, by.get('Idle here').state, by.get('Old').state], ['working', 'unread', 'idle', 'idle'],
         'working from the rollout; unread for a turn that ended after the user last had it in front; idle for the one in front');
+      const everywhere = await source.listAllConversations();
+      eq([everywhere.map((c) => [c.title, c.cwd]).sort(), everywhere.every((c) => files.THREAD_ID.test(c.sessionId) && c.lastActiveAt > 0)],
+        [[['Idle here', '/work/a'], ['Old', '/work/a'], ['Unread elsewhere', '/other'], ['Working here', '/work/a/sub']], true],
+        'listAllConversations gives every conversation a person started that is not archived, in every folder, with its id, folder and last activity');
+      eq(everywhere, list.filter((c) => c.title !== 'Archived'), 'each as listConversations gives it');
 
       /* Bringing it to the front is what reads it, and the views are told at once rather than at the next poll. */
       let told = 0;

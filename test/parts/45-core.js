@@ -47,9 +47,11 @@ module.exports = async ({ eq, note, tmp, root }) => {
 
   const home = tmp('codex-home');
   const ws = tmp('ws');
+  const elsewhere = tmp('elsewhere');
   const [asking, other] = fixture.codexHome(home, [
     { title: 'Asks a question', cwd: ws, startMs: Date.now() - 60e3, turns: [{}] },
-    { title: 'Elsewhere', cwd: tmp('elsewhere'), turns: [{}] },
+    { title: 'Elsewhere', cwd: elsewhere, turns: [{}] },
+    { title: 'Shelved elsewhere', cwd: tmp('shelved'), archived: true, turns: [{}] },
   ]);
   const plans = path.join(home, 'plugins', 'data', 'agent-work-plan-codex-extras');
   fs.mkdirSync(plans, { recursive: true });
@@ -84,6 +86,21 @@ module.exports = async ({ eq, note, tmp, root }) => {
       [[`conversations/codex/${asking.id}`], 'needs you', true],
       'the Codex conversation in this workspace is drawn, needing an answer; the other folder\'s is not');
     eq(!!control.state.views['codexPlus.sessions'], true, 'the Codex session list is there too');
+
+    /* What a dependent that links to conversations (Claude Code Plus) is given: the Codex conversations of every folder. */
+    const listening = exported.agentPlus.onDidChangeAllConversations(() => {});
+    const codexAll = async () => {
+      for (let i = 0; i < 50; i++) {
+        const l = exported.agentPlus.allConversations().filter((c) => c.sourceId === 'codex');
+        if (l.length) return l;
+        await wait(100);
+      }
+      return [];
+    };
+    const away = (await codexAll()).find((c) => c.title === 'Elsewhere');
+    listening.dispose();
+    eq(away && [away.sessionId, away.cwd, away.label, away.lastActiveAt > 0], [other.id, elsewhere, 'Codex', true],
+      'Agent Plus\'s allConversations has the Codex conversation in another folder, with its id, folder and last activity');
 
     const tab = { label: 'Codex', input: new vscode.TabInputCustom(vscode.Uri.from({ scheme: 'openai-codex', authority: 'route', path: `/local/${asking.id}` }),
       'chatgpt.conversationEditor') };
