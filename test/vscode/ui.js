@@ -3178,14 +3178,17 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       if (!shown) throw new Error(`the tab of "${title}" did not come to the front with its turns`);
       /* The newest turn the rollout says started, by the key the page gives a turn. The page just brought to the front can
          still be drawing its last turn, as one queued behind another, so what it shows first is not taken for the newest. */
-      const rollout = walk(path.join(profile.codexHome, 'sessions')).find((f) => f.endsWith('.jsonl') && path.basename(f).includes(t.id));
-      let latest = '';
-      if (rollout) {
-        for (const l of fs.readFileSync(rollout, 'utf8').split('\n')) {
-          try { const r = JSON.parse(l); if (r.type === 'event_msg' && r.payload && r.payload.type === 'task_started' && r.payload.turn_id) latest = String(r.payload.turn_id); } catch (_) { /* a line being written */ }
+      const newestStarted = (id) => {
+        const rollout = walk(path.join(profile.codexHome, 'sessions')).find((f) => f.endsWith('.jsonl') && path.basename(f).includes(id));
+        let latest = '';
+        if (rollout) {
+          for (const l of fs.readFileSync(rollout, 'utf8').split('\n')) {
+            try { const r = JSON.parse(l); if (r.type === 'event_msg' && r.payload && r.payload.type === 'task_started' && r.payload.turn_id) latest = String(r.payload.turn_id); } catch (_) { /* a line being written */ }
+          }
         }
-      }
-      const had = latest ? `history-content:turn:${latest}` : shown;
+        return latest ? `history-content:turn:${latest}` : '';
+      };
+      const had = newestStarted(t.id) || shown;
       const closedIds = () => list.evaluate(() => [...document.querySelectorAll('.cp-section[data-key="closed"] .cp-row')].map((r) => r.dataset.id)).catch(() => null);
       const firstClosed = (id) => until(async () => { if (!await showList()) return null; const r = await closedIds(); return r && r[0] === id && r; }, 20000, 500);
       const cameBack = (label, turn) => until(async () => { const x = await frontTab(); return x && bare(x.label) === label && (await newestInFront()) === turn && x; }, 60000, 1000);
@@ -3209,7 +3212,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       if (restored) {
         /* The New tab's URI names no conversation, so what it showed comes from its panel (src/tab-memory.js). */
         await tabNamed(restored.label).click();
-        const turn = await until(newestInFront, 30000, 1000);
+        const turn = newestStarted(begun.id) || await until(newestInFront, 30000, 1000);
         await exec('workbench.action.closeActiveEditor');
         check(!!await firstClosed(begun.id), 'closing the New tab a conversation was begun in puts that conversation first in Recently closed', await closedIds());
         await exec('workbench.action.focusActiveEditorGroup');
