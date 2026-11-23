@@ -141,6 +141,51 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
      what sits near the bottom right: the message box's buttons, the meter, the Agent map pill, the status bar's end. */
   const clearToasts = () => exec('notifications.clearAll').catch(() => {});
   const focused = () => call('return vscode.window.state.focused;');
+  /* Whether this run's Agent Plus names what a waiting conversation waits for (its feature 'waitingFor'). That Agent Plus
+     also leaves out the notice of a conversation the focused window shows anywhere, a tab behind others included: there
+     the tab's dot and the count tell of it. */
+  const apWaits = (() => {
+    try {
+      const dir = fs.readdirSync(profile.exts).find((n) => n.startsWith('xnervwang.agent-plus-'));
+      return require(path.join(profile.exts, dir, 'src', 'sources.js')).FEATURES.includes('waitingFor');
+    } catch (_) { return false; }
+  })();
+  /* Under xvfb-run every window VS Code has once focused says it is focused for good, so a step says which window has the
+     focus, to Agent Plus alone, through a global of that window's extension host. lib/window.js starts the windows with
+     AGENT_PLUS_TEST_FOCUS=1, without which Agent Plus does not read it; null gives the window back to VS Code's word. */
+  const testFocus = (on, folder) => call('if (arg === null) delete globalThis.__agentPlusTestFocused; else globalThis.__agentPlusTestFocused = arg; return true;',
+    on, 60000, folder);
+  /* What each window's Agent Plus reports of conversation `id` to the others (<shared home>/attention), as
+     { activity, waitingFor } per window that lists it. */
+  const attentionOf = (id) => {
+    const dir = path.join(profile.home, '.agent-work-plan', 'attention');
+    let names = [];
+    try { names = fs.readdirSync(dir).filter((n) => n.endsWith('.json')); } catch (_) { return []; }
+    return names.flatMap((n) => { try { return JSON.parse(fs.readFileSync(path.join(dir, n), 'utf8')).items || []; } catch (_) { return []; } })
+      .filter((it) => it && it.sessionId === id).map((it) => ({ activity: it.activity, waitingFor: it.waitingFor || null }));
+  };
+  const waitsOn = (id, why) => attentionOf(id).some((x) => x.activity === 'waiting' && JSON.stringify(x.waitingFor) === JSON.stringify(why));
+  /* Every toast window `p` has shown since its log was started, as { text, at } in the page's clock: a notice can come and
+     go between two reads. */
+  const toastLogOf = (p) => p.evaluate(() => {
+    if (!window.__cxpToastLog) {
+      const log = window.__cxpToastLog = [], now = new Set();
+      const scan = () => {
+        const shown = new Set([...document.querySelectorAll('.notification-toast')].map((e) => e.textContent.replace(/\s+/g, ' ').trim()).filter(Boolean));
+        for (const t of shown) if (!now.has(t)) log.push({ text: t, at: Date.now() });
+        now.clear();
+        for (const t of shown) now.add(t);
+      };
+      new MutationObserver(scan).observe(document.querySelector('.notifications-toasts') || document.body, { childList: true, subtree: true, characterData: true });
+      scan();
+    }
+    return { now: Date.now(), log: window.__cxpToastLog.slice() };
+  }).catch(() => ({ now: 0, log: [] }));
+  /* The toasts `p` showed since `mark` that are about a wait for the user: naming conversation `t`, or worded like a
+     request for approval, which is what a notice of Codex's own would say. */
+  const WAIT_WORDS = /approv|permission|allow|sandbox|waiting for you|needs? you/i;
+  const waitToasts = async (p, t, mark) => (await toastLogOf(p)).log.filter((x) => x.at >= mark && (x.text.includes(`"${t}"`) || WAIT_WORDS.test(x.text)))
+    .map((x) => x.text);
   /* The number on Agent Plus's bell in the status bar, 0 while the bell is hidden. */
   const bellCount = () => page.evaluate(() => {
     const e = [...document.querySelectorAll('.statusbar-item')].find((x) => x.querySelector('.codicon-bell-dot'));
@@ -1131,7 +1176,11 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         { dots: await dotsOn(title), label: await labelOf(title) });
       check(!!await until(async () => (await agentCount()) > counted, 15000, 500), 'Agent Plus counts it in the status bar among the conversations that need the user',
         { before: counted, now: await agentCount() });
-      if (await focused()) {
+      if (apWaits) {
+        await sleep(8000);
+        const shown = await toastsAbout(title, mark);
+        check(!shown.length, 'and, its tab being in this window, Agent Plus shows no notification of it: the envelope and the count tell of it here', shown);
+      } else if (await focused()) {
         const notified = await toastSaid(title, 'finished', mark);
         const open = notified ? await page.locator('.notification-toast').filter({ hasText: `"${title}"` }).locator('.monaco-button, a').filter({ hasText: /^Open$/ }).count() : 0;
         check(!!notified && open > 0, 'and, the window having the focus, says in a notification that it finished, with Open to go to it', { notified, open });
@@ -1442,7 +1491,14 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       said = { notifications: await toastsAbout(title, mark), dots: await dotsOn(title) };
       check(!said.notifications.length && !!said.dots && said.dots.working >= 6, 'and the moment between the two turns is not announced as finished', said);
       model.release();
-      if (inFocus) {
+      if (apWaits) {
+        const done = await until(async () => { const d = await dotsOn(title); return d && d.working === 0 && d; }, 30000, 500);
+        await sleep(8000);
+        check(!!done && !(await toastsAbout(title, mark)).length, 'once the queued turn has ended too, it is not announced either, its tab being in this window',
+          { dots: await dotsOn(title), notifications: await toastsAbout(title, mark) });
+        note('this Agent Plus announces no conversation the focused window shows, so that the reply after a queued turn is announced once '
+          + 'was not checked here: that takes a conversation no window shows');
+      } else if (inFocus) {
         const fin = await toastSaid(title, 'finished', mark, 30000);
         await sleep(2000);
         check(!!fin && (await toastsAbout(title, mark)).length === 1, 'once the queued turn has ended too and stays so, it is announced, once', await toastsAbout(title, mark));
@@ -2173,7 +2229,13 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       const p = await panelSays(title, 'waiting', null);
       check(p.ok, 'and the icon of its row in Agent Plus\'s Conversations panel', p.row);
       check(!!await until(async () => (await agentCount()) > counted, 15000, 500), 'Agent Plus counts it', { before: counted, now: await agentCount() });
-      if (await focused()) check(!!await toastSaid(title, 'is waiting for you', mark), 'and says in a notification that it is waiting for you', await toastsAbout(title, mark));
+      if (apWaits) {
+        const told = await until(() => waitsOn(id, { kind: 'planQuestion' }), 15000, 500);
+        await sleep(5000);
+        const said = { reported: attentionOf(id), notifications: await toastsAbout(title, mark) };
+        check(!!told && !said.notifications.length,
+          'it is reported to the other windows as waiting on a question in its plan, and, its tab being in this window, no notification is shown here', said);
+      } else if (await focused()) check(!!await toastSaid(title, 'is waiting for you', mark), 'and says in a notification that it is waiting for you', await toastsAbout(title, mark));
       else {
         await sleep(7000);
         check(!(await toastsAbout(title, mark)).length, `the window does not have the system's focus on ${process.platform}, and no notification is shown`, await toastsAbout(title, mark));
@@ -2853,7 +2915,11 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     });
 
     /* A conversation that stops to ask the user something while its tab is in the background. A command asked to run
-       outside the sandbox waits for approval on every platform. */
+       outside the sandbox waits for approval on every platform. Codex itself shows no VS Code notification of a request
+       for approval (its extension host has no notice of one, its page uses no browser notification), so Codex Plus has
+       none of Codex's to leave out when Agent Plus announces waits: with this Agent Plus, a first request is made with
+       agentPlus.notifications.waiting off and a second with it on, and neither brings any notification, whether the
+       conversation's page is hidden behind another tab or in front. */
     await step('a conversation waiting for you in the background', async () => {
       const t = threads[0];
       const inFocus = await focused();
@@ -2862,25 +2928,68 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       if (!f) throw new Error(`the tab of "${title}" did not come to the front`);
       await exec('notifications.clearAll');
       const counted = await agentCount();
-      model.script(t.id, [{ call: 'exec_command', args: { cmd: 'echo checked', yield_time_ms: 1000, sandbox_permissions: 'require_escalated',
-        justification: 'Check the build outside the sandbox.' } }, { reply: 'Checked.' }]);
+      const outside = (cmd) => ({ call: 'exec_command', args: { cmd, yield_time_ms: 1000, sandbox_permissions: 'require_escalated',
+        justification: 'Check the build outside the sandbox.' } });
+      model.script(t.id, apWaits ? [outside('echo checked'), outside('true'), { reply: 'Checked.' }] : [outside('echo checked'), { reply: 'Checked.' }]);
       model.hold();
       const turns = model.turns();
       await f.locator(COMPOSER).first().click();
       await page.keyboard.type('Check the build outside the sandbox.');
       await page.keyboard.press('Enter');
       check(!!await until(() => model.turns() > turns, 20000, 300), 'a message sent from the tab reaches the made-up model', model.seen.slice(-3));
+      const redDot = () => until(async () => { const d = await dotsOn(title); return d && d.waiting >= 6 && d; }, 30000, 500);
+      /* Yes on the approval in the conversation's tab, once its page draws it. Agent Plus's notice can lie over the
+         buttons, so the notices are cleared first. */
+      const approve = async () => {
+        await tabNamed(title).click();
+        await clearToasts();
+        const yes = await until(async () => {
+          const x = await frontPage();
+          const b = x && x.locator('[data-codex-approval-surface] button').filter({ hasText: /^(Yes|Allow once|Allow this time|Approve|Run)\b/ }).first();
+          return b && (await b.count()) ? b : null;
+        }, 15000, 500);
+        if (yes) await yes.click();
+        return !!yes;
+      };
+      if (apWaits) {
+        await agentSetting('notifications.waiting', false);
+        await openNotes();
+        await sleep(800);
+        const mark0 = await toastMark();
+        model.release();
+        const red0 = await redDot();
+        await sleep(8000);
+        const said0 = { red: !!red0, notices: await waitToasts(page, title, mark0) };
+        check(!!red0 && !said0.notices.length, 'with agentPlus.notifications.waiting off, Codex stopping for approval with the tab in the background shows no '
+          + 'notification: Codex has none of its own that would come back in place of Agent Plus\'s', said0);
+        await agentSetting('notifications.waiting', undefined);
+        const before = model.turns();
+        model.hold();
+        const approved = await approve();
+        check(approved && !!await until(() => model.turns() > before, 20000, 300), 'approved in the tab, the command runs and the model is asked again',
+          { approved, turns: [before, model.turns()] });
+        await until(async () => ((await dotsOn(title)) || {}).waiting === 0, 15000, 500);
+      }
       await openNotes();
       await sleep(800);
       const mark = await toastMark();
       model.release();
-      const red = await until(async () => { const d = await dotsOn(title); return d && d.waiting >= 6 && d; }, 30000, 500);
+      const red = await redDot();
       check(!!red, 'when Codex stops to ask for the user\'s approval with the tab in the background, the tab\'s logo carries the red dot', await dotsOn(title));
-      const told = inFocus ? await toastSaid(title, 'is waiting for you', mark) : '';
-      if (inFocus) check(!!told, 'Agent Plus says in a notification that the conversation is waiting for you', await toastsAbout(title, mark));
-      else {
-        await sleep(7000);
-        check(!(await toastsAbout(title, mark)).length, `the window does not have the system's focus on ${process.platform}, and Agent Plus shows no notification`, await toastsAbout(title, mark));
+      let told = '';
+      if (apWaits) {
+        const reported = await until(() => waitsOn(t.id, { kind: 'permission', tool: 'Bash' }), 15000, 500);
+        await sleep(6000);
+        const said = { reported: attentionOf(t.id), notices: await waitToasts(page, title, mark) };
+        check(!!reported, 'this window tells the others it waits for the user to approve Bash, the name Codex\'s own hook gives a command', said);
+        check(!said.notices.length, 'and, its tab being in this window, neither Agent Plus nor Codex shows a notification of it', said);
+      } else {
+        told = inFocus ? await toastSaid(title, 'is waiting for you', mark) : '';
+        if (inFocus) check(!!told, 'Agent Plus says in a notification that the conversation is waiting for you', await toastsAbout(title, mark));
+        else {
+          await sleep(7000);
+          check(!(await toastsAbout(title, mark)).length, `the window does not have the system's focus on ${process.platform}, and Agent Plus shows no notification`, await toastsAbout(title, mark));
+        }
       }
       check(!!await until(async () => (await agentCount()) > counted, 10000, 500), 'and counts it in the status bar', { before: counted, now: await agentCount(), decide: await toDecide() });
       if (await showList()) {
@@ -2890,19 +2999,20 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       const p = await panelSays(title, 'waiting', null);
       check(p.ok, 'and its row in Agent Plus\'s Conversations panel a red circle', p.row);
       await shot('waiting-in-background');
-      if (told) {
+      if (apWaits) {
+        const markFront = await toastMark();
+        await tabNamed(title).click();
+        await until(async () => { const x = await frontTab(); return x && bare(x.label) === title; }, 10000, 300);
+        await sleep(5000);
+        const said = { red: await dotsOn(title), notices: await waitToasts(page, title, markFront) };
+        check(!said.notices.length, 'brought to the front while it waits, with Codex\'s page showing the approval, there is still no notification', said);
+      } else if (told) {
         const where = await openFromToast(title);
         const front = await until(async () => { const x = await frontTab(); return x && bare(x.label) === title && x; }, 15000, 500);
         check(!!front, `the notification's Open, clicked in the ${where}, brings the conversation's tab to the front`, await frontTab());
         check(!!await until(async () => !await toastAbout(title, 'is waiting for you'), 15000, 500), 'and the notification closes', await toasts());
       } else await tabNamed(title).click();
-      await clearToasts();
-      const page2 = await frontPage();
-      const buttons = page2 && page2.locator('[data-codex-approval-surface] button');
-      if (buttons && await buttons.count()) {
-        const yes = buttons.filter({ hasText: /^(Yes|Allow once|Allow this time|Approve|Run)\b/ }).first();
-        if (await yes.count()) await yes.click();
-      }
+      await approve();
       check(!!await until(async () => { const d = await dotsOn(title); return d && d.waiting === 0 && model.left() === 0 && d; }, 30000, 500),
         'approving it in the tab takes the red dot away and the turn goes on', await dotsOn(title));
       model.script(null);
@@ -3245,6 +3355,9 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
           const green = await until(async () => (await rowDot()) === 'working', 30000, 500);
           check(!!green, 'this window\'s session list shows it working, from its rollout', await rowDot());
           const counted = await agentCount();
+          /* This window has the focus and the second one not, as Agent Plus is told: under xvfb-run both say they have it. */
+          if (apWaits) { await testFocus(true); await testFocus(false, folderB); }
+          const markA = (await toastLogOf(page)).now, markB = (await toastLogOf(pageB)).now, askedAt = Date.now();
           const r = hook({ ...asCodex(turn), hook_event_name: 'PermissionRequest', tool_name: 'Bash',
             tool_input: { command: 'make check', description: 'Run the checks outside the sandbox.' } });
           check(r.status === 0 && r.stdout === '' && marks().length === 1,
@@ -3259,7 +3372,26 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
           /* Agent Plus shows its notification in the focused window. In this run both windows can count as focused, under
              xvfb-run and on the CI runners alike, and then which one shows it, and whether only one does, tests nothing. */
           const focusA = await focused(), focusB = await inB('return vscode.window.state.focused;').catch(() => null);
-          if (focusA || focusB) {
+          const wantNotice = `"${T.title}" is waiting for you to approve Bash.`;
+          if (apWaits) {
+            const shownA = await until(async () => (await toastLogOf(page)).log.find((x) => x.at >= markA && x.text.includes(wantNotice)), 20000, 300);
+            await sleep(3000);
+            const said = { here: await waitToasts(page, T.title, markA), second: await waitToasts(pageB, T.title, markB), reported: attentionOf(T.id) };
+            const took = shownA ? ((shownA.at - askedAt) / 1000).toFixed(1) : '-';
+            check(!!shownA && said.here.length === 1 && !said.second.length,
+              `the window with the focus shows one notification of it, naming the tool (${took} s after the hook ran), and the second window, which shows it, none`, said);
+            /* Open goes to the window that has the conversation: it takes the request from <shared home>/open and brings the
+               conversation's tab forward, and itself with VS Code's command line, which under xvfb-run moves no window. */
+            const before = taken().length;
+            const where = shownA ? await openFromToast(T.title).catch((e) => `nowhere (${e.message})`) : '';
+            const moved = shownA ? await until(async () => {
+              const r = taken().slice(before).find((x) => x.session === T.id), tb = await tabOf(folderB, T);
+              return r && tb && tb.active && { r, tb };
+            }, 20000, 500) : null;
+            check(!!moved && moved.r.by !== moved.r.from && moved.r.shown === true,
+              `its Open, clicked in the ${where}, is taken by the second window, which brings the conversation's tab to the front there`,
+              { moved, taken: taken().slice(before), b: await tabsIn(folderB) });
+          } else if (focusA || focusB) {
             const told = await until(async () => ((await toastIn(page)) || (await toastIn(pageB))) && true, 15000, 500);
             await sleep(2000);
             const inA = !!await toastIn(page), inBNow = !!await toastIn(pageB);
@@ -3277,6 +3409,56 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
           const back = await until(async () => marks().length === 0 && (await rowDot()) === 'working', 20000, 500);
           check(!!back, 'once the approved command has run, PostToolUse takes the mark away and the dot here is green again', { marks: marks(), dot: await rowDot() });
           check(!!await until(async () => (await agentCount()) <= counted, 15000, 500), 'and Agent Plus no longer counts it', { before: counted, now: await agentCount() });
+
+          /* ── a wait that begins while no window has the focus ── */
+          /* Its tab in the second window is closed, so that neither window shows the conversation and either would announce
+             it; its turn goes on in that window's app-server, held by the made-up model. */
+          if (apWaits) {
+            const closedT = await inB('const mine = vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((t) => t.input && t.input.uri && String(t.input.uri).includes(arg));'
+              + ' if (mine.length) await vscode.window.tabGroups.close(mine); return mine.length;', T.id).catch(() => 0);
+            const gone = await until(async () => !await tabOf(folderB, T), 10000, 500);
+            await sleep(3000);
+            const still = (await rowDot()) === 'working';
+            if (!closedT || !gone || !still) {
+              note(`the conversation's tab in the second window could not be closed with its turn still running (closed ${closedT}, `
+                + `gone ${!!gone}, dot ${await rowDot()}), so a wait begun while no window has the focus was not checked`);
+            } else {
+              await testFocus(false);
+              await testFocus(false, folderB);
+              await exec('notifications.clearAll');
+              await inB('await vscode.commands.executeCommand("notifications.clearAll"); return true;').catch(() => {});
+              const awayA = (await toastLogOf(page)).now, awayB = (await toastLogOf(pageB)).now;
+              hook({ ...asCodex(turn), hook_event_name: 'PermissionRequest', tool_name: 'Bash',
+                tool_input: { command: 'make lint', description: 'Run the linter outside the sandbox.' } });
+              const red2 = await until(async () => (await rowDot()) === 'waiting', 20000, 500);
+              await sleep(8000);
+              const quiet = { red: !!red2, here: await waitToasts(page, T.title, awayA), second: await waitToasts(pageB, T.title, awayB) };
+              check(quiet.red && !quiet.here.length && !quiet.second.length,
+                'with no window showing it and neither window having the focus, a new approval it waits for brings no notification in either window', quiet);
+              await testFocus(true);
+              const replayed = await until(async () => (await waitToasts(page, T.title, awayA)).find((x) => x.includes(wantNotice)), 20000, 300);
+              await sleep(3000);
+              check(!!replayed && (await waitToasts(page, T.title, awayA)).length === 1,
+                'once this window has the focus again, it shows that notification, once, naming the tool', { here: await waitToasts(page, T.title, awayA) });
+              await testFocus(false);
+              await testFocus(true, folderB);
+              await sleep(8000);
+              const after = { second: await waitToasts(pageB, T.title, awayB), here: await waitToasts(page, T.title, awayA) };
+              check(!after.second.length && after.here.length === 1, 'and the second window, getting the focus after it, shows none of it again', after);
+              hook({ ...asCodex(turn), hook_event_name: 'PostToolUse', tool_name: 'Bash', tool_use_id: 'call_2', tool_input: { command: 'make lint' }, tool_response: 'ok' });
+              await until(async () => marks().length === 0 && (await rowDot()) === 'working', 20000, 500);
+            }
+            await testFocus(null);
+            await testFocus(null, folderB);
+            await exec('notifications.clearAll');
+            await inB('await vscode.commands.executeCommand("notifications.clearAll"); return true;').catch(() => {});
+            await inB('await vscode.commands.executeCommand("codexPlus.openThreadInTab", arg); return true;', T.id).catch(() => {});
+            await until(() => tabOf(folderB, T), 30000, 500);
+            await until(async () => {
+              for (const f of pageB.frames()) { try { if (await f.evaluate(() => document.querySelectorAll('[data-turn-key]').length > 0)) return true; } catch (_) { /* gone */ } }
+              return false;
+            }, 30000, 500);
+          }
           model.release();
           await until(async () => (await rowDot()) !== 'working', 30000, 500);
 
@@ -3293,6 +3475,14 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
             const askedB = await until(() => inB(`${OWN} return own('patching').approvalsOf(arg).decide;`, T.id), 30000, 500);
             const turn2 = turnOf(T.id);
             check(!!askedB && turn2 !== was2, 'on Linux the second window\'s conversation asks for approval to run a command outside the sandbox', { askedB, turn: turn2 });
+            /* No mark is left yet, so only the second window, whose app-server asked, can name the tool. */
+            if (apWaits) {
+              const from = Date.now();
+              const named = await until(() => waitsOn(T.id, { kind: 'permission', tool: 'Bash' }), 30000, 250);
+              const took = (Date.now() - from) / 1000;
+              check(!!named && took <= 10, `the second window tells the others it waits for the user to approve Bash, ${took.toFixed(1)} s after its app-server asked`,
+                attentionOf(T.id));
+            }
             /* Codex runs the hook just before it asks; here it runs just after, and the second window's next poll (every
                three seconds) sees the mark while the request is outstanding. */
             hook({ ...asCodex(turn2), hook_event_name: 'PermissionRequest', tool_name: 'Bash', tool_input: { command: 'true', description: 'Check the export outside the sandbox.' } });
@@ -3368,6 +3558,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         check(!!await until(() => !!rolloutOf(T.id) && !archivedOnDisk(), 30000, 500),
           'kept instead, and unarchived, its rollout is back under sessions/', { rollout: rolloutOf(T.id), toasts: await toasts() });
       } finally {
+        await testFocus(null).catch(() => {});
         await closeB();
       }
     });

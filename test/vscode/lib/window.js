@@ -41,7 +41,9 @@ async function open({ exe, profile, env, playwright, log }) {
   fs.rmSync(portFile, { force: true });
   const args = [profile.folder, ...FLAGS, `--extensions-dir=${profile.exts}`, `--user-data-dir=${profile.user}`,
     `--extensionDevelopmentPath=${HELPER}`, '--remote-debugging-port=0'];
-  const proc = spawn(exe, args, { env: { ...env, CODEX_PLUS_UI_CONTROL: profile.control }, stdio: ['ignore', 'pipe', 'pipe'] });
+  /* AGENT_PLUS_TEST_FOCUS lets a step say through the test helper whether a window has the focus (Agent Plus's
+     src/views.js): under xvfb-run every window VS Code has once focused says it is focused for good. */
+  const proc = spawn(exe, args, { env: { ...env, CODEX_PLUS_UI_CONTROL: profile.control, AGENT_PLUS_TEST_FOCUS: '1' }, stdio: ['ignore', 'pipe', 'pipe'] });
   const out = fs.createWriteStream(log);
   proc.stdout.pipe(out);
   proc.stderr.pipe(out);
