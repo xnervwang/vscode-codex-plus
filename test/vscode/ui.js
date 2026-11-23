@@ -3728,13 +3728,26 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
           await closeTab(A);
           await after('the last tab closed', [], null);
         });
+        /* Codex now and then resumes the conversation a second time just after its sidebar has resumed it, and the page
+           stays without its turns until that second resume answers, which it has not done in a minute. A person would
+           close the sidebar and open the conversation there again, so the step does that once. */
         await way('the sidebar', async () => {
           try {
             await openNotes();
-            retried(await pick(B, ['Codex Plus: Resume in Sidebar']), 'Resume in Sidebar');
-            await allowUri();
-            const side = await frameWhere((want) => innerWidth < 800 && document.body.innerText.includes(want) && !!document.querySelector('[data-turn-key]'), 60000, B.title.slice(0, 30));
-            if (!side) throw new Error('Codex\'s sidebar did not show the conversation');
+            const shown = () => frameWhere((want) => innerWidth < 800 && document.body.innerText.includes(want) && !!document.querySelector('[data-turn-key]'), 40000, B.title.slice(0, 30));
+            let side = null;
+            for (let tries = 1; tries <= 2 && !side; tries++) {
+              if (tries > 1) {
+                await shot('rows-no-longer-open-sidebar-not-drawn');
+                await exec('workbench.action.closeAuxiliaryBar');
+                await openNotes();
+              }
+              retried(await pick(B, ['Codex Plus: Resume in Sidebar']), 'Resume in Sidebar');
+              await allowUri();
+              side = await shown();
+              if (side && tries > 1) note('the sidebar: Codex\'s sidebar drew the conversation once it was resumed there a second time');
+            }
+            if (!side) throw new Error('Codex\'s sidebar did not show the conversation, resumed there twice');
             /* With a text file in front, Codex Plus counts the sidebar's conversation as the one in front. */
             await after('one resumed in Codex\'s sidebar from its row\'s menu', [B], B);
             await list.locator('.cp-new[data-send="newInSidebar"]').first().click();
