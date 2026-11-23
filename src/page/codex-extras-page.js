@@ -793,10 +793,10 @@
   function mapSections(m, open) {
     var out = [];
     /* The conversation's own row: its title, the dot its tab has, and the model and the context in use as the meter has
-       them. */
+       them, the model named as the reply stamps name it (src/user-times.js). */
     var me = m.me && typeof m.me === 'object' ? m.me : {};
     var ownMeta = [];
-    if (usage && usage.model) ownMeta.push(usage.model);
+    if (usage && usage.model) ownMeta.push(usage.model.replace(/^openai\./, ''));
     if (usage && usage.used > 0) ownMeta.push(kit.kfmt(usage.used) + ' tokens in context');
     var own = mapCard({ kind: 'me', dot: me.dot || 'stopped', title: me.title || 'This conversation',
       meta: ownMeta.join(' · ') || ME_STATE[me.dot] || '' }, open);

@@ -91,6 +91,9 @@ module.exports = async ({ eq, root }) => {
   };
   eq(card('map-me'), ['me', 'div', 'Find where the retry delay is set', 'm · 1.0k tokens in context', 'background'],
     'the conversation\'s own card has its title and the dot its tab has, and under it the model and the context in use, as the meter has them');
+  p.send({ type: 'codex-extras-usage', usage: { used: 57700, window: 400000, line: 378947, lineFrom: 'default', model: 'openai.gpt-6.1-sol', effort: 'ultra', total: null } });
+  eq(card('map-me')[3], 'gpt-6.1-sol · 57.7k tokens in context', 'with the model named the way the reply stamps name it, without the provider in front, and redrawn as the figures change');
+  p.send({ type: 'codex-extras-usage', usage: { used: 1000, window: 400000, line: 378947, lineFrom: 'default', model: 'm', effort: 'low', total: null } });
   const text = (sel) => (p.q(sel)[0] || { textContent: '' }).textContent;
   const wake = card('map-wakeups');
   eq([wake.slice(0, 3), /^every 10 min · next (\d\d\/\d\d )?\d\d:\d\d · until (\d\d\/\d\d )?\d\d:\d\d$/.test(wake[3]), wake[4],
