@@ -1485,12 +1485,13 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
 
     /* ═══ links to other conversations in a reply ═══ */
     {
-      const reply = `That was 「${t1.title}」, whose thread ${t1.id} has the details. The cleanup script is in 「${t2.title}」.`;
+      /* By t1 alone: t2 is deleted by an earlier step, and a conversation that is gone is not linked. */
+      const reply = `That was 「${t1.title}」, whose thread ${t1.id} has the details.\n\nNext time, open ${t1.title} first.`;
       const links = () => codex.evaluate(() => document.querySelectorAll('[data-codex-extras="convo-link"]').length).catch(() => 0);
       await look('conversation-links', {
-        expect: 'A reply in which the quoted title of the conversation "' + t1.title + '", its thread id, and the quoted title "' + t2.title + '" are each drawn in the theme\'s link colour, '
-          + 'the corner brackets and the rest of the sentence in the reply\'s own colour. The pointer rests on the first link, and a label beside it gives that conversation\'s title, '
-          + '"Codex conversation" with the first 8 characters of its id, and when it was last active.',
+        expect: 'A reply that names the conversation "' + t1.title + '" three ways, each drawn in the theme\'s link colour: its title in corner brackets, its thread id, and its whole title on its own '
+          + 'in the second paragraph. The corner brackets and the rest of the sentences are in the reply\'s own colour. The pointer rests on the first link, and a label beside it gives that '
+          + 'conversation\'s title, "Codex conversation" with the first 8 characters of its id, and when it was last active.',
       }, async () => {
         model.script(t0.id, [{ reply }]);
         await type('Which conversations were those?');
