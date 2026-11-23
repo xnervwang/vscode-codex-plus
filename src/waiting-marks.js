@@ -61,16 +61,20 @@ const keyOf = (marks) => JSON.stringify([...marks].sort(([a], [b]) => (a < b ? -
  * A mark is over once a turn of the thread ended or started after it was made, or once this window has seen its own
  * request for the thread answered: the mark of a request is written before Codex sends it, so it is older than the
  * moment this window saw it outstanding. One the rollout does not show running yet still counts as not running.
+ * `tool` is what the oldest one still counted names (the hook's tool_name), '' when none does.
  */
 function counted(list, { state = null, askedHereAt = 0, askedHere = false } = {}) {
-  let count = 0;
+  let count = 0, tool = '';
   const over = [];
   for (const m of list || []) {
     if (!askedHere && askedHereAt && m.at <= askedHereAt) { over.push(m.file); continue; }
     if (state && (state.startedMs > m.at || (!state.working && state.endedMs > m.at))) { over.push(m.file); continue; }
-    if (state && state.working && !(m.turn && state.turnId && m.turn !== state.turnId)) count++;
+    if (state && state.working && !(m.turn && state.turnId && m.turn !== state.turnId)) {
+      if (!count) tool = m.tool || '';
+      count++;
+    }
   }
-  return { count, over };
+  return { count, over, tool };
 }
 
 module.exports = { read, remove, counted, keyOf, WAITING_DIR, MAX_AGE_MS };

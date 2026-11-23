@@ -30,7 +30,9 @@
  * Each conversation also reports `activity`, `unseen` and `lastUserAt`; `state` stays for an older Agent Plus.
  * `activity` is `working` during a turn, `background` after the turn while work it started still runs, `waiting` for
  * `prompt` and for a question its work plan put to the user after the user's last message, and `stopped` otherwise. `unseen` marks a reply the user has not looked at; it is measured from the latest
- * finished turn, so a later turn does not clear it. `lastUserAt` is when the user last typed a message.
+ * finished turn, so a later turn does not clear it. `lastUserAt` is when the user last typed a message. A waiting one
+ * says what it waits for in `waitingFor` when that is known: the approval this window's request or another window's
+ * mark names, a question asked with request_user_input_async, or a question in its plan.
  *
  * This module opens none of Codex's files; src/codex-reader.js has the snapshot its worker thread made.
  */
@@ -78,6 +80,15 @@ function turnOf(st, heard, now, last) {
   return { working, endedMs: Math.max((st && !st.working && st.endedMs) || 0, heardEnd), lastEndedMs };
 }
 
+/* A reason as Agent Plus's protocol has it (waitingFor), or null for anything else. */
+const REASONS = ['permission', 'question', 'plan', 'choice', 'planQuestion'];
+function reasonOf(r) {
+  if (!r || typeof r !== 'object' || !REASONS.includes(r.kind)) return null;
+  if (r.kind !== 'permission') return { kind: r.kind };
+  const tool = typeof r.tool === 'string' ? r.tool.trim() : '';
+  return tool ? { kind: 'permission', tool } : { kind: 'permission' };
+}
+
 /* The latest sign of activity in a thread. A turn the rollout shows as running stops counting once this is too old. */
 const lastOf = (thread, st, heard) => Math.max((thread && thread.updatedMs) || 0, (st && st.lastActivityMs) || 0,
   (heard && Math.max(heard.startedMs || 0, heard.endedMs || 0)) || 0);
@@ -97,6 +108,9 @@ const lastOf = (thread, st, heard) => Math.max((thread && thread.updatedMs) || 0
  * turn's reply, as Agent Plus's Conversations panel has it (activityOf in its src/conversations.js), so the tab and the
  * session list draw the panel's red dot. `state` is left alone: an older Agent Plus reads its `prompt` as a permission
  * prompt, and finds the question in the plan itself.
+ *
+ * `waiting.reason` is what the requests stopped on the user name (waitingFor); only a request says what it is about,
+ * so a conversation waiting on one gets no reason from the rollout or the plan.
  */
 function conversationOf(thread, { unread, openHere, now = Date.now(), state = null, hasPlan = false, waiting = null, heard = null, left = [],
   planAsked = 0 }) {
@@ -118,12 +132,14 @@ function conversationOf(thread, { unread, openHere, now = Date.now(), state = nu
   const own = word;
   if (after.length && (word === 'idle' || word === 'unread')) word = 'working';
   const waits = !!(decide || soon || asking || planned);
+  const why = decide || soon ? reasonOf(waiting && waiting.reason) : asking ? { kind: 'question' } : planned ? { kind: 'planQuestion' } : null;
   return {
     sessionId: thread.id,
     title: withoutEnvelope(thread.title) || '(untitled)',
     cwd: thread.cwd,
     state: word,
     activity: waits ? 'waiting' : working ? 'working' : after.length ? 'background' : 'stopped',
+    ...(waits && why ? { waitingFor: why } : {}),
     unseen: unread.has(thread.id),
     lastUserAt: (st && st.lastUserMs) || 0,
     running: working || after.length > 0 || openHere.has(thread.id) || now - last < RECENT_MS,
@@ -367,20 +383,20 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
     for (let i = 0; t && t.parent && i < 20; i++) t = reader.thread(t.parent) || null;
     return t;
   };
-  /* The approvals of `id` its marks still stand for, removing the ones that are over. */
+  /* The approvals of `id` its marks still stand for, as { count, tool }, removing the ones that are over. */
   const markedFor = (id) => {
     const list = marks.get(String(id || '').toLowerCase());
-    if (!list || !list.length) return 0;
+    if (!list || !list.length) return { count: 0, tool: '' };
     const root = rootOf(id);
-    if (root && root.origin === 'exec') return 0;
+    if (root && root.origin === 'exec') return { count: 0, tool: '' };
     const own = askedHere(id);
-    const { count, over } = waitingMarks.counted(list, { state: reader.state(id), askedHereAt: askedAt.get(id) || 0,
+    const { count, over, tool } = waitingMarks.counted(list, { state: reader.state(id), askedHereAt: askedAt.get(id) || 0,
       askedHere: !!(own && (own.decide || own.soon)) });
     if (over.length) {
       waitingMarks.remove(over);
       marks.set(String(id).toLowerCase(), list.filter((m) => !over.includes(m.file)));
     }
-    return count;
+    return { count, tool: tool || '' };
   };
   function readMarks(now = Date.now()) {
     marks = waitingMarks.read(marksDir(), { now });
@@ -395,12 +411,24 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
     marksKey = key;
     return moved;
   }
-  /* What `id` is stopped on: this window's own requests, and as many more as the marks of other places say. */
+  /* What this window's requests say `id` waits for, or null without the patch. */
+  const reasonHere = (id) => {
+    if (!patching || typeof patching.waitReasonOf !== 'function') return null;
+    try { return patching.waitReasonOf(id) || null; } catch (_) { return null; }
+  };
+  /*
+   * What `id` is stopped on: this window's own requests, and as many more as the marks of other places say, with the
+   * reason the user is needed. A request the user has to answer here names it; else a mark does, by the tool its hook
+   * named; else a request Codex will answer by itself.
+   */
   const waitingOn = (id) => {
     const own = askedHere(id);
-    const marked = markedFor(id);
-    if (!marked) return own;
-    return { ...(own || { decide: 0, soon: 0 }), decide: Math.max((own && own.decide) || 0, marked) };
+    const why = reasonHere(id);
+    const { count: marked, tool } = markedFor(id);
+    const byMark = marked ? (tool ? { kind: 'permission', tool } : { kind: 'permission' }) : null;
+    const reason = (own && own.decide > 0 && why) || byMark || why || null;
+    if (!marked) return own ? { ...own, reason } : own;
+    return { ...(own || { decide: 0, soon: 0 }), decide: Math.max((own && own.decide) || 0, marked), reason };
   };
   /* Shapes of Codex tabs whose thread could not be read, already said once. */
   const unreadable = new Set();

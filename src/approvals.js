@@ -45,6 +45,45 @@ function hasCountdown(meta) {
    second pass rather than the first, because a request can arrive before the poll that would show its turn started. */
 const STRIKES = 2;
 
+/*
+ * The tool each approval is of, by the name Codex's PermissionRequest hook gives the same action (permission_request_payload
+ * in codex-rs/core/src/tools/approvals.rs), so a window reading the hook's marks (src/waiting-marks.js) names it alike.
+ */
+const TOOLS = {
+  'item/commandExecution/requestApproval': (p) => (p.kind === 'writeStdin' ? 'write_stdin' : 'Bash'),
+  execCommandApproval: () => 'Bash',
+  'item/fileChange/requestApproval': () => 'apply_patch',
+  applyPatchApproval: () => 'apply_patch',
+  'item/permissions/requestApproval': () => 'request_permissions',
+};
+/* The id prefix of a question Codex asks to approve an MCP tool call when it does not use an elicitation for it
+   (MCP_TOOL_APPROVAL_QUESTION_ID_PREFIX in codex-rs/core/src/mcp_tool_call.rs). */
+const MCP_APPROVAL_QUESTION = 'mcp_tool_call_approval';
+
+/*
+ * What a request waits for, as Agent Plus's `waitingFor`: { kind: 'permission', tool } for an approval, the tool left
+ * out when the request does not name it, { kind: 'question' } for something to answer, { kind: 'choice' } for a page to
+ * go to; null for a request that does not wait.
+ */
+function reasonOfRequest(msg) {
+  const method = msg && typeof msg.method === 'string' ? msg.method : '';
+  const params = (msg && msg.params) || {};
+  if (TOOLS[method]) return { kind: 'permission', tool: TOOLS[method](params) };
+  if (method === 'item/tool/requestUserInput') {
+    const asks = Array.isArray(params.questions) ? params.questions : [];
+    return asks.some((q) => q && String(q.id || '').startsWith(MCP_APPROVAL_QUESTION)) ? { kind: 'permission' } : { kind: 'question' };
+  }
+  if (method === 'mcpServer/elicitation/request') {
+    const meta = params._meta && typeof params._meta === 'object' ? params._meta : {};
+    if (meta.codex_approval_kind === 'mcp_tool_call') {
+      const server = String(params.serverName || ''), tool = String(meta.tool_name || '');
+      return server && tool ? { kind: 'permission', tool: `mcp__${server}__${tool}` } : { kind: 'permission' };
+    }
+    return params.mode === 'url' ? { kind: 'choice' } : { kind: 'question' };
+  }
+  return null;
+}
+
 /** What a request is: null when it does not wait for anybody, else { thread, method, decides }. */
 function waitOf(msg) {
   const method = msg && typeof msg.method === 'string' ? msg.method : '';
@@ -88,7 +127,7 @@ function createApprovals({ now = () => Date.now() } = {}) {
     request(msg) {
       const w = waitOf(msg);
       if (!w || !msg || msg.id === undefined || msg.id === null) return null;
-      pending.set(msg.id, { thread: w.thread, method: w.method, decides: w.decides, atMs: now(), strikes: 0 });
+      pending.set(msg.id, { thread: w.thread, method: w.method, decides: w.decides, reason: reasonOfRequest(msg), atMs: now(), strikes: 0 });
       return { ...w };
     },
     /** Forget a request, by the id of the answer or of the notification that it was answered. Returns its conversation. */
@@ -123,6 +162,17 @@ function createApprovals({ now = () => Date.now() } = {}) {
       let n = 0;
       for (const e of pending.values()) if (e.thread === thread && e.decides && e.method === 'item/tool/requestUserInput') n++;
       return n;
+    },
+    /** What a conversation waits for: the reason of its oldest request the user has to answer, else of its oldest one
+        Codex will answer by itself, else null. A page's card alone names nothing. */
+    reasonOf(thread) {
+      let soon = null;
+      for (const e of pending.values()) {
+        if (e.thread !== thread || !e.reason) continue;
+        if (e.decides) return { ...e.reason };
+        if (!soon) soon = e.reason;
+      }
+      return soon ? { ...soon } : null;
     },
     /** How many answers the user owes, across every conversation of this window. */
     decideCount() {
@@ -162,4 +212,4 @@ function createApprovals({ now = () => Date.now() } = {}) {
   };
 }
 
-module.exports = { createApprovals, waitOf, APPROVALS, ASKS, COUNTDOWN_MS, STRIKES };
+module.exports = { createApprovals, waitOf, reasonOfRequest, APPROVALS, ASKS, COUNTDOWN_MS, STRIKES };

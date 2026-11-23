@@ -140,6 +140,8 @@ function statusLines() {
  * so a conversation running in another window or started by `codex exec` is not here (README says so).
  */
 function approvalsOf(thread) { return approvals.of(thread); }
+/** What this window's requests say the conversation waits for, as Agent Plus's waitingFor, or null (src/approvals.js). */
+function waitReasonOf(thread) { return approvals.reasonOf(thread); }
 /** Told whenever the outstanding set changed, so the views redraw without waiting for the next poll. */
 function onApprovalsChanged(fn) {
   onApprovals.add(fn);
@@ -1506,5 +1508,5 @@ function activate(context, opts) {
 module.exports = { activate, ensurePatched, statusLines, openInSidebar, openSidebarRoute, canType, canDeliver, deliver, sidebarThread, panelThreads, shownIn, newPanelThreadsTitled,
   nowShowing, revealPanel, threadOfTabUri, shownByTabs, SHOWN_KEY, removePatch, NOT_SUPPORTED_MESSAGE, SHOW_DETAILS,
   figuresOf, usageOf, compactThread, hostRequest, safeColor, viewOf, selfCheckPage, selfCheckLines, installHooks, refreshPanels, refreshConversationLinks, approvalsOf,
-  onApprovalsChanged, offerReloadIfStale, sidebarShowing, onSidebarChanged, onPanelClosed, onAccountNotification, onAppServerNotification, runningCommands, heardCommand, turnEndChime, turnHeard, _state: () => state, _registry: registry, _approvals: approvals,
+  waitReasonOf, onApprovalsChanged, offerReloadIfStale, sidebarShowing, onSidebarChanged, onPanelClosed, onAccountNotification, onAppServerNotification, runningCommands, heardCommand, turnEndChime, turnHeard, _state: () => state, _registry: registry, _approvals: approvals,
   TAB_DOTS, ASK_MS, PATCH_REMOVED_KEY };

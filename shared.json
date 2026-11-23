@@ -1,5 +1,5 @@
 {
-  "core": "278f1130dd657e7da2313cd08759588568748863",
+  "core": "07b54ac5f4265bd7d04c84bb8116dc09ff95e9fb",
   "files": [
     {
       "path": "build/sync-shared.js",
@@ -59,7 +59,7 @@
     {
       "path": "src/core-link.js",
       "from": "shared/host/core-link.js",
-      "sha256": "e5f4cce74af83b7d096678e503fabc8482514b5f407db679372cd2b7428fbcd7"
+      "sha256": "8de0028c51be2fc548fd35f21440c939fd6595faaa9b49ce225e847ee7b816cb"
     },
     {
       "path": "src/window-entries.js",
