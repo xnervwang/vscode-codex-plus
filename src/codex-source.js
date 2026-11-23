@@ -28,7 +28,8 @@
  * PermissionRequest hook leaves (src/waiting-marks.js). One started by `codex exec` never waits: exec refuses every
  * approval request at once.
  *
- * Each conversation also reports `activity`, `unseen` and `lastUserAt`; `state` stays for an older Agent Plus.
+ * Each conversation also reports `activity`, `unseen`, `lastUserAt` and `lastReplyAt`; `state` stays for an older Agent
+ * Plus. `lastReplyAt` is the end of its latest turn, which is when the reply that turn ended with landed.
  * `activity` is `working` during a turn, `background` after the turn while work it started still runs, `waiting` for
  * `prompt` and for a question its work plan put to the user after the user's last message, and `stopped` otherwise. `unseen` marks a reply the user has not looked at; it is measured from the latest
  * finished turn, so a later turn does not clear it. `lastUserAt` is when the user last typed a message. A waiting one
@@ -117,7 +118,7 @@ function conversationOf(thread, { unread, openHere, now = Date.now(), state = nu
   planAsked = 0 }) {
   const st = state;
   const last = lastOf(thread, st, heard);
-  const { working } = turnOf(st, heard, now, last);
+  const { working, lastEndedMs } = turnOf(st, heard, now, last);
   const decide = (waiting && waiting.decide) || 0;
   const soon = (waiting && waiting.soon) || 0;
   /* A question asked with request_user_input_async waits for the user once its turn has ended (src/codex-files.js). */
@@ -145,6 +146,9 @@ function conversationOf(thread, { unread, openHere, now = Date.now(), state = nu
     lastUserAt: (st && st.lastUserMs) || 0,
     running: working || after.length > 0 || openHere.has(thread.id) || now - last < RECENT_MS,
     lastActiveAt: last,
+    /* Opening a conversation, setting its goal or unarchiving it writes its rollout or its row without a reply, and
+       Agent Plus would take the newer lastActiveAt for a turn that ran between two reads. */
+    ...(lastEndedMs > 0 ? { lastReplyAt: lastEndedMs } : {}),
     hasPlan,
     // Beyond the protocol: what this extension's own parts draw (the tab figures).
     /* The rollout's own answer, which `state` no longer carries once `prompt` wins it: what decides whether a request
