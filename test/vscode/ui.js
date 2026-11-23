@@ -3956,6 +3956,95 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       check(!!drawn && !await gaveUp(), 'and the tab draws its conversation', { page: await pageSays(await frontPage()), tabs: await tabs(), toasts: await toasts() });
       await setting('loadRestoredTabs', undefined);
     });
+
+    /*
+     * Unread marks through codexPlus.loadRestoredTabs. The loader brings each background Codex tab to the front for a
+     * moment, and a conversation in front of the user counts as read. Whether a moment is long enough to clear a mark
+     * depends on how quickly the window reports the change, so the new extension host's loader is made to keep each tab
+     * in front until the envelope has gone from its title, or 15 s (holdInFront). A conversation marked unread before
+     * the reload keeps its envelope on its tab and on its rows in the session list once the tabs are loaded, and goes
+     * on keeping it. Before the extension host restarts for the last step, as the step above.
+     */
+    await step('restored tabs keep their envelopes', async () => {
+      const pair = [threads[0], threads[1]];
+      const tabOf = async (t) => (await codexTabsNow()).find((x) => x.route === `/local/${t.id}`);
+      /* Run in the new extension host right after the reload: it wraps load-tabs.js's loadAll once Codex Plus has
+         loaded it. Each hold and when the loader finished go into globalThis.__cxpHolds. */
+      const holdInFront = () => call(`
+        const path = require('path'), fs = require('fs');
+        const mine = vscode.extensions.getExtension('xnervwang.codex-plus');
+        if (!mine) throw new Error('Codex Plus is not installed');
+        const file = path.join(mine.extensionPath, 'src', 'load-tabs.js');
+        let real = file;
+        try { real = fs.realpathSync(file); } catch (_) { /* not there */ }
+        const same = (a, b) => (process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b);
+        const rec = globalThis.__cxpHolds = { t0: Date.now(), holds: [], wrapped: 0, loaded: null };
+        const frontLabel = () => { const g = vscode.window.tabGroups.activeTabGroup, t = g && g.activeTab; return t ? String(t.label || '') : ''; };
+        const marked = (l) => l.includes('\\u2709');
+        const wrap = () => {
+          const key = Object.keys(require.cache).find((k) => same(k, file) || same(k, real));
+          if (!key) return false;
+          const mod = require.cache[key].exports, own = mod.loadAll;
+          mod.loadAll = (o) => own({ ...o, sleep: async (ms) => {
+            const t0 = Date.now(), label = frontLabel(), had = marked(label);
+            await o.sleep(ms);
+            while (had && marked(frontLabel()) && Date.now() - t0 < 15000) await o.sleep(50);
+            rec.holds.push({ ms: t0 - rec.t0, label: label.slice(0, 48), had, held: Date.now() - t0, cleared: had && !marked(frontLabel()) });
+          } }).finally(() => { rec.loaded = Date.now() - rec.t0; });
+          rec.wrapped = Date.now() - rec.t0;
+          return true;
+        };
+        if (!wrap()) { const timer = setInterval(() => { if (wrap()) clearInterval(timer); }, 20); }
+        return true;`);
+      const holds = () => call('return globalThis.__cxpHolds || null;').catch(() => null);
+      /* Whether `t`'s tab and each of its rows in the session list carry the envelope. */
+      const envelopesOf = async (t) => {
+        const x = await tabOf(t);
+        const rows = (await showList()) ? await list.evaluate((id) => [...document.querySelectorAll(`.cp-row[data-id="${id}"]`)].map((r) => {
+          const g = r.closest('.cp-group'), s = r.closest('.cp-section');
+          return { where: g ? g.dataset.key : s ? s.dataset.key : '?', unseen: [...r.querySelectorAll('.cp-unseen')].some((e) => getComputedStyle(e).display !== 'none') };
+        }), t.id).catch(() => []) : [];
+        return { title: t.title.slice(0, 32), tab: x ? envelopes(x.label) === 1 : null, active: !!(x && x.active), rows };
+      };
+      const everywhere = (e) => e.tab === true && e.rows.length > 0 && e.rows.every((r) => r.unseen);
+
+      await exec('workbench.action.closeAuxiliaryBar');
+      await exec('workbench.action.closeAllEditors');
+      await exec('workbench.action.joinAllGroups');
+      for (const t of [pair[1], pair[0]]) {
+        await exec('codexPlus.openThreadInTab', t.id);
+        await frameWhere((want) => !!document.querySelector('[data-codex-composer-root]') && document.body.innerText.includes(want), 90000, t.title.slice(0, 30));
+      }
+      check(!!await until(async () => { const a = await tabOf(pair[0]), b = await tabOf(pair[1]); return a && b && a.active && !b.active; }, 15000, 300),
+        'two conversations are open in tabs of one group, one in front of the other', await codexTabsNow());
+      for (const t of pair) await call('await vscode.commands.executeCommand("codexPlus.markThreadUnread", arg); return true;', t.id);
+      const marked = await until(async () => { const e = await Promise.all(pair.map(envelopesOf)); return e.every(everywhere) && e; }, 20000, 500);
+      check(!!marked, 'both, marked unread, carry the envelope on their tabs and their rows before the reload', marked || await Promise.all(pair.map(envelopesOf)));
+      if (!await focused()) note(`the window does not have the system's focus on ${process.platform}, where nothing in front counts as read, so a lost mark could not show here`);
+
+      await setting('loadRestoredTabs', true);
+      await exec('notifications.clearAll');
+      await w.reload();
+      await holdInFront();
+      await until(async () => { const st = await patchState(); return st && st.active; }, 60000, 1000);
+      const ran = await until(async () => { const r = await holds(); return r && r.loaded !== null && r; }, 120000, 1000);
+      const behind = [];
+      for (const t of pair) { const x = await tabOf(t); if (x && !x.active) behind.push(t); }
+      check(!!ran && ran.holds.length >= behind.length && behind.length > 0 && ran.holds.every((h) => h.had),
+        'with codexPlus.loadRestoredTabs on, the reload brings each tab behind to the front, its title carrying the envelope, and holds it there',
+        { record: ran || await holds(), behind: behind.map((t) => t.title), tabs: await codexTabsNow() });
+      if (ran) console.log(`        holds: ${JSON.stringify(ran.holds)}, wrapped at ${ran.wrapped} ms, loader finished at ${ran.loaded} ms`);
+      const cleared = ran ? ran.holds.filter((h) => h.cleared) : [];
+      check(!cleared.length, 'and no tab held in front loses its envelope while it is there', cleared);
+      /* A mark lost would be gone once a page reports, which goes on after the loader has finished. */
+      const kept = behind.length ? await until(async () => { const e = await Promise.all(behind.map(envelopesOf)); return e.every(everywhere) && e; }, 10000, 500) : null;
+      const lost = kept ? await until(async () => { const e = await Promise.all(behind.map(envelopesOf)); return e.some((x) => !everywhere(x)) && e; }, 15000, 500) : null;
+      check(!!kept && !lost, 'once the tabs are loaded, each conversation behind has the envelope on its tab and on its rows in the session list, and keeps it',
+        lost || kept || await Promise.all(behind.map(envelopesOf)));
+      await shot('restored-tabs-envelopes');
+      for (const t of pair) await call('await vscode.commands.executeCommand("codexPlus.markThreadRead", arg); return true;', t.id);
+      await setting('loadRestoredTabs', undefined);
+    });
     /*
      * codexPlus.reopenDroppedTabs. A tab closed while the window cannot reach the extension host is not recorded as
      * closed (src/tab-memory.js), as when a remote window loses its connection, and the tab comes back once the host is
