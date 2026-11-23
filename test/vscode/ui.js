@@ -248,7 +248,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       window.addEventListener('contextmenu', (e) => window.__cxpRightClicks.push(`${String(e.target.className || e.target.tagName).slice(0, 60)}${e.defaultPrevented ? ' (taken)' : ''}`), true);
     }).catch(() => {});
     let where = '';
-    for (let attempt = 0; attempt < 3 && !where; attempt++) {
+    let shut = false;
+    for (let attempt = 0; attempt < 3; attempt++) {
       if (attempt) { await page.keyboard.press('Escape'); await page.mouse.move(5, 5); await sleep(500); }
       if (select || onPage) await tabNamed(name).click();
       if (onPage) {
@@ -258,16 +259,17 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         if (talk) await page.mouse.click(talk.x + talk.width / 2, talk.y + Math.min(20, talk.height / 2), { button: 'right' });
       } else await tabNamed(name).click({ button: 'right' });
       where = await menuWith(item);
+      if (!where) continue;
+      await sleep(400);
+      /* The menu item's own element takes the click; the label inside it reads as covered to Playwright. A menu that
+         closes before the click is opened again. */
+      if (await page.locator('.context-view .monaco-menu .action-menu-item').filter({ hasText: item }).first()
+        .click({ timeout: 5000, force: true }).then(() => true, () => false)) return where;
+      shut = true;
     }
-    if (!where) {
-      const trace = await menuTrace();
-      await page.keyboard.press('Escape');
-      throw new Error(`no menu offered "${item}" on ${onPage ? 'the page' : 'the tab'}: ${JSON.stringify(trace).slice(0, 900)}`);
-    }
-    await sleep(400);
-    /* The menu item's own element takes the click; the label inside it reads as covered to Playwright. */
-    await page.locator('.context-view .monaco-menu .action-menu-item').filter({ hasText: item }).first().click({ timeout: 5000, force: true });
-    return where;
+    const trace = await menuTrace();
+    await page.keyboard.press('Escape');
+    throw new Error(`${shut ? 'the menu closed before' : 'no menu offered'} "${item}" on ${onPage ? 'the page' : 'the tab'}${shut ? ' could be clicked' : ''}: ${JSON.stringify(trace).slice(0, 900)}`);
   };
   /* What the panel draws for each activity (LOOK in Agent Plus's src/conversations-view.js). */
   const PANEL = { working: ['codicon-circle-filled', 'green'], background: ['codicon-circle', 'green'], waiting: ['codicon-circle-filled', 'red'], stopped: ['codicon-blank', ''] };
