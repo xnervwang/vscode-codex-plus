@@ -123,35 +123,19 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
    * of every window of this profile share one origin. A page closed while it still loads leaves its queued requests
    * behind, and each of them then holds a place for 30 s before it times out; on a slow machine a Codex page opened in
    * the minutes after gets none of its files, and Codex puts "Codex could not start" in it. So before a step, and before a
-   * page is closed or a window reloaded or closed, each Codex page is waited for until no file has reached it for a second,
-   * since a page goes on asking for more of its code for a while after it has drawn; then each Codex origin is asked for
-   * one more file, queued behind the files already asked for, until one comes back within a second. Resolves to the
-   * seconds this waited.
+   * page is closed or a window reloaded or closed, each Codex origin is asked for one more file, queued behind the files
+   * already asked for, until one comes back within a second. Resolves to the seconds this waited.
    */
   const served = async (pages = [page], ms = 480000) => {
     const t0 = Date.now();
-    const origins = new Map(), codexPages = [];
+    const origins = new Map();
     for (const pg of pages) {
       for (const f of (pg && !pg.isClosed() ? pg.frames() : [])) {
         const host = await f.evaluate(() => (location.protocol === 'vscode-webview:' && /\/openai\.chatgpt[^/]*\/webview\/$/.test(document.baseURI)
           ? location.host : '')).catch(() => '');
-        if (!host) continue;
-        codexPages.push(f);
-        if (!origins.has(host)) origins.set(host, f);
+        if (host && !origins.has(host)) origins.set(host, f);
       }
     }
-    /* Milliseconds since a file last reached the page, counted from the first call, which starts the count. */
-    const sinceLastFile = (f) => f.evaluate(() => {
-      const g = globalThis;
-      if (!g.__cxpFiles) {
-        g.__cxpFiles = { at: performance.now() };
-        try { new PerformanceObserver(() => { g.__cxpFiles.at = performance.now(); }).observe({ type: 'resource' }); } catch (_) { return 1e9; }
-      }
-      return performance.now() - g.__cxpFiles.at;
-    }).catch(() => 1e9);
-    await Promise.all(codexPages.map(async (f) => {
-      while (Date.now() - t0 < Math.min(ms, 60000) && await sinceLastFile(f) < 1000) await sleep(250);
-    }));
     await Promise.all([...origins.values()].map(async (f) => {
       while (Date.now() - t0 < ms) {
         const took = await f.evaluate((cap) => new Promise((done) => {
