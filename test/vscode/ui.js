@@ -3645,15 +3645,22 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         await page.mouse.move(box.x + at[0], box.y + at[1], { steps: 4 });
         await sleep(200);
       };
+      /* The tab in the tab bar is found by its label, as the API has it or as the conversation is titled: Codex first
+         labels a tab with the title cut short, and the tab bar can show the whole title while the API still has the
+         short one, or the other way round. */
       const closeTab = async (t) => {
         const x = await tabOf(t);
         if (!x) throw new Error(`no tab shows "${t.title}"`);
         await pointerOffRows();
-        const at = await page.evaluate((want) => [...document.querySelectorAll('.tabs-container .tab')].findIndex((e) => {
+        const find = () => page.evaluate((names) => [...document.querySelectorAll('.tabs-container .tab')].findIndex((e) => {
           const n = e.querySelector('.label-name');
-          return String((n ? n.textContent : e.innerText) || '').replace(/\u2709[\uFE0E\uFE0F]?/g, ' ').replace(/\s+/g, ' ').trim() === want;
-        }), bare(x.label));
-        if (at < 0) throw new Error(`no tab in the tab bar is labelled "${bare(x.label)}"`);
+          const text = String((n ? n.textContent : e.innerText) || '').replace(/\u2709[\uFE0E\uFE0F]?/g, ' ').replace(/\s+/g, ' ').trim();
+          const cut = (v) => (v.endsWith('…') ? v.slice(0, -1) : null);
+          return names.some((w) => text === w || (cut(w) !== null && text.startsWith(cut(w))) || (cut(text) !== null && w.startsWith(cut(text))));
+        }), [bare(x.label), t.title]).catch(() => -1);
+        let at = -1;
+        await until(async () => (at = await find()) >= 0, 5000, 250);
+        if (at < 0) throw new Error(`no tab in the tab bar is labelled "${bare(x.label)}" or "${t.title}"`);
         const tab = page.locator('.tabs-container .tab').nth(at);
         await tab.hover();
         await tab.locator('.tab-actions .action-label').first().click({ timeout: 5000 });
@@ -3719,6 +3726,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
           await after('two opened from the list and the first closed behind the second', [B], B);
         });
         await way('from Open sessions', async () => {
+          /* B is left open by the way before; opened here when that way did not get so far. */
+          if (!await tabOf(B)) { await groupRow(B).click(); await opened(B, 'a click on its row'); }
           await groupRow(A).click();
           await opened(A, 'a click on its row');
           await openRow(B).click();
@@ -3734,7 +3743,19 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         await way('the sidebar', async () => {
           try {
             await openNotes();
-            const shown = () => frameWhere((want) => innerWidth < 800 && document.body.innerText.includes(want) && !!document.querySelector('[data-turn-key]'), 40000, B.title.slice(0, 30));
+            /* The sidebar's page is the narrow one drawing turns, headed by the conversation's title or, as Codex heads
+               it now and then, by "New chat" while Codex Plus has the sidebar on that conversation. */
+            const sidebarOn = () => call(`${OWN} return own('patching').sidebarShowing();`).catch(() => '');
+            const shown = () => until(async () => {
+              const onB = (await sidebarOn()) === B.id;
+              for (const f of page.frames()) {
+                try {
+                  if (await f.evaluate(([want, on]) => innerWidth < 800 && !!document.querySelector('[data-codex-composer-root]')
+                    && !!document.querySelector('[data-turn-key]') && (on || document.body.innerText.includes(want)), [B.title.slice(0, 30), onB])) return f;
+                } catch (_) { /* not ready, or gone */ }
+              }
+              return null;
+            }, 40000, 500);
             let side = null;
             for (let tries = 1; tries <= 2 && !side; tries++) {
               if (tries > 1) {
