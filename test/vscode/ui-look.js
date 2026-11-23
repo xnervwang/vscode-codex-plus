@@ -1014,7 +1014,10 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await sleep(500);
     }
     await look('agent-map', {
-      expect: 'The pill opens the Agent map, a dialog with a wake-up section: "every 45 min", the next time, when it ends and a Remove button; its row, opened, shows the prompt "Check whether the nightly export has finished."',
+      expect: 'The pill opens the Agent map. At the top THIS CONVERSATION, with no count and no line above it, over a card titled by the conversation (cut short with an ellipsis), '
+        + 'its dot the one its tab has, and the model and the tokens in context under the title. Below, after a thin line, WAKE-UPS with a count badge 1 over the wake-up\'s card: '
+        + 'its prompt\'s first line over "every 45 min", the next time and when it ends, and a Remove button under the card. The card, clicked open, shows the whole prompt '
+        + '"Check whether the nightly export has finished." under it, and its arrow points down.',
     }, async () => {
       await openMap();
       await codex.locator('[data-codex-extras="map-wakeups"] summary').first().click();
@@ -1331,7 +1334,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       return union([await tab(title).boundingBox(), await toolbar()]);
     });
     await look('detached-agent-map', {
-      expect: 'The Agent map lists the detached command "sleep 40" with when it started, besides the wake-up.',
+      expect: 'The Agent map has, between the conversation\'s own card and WAKE-UPS, a WORK LEFT RUNNING section with a count badge 1: a card titled "sleep 40" with a solid green '
+        + 'dot, and under it "detached", its pid and when it started.',
     }, async () => { await openMap(); return mapBox(); });
     await closeMap();
     await look('detached-end-notice', {
@@ -1366,7 +1370,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     await setting('tokenMode', undefined, 'agentPlus');
     model.script(null);
     await look('subagent-agent-map', {
-      expect: 'After a turn that started a sub-agent, the pill has a green dot and counts it ("1 agent"), and the Agent map lists the sub-agent by its name with a solid green dot, since it is still running, and when it was last active.',
+      expect: 'After a turn that started a sub-agent, the pill has a green dot and counts it ("1 agent"), and the Agent map has a SUB-AGENTS section with a count badge 1, right '
+        + 'after the conversation\'s own card: a card of the sub-agent by its name with a solid green dot, since it is still running, and when it was last active under it.',
     }, async () => {
       model.script(t0.id, [{ call: 'spawn_agent', namespace: 'collaboration', args: { task_name: 'job', message: 'Wait for the job.', fork_turns: 'none' } }, { reply: 'Started a helper.' }]);
       await type('Start a helper and come back.');
