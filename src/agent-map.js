@@ -5,8 +5,9 @@
 'use strict';
 /*
  * Builds the Agent map for one Codex conversation: the dialog Claude Code opens from its "N agents" button, plus the
- * timers Claude Code Plus adds to it. Here it lists the conversation's wake-up (src/wakeup.js), its goal, the
- * sub-agents it started, and the work still running that it or a sub-agent started (src/left-running.js): detached
+ * timers Claude Code Plus adds to it. Here it lists the conversation's own row (`me`: its title and the dot its tab has),
+ * its wake-up (src/wakeup.js), its goal, the sub-agents it started, and the work still running that it or a sub-agent
+ * started (src/left-running.js): detached
  * commands, background terminals, codex exec runs, claude -p workers and claude --bg sessions, so the user can see why
  * its dot is green. Everything comes from the in-memory snapshot (src/codex-reader.js) and the last scan for work left
  * running; nothing here touches the disk. The page script draws the button and the dialog (src/page/codex-extras-page.js).
@@ -43,12 +44,14 @@ function mapOf(thread, { reader, stateOf = () => null, detached = () => [], left
   const background = (thread ? running(thread) || [] : []).map((x) => ({ kind: String(x.kind || ''), pid: +x.pid || 0, startMs: +x.startMs || 0,
     cmd: String(x.cmd || ''), name: String(x.name || ''), job: String(x.job || '') }));
   const kinds = (thread ? left(thread) || [] : []).filter((k) => k !== 'subagent');
+  const own = thread ? (reader.threads() || []).find((t) => t.id === thread) : null;
+  const me = thread ? { title: String((own && (own.title || own.nickname)) || ''), dot: dotOf(stateOf(thread)) } : null;
   return { type: 'codex-extras-agent-map',
-    shown: wakeups.length > 0 || !!goal || agents.length > 0 || jobs.length > 0 || background.length > 0 || kinds.length > 0,
+    shown: wakeups.length > 0 || !!goal || agents.length > 0 || jobs.length > 0 || background.length > 0 || kinds.length > 0, me,
     wakeups, goal, agents, detached: jobs, background, kinds, envelope: String(envelope || '') };
 }
 
 /* What a page is sent while there is nothing to draw, or no conversation. */
-const NO_MAP = { type: 'codex-extras-agent-map', shown: false, wakeups: [], goal: null, agents: [], detached: [], background: [], kinds: [], envelope: '' };
+const NO_MAP = { type: 'codex-extras-agent-map', shown: false, me: null, wakeups: [], goal: null, agents: [], detached: [], background: [], kinds: [], envelope: '' };
 
 module.exports = { mapOf, ACTIONS, NO_MAP };

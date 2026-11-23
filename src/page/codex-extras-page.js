@@ -351,10 +351,10 @@
      (agentPlusKit.labels), in Claude Code Plus's look. A message shown after a click (flash) removes itself after
      FLASH_MS. */
   var FLASH_MS = 3000;
-  var tips = kit.labels({ mark: [MARK, 'label'], css: 'z-index:' + Z_BELOW_CODEX_BOX + ';padding:8px;'
-    + 'background:var(--vscode-menu-background,var(--vscode-editorWidget-background,#252526));'
+  var TIP_LOOK = 'padding:8px;background:var(--vscode-menu-background,var(--vscode-editorWidget-background,#252526));'
     + 'border:1px solid var(--vscode-inlineChatInput-border,var(--vscode-input-border,var(--vscode-widget-border,#7f7f7f66)));border-radius:8px;'
-    + 'color:var(--vscode-foreground,#ccc);font-size:.9em;' });
+    + 'color:var(--vscode-foreground,#ccc);font-size:.9em;';
+  var tips = kit.labels({ mark: [MARK, 'label'], css: 'z-index:' + Z_BELOW_CODEX_BOX + ';' + TIP_LOOK });
   var hideLabel = tips.hide, showLabel = tips.show;
   function flash(el, text) {
     showLabel(el, text);
@@ -541,8 +541,8 @@
 
   /*
    * The Agent map: a copy of Claude Code's dialog of that name and of the "N agents" pill that opens it, with Claude
-   * Code Plus's timers added. It shows this conversation's wake-up, goal and sub-agents, and the work it started that
-   * still runs, which the host sends (codex-extras-agent-map, src/agent-map.js) whenever they change. The pill sits in
+   * Code Plus's timers added. It shows this conversation's own row, its sub-agents, the work it started that still
+   * runs, its wake-up and its goal, which the host sends (codex-extras-agent-map, src/agent-map.js) whenever they change. The pill sits in
    * the row with the other controls whenever there is something to show. Its dot is green while any of that work runs,
    * red while a sub-agent waits for the user, and grey once it has all ended. The dialog is built when it opens and
    * removed when it closes. Each button posts one of the host's ACTIONS; Open also posts the sub-agent's id.
@@ -636,7 +636,7 @@
   }
 
   var mapOpen = function () { return !!(mapBox && mapBox.isConnected); };
-  function closeMap() { mapBox = gone(mapBox); }
+  function closeMap() { if (mapTips) mapTips.hide(); mapBox = gone(mapBox); }
   var SMALL_BTN = 'cursor:pointer;font:inherit;font-size:.92em;padding:2px 8px;border-radius:4px;color:inherit;background:transparent;'
     + 'border:1px solid ' + EDGE + ';';
   function actButton(text, action, id) {
@@ -653,150 +653,199 @@
     });
     return b;
   }
-  var PRE = 'white-space:pre-wrap;word-break:break-word;margin:6px 0 0;padding:8px;max-height:200px;overflow-y:auto;font-size:.92em;'
+  var PRE = 'white-space:pre-wrap;word-break:break-word;margin:0;padding:8px;max-height:200px;overflow-y:auto;font-size:.92em;'
     + 'line-height:1.5;border-radius:4px;background:var(--vscode-textCodeBlock-background,rgba(255,255,255,.05));';
-  /* A collapsible row, drawn the way Claude Code Plus draws a timer: a one-line summary with the details below. `key`
-     keeps a row open or closed across redraws. */
-  function foldRow(key, open, summary, body) {
-    var d = mk('details', 'margin:5px 0;');
-    d.setAttribute(MARK + '-key', key);
-    if (open[key]) d.setAttribute('open', '');
-    var s = mk('summary', 'cursor:pointer;list-style:revert;');
-    for (var i = 0; i < summary.length; i++) s.appendChild(summary[i]);
-    d.appendChild(s);
-    d.appendChild(body);
-    return d;
-  }
-  var dim = function (text) { return mk('span', 'color:' + DIM + ';', text); };
-  var acts = function (list) { var r = mk('div', 'display:flex;gap:6px;flex-wrap:wrap;margin:2px 0 6px;'); for (var i = 0; i < list.length; i++) r.appendChild(list[i]); return r; };
-  function section(mark, heading, kids) {
-    var s = mk('div', 'margin-bottom:16px;');
-    s.setAttribute(MARK, mark);
-    s.appendChild(mk('div', 'color:' + DIM + ';margin-bottom:4px;', heading));
-    for (var i = 0; i < kids.length; i++) s.appendChild(kids[i]);
-    return s;
-  }
+  var acts = function (list) { var r = mk('div', 'display:flex;gap:6px;flex-wrap:wrap;'); for (var i = 0; i < list.length; i++) r.appendChild(list[i]); return r; };
   var tokensText = function (g) {
     var n = function (x) { return Number(x || 0).toLocaleString('en-US'); };
     return g.tokenBudget ? n(g.tokensUsed) + ' of ' + n(g.tokenBudget) + ' tokens' : n(g.tokensUsed) + ' tokens, no budget';
   };
+  var firstLine = function (text) {
+    var lines = String(text || '').split('\n');
+    for (var i = 0; i < lines.length; i++) if (lines[i].trim()) return lines[i].trim();
+    return '';
+  };
+  var cutTo = function (text, n) { return text.length > n ? text.slice(0, n - 1) + '…' : text; };
+
+  /*
+   * How the map is laid out, after Claude Code Plus's layout of Claude Code's own map: the conversation's own row first,
+   * under a heading of its own, then a section for each kind of thing listed - the sub-agents, the work left running,
+   * the wake-up and the goal, in that order - each under a heading that reads as one: a label in capitals and a count,
+   * smaller and bolder than the rows, behind a thin line. Every row is a card in the form Claude Code draws its own: a
+   * dot, a title on one line and one line under it. An empty section is left out.
+   *
+   * The map's hover text is drawn above its overlay, which covers the page's other labels.
+   */
+  var mapTips = kit.labels({ mark: [MARK, 'map-label'], css: 'z-index:' + (Z_MAP + 1) + ';' + TIP_LOOK });
+  var mapLabelled = function (el, text) { if (text) mapTips.wire(el, text, MARK + '-map-labelled'); };
+  var MAP_HEAD = 'display:block;align-self:stretch;box-sizing:border-box;margin:12px 0 0;padding-top:8px;'
+    + 'border-top:1px solid var(--vscode-widget-border,rgba(128,128,128,.35));'
+    + 'color:var(--vscode-sideBarSectionHeader-foreground,var(--vscode-foreground,#ccc));font-weight:700;letter-spacing:.04em;'
+    + 'line-height:18px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:11px;';
+  var MAP_BADGE = 'display:inline-block;box-sizing:border-box;min-width:18px;margin-left:6px;padding:0 5px;border-radius:9px;text-align:center;'
+    + 'vertical-align:1px;line-height:16px;font-weight:600;letter-spacing:0;font-size:10px;'
+    + 'background:var(--vscode-badge-background,rgba(128,128,128,.35));color:var(--vscode-badge-foreground,inherit);';
+  var MAP_CARD = 'box-sizing:border-box;display:flex;flex-direction:column;justify-content:center;align-items:stretch;gap:2px;width:300px;'
+    + 'max-width:100%;margin:0;padding:6px 10px;text-align:left;font:inherit;color:var(--vscode-foreground,#ccc);list-style:none;'
+    + 'background-color:var(--vscode-menu-background,#252526);border:1px solid ' + EDGE + ';border-radius:4px;';
+  /* A section's heading; `count` is null for the heading over the conversation's own row, which has none and no line. */
+  function mapHead(label, count, note) {
+    var hd = mk('div', MAP_HEAD + (count === null ? 'border-top:0;margin:0;padding-top:0;' : ''));
+    hd.setAttribute(MARK + '-head', label);
+    hd.appendChild(mk('span', 'text-transform:uppercase;', label));
+    if (count !== null) {
+      var c = mk('span', MAP_BADGE, String(count));
+      c.setAttribute(MARK + '-count', String(count));
+      hd.appendChild(c);
+    }
+    mapLabelled(hd, note);
+    return hd;
+  }
+  function mapSection(mark, head, items) {
+    var s = mk('div', 'display:flex;flex-direction:column;align-items:flex-start;gap:8px;padding:0 8px 8px 0;');
+    s.setAttribute(MARK, mark);
+    s.appendChild(head);
+    for (var i = 0; i < items.length; i++) s.appendChild(items[i]);
+    return s;
+  }
+  /*
+   * A card. `o.dot` is a state of dotEl, `o.title` the first line, `o.after` what follows the title on it, `o.meta` the
+   * second line; `o.tag` the element it is (a div by default). Its hover text is `o.note` and then the second line,
+   * which a narrow side bar cuts short. A card with `o.body` is the summary of a <details> that opens the body below it
+   * on a click, with an arrow that says so; `o.key` keeps it open or closed across redraws, as `open` records them.
+   */
+  function mapCard(o, open) {
+    var line = mk('span', 'display:flex;align-items:center;gap:6px;min-width:0;white-space:nowrap;');
+    line.appendChild(dotEl(o.dot, 8));
+    var name = mk('span', 'flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;', o.title);
+    name.setAttribute(MARK + '-name', '');
+    line.appendChild(name);
+    if (o.after) line.appendChild(o.after);
+    if (o.body) {
+      var more = mk('span', 'margin-left:auto;padding-left:4px;color:' + DIM + ';font-size:.8em;line-height:1;', '▸');
+      more.setAttribute(MARK + '-more', '');
+      line.appendChild(more);
+    }
+    var card = mk(o.body ? 'summary' : o.tag || 'div', MAP_CARD + (o.body || o.tag === 'button' ? 'cursor:pointer;' : ''));
+    if (o.tag === 'button') card.setAttribute('type', 'button');
+    card.setAttribute(MARK + '-card', o.kind);
+    card.appendChild(line);
+    var meta = mk('span', 'padding-left:14px;color:' + DIM + ';font-size:.85em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;', o.meta || '');
+    meta.setAttribute(MARK + '-meta', '');
+    card.appendChild(meta);
+    mapLabelled(card, [o.note, o.meta].filter(Boolean).join('\n'));
+    if (!o.body) return card;
+    var d = mk('details', 'max-width:100%;');
+    d.setAttribute(MARK + '-key', o.key);
+    if (open[o.key]) d.setAttribute('open', '');
+    d.appendChild(card);
+    var body = mk('div', 'box-sizing:border-box;width:300px;max-width:100%;margin:6px 0 2px;padding-left:14px;');
+    for (var i = 0; i < o.body.length; i++) body.appendChild(o.body[i]);
+    d.appendChild(body);
+    return d;
+  }
+  /* A card with its buttons under it. */
+  function withActs(card, buttons) {
+    var w = mk('div', 'display:flex;flex-direction:column;align-items:flex-start;gap:6px;max-width:100%;');
+    w.appendChild(card);
+    w.appendChild(acts(buttons));
+    return w;
+  }
+  var ME_STATE = { working: 'running', background: 'work it started is still running', waiting: 'waiting for you', stopped: 'idle', unknown: '' };
+  var AGENTS_NOTE = 'The sub-agents this conversation started. Click one to open it in a tab.';
+  var WORK_NOTE = 'Work this conversation or a sub-agent started that is still running after its turn: commands it detached, '
+    + 'background terminals, codex exec runs, claude -p workers and claude --bg sessions. They keep the conversation\'s dot green. '
+    + 'A card\'s hover text is its whole command line.';
+  var WAKE_NOTE = 'Sent when the conversation is idle. Click one to read its prompt.';
+  var GOAL_NOTE = 'Codex starts another turn each time the conversation is idle, until the goal is done. Click it to read the goal.';
+  /* The second line of a card of work: what it is, then its job, pid and when it started. */
+  function workMeta(word, d, first) {
+    var age = d.startMs ? kit.age(d.startMs) : '';
+    var parts = [word].concat(first || []);
+    if (d.pid) parts.push('pid ' + d.pid);
+    if (d.startMs) parts.push('started ' + kit.stamp(d.startMs, false) + (age === 'now' ? ', just now' : ', ' + age + ' ago'));
+    return parts.join(' · ');
+  }
+  var WORK_META = { detached: 'detached', command: 'background terminal', codexExec: 'codex exec', claudeWorker: 'claude -p', claudeBg: 'claude --bg' };
+  var CMD_SHOWN = 120, CMD_HOVER = 500;
+  function jobCard(d, open) {
+    var cmd = String(d.cmd || '');
+    var c = mapCard({ kind: 'detached', dot: 'working', title: cutTo(cmd, CMD_SHOWN) || '(command line not read)', meta: workMeta('detached', d),
+      note: cutTo(cmd, CMD_HOVER) }, open);
+    c.setAttribute(MARK, 'map-job');
+    return c;
+  }
+  function workCard(w, open) {
+    var cmd = String(w.cmd || ''), word = WORK_META[w.kind] || w.kind;
+    var title = w.kind === 'claudeWorker' || w.kind === 'claudeBg' ? w.name || (w.kind === 'claudeBg' ? w.job : cmd) || word : cmd || word;
+    var c = mapCard({ kind: 'work', dot: 'working', title: cutTo(title, CMD_SHOWN), meta: workMeta(word, w, w.job ? ['job ' + w.job] : []),
+      note: cutTo(cmd, CMD_HOVER) }, open);
+    c.setAttribute(MARK, 'map-bg');
+    c.setAttribute(MARK + '-kind', w.kind);
+    return c;
+  }
+  function bareCard(k, open) {
+    var c = mapCard({ kind: 'work', dot: 'working', title: WORK_BARE[k] || k, meta: WORK_META[k] || k }, open);
+    c.setAttribute(MARK, 'map-bg');
+    c.setAttribute(MARK + '-kind', k);
+    return c;
+  }
   function mapSections(m, open) {
     var out = [];
+    /* The conversation's own row: its title, the dot its tab has, and the model and the context in use as the meter has
+       them. */
+    var me = m.me && typeof m.me === 'object' ? m.me : {};
+    var ownMeta = [];
+    if (usage && usage.model) ownMeta.push(usage.model);
+    if (usage && usage.used > 0) ownMeta.push(kit.kfmt(usage.used) + ' tokens in context');
+    var own = mapCard({ kind: 'me', dot: me.dot || 'stopped', title: me.title || 'This conversation',
+      meta: ownMeta.join(' · ') || ME_STATE[me.dot] || '' }, open);
+    out.push(mapSection('map-me', mapHead('This conversation', null, ''), [own]));
+    if (m.agents.length) {
+      out.push(mapSection('map-agents', mapHead('Sub-agents', m.agents.length, AGENTS_NOTE), m.agents.map(function (a) {
+        var env = null;
+        if (a.unseen) {
+          env = mk('span', 'flex-shrink:0;line-height:1;', m.envelope || '✉️');
+          env.setAttribute(MARK + '-unseen', '');
+        }
+        var age = kit.age(a.updatedMs);
+        var b = mapCard({ kind: 'agent', tag: 'button', dot: a.dot, title: a.name, after: env,
+          meta: a.updatedMs ? (age === 'now' ? 'active now' : 'active ' + age + ' ago') : '',
+          note: [a.title && a.title !== a.name ? a.title : '', a.unseen ? 'Has a reply you have not read.' : ''].filter(Boolean).join('\n') }, open);
+        b.setAttribute(MARK, 'map-agent');
+        b.setAttribute(MARK + '-id', a.id);
+        b.addEventListener('click', function (ev) {
+          try { ev.stopPropagation(); } catch (e) { /* none */ }
+          post({ kind: 'agentMap', action: 'openAgent', id: a.id });
+          closeMap();
+        });
+        return b;
+      })));
+    }
+    var jobs = jobsOf(m), bare = ['detached'].concat(WORK).filter(function (k) {
+      return kindsOf(m).indexOf(k) >= 0 && !(k === 'detached' ? jobs.length : countOf(m, k));
+    });
+    var work = jobs.map(function (d) { return jobCard(d, open); })
+      .concat(workOf(m).map(function (w) { return workCard(w, open); }), bare.map(function (k) { return bareCard(k, open); }));
+    if (work.length) out.push(mapSection('map-work', mapHead('Work left running', work.length, WORK_NOTE), work));
     if (m.wakeups.length) {
-      out.push(section('map-wakeups', plural(m.wakeups.length, 'wake-up') + ' · sent when the conversation is idle', m.wakeups.map(function (w, i) {
+      out.push(mapSection('map-wakeups', mapHead('Wake-ups', m.wakeups.length, WAKE_NOTE), m.wakeups.map(function (w, i) {
         var when = w.paused ? 'paused until a turn starts' : 'next ' + kit.stamp(w.nextMs, false);
-        var row = mk('div');
-        row.appendChild(foldRow('wake' + i, open, [mk('span', '', 'every ' + w.everyMinutes + ' min'), dim(' · ' + when + ' · until ' + kit.stamp(w.expiresMs, false))],
-          mk('pre', PRE, w.prompt)));
-        row.appendChild(acts([actButton('Remove', 'removeWakeup')]));
-        return row;
+        return withActs(mapCard({ kind: 'wakeup', key: 'wake' + i, dot: 'idle', title: cutTo(firstLine(w.prompt), CMD_SHOWN) || '(no prompt)',
+          meta: 'every ' + w.everyMinutes + ' min · ' + when + ' · until ' + kit.stamp(w.expiresMs, false),
+          body: [mk('pre', PRE, String(w.prompt || ''))] }, open), [actButton('Remove', 'removeWakeup')]);
       })));
     }
     if (m.goal) {
-      var g = m.goal, line = g.objective.split('\n')[0];
-      var buttons = [];
+      var g = m.goal, buttons = [];
       if (g.status === 'active') buttons.push(actButton('Pause', 'pauseGoal'));
       if (GOAL_RESUMABLE.indexOf(g.status) >= 0) buttons.push(actButton('Resume', 'resumeGoal'));
       buttons.push(actButton('Clear', 'clearGoal'));
-      var goalRow = mk('div');
-      goalRow.appendChild(foldRow('goal', open, [mk('span', '', line.length > 120 ? line.slice(0, 119) + '…' : line),
-        dim(' · ' + (GOAL_STATE[g.status] || g.status) + ' · ' + tokensText(g))], mk('pre', PRE, g.objective)));
-      goalRow.appendChild(acts(buttons));
-      out.push(section('map-goal', 'Goal · Codex starts another turn each time the conversation is idle, until it is done', [goalRow]));
-    }
-    if (m.agents.length) {
-      var list = mk('div', 'display:flex;flex-direction:column;gap:8px;padding:0 8px 8px 0;');
-      for (var i = 0; i < m.agents.length; i++) {
-        var a = m.agents[i];
-        var b = mk('button', 'box-sizing:border-box;display:flex;flex-direction:column;justify-content:center;align-items:stretch;gap:2px;width:300px;'
-          + 'max-width:100%;margin:0;padding:6px 10px;text-align:left;font:inherit;cursor:pointer;color:var(--vscode-foreground,#ccc);'
-          + 'background-color:var(--vscode-menu-background,#252526);border:1px solid ' + EDGE + ';border-radius:4px;');
-        b.setAttribute('type', 'button');
-        b.setAttribute(MARK, 'map-agent');
-        b.setAttribute(MARK + '-id', a.id);
-        if (a.title && a.title !== a.name) b.setAttribute('title', a.title);
-        var head = mk('span', 'display:flex;align-items:center;gap:6px;min-width:0;white-space:nowrap;');
-        head.appendChild(dotEl(a.dot, 8));
-        var name = mk('span', 'overflow:hidden;text-overflow:ellipsis;', a.name);
-        name.setAttribute(MARK + '-name', '');
-        head.appendChild(name);
-        if (a.unseen) {
-          var env = mk('span', 'flex-shrink:0;line-height:1;', m.envelope || '\u2709\uFE0F');
-          env.setAttribute(MARK + '-unseen', '');
-          env.setAttribute('title', 'Has a reply you have not read');
-          head.appendChild(env);
-        }
-        b.appendChild(head);
-        var age = kit.age(a.updatedMs);
-        b.appendChild(mk('span', 'color:' + DIM + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-left:14px;font-size:.85em;',
-          a.updatedMs ? (age === 'now' ? 'active now' : 'active ' + age + ' ago') : ''));
-        (function (id) {
-          b.addEventListener('click', function (ev) {
-            try { ev.stopPropagation(); } catch (e) { /* none */ }
-            post({ kind: 'agentMap', action: 'openAgent', id: id });
-            closeMap();
-          });
-        }(a.id));
-        list.appendChild(b);
-      }
-      out.push(section('map-agents', plural(m.agents.length, 'agent') + ' · click an agent to open it in a tab', [list]));
-    }
-    var jobs = jobsOf(m);
-    if (jobs.length) {
-      out.push(section('map-detached', 'Detached commands · started by this conversation and still running after its turn', jobs.map(function (d) {
-        var row = mk('div', 'margin:5px 0;');
-        row.setAttribute(MARK, 'map-job');
-        var head = mk('div', 'display:flex;align-items:center;gap:6px;min-width:0;');
-        head.appendChild(dotEl('working', 8));
-        head.appendChild(cmdLine(d.cmd, ''));
-        row.appendChild(head);
-        row.appendChild(metaLine(d, []));
-        return row;
-      })));
-    }
-    var work = workOf(m), bare = ['detached'].concat(WORK).filter(function (k) {
-      return kindsOf(m).indexOf(k) >= 0 && !(k === 'detached' ? jobs.length : countOf(m, k));
-    });
-    if (work.length || bare.length) {
-      out.push(section('map-background', 'Background work · started by this conversation and still running', work.map(workRow).concat(bare.map(function (k) {
-        var row = mk('div', 'margin:5px 0;');
-        row.setAttribute(MARK, 'map-bg');
-        row.setAttribute(MARK + '-kind', k);
-        var head = mk('div', 'display:flex;align-items:center;gap:6px;min-width:0;');
-        head.appendChild(dotEl('working', 8));
-        head.appendChild(mk('span', '', WORK_BARE[k] || k));
-        row.appendChild(head);
-        return row;
-      }))));
+      out.push(mapSection('map-goal', mapHead('Goal', 1, GOAL_NOTE), [withActs(mapCard({ kind: 'goal', key: 'goal', dot: 'idle',
+        title: cutTo(firstLine(g.objective), CMD_SHOWN) || '(no objective)', meta: (GOAL_STATE[g.status] || g.status) + ' · ' + tokensText(g),
+        body: [mk('pre', PRE, g.objective)] }, open), buttons)]));
     }
     return out;
-  }
-  /* A command line cut to 120 characters, shown whole on hover. */
-  function cmdLine(text, indent) {
-    var cmd = mk('div', 'min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--vscode-editor-font-family,monospace);'
-      + 'font-size:.92em;' + indent, text.length > 120 ? text.slice(0, 119) + '…' : text);
-    cmd.setAttribute('title', text);
-    return cmd;
-  }
-  function metaLine(d, first) {
-    var age = d.startMs ? kit.age(d.startMs) : '';
-    var parts = first.slice();
-    if (d.pid) parts.push('pid ' + d.pid);
-    if (d.startMs) parts.push('started ' + kit.stamp(d.startMs, false) + (age === 'now' ? ', just now' : ', ' + age + ' ago'));
-    return mk('div', 'color:' + DIM + ';padding-left:14px;', parts.join(' · '));
-  }
-  function workRow(w) {
-    var row = mk('div', 'margin:5px 0;');
-    row.setAttribute(MARK, 'map-bg');
-    row.setAttribute(MARK + '-kind', w.kind);
-    var head = mk('div', 'display:flex;align-items:center;gap:6px;min-width:0;');
-    head.appendChild(dotEl('working', 8));
-    head.appendChild(mk('span', 'min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;',
-      ((WORK_WORD[w.kind] || [w.kind, w.kind, w.kind])[2]) + (w.name ? ' · ' + w.name : '')));
-    row.appendChild(head);
-    if (w.cmd) row.appendChild(cmdLine(w.cmd, 'padding-left:14px;'));
-    row.appendChild(metaLine(w, w.job ? ['job ' + w.job] : []));
-    return row;
   }
   function drawMap() {
     if (!mapOpen() || !agentMap) return;
@@ -804,6 +853,7 @@
     if (!body) return;
     var open = {}, folds = body.querySelectorAll('details[' + MARK + '-key]');
     for (var i = 0; i < folds.length; i++) if (folds[i].hasAttribute('open')) open[folds[i].getAttribute(MARK + '-key')] = true;
+    mapTips.hide();
     body.replaceChildren.apply(body, mapSections(agentMap, open));
     snapMap();
   }
@@ -2117,7 +2167,9 @@
     + '.codex-extras-rule-line{flex:1 1 auto;height:1px;background:var(--vscode-widget-border,rgba(255,255,255,.22));}'
     /* The Agent map's pill, its rows and its buttons, hovered as Claude Code's are. */
     + '[data-codex-extras="agents"]:hover{background:color-mix(in srgb,var(--vscode-foreground,#ccc) 18%,transparent) !important;}'
-    + '[data-codex-extras="map-agent"]:hover{background-color:var(--vscode-list-hoverBackground,rgba(255,255,255,.08)) !important;}'
+    + '[data-codex-extras="map-agent"]:hover,summary[data-codex-extras-card]:hover{background-color:var(--vscode-list-hoverBackground,rgba(255,255,255,.08)) !important;}'
+    + 'summary[data-codex-extras-card]::-webkit-details-marker{display:none;}'
+    + 'details[open]>summary [data-codex-extras-more]{transform:rotate(90deg);}'
     + '[data-codex-extras="map-close"]:hover,[data-codex-extras="map-act"]:hover{background:var(--vscode-toolbar-hoverBackground,rgba(255,255,255,.12)) !important;}'
     /* Claude Code's dialog border while the dialog holds the focus: the active input border at 65%. */
     + '[data-codex-extras="map-dialog"]:focus-within{border-color:color-mix(in srgb,var(--vscode-inputOption-activeBorder,#2488db) 65%,transparent) !important;}';
@@ -2918,7 +2970,7 @@
     else if (m.type === 'codex-extras-answer' && typeof m.text === 'string' && m.id) takeAnswer(m);
     else if (m.type === 'codex-extras-info') showInfo(m);
     else if (m.type === 'codex-extras-plan') tookPlan(m);
-    else if (m.type === 'codex-extras-usage') { usage = usageFrom(m.usage); if (document.body) placeBar(); }
+    else if (m.type === 'codex-extras-usage') { usage = usageFrom(m.usage); if (document.body) placeBar(); drawMap(); }
     else if (m.type === 'codex-extras-agent-map') {
       agentMap = m.shown === true && Array.isArray(m.wakeups) && Array.isArray(m.agents) ? m : null;
       if (agentMap) drawMap(); else closeMap();

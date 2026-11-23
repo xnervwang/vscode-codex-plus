@@ -6,8 +6,8 @@
 /*
  * The Agent map's pill and dialog in Codex's page (src/page/codex-extras-page.js), on the stand-in DOM. The pill is green
  * while anything the conversation started still runs, red while a sub-agent waits for the user, and grey once it has
- * all ended; its label has one count per kind. The dialog gives each item of that work a green dot. The host's side is
- * test/parts/35x-agent-map-work.js.
+ * all ended; its label has one count per kind. The dialog lists that work in one section, each item a card with a green
+ * dot. The host's side is test/parts/35x-agent-map-work.js.
  */
 const path = require('path');
 const vm = require('vm');
@@ -99,18 +99,27 @@ module.exports = async ({ eq, root }) => {
   p.send(map({ detached: [job], background: [W.command, W.codexExec, W.claudeWorker, W.claudeBg], kinds: ['command', 'detached', 'codexExec', 'claudeWorker', 'claudeBg'],
     agents: [agent(3, 'working'), agent(4, 'background', { unseen: true }), agent(5, 'waiting'), agent(6, 'stopped', { unseen: true }), agent(7, 'unknown')] }));
   click(pill());
-  const rows = p.q('[data-codex-extras="map-background"] [data-codex-extras="map-bg"]');
-  eq(rows.map((r) => r.getAttribute('data-codex-extras-kind')), ['command', 'codexExec', 'claudeWorker', 'claudeBg'],
-    'the dialog has a section listing the work besides the sub-agents and the detached commands, oldest first');
+  const order = p.q('[data-codex-extras="agent-map"] [data-codex-extras^="map-"]').map((s) => s.getAttribute('data-codex-extras'))
+    .filter((k) => /^map-(me|agents|work|wakeups|goal)$/.test(k));
+  const workHead = p.q('[data-codex-extras="map-work"] [data-codex-extras-head]')[0];
+  eq([order, workHead && workHead.getAttribute('data-codex-extras-head'), workHead && workHead.querySelectorAll('[data-codex-extras-count]')[0].textContent],
+    [['map-me', 'map-agents', 'map-work'], 'Work left running', '5'],
+    'the work left running is one section after the sub-agents, which Claude Code Plus splits into its background tasks, detached commands, '
+    + 'claude -p and claude --bg sessions, with one count for all of it');
+  const rows = p.q('[data-codex-extras="map-work"] [data-codex-extras="map-bg"]');
+  eq(p.q('[data-codex-extras="map-work"] [data-codex-extras-card]').map((r) => r.getAttribute('data-codex-extras') + ' ' + (r.getAttribute('data-codex-extras-kind') || '')),
+    ['map-job ', 'map-bg command', 'map-bg codexExec', 'map-bg claudeWorker', 'map-bg claudeBg'],
+    'the detached commands first, then the rest of the work, oldest first');
   eq(rows.map((r) => (r.querySelectorAll('[data-codex-extras-dot]')[0] || { getAttribute: () => '' }).getAttribute('data-codex-extras-dot')),
     ['working', 'working', 'working', 'working'], 'each with a green dot');
-  const text = [0, 1, 2, 3].map((i) => (rows[i] ? rows[i].textContent : ''));
-  eq([/Background terminal/.test(text[0]) && text[0].includes('/bin/bash -lc npm run watch') && /pid 11/.test(text[0]),
-    /codex exec/.test(text[1]) && text[1].includes('Wait for the job.'),
-    text[2].includes('claude -p · night worker') && text[2].includes('claude -p go'),
-    text[3].includes('claude --bg · night suite') && /job abcd1234/.test(text[3])], [true, true, true, true],
-  'a background terminal and a codex exec are named by their command line, a claude -p worker and a claude --bg session by their name');
-  const jobs = p.q('[data-codex-extras="map-detached"] [data-codex-extras="map-job"]');
+  const lines = rows.map((r) => [(r.querySelectorAll('[data-codex-extras-name]')[0] || {}).textContent,
+    ((r.querySelectorAll('[data-codex-extras-meta]')[0] || {}).textContent || '').replace(/ · started .*$/, ''), String(r.getAttribute('aria-label') || '').split('\n')[0].replace(/ · started .*$/, '')]);
+  eq(lines, [['/bin/bash -lc npm run watch', 'background terminal · pid 11', '/bin/bash -lc npm run watch'],
+    ['codex exec --skip-git-repo-check Wait for the job.', 'codex exec · pid 40', 'codex exec --skip-git-repo-check Wait for the job.'],
+    ['night worker', 'claude -p · pid 50', 'claude -p go'], ['night suite', 'claude --bg · job abcd1234 · pid 60', 'claude --bg · job abcd1234 · pid 60']],
+  'a background terminal and a codex exec are titled by their command line, a claude -p worker and a claude --bg session by their name, '
+  + 'each over what it is, its pid and when it started, with its command line on hover, or the second line for a session that has none');
+  const jobs = p.q('[data-codex-extras="map-work"] [data-codex-extras="map-job"]');
   eq(jobs.map((r) => (r.querySelectorAll('[data-codex-extras-dot]')[0] || { getAttribute: () => '' }).getAttribute('data-codex-extras-dot')), ['working'],
     'a detached command has the green dot too');
   const agents = p.q('[data-codex-extras="map-agent"]');

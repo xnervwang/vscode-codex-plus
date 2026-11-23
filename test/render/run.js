@@ -600,7 +600,7 @@ function selfchecked(r, where, { turns, users, rows, replies = turns }) {
     s = await opened(name, { width, height });
     try {
       const ID = (n) => `01a1f0f0-0000-7000-8000-${String(n).padStart(12, '0')}`;
-      const map = { type: 'codex-extras-agent-map', shown: true,
+      const map = { type: 'codex-extras-agent-map', shown: true, me: { title: 'Can you find where the retry delay for the inventory sync is set?', dot: 'working' },
         wakeups: [{ everyMinutes: 10, prompt: 'Keep going with the open rows of the plan.', nextMs: Date.now() + 7 * 60e3, expiresMs: Date.now() + 6 * 86400e3, paused: false }],
         goal: { status: 'active', objective: 'Make the nightly export skip archived rows and report how many it skipped', tokensUsed: 182000, tokenBudget: 1000000 },
         agents: [{ id: ID(3), name: 'scout', title: 'Find where the retry delay is set', dot: 'working', updatedMs: Date.now() - 20e3 },
@@ -640,8 +640,13 @@ function selfchecked(r, where, { turns, users, rows, replies = turns }) {
         return { cover: [or.left, or.top, or.right, or.bottom], box: [Math.round(r.left), Math.round(r.top), Math.round(r.right), Math.round(r.bottom)],
           vw: innerWidth, vh: innerHeight, radius: st.borderRadius, bg: st.backgroundColor, overlay: getComputedStyle(o).backgroundColor,
           title: [h.textContent, getComputedStyle(h).fontSize, getComputedStyle(h).fontWeight],
-          sections: [...d.querySelectorAll('[data-codex-extras^="map-"]')].map((x) => x.getAttribute('data-codex-extras')).filter((k) => /^map-(wakeups|goal|agents)$/.test(k)),
+          sections: [...d.querySelectorAll('[data-codex-extras^="map-"]')].map((x) => x.getAttribute('data-codex-extras')).filter((k) => /^map-(me|agents|work|wakeups|goal)$/.test(k)),
           rows, dots: [...d.querySelectorAll('[data-codex-extras="map-agent"] [data-codex-extras-dot]')].map((x) => Math.round(x.getBoundingClientRect().width)),
+          heads: [...d.querySelectorAll('[data-codex-extras-head]')].map((x) => { const st = getComputedStyle(x), lab = getComputedStyle(x.firstChild);
+            return [x.getAttribute('data-codex-extras-head'), (x.querySelector('[data-codex-extras-count]') || {}).textContent || null, lab.textTransform,
+              st.borderTopWidth, st.fontSize, st.fontWeight]; }),
+          cards: [...d.querySelectorAll('[data-codex-extras-card]')].map((x) => { const b = x.getBoundingClientRect(); return [x.getAttribute('data-codex-extras-card'),
+            Math.round(b.width), getComputedStyle(x).borderRadius]; }),
           tones: [...d.querySelectorAll('[data-codex-extras="map-agent"] [data-codex-extras-dot]')].map((x) => [x.getAttribute('data-codex-extras-dot'), getComputedStyle(x).backgroundColor]),
           border: st.borderTopColor, focusBorder: (() => { const q = document.createElement('span'); q.style.color = 'color-mix(in srgb, #2488db 65%, transparent)';
             document.body.appendChild(q); const v = getComputedStyle(q).color; q.remove(); return v; })(),
@@ -651,9 +656,12 @@ function selfchecked(r, where, { turns, users, rows, replies = turns }) {
       check(!!dlg && dlg.cover.join() === `0,0,${dlg.vw},${dlg.vh}` && dlg.overlay === 'rgba(0, 0, 0, 0.75)' && dlg.radius === '8px' && dlg.bg === 'rgb(24, 24, 24)'
         && dlg.title.join() === 'Agent map,16px,600' && dlg.focused,
       `${name}: the dialog is Claude Code's: a dimmed page, an 8 px rounded box in the sidebar's colour, the title in 16 px at weight 600, and it takes the focus`, dlg);
-      check(!!dlg && dlg.sections.join() === 'map-wakeups,map-goal,map-agents' && dlg.box[0] >= 16 && dlg.box[2] <= dlg.vw - 16 && dlg.box[1] >= 0 && dlg.box[3] <= dlg.vh
-        && dlg.rows.every(([w, rad]) => w === Math.min(300, dlg.box[2] - dlg.box[0] - 32 - 8) && rad === '4px') && dlg.dots.length === 2 && dlg.dots.every((x) => x === 8),
-      `${name}: it holds the wake-up, the goal and the sub-agents in that order, inside the page, each agent a 4 px rounded row with an 8 px dot`, dlg);
+      check(!!dlg && dlg.sections.join() === 'map-me,map-agents,map-wakeups,map-goal' && dlg.box[0] >= 16 && dlg.box[2] <= dlg.vw - 16 && dlg.box[1] >= 0 && dlg.box[3] <= dlg.vh
+        && dlg.cards.every(([, w, rad]) => w === Math.min(300, dlg.box[2] - dlg.box[0] - 32 - 8) && rad === '4px') && dlg.dots.length === 2 && dlg.dots.every((x) => x === 8),
+      `${name}: it holds the conversation's own row, then the sub-agents, the wake-up and the goal in that order, inside the page, each row a 4 px rounded card with an 8 px dot`, dlg);
+      check(!!dlg && JSON.stringify(dlg.heads) === JSON.stringify([['This conversation', null, 'uppercase', '0px', '11px', '700'], ['Sub-agents', '2', 'uppercase', '1px', '11px', '700'],
+        ['Wake-ups', '1', 'uppercase', '1px', '11px', '700'], ['Goal', '1', 'uppercase', '1px', '11px', '700']]),
+      `${name}: each section has an 11 px bold heading in capitals with its count and a 1 px line above it; the conversation's own has neither`, dlg && dlg.heads);
       check(!!dlg && JSON.stringify(dlg.acts) === JSON.stringify([['Remove', 'removeWakeup'], ['Pause', 'pauseGoal'], ['Clear', 'clearGoal']]),
         `${name}: the wake-up has Remove and the running goal Pause and Clear`, dlg && dlg.acts);
       check(!!dlg && dlg.focused && dlg.border === dlg.focusBorder, `${name}: holding the focus, its border is the active input border at 65%, as Claude Code's dialog`,
@@ -680,11 +688,11 @@ function selfchecked(r, where, { turns, users, rows, replies = turns }) {
       const bare = await s.b.evaluate(`(() => {
         const d = document.querySelector('[data-codex-extras="map-dialog"]');
         if (!d) return null;
-        return { sections: [...d.querySelectorAll('[data-codex-extras^="map-"]')].map((x) => x.getAttribute('data-codex-extras')).filter((k) => /^map-(wakeups|goal|agents)$/.test(k)),
+        return { sections: [...d.querySelectorAll('[data-codex-extras^="map-"]')].map((x) => x.getAttribute('data-codex-extras')).filter((k) => /^map-(me|agents|work|wakeups|goal)$/.test(k)),
           acts: [...d.querySelectorAll('[data-codex-extras-act]')].map((x) => x.getAttribute('data-codex-extras-act')), goalWord: /goal/i.test(d.textContent) };
       })()`);
       results.scenes[name].measures.dialogNoGoal = { pill: pillNoGoal, ...bare };
-      check(pillNoGoal === '2 agents · 1 timer' && !!bare && bare.sections.join() === 'map-wakeups,map-agents' && bare.acts.join() === 'removeWakeup' && !bare.goalWord,
+      check(pillNoGoal === '2 agents · 1 timer' && !!bare && bare.sections.join() === 'map-me,map-agents,map-wakeups' && bare.acts.join() === 'removeWakeup' && !bare.goalWord,
         `${name}: with no goal the pill names none, and the dialog has no goal section and no button that sets one`, results.scenes[name].measures.dialogNoGoal);
       await s.b.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
       await sleep(200);

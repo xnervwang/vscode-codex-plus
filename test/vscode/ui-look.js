@@ -1425,10 +1425,39 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         await sleep(1000);
         return toolbar();
       });
+      const MAP_SECTIONS = 'From the top: THIS CONVERSATION, with no count and no line above it, over a card titled by the conversation, its dot the green ring the tab has '
+        + 'while only work it started runs, and under the title the model and the tokens in context. Then SUB-AGENTS with a count badge 1: the sub-agent\'s card, '
+        + 'which has stopped and so has an empty space where its dot was, its name still lined up with where the dot would be, an envelope after its name for the reply '
+        + 'it finished with, and "active ... ago" under it. Then WORK LEFT RUNNING 2: a card of a background terminal running "sleep 60" and one of a codex exec, each '
+        + 'titled by its command line with a solid green dot, and under it "background terminal" or "codex exec", the pid when the scan found its process (one only this '
+        + 'window\'s Codex reports has none) and when it started. Then WAKE-UPS 1: a card of the wake-up\'s prompt, "Check whether the nightly export has finished.", '
+        + 'with a grey dot and a small arrow at its right, "every 45 min" and the next and last times under it, and a Remove button below the card. Then GOAL 1: a card '
+        + 'of "Make the nightly export include archived rows" with a grey dot, "paused" and its tokens under it, and Resume and Clear buttons below. Each heading is in '
+        + 'capitals, smaller and bolder than the cards, with a thin line across the dialog above it; every card is the same width, with a 1 px border and rounded corners.';
       await look('background-work-agent-map', {
-        expect: 'The Agent map has a "Background work" section listing a Background terminal running "sleep 60" and a codex exec, each by its command line with a solid green dot and when it started; the codex exec also has its pid, and the terminal has one when the scan found its process (one only this window\'s Codex reports has none). Above it the wake-up, and the sub-agent, which has stopped and so has an empty space where its dot was, its name still lined up with where the dot would be, and an envelope after its name for the reply it finished with.',
-      }, async () => { await openMap(); return mapBox(); });
+        expect: `The Agent map in the dark theme. ${MAP_SECTIONS}`,
+      }, async () => {
+        /* A paused goal as well, which starts no turn, so the map has every section at once. */
+        const r = await hostRequest('thread/goal/set', { threadId: t0.id, objective: 'Make the nightly export include archived rows', status: 'paused', origin: 'user' });
+        if (r && r.error) throw new Error(`thread/goal/set: ${JSON.stringify(r.error)}`);
+        if (!await until(async () => /goal/.test(await pillText()), 15000, 500)) tell(`the pill read ${JSON.stringify(await pillText())} with the goal set`);
+        await openMap();
+        return mapBox();
+      });
+      await look('agent-map-light', {
+        expect: `The same Agent map in the Default Light Modern theme: the headings, their count badges, the thin lines above them and the cards all readable against the light background, the dots visible. ${MAP_SECTIONS}`,
+        unchanged: 'The conversation behind the map is the same, now in the light theme.',
+      }, async () => {
+        await closeMap();
+        await setting('colorTheme', 'Default Light Modern', 'workbench');
+        await sleep(2500);
+        await openMap();
+        return mapBox();
+      });
       await closeMap();
+      await setting('colorTheme', 'Default Dark Modern', 'workbench');
+      await sleep(2000);
+      await hostRequest('thread/goal/clear', { threadId: t0.id, origin: 'user' }).catch(() => null);
       model.releaseOthers();
       await until(async () => !(((await dotsOn(title)) || {}).working >= 6), 90000, 1000);
       model.script(null);
@@ -1783,6 +1812,35 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await sleep(1500);
       return union([await part(PARTS.auxiliary), await part(PARTS.sidebar)]);
     });
+    /* The same conversation's Agent map in Codex's sidebar, which is narrow: a paused goal and a wake-up of its own give
+       it a pill and two sections. */
+    {
+      const wake1 = path.join(plans, `${t1.id}.wakeup`);
+      await look('agent-map-sidebar', {
+        expect: 'In Codex\'s sidebar on the right, which is narrow, the Agent map of "Why does the nightly export skip archived rows?", opened from the pill by its message box: '
+          + 'THIS CONVERSATION over a card titled by the conversation (cut short with an ellipsis if the sidebar is too narrow), with the model and tokens in context under it; '
+          + 'then WAKE-UPS 1 with a card of "Look at the export logs again." over "every 30 min" and its times, and a Remove button; then GOAL 1 with a card of '
+          + '"Find out why archived rows are skipped" over "paused" and its tokens, with Resume and Clear. The dialog fits inside the sidebar; the cards are no wider than '
+          + 'it, and a second line too long for it ends in an ellipsis rather than running past the edge; the headings, badges and lines are as in the editor tab.',
+      }, async () => {
+        const w0 = JSON.parse(fs.readFileSync(wakeupFile, 'utf8'));
+        const at = Math.floor(Date.now() / 1000);
+        fs.writeFileSync(wake1, JSON.stringify({ ...w0, thread: t1.id, everyMinutes: 30, prompt: 'Look at the export logs again.', setAt: at, expiresAt: at + 7 * 86400 }));
+        const r = await hostRequest('thread/goal/set', { threadId: t1.id, objective: 'Find out why archived rows are skipped', status: 'paused', origin: 'user' });
+        if (r && r.error) throw new Error(`thread/goal/set: ${JSON.stringify(r.error)}`);
+        const side = await frameWhere((want) => innerWidth < 800 && document.body.innerText.includes(want) && !!document.querySelector('[data-codex-composer-root]'), 30000, t1.title.slice(0, 30));
+        if (!side) throw new Error('Codex\'s sidebar no longer shows the conversation');
+        const sidePill = () => side.evaluate(() => ((document.querySelector('[data-codex-extras="agents"]') || {}).textContent || '')).catch(() => '');
+        if (!await until(async () => /timer/.test(await sidePill()) && /goal/.test(await sidePill()), 30000, 500)) throw new Error(`the sidebar's pill read ${JSON.stringify(await sidePill())}`);
+        await side.locator('[data-codex-extras="agents"]').first().click();
+        if (!await until(() => side.evaluate(() => !!document.querySelector('[data-codex-extras="map-dialog"]')), 5000, 200)) throw new Error('the Agent map did not open in the sidebar');
+        await still(side.locator('[data-codex-extras="map-dialog"]').first());
+        return part(PARTS.auxiliary);
+      });
+      await page.keyboard.press('Escape');
+      await hostRequest('thread/goal/clear', { threadId: t1.id, origin: 'user' }).catch(() => null);
+      try { fs.unlinkSync(wake1); } catch (_) { /* never written */ }
+    }
     await exec('workbench.action.closeAuxiliaryBar');
 
     /* ═══ archived while its tab is open ═══ */

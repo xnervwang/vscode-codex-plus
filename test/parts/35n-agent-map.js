@@ -44,6 +44,12 @@ module.exports = async ({ eq, tmp, root }) => {
   eq(m.agents.map((a) => [a.id, a.name, a.dot, a.updatedMs]), [[ID(4), 'Fix the test', 'unknown', 30], [ID(3), 'scout', 'working', 45]],
     'and its sub-agents oldest first, each by its nickname or else its title, with the session list\'s dot (none while its rollout is unread); '
     + 'an archived one is left out');
+  states[A] = { state: 'idle', activity: 'background' };
+  eq([m.me, mapOf(A, { reader, stateOf: (id) => states[id] || null }).me, mapOf(B, { reader, stateOf: () => ({ activity: 'idle' }) }).me],
+    [{ title: 'Main', dot: 'unknown' }, { title: 'Main', dot: 'background' }, { title: 'Other', dot: 'stopped' }],
+    'the map names the conversation itself, for the row at its top, with the dot its tab has: none while its rollout is unread, '
+    + 'the ring while only work it started runs, and none once it has stopped');
+  delete states[A];
   eq([mapOf(B, { reader }).shown, mapOf(B, { reader }).agents, mapOf('', { reader })], [false, [], NO_MAP],
     'a conversation with none of the three has nothing to show, so its page draws no button');
   wakes.set(B, { thread: B, everyMinutes: 5, prompt: 'p', setMs: 1000, expiresMs: 9e12, firedMs: 0, paused: true });

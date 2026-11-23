@@ -1058,16 +1058,34 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       }), 5000, 200);
       check(!!map && map.wakeups && map.remove && /every 45 min/.test(map.text) && /nightly export/.test(map.prompt),
         'the pill opens the Agent map, with the wake-up\'s interval, its prompt and Remove', map);
+      /* As Claude Code Plus lays out Claude Code's map: the conversation's own row first under a heading of its own, then
+         each section under a heading in capitals with its count and a line above it. */
+      const laid = await codex.evaluate(() => {
+        const d = document.querySelector('[data-codex-extras="map-dialog"]');
+        if (!d) return null;
+        const own = d.querySelector('[data-codex-extras="map-me"] [data-codex-extras-card]');
+        return { sections: [...d.querySelectorAll('[data-codex-extras^="map-"]')].map((x) => x.getAttribute('data-codex-extras')).filter((k) => /^map-(me|agents|work|wakeups|goal)$/.test(k)),
+          heads: [...d.querySelectorAll('[data-codex-extras-head]')].map((h) => [h.getAttribute('data-codex-extras-head'),
+            (h.querySelector('[data-codex-extras-count]') || {}).textContent || null, getComputedStyle(h.firstChild).textTransform, getComputedStyle(h).borderTopWidth]),
+          own: own ? [(own.querySelector('[data-codex-extras-name]') || {}).textContent, (own.querySelector('[data-codex-extras-meta]') || {}).textContent] : null };
+      }).catch(() => null);
+      check(!!laid && laid.sections.join() === 'map-me,map-wakeups'
+        && JSON.stringify(laid.heads) === JSON.stringify([['This conversation', null, 'uppercase', '0px'], ['Wake-ups', '1', 'uppercase', '1px']])
+        && !!laid.own && laid.own[0] === title && /tokens in context$/.test(laid.own[1]),
+      'the map has the conversation\'s own card first, titled by the conversation, with the model and the context in use under it, then the wake-up\'s section, '
+      + 'each under a heading in capitals, the wake-up\'s with its count and a line above it', laid);
       await shot('agent-map');
       const dialog = codex.locator('[data-codex-extras="map-dialog"]').first();
       await still(dialog);
       const dbox = await dialog.boundingBox();
       check(!!dbox && [dbox.x, dbox.y].every((v) => Math.abs(v - Math.round(v)) < 0.01),
         'the Agent map sits on whole pixels, so its lines of text are drawn in the same place every time', dbox);
-      const times = await dialog.locator('[data-codex-extras="map-wakeups"] summary span:nth-child(2)').boundingBox().catch(() => null);
+      const times = await dialog.locator('[data-codex-extras="map-wakeups"] [data-codex-extras-meta]').boundingBox().catch(() => null);
+      /* The model and how much context the conversation holds, which depend on what the made-up model counted. */
+      const context = await dialog.locator('[data-codex-extras="map-me"] [data-codex-extras-meta]').boundingBox().catch(() => null);
       /* A next wake-up after midnight carries its date, which widens the dialog past the approved copy. */
       const dated = !!map && /next \d\d\/\d\d/.test(map.text);
-      if (dbox && !dated) base.compare('agent-map-dialog', await crop(dbox), { masks: within(dbox, [times]) });
+      if (dbox && !dated) base.compare('agent-map-dialog', await crop(dbox), { masks: within(dbox, [times, context]) });
       else if (dated) note('the next wake-up falls after midnight, so its date widens the Agent map; its crop was not compared');
       await page.keyboard.press('Escape');
       check(!!await until(() => codex.evaluate(() => !document.querySelector('[data-codex-extras="map-dialog"]')), 5000, 200), 'Esc closes it');
@@ -1800,7 +1818,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         if (bin) {
           await leftCase({ name: 'codex exec', words: 'A codex exec it started is still running', ask: true, end: () => model.releaseOthers(),
             steps: [outside(`setsid nohup '${bin}' exec --skip-git-repo-check 'Wait for the job.' >/dev/null 2>&1 &`), { reply: 'Started a worker.' }],
-            map: { text: /\b1 codex exec\b/, listed: (r) => r.work.some((x) => x.kind === 'codexExec' && green(x) && /^codex exec/.test(x.text)) } });
+            map: { text: /\b1 codex exec\b/, listed: (r) => r.work.some((x) => x.kind === 'codexExec' && green(x) && /codex exec/.test(x.text)) } });
         }
         /* The stand-ins write the session record Claude Code keeps for a running process, which is what Codex Plus
            reads, under this window's own HOME. */
@@ -1824,7 +1842,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
           'sleep 40', ''].join('\n'), { mode: 0o755 });
         await leftCase({ name: 'claude -p worker', words: 'A claude -p worker it started is still running', ask: true, ms: 70000,
           steps: [outside(`setsid nohup '${fakeClaude}' -p 'Wait for the job.' >/dev/null 2>&1 < /dev/null &`), { reply: 'Started a worker.' }],
-          map: { text: /\b1 claude -p\b/, listed: (r) => r.work.some((x) => x.kind === 'claudeWorker' && green(x) && /claude -p · window test worker/.test(x.text)) } });
+          map: { text: /\b1 claude -p\b/, listed: (r) => r.work.some((x) => x.kind === 'claudeWorker' && green(x) && /^window test worker/.test(x.text) && /claude -p · /.test(x.text)) } });
         await leftCase({ name: 'claude --bg session', words: 'A claude --bg session it started is still busy', ask: true, ms: 70000,
           steps: [outside(`'${fakeClaude}' --bg 'Run the suite.'`), { reply: 'Started a session.' }],
           map: { text: /\b1 claude --bg\b/, listed: (r) => r.work.some((x) => x.kind === 'claudeBg' && green(x) && /window test session/.test(x.text) && /job 1a2b3c4d/.test(x.text)) } });
