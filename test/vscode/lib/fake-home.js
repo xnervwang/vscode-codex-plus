@@ -25,9 +25,12 @@ const THREADS = [
   { id: '0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a61', title: 'Why does the nightly export skip archived rows?' },
   { id: '0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a62', title: 'Add a dry-run flag to the cleanup script' },
 ];
-/* One more, left out of THREADS so that no step counts it: a run of `codex exec` in the window's folder, which the
-   session list leaves out while codexPlus.hideBackgroundSessions is on. */
+/* Two more, left out of THREADS so that no step counts them: a run of `codex exec` in the window's folder, which the
+   session list leaves out while codexPlus.hideBackgroundSessions is on, and a conversation in a folder the window does
+   not open (elsewhereFolder), which Agent Plus still gives to an extension that links to conversations. */
 const BACKGROUND = { id: '0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a71', title: 'Import the nightly feed (run by codex exec)' };
+const ELSEWHERE = { id: '0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a72', title: 'Rename the staging bucket in the other project' };
+const elsewhereFolder = (folder) => path.join(path.dirname(folder), 'elsewhere');
 const PROVIDER = 'fake';
 const PLAN_DIR = path.join('plugins', 'data', 'agent-work-plan-codex-extras');
 const PLAN_BLOCK = "This conversation's work plan (1 doing). Only open rows are shown.\n\n> 1. Find the retry delay   [doing]";
@@ -75,6 +78,10 @@ function write(home, { folder, modelUrl }) {
   rollouts(home, { folder, threads: THREADS, edit: (text, i) => (i === 0 ? withPlan(text) : text) });
   rollouts(home, { folder, threads: [BACKGROUND], ago: () => 1,
     edit: (text) => text.split('"source":"vscode"').join('"source":"exec"').split('"originator":"codex_vscode"').join('"originator":"codex_exec"') });
+  /* Codex takes a thread's updated_at from its rollout's time when it first lists it, so this one is dated with its turns,
+     not counted as active since the window started. */
+  const twoDaysAgo = new Date(Date.now() - 2 * 86400e3);
+  for (const f of rollouts(home, { folder: elsewhereFolder(folder), threads: [ELSEWHERE], ago: () => 2 })) fs.utimesSync(f, twoDaysAgo, twoDaysAgo);
   fs.writeFileSync(path.join(home, 'config.toml'), [
     `model = "${render.MODEL}"`, `model_provider = "${PROVIDER}"`, 'model_reasoning_effort = "high"', '',
     `[model_providers.${PROVIDER}]`, 'name = "Made-up model for the tests"', `base_url = "${modelUrl}"`, 'wire_api = "responses"',
@@ -98,4 +105,4 @@ function wakeup(home, thread, { everyMinutes = 45, prompt = 'Check whether the n
   fs.writeFileSync(path.join(dir, `${thread}.wakeup`), JSON.stringify({ everyMinutes, prompt, setAt: now, expiresAt: now + 7 * 86400 }));
 }
 
-module.exports = { write, wakeup, archived, THREADS, BACKGROUND, PLAN_BLOCK };
+module.exports = { write, wakeup, archived, THREADS, BACKGROUND, ELSEWHERE, elsewhereFolder, PLAN_BLOCK };

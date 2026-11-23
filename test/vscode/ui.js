@@ -2703,6 +2703,29 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       }
     });
 
+    /* Agent Plus gives an extension that links to conversations every conversation of every source (allConversations),
+       through the Codex source's listAllConversations: also one in a folder this window does not open
+       (lib/fake-home.js ELSEWHERE), which the session list does not show. */
+    await step('a conversation in another folder, in Agent Plus\'s list of every conversation', async () => {
+      const other = fakeHome.ELSEWHERE;
+      const got = await call(`const ap = vscode.extensions.getExtension('xnervwang.agent-plus');
+        const api = ap && ap.exports && ap.exports.agentPlus;
+        if (!api || !(api.features || []).includes('allConversations')) return { none: true };
+        const listening = api.onDidChangeAllConversations(() => {});
+        try {
+          for (let i = 0; i < 80; i++) {
+            const c = api.allConversations().find((x) => x.sourceId === 'codex' && x.sessionId === arg);
+            if (c) return { found: Object.assign({}, c) };
+            await new Promise((r) => setTimeout(r, 500));
+          }
+          return { found: null, codex: api.allConversations().filter((x) => x.sourceId === 'codex').map((x) => [x.sessionId, x.title, x.cwd]) };
+        } finally { listening.dispose(); }`, other.id, 90000);
+      if (got.none) { note('this Agent Plus has no list of every conversation (its feature allConversations), so the one in another folder was not looked for'); return; }
+      const f = got.found;
+      check(!!f && f.title === other.title && path.basename(f.cwd || '') === 'elsewhere' && f.label === 'Codex' && Number(f.lastActiveAt) > 0,
+        'Agent Plus\'s list of every conversation has the Codex conversation in a folder this window does not open, with its title, folder and last activity', got);
+    });
+
     await step('a conversation in Codex\'s sidebar', async () => {
       const t = threads[1];
       /* With a text file in front, the sidebar is the only Codex page the user can be looking at. */
