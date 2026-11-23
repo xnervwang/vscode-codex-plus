@@ -32,6 +32,9 @@
  *                this window does not trust the plugin's hooks
  *   Codex's page what the patch adds there: the time stamps, the rail, the buttons by the message box, the Agent map,
  *                and the Work plan line on the context meter's hover
+ *   links        another conversation a reply names, by its title in corner brackets and by its id, drawn as links in
+ *                the theme's link colour; a click brings that conversation's tab to the front, and with
+ *                codexPlus.conversationLinks off there are none
  *   the brief    a click on the conversation in Agent Plus's Conversations panel shows the brief its plan holds in the
  *                Answer view; the arrow on its row and the page's button each go back to the conversation's tab
  *   the sidebar  a conversation resumed in Codex's sidebar: each reply's stamp inside its column
@@ -1905,6 +1908,58 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       const back = await until(async () => { const d = await drawn(); return d.imgs && d.imgs.filter((x) => x[1]).length >= 4 && d; }, 15000, 500);
       check(!!back, 'turned back on, the images are drawn again', back || await drawn());
       model.script(null);
+    });
+
+    /* codexPlus.conversationLinks: another conversation a reply names, by its title in corner brackets and by its id,
+       is a link, and a click on it brings that conversation's tab to the front. */
+    await step('links to other conversations in a reply', async () => {
+      if (!codex) throw new Error('the conversation did not open');
+      const id = threads[0].id, other = threads[1];
+      const closeTabsOf = (want) => call(`const mine = vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((x) => x.input && x.input.uri && String(x.input.uri).includes(arg));
+        if (mine.length) await vscode.window.tabGroups.close(mine); return mine.length;`, want);
+      await call('await vscode.commands.executeCommand("codexPlus.openThreadInTab", arg); return true;', other.id);
+      const opened = await until(async () => { const t = await frontTab(); return t && bare(t.label) === other.title && t; }, 30000, 500);
+      check(!!opened, 'the other conversation is open in a tab of its own', await tabs());
+      await tabNamed(title).click();
+      if (!await until(async () => { const t = await frontTab(); return t && bare(t.label) === title; }, 15000, 500)) throw new Error(`the tab of "${title}" did not come back to the front`);
+      const reply = `That was 「${other.title}」, whose thread ${other.id} has the details.`;
+      const links = () => codex.evaluate((want) => [...document.querySelectorAll('[data-codex-extras="convo-link"]')]
+        .filter((a) => a.getAttribute('data-agent-plus-mention') === want).map((a) => {
+          const probe = document.createElement('span');
+          probe.style.color = 'var(--vscode-textLink-foreground)';
+          a.parentNode.appendChild(probe);
+          const theme = getComputedStyle(probe).color;
+          probe.remove();
+          return { text: a.textContent, inPre: !!a.closest('pre'), coloured: getComputedStyle(a).color === theme };
+        }), `codex:${other.id}`).catch((e) => ({ error: String(e) }));
+      const bottom = () => codex.evaluate(() => { const s = document.querySelector('[data-app-action-timeline-scroll]'); if (s) s.scrollTop = s.scrollHeight; }).catch(() => {});
+      model.script(id, [{ reply }]);
+      await codex.locator(COMPOSER).first().click();
+      await page.keyboard.type('Which conversation was that?');
+      await page.keyboard.press('Enter');
+      const drawn = await until(async () => { await bottom(); const l = await links(); return Array.isArray(l) && l.length >= 2 && l; }, 45000, 500);
+      check(!!drawn && drawn.some((l) => l.text === other.title) && drawn.some((l) => l.text === other.id) && drawn.every((l) => l.coloured && !l.inPre),
+        'the reply\'s 「title」 of the other conversation and its id are each drawn as a link, in the theme\'s link colour', drawn || await links());
+      await shot('conversation-links');
+      const named = codex.locator('[data-codex-extras="convo-link"]').filter({ hasText: other.title }).first();
+      await named.hover();
+      const tip = await until(() => codex.evaluate(() => { const b = document.querySelector('[data-codex-extras="label"]'); return b && b.textContent; }).catch(() => ''), 5000, 200);
+      check(!!tip && tip.includes(other.title) && tip.includes(`Codex conversation ${other.id.slice(0, 8)}`),
+        'hovering a link shows the conversation and its agent in the page\'s own label', tip);
+      await codex.locator('[data-codex-extras="convo-link"]').filter({ hasText: other.id }).first().click();
+      const front = await until(async () => { const t = await frontTab(); return t && bare(t.label) === other.title && t; }, 15000, 500);
+      check(!!front, 'a click on the link brings the other conversation\'s tab to the front', { front: await frontTab(), agentPlus: agentFront() });
+      await tabNamed(title).click();
+      await until(async () => { const t = await frontTab(); return t && bare(t.label) === title; }, 15000, 500);
+      await setting('conversationLinks', false);
+      const gone = await until(async () => { const l = await links(); return Array.isArray(l) && !l.length
+        && await codex.evaluate((r) => document.body.innerText.includes(r), reply).catch(() => false); }, 15000, 500);
+      check(!!gone, 'with codexPlus.conversationLinks off the reply has no links, and reads as it did', await links());
+      await setting('conversationLinks', undefined);
+      const back = await until(async () => { const l = await links(); return Array.isArray(l) && l.length >= 2 && l; }, 15000, 500);
+      check(!!back, 'and back on, the links are drawn again', await links());
+      model.script(null);
+      await closeTabsOf(other.id);
     });
 
     await step('the brief', async () => {

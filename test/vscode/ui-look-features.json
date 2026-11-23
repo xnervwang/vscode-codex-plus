@@ -110,6 +110,8 @@
     "steps": ["agent-map", "detached-agent-map", "subagent-agent-map", "background-work-pill", "background-work-agent-map"], "settings": [], "commands": [] },
   { "id": "reply-images", "what": "Images in replies drawn at their own size from absolute paths, file:// and data: URLs, web images shown as links, and [Image] with codexPlus.replyImages off",
     "steps": ["reply-images", "reply-images-off"], "settings": ["codexPlus.replyImages"], "commands": [] },
+  { "id": "conversation-links", "what": "Other conversations a reply names, by a title in corner brackets, a whole title or a session id, drawn as links that open them",
+    "steps": ["conversation-links"], "checks": ["links to other conversations in a reply"], "settings": ["codexPlus.conversationLinks"], "commands": [] },
   { "id": "codex-skill-list", "what": "Codex's own list of skills: its budget and the skills it leaves out, written into Codex's config.toml",
     "steps": [], "settings": ["codexPlus.skillsListBudget", "codexPlus.disabledSkills"], "commands": [],
     "notInWindow": "Both only write config.toml entries that change what Codex sends the model; nothing Codex Plus draws changes." },

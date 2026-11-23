@@ -1935,6 +1935,91 @@
     }
   }
 
+  /*
+   * Other conversations a reply names, drawn as links (codexPlus.conversationLinks). The host sends every agent's
+   * conversations and the one this page shows (codex-extras-conversations); agentPlusKit finds the names and puts one
+   * of this script's own elements in place of each. A click sends the host the conversation's agent and id, nothing else.
+   *
+   * Only a reply Codex has finished writing is touched. Codex's page is React's: while a reply streams, React keeps
+   * rewriting the text nodes this would split, and inserting next to them, and once it ends Codex draws it again with
+   * its finished renderer. A reply counts as finished by the rollout, as the stamps' times do: every reply of a turn
+   * that is not the last one shown, and in the last one a reply the rollout already holds at its place in the turn, or
+   * every reply once the rollout has ended the turn. One newly finished is linked LINK_HOLD_MS later, after that redraw.
+   */
+  var convos = { on: false, ix: null, version: 0 };
+  var LINK_MARK = 'convo-link', LINK_SEL = '[' + MARK + '="' + LINK_MARK + '"]', LINK_HOLD_MS = 600;
+  var finishedAt = (typeof WeakMap === 'function') ? new WeakMap() : null, linkDue = 0, linksDrawn = 0;
+  /* What each reply looked like when it was last linked: the list it was linked from, its length and its links. One
+     that still looks so is not read again, which spares a long conversation a scan of every reply on each pass. */
+  var linkedAs = (typeof WeakMap === 'function') ? new WeakMap() : null;
+  var looks = function (node) { return String(node.textContent || '').length + ':' + all(node, LINK_SEL).length; };
+  function finished(e, lastTurn) {
+    if (e.turnEl !== lastTurn) return true;
+    var tt = e.turn && own(hostTurnTimes, e.turn) ? hostTurnTimes[e.turn] : null;
+    return !!tt && (tt.e || e.nth <= tt.r.length);
+  }
+  function makeLink(r, text) {
+    var a = document.createElement('span');
+    a.setAttribute(MARK, LINK_MARK);
+    a.setAttribute('role', 'link');
+    a.setAttribute('tabindex', '0');
+    a.textContent = text;
+    var open = function (ev) {
+      try { ev.preventDefault(); ev.stopPropagation(); } catch (e) { /* none */ }
+      hideLabel();
+      post({ kind: 'openConversation', sourceId: String(r.sourceId), sessionId: String(r.sessionId) });
+    };
+    a.addEventListener('mouseenter', function () { showLabel(a, kit.mentionTip(r)); });
+    a.addEventListener('mouseleave', hideLabel);
+    a.addEventListener('click', open);
+    a.addEventListener('keydown', function (ev) { if (ev && ev.key === 'Enter') open(ev); });
+    return a;
+  }
+  /* A link put back as text, joined to the text on either side: the link was split out of one text node, and a name
+     is found only within one. Only a finished reply has links, so React no longer writes to those nodes. */
+  function unlink(a) {
+    var p = a.parentNode;
+    if (!p) return;
+    var t = document.createTextNode(a.textContent || '');
+    p.insertBefore(t, a);
+    p.removeChild(a);
+    var kids = p.childNodes, at = -1;
+    for (var i = 0; i < kids.length; i++) if (kids[i] === t) { at = i; break; }
+    var s = at, e = at;
+    while (s > 0 && kids[s - 1].nodeType === 3) s--;
+    while (e >= 0 && e < kids.length - 1 && kids[e + 1].nodeType === 3) e++;
+    if (s === e) return;
+    var joined = '';
+    for (var k = s; k <= e; k++) joined += kids[k].nodeValue;
+    kids[s].nodeValue = joined;
+    for (var m = e; m > s; m--) p.removeChild(kids[m]);
+  }
+  function unlinkAll() {
+    var found = all(document, LINK_SEL);
+    for (var i = 0; i < found.length; i++) unlink(found[i]);
+    if (found.length) hideLabel();
+    linksDrawn = 0;
+  }
+  function linkAll(list) {
+    if (!convos.on || !convos.ix || !convos.ix.size) { if (linksDrawn || one(document, LINK_SEL)) unlinkAll(); return; }
+    var last = list.length ? list[list.length - 1].turnEl : null, now = Date.now(), wait = 0;
+    for (var i = 0; i < list.length; i++) {
+      var e = list[i];
+      if (e.kind !== 'assistant') continue;
+      if (!finished(e, last)) { if (finishedAt) finishedAt.delete(e.node); continue; }
+      var since = finishedAt ? finishedAt.get(e.node) : 0;
+      if (since === undefined) { finishedAt.set(e.node, now); since = now; }
+      if (now - since < LINK_HOLD_MS) { wait = Math.max(wait, LINK_HOLD_MS - (now - since)); continue; }
+      var was = linkedAs ? linkedAs.get(e.node) : null;
+      if (was && was.version === convos.version && was.looks === looks(e.node)) continue;
+      var kids = e.node.children || [];
+      for (var k = 0; k < kids.length; k++) if (!isOurs(kids[k])) kit.linkMentions(kids[k], convos.ix, makeLink);
+      if (linkedAs) linkedAs.set(e.node, { version: convos.version, looks: looks(e.node) });
+    }
+    linksDrawn = all(document, LINK_SEL).length;
+    if (wait && !linkDue) linkDue = setTimeout(function () { linkDue = 0; refresh(); }, wait);
+  }
+
   /* A CSS colour the user typed, or '' for anything else: nothing but a colour may reach the stylesheet. */
   var SAFE_COLOR = /^(?:#[0-9a-fA-F]{3,8}|[a-zA-Z]{3,30}|(?:rgb|rgba|hsl|hsla)\([0-9.,%\s/deg]+\))$/;
 
@@ -1982,6 +2067,7 @@
       css += '[data-codex-composer-root]{margin-bottom:' + ROW_ROOM + 'px !important;}';
     }
     if (codexMeterHidden) css += '.' + HIDE_CLASS + '{display:none !important;}';
+    if (convos.on) css += LINK_SEL + '{color:var(--vscode-textLink-foreground,#4493f8);cursor:pointer;}' + LINK_SEL + ':hover{text-decoration:underline;}';
     css += NAV_CSS;
     if (gutter) {
       css += '.codex-extras-rail{right:' + gutter + 'px;}.codex-extras-panel{right:' + (RAIL_W + 2 + gutter) + 'px;'
@@ -2676,6 +2762,7 @@
       noteShownTurn(list);
       var users = stampAll(list);
       colourAll(users);
+      try { linkAll(list); } catch (e) { /* the links wait for the next pass */ }
       if (view.navigation) buildNav(users); else dropNav();
       if (anythingOn() || view.buttons !== false) restyle(); else dropSheet();
       placeBar();
@@ -2799,6 +2886,9 @@
       images: { media: imageCounts.media, links: imageCounts.links, hidden: imageCounts.hidden, setting: view.replyImages !== false },
       /* Prompts a Stop hook gave the model, folded to one line. */
       hookPrompts: { folded: hookCount },
+      /* Links to other conversations: whether they are on, how many conversations the page knows of, and how many links
+         are drawn. */
+      conversationLinks: { on: convos.on, known: convos.ix ? convos.ix.size : 0, drawn: all(document, LINK_SEL).length },
       page: { hidden: !!document.hidden, marksObserving: !!observer },
     };
   }
@@ -2867,6 +2957,15 @@
       if (!anythingOn() && view.buttons === false) showWarn(false);
       ready();
       placeBar();
+    } else if (m.type === 'codex-extras-conversations') {
+      var self = m.self && typeof m.self === 'object' ? m.self : {};
+      convos.on = m.on === true && Array.isArray(m.list);
+      convos.version++;
+      convos.ix = convos.on ? kit.mentionIndex(m.list, { sourceId: 'codex', sessionId: typeof self.sessionId === 'string' ? self.sessionId : '',
+        title: typeof self.title === 'string' ? self.title : '' }) : null;
+      /* Drawn again from the new list, so a link to a conversation gone or renamed does not stay. */
+      unlinkAll();
+      ready();
     } else if (m.type === 'codex-extras-user-times') {
       hostWhen = Array.isArray(m.times)
         ? m.times.filter(function (n) { return typeof n === 'number' && isFinite(n); })
@@ -2883,7 +2982,7 @@
         Object.keys(m.turnTimes).forEach(function (k) {
           var v = m.turnTimes[k];
           if (!v || typeof v !== 'object') return;
-          hostTurnTimes[k] = { u: times(v.u), r: times(v.r), d: typeof v.d === 'number' && isFinite(v.d) && v.d > 0 ? v.d : 0 };
+          hostTurnTimes[k] = { u: times(v.u), r: times(v.r), d: typeof v.d === 'number' && isFinite(v.d) && v.d > 0 ? v.d : 0, e: v.e === true };
         });
       }
       hostCompactions = Array.isArray(m.compactions)

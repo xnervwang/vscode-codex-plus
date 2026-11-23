@@ -1483,6 +1483,25 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       model.script(null);
     }
 
+    /* ═══ links to other conversations in a reply ═══ */
+    {
+      const reply = `That was 「${t1.title}」, whose thread ${t1.id} has the details. The cleanup script is in 「${t2.title}」.`;
+      const links = () => codex.evaluate(() => document.querySelectorAll('[data-codex-extras="convo-link"]').length).catch(() => 0);
+      await look('conversation-links', {
+        expect: 'A reply in which the quoted title of the conversation "' + t1.title + '", its thread id, and the quoted title "' + t2.title + '" are each drawn in the theme\'s link colour, '
+          + 'the corner brackets and the rest of the sentence in the reply\'s own colour. The pointer rests on the first link, and a label beside it gives that conversation\'s title, '
+          + '"Codex conversation" with the first 8 characters of its id, and when it was last active.',
+      }, async () => {
+        model.script(t0.id, [{ reply }]);
+        await type('Which conversations were those?');
+        if (!await until(async () => { await toBottom(); return (await links()) >= 3; }, 45000, 500)) throw new Error(`only ${await links()} of the 3 links were drawn`);
+        await codex.locator('[data-codex-extras="convo-link"]').first().hover();
+        await sleep(800);
+        return bottomBox(420);
+      });
+      model.script(null);
+    }
+
     /* ═══ a wake-up ═══ */
     await look('wake-ups-off', {
       expect: 'With codexPlus.wakeUps off, in the Custom token mode where it is used, a wake-up that falls due is not sent: after a minute and a half the conversation still ends as it did, '

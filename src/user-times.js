@@ -120,6 +120,7 @@ function noteTurn(row, turns) {
   if (row.type === 'event_msg' && (p.type === 'task_complete' || p.type === 'turn_aborted') && p.turn_id) {
     const e = turns.byId.get(String(p.turn_id));
     const took = +p.duration_ms;
+    if (e) e.ended = true;
     if (e && Number.isFinite(took) && took > 0) e.tookMs = took;
     return;
   }
@@ -149,7 +150,8 @@ function turnFigure(e) {
   return parts.join(' · ');
 }
 
-/** The newest turns' times, as { turnId: { u, r, d } }: the user's messages, the replies, and the duration once ended. */
+/** The newest turns' times, as { turnId: { u, r, d, e } }: the user's messages, the replies, the duration once ended, and
+    whether it ended, which an interrupted turn records with no duration. */
 function turnTimes(turns) {
   const out = {};
   for (const id of [...turns.byId.keys()].slice(-TURNS_SENT)) {
@@ -157,6 +159,7 @@ function turnTimes(turns) {
     if (!e.users && !e.replies) continue;
     out[id] = { u: e.users || [], r: e.replies || [] };
     if (e.tookMs) out[id].d = e.tookMs;
+    if (e.ended) out[id].e = true;
   }
   return out;
 }

@@ -42,6 +42,7 @@ Most of what Codex Plus draws in Codex's page, message box and tabs needs the pa
 | A Codex button on the tab bar, dropped and closed tabs reopened, and dots, titles and unread envelopes on Codex tabs ([Tabs](#tabs)) | Editor tab bar and tabs |
 | A time on every message and reply, a rail of your own messages, your messages marked, and a Stop hook's prompt folded to one line ([In a conversation](#in-a-conversation)) | Codex conversation |
 | Each reply's context share, model, effort and duration, and the tool call and commands still running ([In a conversation](#in-a-conversation)) | Codex conversation; the row below the message box |
+| Your other conversations a reply names, by a title in 「」, a whole title or a conversation ID, as links that open them ([In a conversation](#in-a-conversation)) | Codex conversation |
 | An information button, a chime button, a context meter that compacts on a click, and the Agent map ([The message box's toolbar](#the-message-boxs-toolbar)) | Codex message box's toolbar |
 | Chimes when a turn finishes, a question waits for you, or Codex stops for your permission ([Chimes](#chimes)) | Codex tab; Codex's sidebar |
 | A conversation stopped for your permission, shown as waiting ([Waiting for your permission](#waiting-for-your-permission)) | Agent Plus's Conversations view; editor tabs |

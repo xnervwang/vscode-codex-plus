@@ -549,6 +549,11 @@
           "type": "boolean",
           "default": true,
           "markdownDescription": "With the patch: a ring and the share of the context window in use, in the message box's toolbar left of the model picker. Hover it for the tokens in use, where Codex compacts, and what the conversation has spent; click it to compact the conversation now, which Codex refuses while a turn is running. While it is drawn, Codex's own meter is hidden."
+        },
+        "codexPlus.conversationLinks": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "With the patch: a reply's mentions of your other conversations are links that open them."
         }
       }
     }

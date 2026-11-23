@@ -409,6 +409,47 @@ function postMapToSidebar(thread) {
   postToSidebar(m);
 }
 
+/*
+ * The conversations a page links the replies' mentions of to (src/convo-links.js), with the one the page shows, which
+ * it does not link. Sent to a page again only when the list, the setting or the page's own conversation changed, or
+ * when the page loaded afresh (its time zone message).
+ */
+const NO_CONVERSATIONS = { on: false, version: 0, list: [] };
+const convosSent = new WeakMap();
+let sidebarConvosSent = '';
+const titles = new Map();
+function convosNow() {
+  if (!deps || typeof deps.conversations !== 'function' || deps.settings().enabled === false) return NO_CONVERSATIONS;
+  try { return deps.conversations() || NO_CONVERSATIONS; } catch (_) { return NO_CONVERSATIONS; }
+}
+function convosFor(thread, all) {
+  const self = { sessionId: thread || '', title: (thread && titles.get(thread)) || '' };
+  const on = !!all.on;
+  return { key: `${on}|${all.version}|${self.sessionId}|${self.title}`,
+    msg: { type: 'codex-extras-conversations', on, list: on ? all.list : [], self } };
+}
+function postConvos(panel, thread, all = convosNow()) {
+  let webview = null;
+  try { webview = panel.webview; } catch (_) { return; }
+  const { key, msg } = convosFor(thread, all);
+  if (!webview || convosSent.get(webview) === key) return;
+  convosSent.set(webview, key);
+  postTo(panel, msg);
+}
+function postConvosToSidebar(thread, all = convosNow()) {
+  const { key, msg } = convosFor(thread, all);
+  if (key === sidebarConvosSent) return;
+  sidebarConvosSent = key;
+  postToSidebar(msg);
+}
+/* Every conversation page in this window, with the titles the last redraw read; for a change of the list itself. */
+function refreshConversationLinks() {
+  const all = convosNow();
+  for (const [panel, rec] of registry) if (isConversationPanel(rec)) postConvos(panel, rec.thread, all);
+  const side = sidebarShowing();
+  if (side || sidebarConvosSent) postConvosToSidebar(side, all);
+}
+
 /* Put `text` into the conversation's message box as a draft. Codex's composer takes a draft from the route state it is
    navigated with, and leaves a box that already has text alone, and nothing reports back which of the two happened.
    So the outcome is uncertain (the protocol's word for it): the sender keeps the answer and tells the user to look. */
@@ -930,6 +971,8 @@ async function refreshPanels() {
   let list = [];
   try { list = await source.listConversations(); } catch (_) { return; }
   const now = new Map(list.map((c) => [c.sessionId, c]));
+  titles.clear();
+  for (const [id, c] of now) if (c && typeof c.title === 'string') titles.set(id, c.title);
   settle(now);
   const panels = byThread();
   showArchived(now, panels);
@@ -966,14 +1009,20 @@ async function refreshPanels() {
   /* The sidebar's page draws from the same settings; the times and figures of its conversation are worth reading only
      while it is showing. */
   postToSidebar(view);
+  const convos = convosNow();
+  if (side) postConvosToSidebar(side, convos);
   if (!registry.size && !side) return;
   /* The settings reach a page whose conversation is not known yet as well: it draws from them as soon as one starts. */
-  for (const [panel, rec] of registry) if (!rec.thread && isConversationPanel(rec)) postTo(panel, view);
-  /* Only while the stamps, the list or the line under each reply is on, and only for the conversations a panel here
-     shows: the stamps use the times, the list places the compaction points by them, and the line is each turn's model,
-     effort and context, keyed by turn id. */
+  for (const [panel, rec] of registry) {
+    if (!isConversationPanel(rec)) continue;
+    if (!rec.thread) postTo(panel, view);
+    postConvos(panel, rec.thread, convos);
+  }
+  /* Only while the stamps, the list, the line under each reply or the links to other conversations are on, and only for
+     the conversations a panel here shows: the stamps use the times, the list places the compaction points by them, the
+     line is each turn's model, effort and context, keyed by turn id, and a link waits for the rollout to hold its reply. */
   const whens = new Map();
-  if ((view.timestamps || view.navigation || view.replyFigures) && typeof deps.userTimes === 'function') {
+  if ((view.timestamps || view.navigation || view.replyFigures || convos.on) && typeof deps.userTimes === 'function') {
     for (const thread of new Set([...panels.keys(), ...(side ? [side] : [])])) {
       try {
         const r = await deps.userTimes(thread);
@@ -1132,10 +1181,20 @@ function installHooks() {
       if (rec) {
         mapSent.delete(webview);
         if (rec.thread) postMap({ webview }, rec.thread);
+        convosSent.delete(webview);
+        if (isConversationPanel(rec)) postConvos({ webview }, rec.thread);
       } else {
         sidebarMapSent = '';
         if (sidebar) postMapToSidebar(sidebar);
+        sidebarConvosSent = '';
+        if (sidebar) postConvosToSidebar(sidebar);
       }
+    }
+    /* A link in a reply to another conversation (src/convo-links.js): only the agent and the id come from the page. */
+    if (msg && msg.kind === 'openConversation' && typeof msg.sourceId === 'string' && typeof msg.sessionId === 'string'
+      && deps && typeof deps.openConversation === 'function') {
+      Promise.resolve().then(() => deps.openConversation(msg.sourceId.slice(0, 200), msg.sessionId.slice(0, 200)))
+        .catch((e) => { if (deps.log) deps.log(`opening a conversation a reply names: ${(e && e.message) || e}`); });
     }
     /* A button in the Agent map, for the conversation the page shows: the action is one of ACTIONS in
        src/agent-map.js, and Open also carries the sub-agent's id. */
@@ -1365,14 +1424,17 @@ function removePatch(vscode) {
   const off = viewOf({ enabled: false, timestamps: false, conversationNavigation: false, userMessageColor: '', userMessageEdge: false,
     lowContextOutline: false, figures: false, chime: false });
   const noMap = require('./agent-map').NO_MAP;
+  const noLinks = convosFor('', NO_CONVERSATIONS).msg;
   for (const panel of registry.keys()) {
-    postTo(panel, off); postTo(panel, NO_FIGURES); postTo(panel, noMap);
-    try { mapSent.delete(panel.webview); } catch (_) { /* disposed */ }
+    postTo(panel, off); postTo(panel, NO_FIGURES); postTo(panel, noMap); postTo(panel, noLinks);
+    try { mapSent.delete(panel.webview); convosSent.delete(panel.webview); } catch (_) { /* disposed */ }
   }
   postToSidebar(off);
   postToSidebar(NO_FIGURES);
   postToSidebar(noMap);
+  postToSidebar(noLinks);
   sidebarMapSent = '';
+  sidebarConvosSent = '';
   return [...targets].reverse().map((t) => { try { return `${t.name}: ${t.restore(dir).message}`; } catch (e) { return `${t.name}: ${e.message}`; } });
 }
 
@@ -1443,6 +1505,6 @@ function activate(context, opts) {
 
 module.exports = { activate, ensurePatched, statusLines, openInSidebar, openSidebarRoute, canType, canDeliver, deliver, sidebarThread, panelThreads, shownIn, newPanelThreadsTitled,
   nowShowing, revealPanel, threadOfTabUri, shownByTabs, SHOWN_KEY, removePatch, NOT_SUPPORTED_MESSAGE, SHOW_DETAILS,
-  figuresOf, usageOf, compactThread, hostRequest, safeColor, viewOf, selfCheckPage, selfCheckLines, installHooks, refreshPanels, approvalsOf,
+  figuresOf, usageOf, compactThread, hostRequest, safeColor, viewOf, selfCheckPage, selfCheckLines, installHooks, refreshPanels, refreshConversationLinks, approvalsOf,
   onApprovalsChanged, offerReloadIfStale, sidebarShowing, onSidebarChanged, onPanelClosed, onAccountNotification, onAppServerNotification, runningCommands, heardCommand, turnEndChime, turnHeard, _state: () => state, _registry: registry, _approvals: approvals,
   TAB_DOTS, ASK_MS, PATCH_REMOVED_KEY };

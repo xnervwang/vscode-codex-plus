@@ -18,6 +18,7 @@ const { createDom } = require('../fake-dom');
 const T1 = '019a6a10-0000-7000-8000-0000000000a1';
 const T2 = '019a6a10-0000-7000-8000-0000000000a2';
 const T3 = '019a6a10-0000-7000-8000-0000000000a3';
+const T4 = '019a6a10-0000-7000-8000-0000000000a4';
 
 function pageUnder(root, dom) {
   const posted = [];
@@ -50,6 +51,9 @@ module.exports = async ({ eq, tmp, root }) => {
     msg(at(22, 36, 3), 'user', 'and one more thing'),
     msg(at(22, 36, 5, 100), 'assistant', 'second answer'),
     ev(at(22, 36, 5, 200), { type: 'task_complete', turn_id: T2, duration_ms: 5200, completed_at: Math.floor(at(22, 36, 5) / 1000) }),
+    ev(at(22, 38, 0), { type: 'task_started', turn_id: T4, started_at: Math.floor(at(22, 38, 0) / 1000) }),
+    msg(at(22, 38, 0, 500), 'user', 'stopped half way'),
+    ev(at(22, 38, 4), { type: 'turn_aborted', turn_id: T4, reason: 'interrupted', started_at: Math.floor(at(22, 38, 0) / 1000) }),
     ev(at(22, 40, 0), { type: 'task_started', turn_id: T3, started_at: Math.floor(at(22, 40, 0) / 1000) }),
     msg(at(22, 40, 0, 500), 'user', 'still running'),
     '',
@@ -59,11 +63,13 @@ module.exports = async ({ eq, tmp, root }) => {
   times.forget();
   const marks = times.rolloutMarks(roll);
   eq(marks.turnTimes, {
-    [T1]: { u: [at(22, 35, 1, 250)], r: [at(22, 35, 9, 400)], d: 9400 },
-    [T2]: { u: [at(22, 36, 0, 900), at(22, 36, 3)], r: [at(22, 36, 5, 100)], d: 5200 },
+    [T1]: { u: [at(22, 35, 1, 250)], r: [at(22, 35, 9, 400)], d: 9400, e: true },
+    [T2]: { u: [at(22, 36, 0, 900), at(22, 36, 3)], r: [at(22, 36, 5, 100)], d: 5200, e: true },
+    [T4]: { u: [at(22, 38, 0, 500)], r: [], e: true },
     [T3]: { u: [at(22, 40, 0, 500)], r: [] },
-  }, 'each turn has the times of the messages the user typed in it, of its replies, and once it has ended how long it took');
-  eq(marks.times.length, 4, 'and the whole conversation\'s list of the user\'s times is what it was');
+  }, 'each turn has the times of the messages the user typed in it, of its replies, once it has ended how long it took, and whether it '
+    + 'ended, which a turn stopped half way records with no duration');
+  eq(marks.times.length, 5, 'and the whole conversation\'s list of the user\'s times is what it was');
 
   /* ── the page: a long conversation whose earlier days are not drawn, so no divider says which day it is ── */
   const dom = createDom();

@@ -15,7 +15,8 @@
  *
  * For the session list's page (src/page/sessions-page.js) it also has classList.toggle, dataset, append,
  * replaceChildren, contentEditable, getElementById, and bubble(), which calls an element's listeners and then its
- * ancestors', the way a click reaches a listener on the page's root.
+ * ancestors', the way a click reaches a listener on the page's root. Every node has a nodeName, and a text node its
+ * ownerDocument, which agentPlusKit.linkMentions reads to put links in a reply.
  *
  * The selector engine takes a comma-separated list of selectors, each a chain of `tag`, `*`, `.class`,
  * `[attr]`/`[attr="value"]` and `:not(...)` pieces joined by spaces for descendant, which is every selector that
@@ -108,7 +109,8 @@ function matchesChain(el, chain) {
 const matchesAny = (el, chains) => chains.some((chain) => matchesChain(el, chain));
 
 class Text {
-  constructor(value) { this.nodeType = 3; this.nodeValue = value; this.parentNode = null; }
+  constructor(value, doc) { this.nodeType = 3; this.nodeValue = value; this.parentNode = null; this.ownerDocument = doc || null; }
+  get nodeName() { return '#text'; }
   get textContent() { return this.nodeValue; }
 }
 
@@ -158,10 +160,11 @@ class El {
     });
   }
 
+  get nodeName() { return this.tagName; }
   get contentEditable() { return this.editable || 'inherit'; }
   set contentEditable(v) { this.editable = String(v); this.isContentEditable = this.editable === 'true'; }
   get lastChild() { return this.childNodes[this.childNodes.length - 1] || null; }
-  append(...nodes) { for (const n of nodes) this.appendChild(typeof n === 'string' ? new Text(n) : n); }
+  append(...nodes) { for (const n of nodes) this.appendChild(typeof n === 'string' ? new Text(n, this.ownerDocument) : n); }
   replaceChildren(...nodes) { while (this.childNodes.length) this.removeChild(this.childNodes[0]); this.append(...nodes); }
   /* `event` handed to this element's listeners and then up through its ancestors, until one stops it. */
   bubble(type, event = {}) {
@@ -221,7 +224,7 @@ class El {
   get textContent() { return this.childNodes.map((n) => n.textContent).join(''); }
   set textContent(value) {
     while (this.childNodes.length) this.removeChild(this.childNodes[0]);
-    if (value !== '' && value !== null && value !== undefined) this.appendChild(new Text(String(value)));
+    if (value !== '' && value !== null && value !== undefined) this.appendChild(new Text(String(value), this.ownerDocument));
   }
 
   matches(sel) { return matchesAny(this, parseSelector(sel)); }
@@ -269,7 +272,7 @@ function createDom() {
     listeners: {},
     createElement(tag) { return new El(tag, document); },
     createElementNS(ns, tag) { const e = new El(tag, document); e.namespaceURI = ns; return e; },
-    createTextNode(value) { return new Text(String(value)); },
+    createTextNode(value) { return new Text(String(value), document); },
     addEventListener(type, fn) { (document.listeners[type] = document.listeners[type] || []).push(fn); },
     dispatch(type, event) { for (const fn of (document.listeners[type] || []).slice()) fn(Object.assign({ target: null }, event)); },
     querySelector(sel) { return document.root ? document.root.querySelector(sel) : null; },
@@ -289,7 +292,7 @@ function createDom() {
     if (opts.scrollHeight !== undefined) e.scrollHeight = opts.scrollHeight;
     if (opts.clientHeight !== undefined) e.clientHeight = opts.clientHeight;
     if (opts.clientWidth !== undefined) e.clientWidth = opts.clientWidth;
-    for (const t of opts.texts || []) e.appendChild(new Text(t));
+    for (const t of opts.texts || []) e.appendChild(new Text(t, document));
     for (const k of opts.kids || []) e.appendChild(k);
     return e;
   };
@@ -331,7 +334,7 @@ function createDom() {
   return {
     document,
     el,
-    text: (v) => new Text(v),
+    text: (v) => new Text(v, document),
     sandbox,
     /* The page: one html element with a head and the body the test built. */
     setBody(body) {

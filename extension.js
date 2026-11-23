@@ -25,6 +25,7 @@ const { createCodexSource } = require('./src/codex-source');
 const { createSeen } = require('./src/seen');
 const { CodexReader } = require('./src/codex-reader');
 const hostLink = require('./src/host-link');
+const { createConversationLinks } = require('./src/convo-links');
 const { TabMemory } = require('./src/tab-memory');
 const { SessionsModel, SessionsView, COLOR_NAMES, LIST_MENU, looksLikeId } = require('./src/sessions-view');
 const { createGroups, createPlacer } = require('./src/session-groups');
@@ -117,9 +118,10 @@ async function offerReloadForStale() {
  * kept up to date; with the switch off it does not take an applied patch out of Codex's files, which only the remove
  * command does.
  */
-/* The settings viewOf in src/patching.js draws Codex's pages from, through settings() below. */
+/* The settings Codex's pages draw from, through settings() below: those of viewOf in src/patching.js, and the links to
+   other conversations, which reach a page with their list (src/convo-links.js). */
 const PAGE_SETTINGS = ['enabled', 'timestamps', 'conversationNavigation', 'userMessageColor', 'userMessageEdge', 'lowContextOutline',
-  'turnFigures', 'replyDuration', 'chime', 'infoButton', 'chimeButton', 'contextMeter', 'replyImages'];
+  'turnFigures', 'replyDuration', 'chime', 'infoButton', 'chimeButton', 'contextMeter', 'replyImages', 'conversationLinks'];
 function settings() {
   const c = cfg();
   const on = c.get('enabled', true);
@@ -143,6 +145,7 @@ function settings() {
     chimeButton: on && c.get('chimeButton', true),
     contextMeter: on && c.get('contextMeter', true),
     replyImages: on && c.get('replyImages', true),
+    conversationLinks: on && c.get('conversationLinks', true),
   };
 }
 
@@ -503,11 +506,19 @@ async function activate(context) {
     context.subscriptions.push(link.registration);
   }
   redrawSessions();
+  /* Links in Codex's page to the other conversations a reply names (src/convo-links.js), through the Agent Plus this
+     source is registered with. */
+  const convoLinks = createConversationLinks({ core: link.registered ? link.core : null, log: say,
+    enabled: () => settings().conversationLinks, onChange: () => patching.refreshConversationLinks(),
+    exec: (...a) => vscode.commands.executeCommand(...a) });
+  context.subscriptions.push(convoLinks);
+  convoLinks.sync();
 
   context.subscriptions.push(tokenMode.warnOutsideCustom(vscode, MODE_SWITCHES, { who: 'Codex Plus', log: say }));
   context.subscriptions.push(vscode.workspace.onDidChangeConfiguration((e) => {
     const modeChanged = e.affectsConfiguration(tokenMode.SETTING);
     if (e.affectsConfiguration(CONFIG) || modeChanged) { writeHookSettings(context); sessionsModel.refresh(); }
+    if (e.affectsConfiguration(`${CONFIG}.conversationLinks`) || e.affectsConfiguration(`${CONFIG}.enabled`)) convoLinks.sync();
     if (modeChanged || e.affectsConfiguration(`${CONFIG}.conversationBrief`) || e.affectsConfiguration(`${CONFIG}.workPlan`)) source.featuresChanged();
     else if (e.affectsConfiguration('chat.fontFamily') || e.affectsConfiguration('chat.fontSize')) sessionsModel.refresh();
     if (e.affectsConfiguration(`${CONFIG}.enabled`)) ownTabBar();
@@ -605,7 +616,8 @@ async function activate(context) {
         planLine: (id) => (runs('workPlan') ? reader.request('plan', { home: files.codexHome(), id }) : Promise.resolve('')),
         adjustRequest: windowOverride(context, say), contextWindowFrom: windowSource(context),
         copy: async (value, label) => { await vscode.env.clipboard.writeText(value); vscode.window.setStatusBarMessage(`Copied ${label}`, 3000); },
-        toggleChime: () => cfg().update('chime', !cfg().get('chime', true), vscode.ConfigurationTarget.Global) });
+        toggleChime: () => cfg().update('chime', !cfg().get('chime', true), vscode.ConfigurationTarget.Global),
+        conversations: () => convoLinks.view(), openConversation: (sourceId, sessionId) => convoLinks.open(sourceId, sessionId) });
     } catch (e) { say(`patching: ${e.message}`); }
   };
   whenTrusted();
