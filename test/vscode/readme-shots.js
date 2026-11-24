@@ -43,7 +43,7 @@ const { sleep, until } = win;
 const ROOT = path.join(os.tmpdir(), 'codex-plus-demo');
 const PLAN_DIR = path.join('plugins', 'data', 'agent-work-plan-codex-extras');
 const SHOTS = ['work-plan', 'images-in-replies', 'reply-figures', 'navigation', 'context-meter', 'session-info', 'agent-map',
-  'session-list'];
+  'wake-up', 'tabs', 'session-list', 'session-menu', 'token-mode', 'answer-view'];
 
 const args = process.argv.slice(2);
 const flag = (name, dflt = '') => { const i = args.indexOf(name); if (i < 0) return dflt; const v = args[i + 1] || ''; args.splice(i, 2); return v; };
@@ -220,6 +220,23 @@ async function main() {
     const b = e.getBoundingClientRect();
     return { x: b.left, y: b.top, width: b.width, height: b.height };
   }, id);
+  /* The first visible element of the window matching `sel`, in CSS pixels. */
+  const boxOf = (sel) => page.evaluate((sel) => {
+    const e = [...document.querySelectorAll(sel)].find((x) => x.offsetWidth && x.offsetHeight);
+    if (!e) return null;
+    const b = e.getBoundingClientRect();
+    return { x: b.left, y: b.top, width: b.width, height: b.height };
+  }, sel);
+  /* The smallest box holding all of `boxes`, grown by `pad` and kept inside the window. */
+  const around = async (boxes, pad = 12) => {
+    const bs = boxes.filter(Boolean);
+    if (!bs.length) return null;
+    const vp = await page.evaluate(() => ({ width: innerWidth, height: innerHeight }));
+    const x = Math.max(0, Math.min(...bs.map((b) => b.x)) - pad), y = Math.max(0, Math.min(...bs.map((b) => b.y)) - pad);
+    const r = Math.min(vp.width, Math.max(...bs.map((b) => b.x + b.width)) + pad);
+    const btm = Math.min(vp.height, Math.max(...bs.map((b) => b.y + b.height)) + pad);
+    return { x, y, width: r - x, height: btm - y };
+  };
   const snap = async (name, clip) => {
     await quiet();
     const c = { x: Math.round(clip.x), y: Math.round(clip.y), width: Math.round(clip.width), height: Math.round(clip.height) };
@@ -369,6 +386,31 @@ async function main() {
         await sleep(400);
       }
     }
+    if (want('wake-up')) {
+      /* The Agent map alone, with the wake-up's card clicked open to its whole prompt. */
+      const pill = conv.locator('[data-codex-extras="agents"]').first();
+      await until(() => pill.isVisible().catch(() => false), 30000, 500);
+      if (!await pill.isVisible().catch(() => false)) log('the Agent map button is not shown: wake-up skipped');
+      else {
+        await pill.click();
+        await until(() => conv.evaluate(() => !!document.querySelector('[data-codex-extras="map-dialog"]')), 5000, 200);
+        await conv.locator('[data-codex-extras="map-wakeups"] summary').first().click();
+        await sleep(800);
+        await away();
+        await snap('wake-up', await around([await conv.locator('[data-codex-extras="map-dialog"]').first().boundingBox()], 16));
+        await page.keyboard.press('Escape');
+        await sleep(400);
+      }
+    }
+    if (want('tabs')) {
+      /* The tab bar with the demo conversation's tab, its dot, and the hover of the tab bar's Codex button. */
+      const button = page.locator('.editor-group-container.active .editor-actions .action-item .action-label[aria-label*="Codex"]').first();
+      await button.hover();
+      await until(() => page.evaluate(() => !![...document.querySelectorAll('.monaco-hover, .workbench-hover')].find((e) => e.offsetParent && e.innerText.trim())), 5000, 200);
+      await sleep(600);
+      await snap('tabs', await around([await boxOf('.editor-group-container.active .title'), await boxOf('.monaco-hover, .workbench-hover')], 4));
+      await away();
+    }
     if (want('session-list')) {
       await exec('workbench.view.extension.codexPlus');
       const list = await frameWhere(() => !!document.querySelector('.cp-root'), 60000);
@@ -379,6 +421,48 @@ async function main() {
         await away();
         await snap('session-list', await sidebar());
       }
+    }
+    if (want('session-menu')) {
+      /* The right-click menu of the demo conversation's row, drawn by the list's own page. */
+      await exec('workbench.view.extension.codexPlus');
+      const list = await frameWhere(() => !!document.querySelector('.cp-root .cp-row'), 60000);
+      if (!list) log('the session list did not open: session-menu skipped');
+      else {
+        await sleep(1500);
+        await widen();
+        await list.locator(`.cp-row[data-id="${tid}"]`).last().click({ button: 'right' });
+        if (!await until(() => list.evaluate(() => !!document.querySelector('.cp-ctx')), 5000, 100)) log('no menu opened: session-menu skipped');
+        else {
+          await sleep(600);
+          /* The side bar down to a little below the menu, not the empty rest of the list. */
+          const sb = await sidebar(), menu = await list.locator('.cp-ctx').first().boundingBox();
+          await snap('session-menu', menu ? { ...sb, height: Math.min(sb.height, menu.y + menu.height + 40 - sb.y) } : sb);
+        }
+        await page.keyboard.press('Escape');
+        await sleep(400);
+      }
+    }
+    if (want('token-mode')) {
+      /* The list of token modes behind Agent Plus's status bar entry. */
+      const entry = page.locator('.statusbar-item').filter({ has: page.locator('.codicon-dashboard') }).first();
+      await entry.click({ timeout: 10000 });
+      await page.locator('.quick-input-widget .quick-input-list .monaco-list-row').first().waitFor({ state: 'visible', timeout: 10000 });
+      await sleep(800);
+      await snap('token-mode', await around([await boxOf('.quick-input-widget')], 8));
+      await page.keyboard.press('Escape');
+      await sleep(400);
+    }
+    if (want('answer-view')) {
+      /* Agent Plus's Conversations view in the panel, with the demo conversation's brief in the Answer view beside it. */
+      await exec('agentPlus.showConversations');
+      const row = page.locator('[id="workbench.parts.panel"] .monaco-list-row').filter({ hasText: TITLE }).first();
+      await row.waitFor({ state: 'visible', timeout: 30000 });
+      await sleep(1000);
+      await row.click();
+      const answer = await frameWhere(() => { const b = document.getElementById('brief'); return !!b && b.style.display === 'flex'; }, 30000);
+      if (!answer) log('the Answer view did not show the brief: answer-view skipped');
+      else { await sleep(1000); await away(); await snap('answer-view', await part('workbench.parts.panel')); }
+      await exec('workbench.action.closePanel').catch(() => {});
     }
   } finally {
     watching = false;
