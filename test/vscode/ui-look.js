@@ -1025,8 +1025,6 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       return mapBox();
     });
     await closeMap();
-    /* The plan bar of the conversation's plan as written at the start: a row doing, a question waiting for the user and a
-       row to do. */
     const planBarBox = async (f = codex) => union([await inCodex('[data-codex-extras="plan-bar"]', f), await inCodex('[data-codex-composer-root]', f)]);
     const PLAN_BAR = 'From the left: a list icon and "Plan" in bold; a short track of three coloured segments, blue for the row doing, orange for the one waiting '
       + 'and purple for the one to do, of equal length; "3 open"; then "1 Find the retry delay" after a play icon; at the right a red-tinted pill with a red dot and '

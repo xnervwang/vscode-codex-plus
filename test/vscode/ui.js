@@ -151,16 +151,16 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     return Math.round((Date.now() - t0) / 1000);
   };
   /*
-   * served() knows only that VS Code has caught up with what Codex's pages have asked for so far; a page opened a moment
-   * ago has yet to ask for most of its code, and closing it or reloading the window then leaves that queued. So where a
-   * page is closed or the window reloaded soon after pages were opened, the pages of Codex's tabs are first let draw (a
-   * message box, and the turns too on a page opened on a conversation) and go 2 s with no file reaching them, and this is
-   * done again when served() then still had to wait, since the files it waited for may have been theirs. A tab's page is
-   * told by the initial-route tag Codex puts in it, or by the webview origin such pages share: the page of Codex's hidden
-   * sidebar has a message box and the titles of conversations in its text too. A page showing Codex's recovery page
-   * ("ChatGPT hit a snag") fetches nothing more and counts as drawn, and so does a page up for 15 s, by when Codex has
-   * asked for its route's code: the page of the sub-agent the Agent map opens has drawn no turns within a minute.
-   * Resolves to false, with a note, when fewer than `least` such pages were there or one had not drawn within 60 s.
+   * served() knows only that VS Code has caught up with what Codex's pages have asked for so far; a page opened a
+   * moment ago has yet to ask for most of its code, and closing it or reloading the window then leaves that queued. So
+   * settle() first waits for each Codex tab page to draw its message box and, on a conversation page, its turns. If
+   * served() had to wait, settle() repeats the process because those files may have been for the tab pages. A tab's
+   * page is recognized by the initial-route tag Codex puts in it, or by the webview origin such pages share: the page
+   * of Codex's hidden sidebar has a message box and the titles of conversations in its text too. A page showing Codex's
+   * recovery page ("ChatGPT hit a snag") fetches nothing more and counts as drawn, and so does a page that has been up
+   * for 15 s, since by then Codex has asked for its route's code: the page the Agent map opens for a sub-agent has
+   * drawn no turns within a minute. Resolves to false when fewer than `least` such pages were there or one had not
+   * drawn within 60 s.
    */
   let tabsHost = '';
   const tabPages = async () => {
@@ -473,9 +473,9 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
   };
   const pageSays = (f) => (f ? f.evaluate(() => ({ turns: document.querySelectorAll('[data-turn-key]').length, text: document.body.innerText.slice(0, 200) }))
     .catch((e) => ({ error: String(e) })) : null);
-  /* What Codex put in the page VS Code shows in front when it gave up on it: "Codex could not start", for a page that had
-     none of its files within 30 s, or its recovery page, "ChatGPT hit a snag", which it draws when one of its own modules
-     failed to load (Codex.log: "Failed to fetch dynamically imported module"); '' otherwise. */
+  /* "Codex could not start" when the page got none of its files within 30 s, or "ChatGPT hit a snag", its recovery
+     page, drawn when one of its own modules failed to load (Codex.log: "Failed to fetch dynamically imported
+     module"); '' when it shows neither. */
   const brokenInFront = async () => {
     for (const f of page.frames()) {
       try {
@@ -489,10 +489,10 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     return '';
   };
   /*
-   * Does `act`, which brings a conversation's page to the front, and resolves to what `shown` resolves to once it is
-   * truthy, or to a falsy value after `ms`. On the CI machines Codex has now and then given up on such a page in one of the
-   * two ways above, which is Codex's page failing to start rather than what the step checks, and one failed page used to
-   * fail every step after it that needed the conversation. So the tab is then closed, once VS Code has caught up with
+   * After `act` brings the conversation page to the front, shownOrAgain() polls `shown` every 500 ms and resolves to
+   * its first truthy result. On the CI machines Codex has now and then given up on such a page in one of the two ways
+   * above, which is Codex's page failing to start rather than what the step checks, and one failed page would otherwise
+   * fail every step after it that needs the conversation. So the tab is then closed, once VS Code has caught up with
    * Codex's files, and `act` done once more, with a note.
    */
   const shownOrAgain = async (what, act, shown, ms = 90000) => {
@@ -506,10 +506,10 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     await act();
     return until(shown, ms, 500);
   };
-  /* Opens conversation `t` in a tab with Codex Plus's command and resolves to the page VS Code shows in that tab once it
-     has drawn turns, or to null after 90 s. Looking for any page with the conversation's title finds the page of Codex's
-     hidden sidebar at once, which lists recent conversations by title, while the tab's own page has not started. When
-     the tab is not in front within 10 s the command is run again, which brings it there. */
+  /* Opens conversation `t` in a tab with Codex Plus's command and resolves to that tab's page once it has drawn
+     turns, or to null after 90 s. Looking for any page with the conversation's title finds the page of Codex's
+     hidden sidebar at once, while the tab's own page has not started. When the tab is not in front within 10 s the
+     command is run again. */
   const openShown = async (t) => {
     const mine = async () => (await codexTabsNow()).find((x) => x.route === `/local/${t.id}`);
     const open = async () => {
@@ -615,8 +615,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     return !!(part && part.offsetWidth > 0 && part.offsetHeight > 0 && /Codex/.test(part.innerText));
   });
 
-  /* Where the plan bar sits in frame `f` against the message box and against each element `sel` selects, which are
-     Codex's own (its question card, its approval card): { bar, box, over } with the boxes rounded, or null with no bar. */
+  /* Where the plan bar sits in frame `f` relative to the message box and to Codex's own elements matching `sel` (its
+     question card, its approval card). */
   const planBarAgainst = (f, sel) => (f ? f.evaluate((q) => {
     const rect = (e) => { const r = e.getBoundingClientRect(); return { left: Math.round(r.left), top: Math.round(r.top), right: Math.round(r.right), bottom: Math.round(r.bottom) }; };
     const b = document.querySelector('[data-codex-extras="plan-bar"]');
@@ -626,7 +626,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       .filter((r) => Math.min(r.right, bar.right) - Math.max(r.left, bar.left) > 0 && Math.min(r.bottom, bar.bottom) - Math.max(r.top, bar.top) > 0);
     return { bar, box: boxEl ? rect(boxEl) : null, over };
   }, sel || '').catch(() => null) : null);
-  /* With a plan bar drawn, checks that it is clear of what `sel` selects; says so in a note when there is no bar. */
+  /* Checks that a drawn plan bar covers nothing `sel` selects. */
   const planBarClear = async (f, sel, what) => {
     const at = await planBarAgainst(f, sel);
     if (!at) { note(`${what}: no plan bar was drawn, so whether it would cover it was not checked`); return; }
@@ -783,7 +783,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
 
     await step('tab bar', async () => {
       await exec('notifications.clearAll');
-      /* Codex can have opened a tab of its own on its first start. */
+      /* Codex may have opened a tab of its own on its first start. */
       await settle('tab bar: before the reload', 0);
       await w.reload();
       await until(async () => { const s = await patchState(); return s && s.active; }, 60000, 1000);
@@ -806,9 +806,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       }, 20000, 500);
       check(!!opened && opened.t.length === groups, 'a click opens a new Codex conversation in a tab titled Codex, in the group already there rather than a new split',
         opened || await tabs());
-      /* A page that was not there before the click, so not the page of Codex's sidebar, which has a message box too. The
-         window opens 1024 px wide on macOS and Windows, and with Codex's sidebar open beside the tab, the page is narrower
-         than the tab pages the other steps look for. */
+      /* Codex's sidebar page, which was already there, has a message box too. The window opens 1024 px wide on macOS
+         and Windows, so with Codex's sidebar open the tab's page is narrower than the other steps expect. */
       const loaded = await until(async () => {
         for (const f of page.frames()) {
           if (framesBefore.has(f)) continue;
@@ -1275,8 +1274,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         await clearToasts();
         const left = (await toasts()).filter(Boolean);
         if (left.length) note(`${name}: notifications still on screen before its crop: ${JSON.stringify(left).slice(0, 300)}`);
-        /* The page's frame has been measured a pixel off where the window drew it, once, so the frame and the control are
-           measured before and after the screenshot, and taken again until both readings agree. */
+        /* The page's frame has been measured a pixel off where the window drew it, once. */
         let at = null, png = null;
         for (let tries = 0; tries < 5; tries++) {
           const before = await drawnAt(sel);
@@ -1391,7 +1389,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       }), 10000, 200);
       check(!!hover && /Work plan: injected 1 time since the conversation began: \d+ characters, about \d+ tokens/.test(hover),
         'the context meter\'s hover says how much the work plan has added to the conversation\'s context', hover);
-      /* The hover reaches up from the toolbar over where the plan bar is; where the two meet, the hover is on top. */
+      /* The meter's hover reaches up over the plan bar; where they overlap, the hover must be drawn on top. */
       const overBar = await codex.evaluate(() => {
         const b = document.querySelector('[data-codex-extras="context"]'), p = document.querySelector('[data-codex-extras="plan-bar"]');
         if (!b || !p || !p.getClientRects().length) return { bar: !!p };
@@ -1408,8 +1406,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
          for the message box, and every click after it. The pointer goes to the top of the conversation, above the hover,
          which reaches up over the middle of it. */
       const talk = await codex.locator('[data-app-action-timeline-scroll]').first().boundingBox();
-      /* In steps, as a hand moves it: a single jump of the pointer has once left Codex's page taking the pointer for still
-         being on the meter (its :hover kept), so it never heard the pointer leave. */
+      /* Once, a single jump of the pointer left the meter matching :hover in Codex's page, which then never saw the
+         pointer leave. */
       await page.mouse.move(talk ? talk.x + 30 : 0, talk ? talk.y + 15 : 0, { steps: 6 });
       /* For a hover left open: whether the page still thinks the pointer is over the meter or the hover, and what is
          under the point the pointer moved to. */
@@ -1443,15 +1441,14 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await page.mouse.move(talk ? talk.x + 30 : 0, talk ? talk.y + 15 : 0, { steps: 6 });
     });
 
-    /* What the plan bar's checks share: the step of its own and the one on Codex's sidebar, which checks the compact bar
-       there. */
+    /* Helpers for the two steps that check the plan bar. */
     const planBarTools = (() => {
       const since = new Date().toISOString().replace(/\.\d+Z$/, '+00:00');
       /* Asked days before the user's last message, so the question counts in the bar but gives the tab no red dot, which
          the steps after this one do not expect. */
       const asked = new Date(Date.now() - 3 * 86400e3).toISOString().replace(/\.\d+Z$/, '+00:00');
       const writeRows = (thread, nodes) => { fs.mkdirSync(PLANS, { recursive: true }); fs.writeFileSync(path.join(PLANS, `${thread}.json`), JSON.stringify({ nodes })); };
-      /* What the bar in frame `f` shows, part by part, and where it is against the message box. */
+      /* Reads the bar in frame `f`: the text of each of its parts, and where it sits relative to the message box. */
       const barIn = (f) => (f ? f.evaluate(() => {
         const b = document.querySelector('[data-codex-extras="plan-bar"]');
         if (!b || b.style.display === 'none' || !b.getClientRects().length) return null;
@@ -1474,10 +1471,10 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       return { since, asked, writeRows, barIn, barSays, noBar, placed, planViewRows };
     })();
 
-    /* The plan bar above the message box (codexPlus.planBar, src/plan-bars.js and the page script's placePlanBar): the
-       summary Agent Plus gives of a conversation's plan, drawn by Agent Plus's fragment just above the box and as wide as
-       it, following the plan as it changes, and opening Agent Plus's views. The compact bar in Codex's narrow sidebar is
-       checked at the end of the sidebar's own step. */
+    /* Codex Plus draws a summary of the conversation's plan with Agent Plus's fragment just above the message box,
+       at the same width as the box (codexPlus.planBar, src/plan-bars.js and the page script's placePlanBar); the bar
+       updates as the plan changes, and clicks on it open Agent Plus's views. The compact bar in Codex's narrow
+       sidebar is checked at the end of the sidebar's own step. */
     await step('the plan bar', async () => {
       if (!codex) throw new Error('the conversation did not open');
       const id = threads[0].id;
@@ -1498,8 +1495,9 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         'a plan with rows doing, waiting on the user and to do draws the bar: 4 open, the deepest doing row as the current one, and "1 to decide" in red',
         full || await barIn(codex));
       check(placed(full), 'the bar sits just above the message box, 6 px clear of it, and is as wide as it', full);
-      /* What lies under the bar, kept in the results: every element of Codex's other than the box's ancestors whose box meets
-         it. One a pixel or less across is drawn for screen readers only, as Codex's own visually hidden headings are. */
+      /* What lies under the bar, kept in the results: every Codex element whose box meets the bar, except the
+         message box's ancestors. One a pixel or less across is drawn for screen readers only, as Codex's own
+         visually hidden headings are. */
       const under = await codex.evaluate(() => {
         const b = document.querySelector('[data-codex-extras="plan-bar"]'), box = document.querySelector('[data-codex-composer-root]');
         if (!b || !box) return null;
@@ -1525,7 +1523,6 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       check(!!under && !under.error && !drawnUnder.length, 'nothing of Codex\'s with text or a control in it lies under the bar', drawnUnder);
       await shot('plan-bar');
 
-      /* The plan changes: a row added, and the rows that were doing closed. */
       writeRows(id, [...ROWS, { title: 'Write the release note', state: 'todo', since }]);
       const more = await barSays(codex, (b) => b.count === '5 open');
       check(!!more, 'a row added to the plan shows at once as one more open', more || await barIn(codex));
@@ -1563,7 +1560,6 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await shot('plan-bar-back');
       planFor(id, planTitle(id));
       await exec('agentPlus.refreshWorkPlan');
-      /* The steps after this one start from a tab with no dot. */
       if (!await until(async () => { const d = await dotsOn(title); return d && d.waiting === 0 && d.working === 0; }, 20000, 500)) {
         note(`the plan bar: the tab still had a dot when the step ended: ${JSON.stringify(await dotsOn(title))}`);
       }
@@ -1962,10 +1958,9 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
           muted: mute ? mute.getAttribute('data-codex-extras-muted') : '', meter: !!document.querySelector('[data-codex-extras="meter"]'),
           codexMeterHidden: document.querySelectorAll('.codex-extras-ctx-hidden').length };
       }).catch((e) => ({ error: String(e) }));
-      /* Codex draws a conversation's turns as they come into view and keeps them drawn. In a short window, such as on
-         Windows with the plan bar above the message box, it starts with fewer than all of them and draws the rest once a
-         later redraw brings them near the view. So the conversation is scrolled to its top and back to its end first,
-         and the starting reading is taken once two readings in a row agree. */
+      /* Codex draws a conversation's turns as they come into view and keeps them. In a short window, such as on
+         Windows with the plan bar above the message box, it draws only some turns at first. The test scrolls to the
+         top and back to the end first. */
       const scrollTo = (top) => codex.evaluate((up) => {
         const s = document.querySelector('[data-app-action-timeline-scroll]');
         if (s) s.scrollTop = up ? 0 : s.scrollHeight;
@@ -3165,8 +3160,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       }
       const side = await frameWhere((want) => innerWidth < 800 && document.body.innerText.includes(want)
         && document.querySelectorAll('.codex-extras-stamp-assistant').length >= 4, 90000, t.title);
-      /* For a failure's detail: each page narrower than 800 px, its turns, its stamps on replies and whether it names the
-         conversation. */
+      /* Reported when the check below fails: each page narrower than 800 px that has a message box, with its size,
+         how many turns and reply stamps it has, and whether it names the conversation. */
       const narrowPages = async () => {
         const out = [];
         for (const f of page.frames()) {
@@ -3245,10 +3240,10 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       const sideNow = await frameWhere(() => innerWidth < 800 && !!document.querySelector('[data-codex-composer-root]'), 10000);
       check(!!read, 'opening Codex\'s sidebar on it again takes the envelope away', { row: await unseen(), sidebar: await auxiliaryShowsCodex(),
         sidebarPage: await pageSays(sideNow), patch: await call(`${OWN} const p = own('patching'); return { showing: p.sidebarShowing(), last: p.sidebarThread() };`).catch((e) => String(e)) });
-      /* The plan bar in Codex's sidebar, which is narrow: compact, and a click on it shows the sidebar's conversation's plan
-         in the Work plan view though the tab in front shows another. Last in this step, so that the checks above see the
-         sidebar as they would with no plan bar step before them: a sidebar page that has shown the conversation once draws
-         fewer of its turns when it shows it again. */
+      /* Codex's narrow sidebar uses the compact bar; clicking it opens the Agent Plus Work plan view for the
+         conversation shown in the sidebar, even when the tab in front shows a different conversation. Last in this
+         step, since a sidebar page that has shown the conversation once draws fewer of its turns when it shows it
+         again. */
       {
         const { since, asked, writeRows, barIn, barSays, placed, planViewRows } = planBarTools;
         writeRows(t.id, [{ title: 'Look at the export logs', state: 'doing', since },
@@ -3259,7 +3254,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         else {
           let narrow = await barSays(sidePage, (b) => b.count === '3 open', 30000);
           if (narrow && !narrow.compact) {
-            /* The sidebar is wider than the compact width; its edge is dragged in. */
+            /* The sidebar is wider than the compact width. */
             const edge = await page.evaluate(() => {
               const b = document.getElementById('workbench.parts.auxiliarybar').getBoundingClientRect();
               const e = [...document.querySelectorAll('.monaco-sash.vertical')].map((x) => x.getBoundingClientRect()).find((r) => r.height > 100 && Math.abs((r.left + r.right) / 2 - b.left) < 4);
@@ -3448,8 +3443,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         if (process.platform === 'linux') check(false, why, await pageSays(f)); else note(`${why}; not checked on ${process.platform}`);
         return null;
       }
-      /* When the tab is not titled, what Codex's state database holds for the conversation then says whether the title was
-         there to read. */
+      /* When the tab is not titled, the conversation's entry in Codex's state database at that moment shows whether
+         the title was there to read. */
       const inDb = named || !id ? null : await call(`${OWN} const t = (own('codex-files').listThreads() || []).find((x) => x.id === arg);
         return t ? { title: t.title, updatedMs: t.updatedMs, now: Date.now() } : 'not listed';`, id).catch((e) => String(e));
       check(!!id && !!named, `${how}: while that turn runs, the tab is titled by the conversation Codex made of the message`,
@@ -3691,7 +3686,6 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       const mine = before.find((x) => x.active);
       if (!mine || mine.route !== '/extension/panel/new') throw new Error(`the tab in front is not the New tab: ${JSON.stringify(before)}`);
       await exec('notifications.clearAll');
-      /* The step above has just opened a sub-agent's conversation in a tab. */
       await settle('tabs restored at a reload: before the reload');
       await w.reload();
       await until(async () => { const s = await patchState(); return s && s.active; }, 60000, 1000);
@@ -3700,10 +3694,11 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       /* Opening a tab's own URI again brings that tab to the front. */
       const revealTab = (x) => call(`await vscode.commands.executeCommand('vscode.openWith', vscode.Uri.from({ scheme: 'openai-codex', authority: 'route',
         path: arg.route, fragment: arg.fragment }), 'chatgpt.conversationEditor', { viewColumn: arg.column, preview: false }); return true;`, x);
-      /* Codex gives the page of a tab VS Code restored behind others 30 s to start and then puts "Codex could not start"
-         in it, as the step on a notice for a tab restored behind another checks, and on a slow machine the checks below
-         come to the last of the tabs they bring forward later than that. So each of those tabs is shown for a moment now,
-         which builds its page, as codexPlus.loadRestoredTabs does, and the New tab is put in front again. */
+      /* The step "a notice for a tab restored behind another" checks that Codex shows "Codex could not start" if a
+         page has not started within 30 s after VS Code restores its tab in the background; on a slow machine, the
+         checks below bring the last of those tabs forward more than 30 s after the reload. So each of those tabs is
+         brought forward for a moment now to build its page, as codexPlus.loadRestoredTabs does, and then the New tab
+         is put back in front. */
       const later = [before.find((x) => x.route === `/local/${t.id}`),
         ...[agentNew, inTabNew].filter(Boolean).map((m) => before.find((x) => bare(x.label) === bare(m.label)))].filter((x) => x && !same(x));
       for (const x of later) { await revealTab(x).catch(() => {}); await sleep(500); }
@@ -4632,10 +4627,11 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         await page.mouse.move(box.x + at[0], box.y + at[1], { steps: 4 });
         await sleep(200);
       };
-      /* Each way opens a conversation and closes it a moment later, while on a slow machine its page is still fetching
-         most of its code, so the pages of Codex's tabs are let finish first. The tab is found by its label in either
-         form, the API's or the conversation's title: Codex first labels a tab with the title cut short, and the tab bar
-         can show the whole title while the API still has the short one, or the other way round. */
+      /* Each way opens a conversation and closes it a moment later, when on a slow machine its page is still
+         fetching most of its code, so settle() first lets the pages of Codex's tabs finish drawing and loading. The
+         tab in the tab bar is found by its label, as the API has it or as the conversation is titled: Codex first
+         labels a tab with the title cut short, and the tab bar can show the whole title while the API still has the
+         short one, or the other way round. */
       const closeTab = async (t) => {
         await settle(`rows of conversations no longer open: before the tab of "${t.title}" was closed`);
         const x = await tabOf(t);
@@ -4932,7 +4928,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       note(`before the reload, this window's app-server has loaded ${JSON.stringify(await loadedNow())}`);
 
       let restoredAt = 0;
-      /* Both tabs' pages have just been opened, and one of them was opened again before the second reload. */
+      /* The pages of both tabs are new (one was opened again before the second reload), so each reload first waits
+         for both to finish loading. */
       const reload = async (what) => {
         await exec('notifications.clearAll');
         await settle(`${what}: before the reload`, 2);
@@ -5070,7 +5067,6 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       const everywhere = (e) => e.tab === true && e.rows.length > 0 && e.rows.every((r) => r.unseen);
 
       await exec('workbench.action.closeAuxiliaryBar');
-      /* The step above ends on a page it has just drawn. */
       await settle('restored tabs keep their envelopes: before the tabs left open were closed');
       await exec('workbench.action.closeAllEditors');
       await exec('workbench.action.joinAllGroups');
@@ -5152,9 +5148,9 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await setting('reopenDroppedTabs', false);
       const second = await dropOnce();
       check(second.closed && second.back, 'with codexPlus.reopenDroppedTabs off, the tab is closed the same way', second);
-      /* The new host reopens dropped tabs 8 s after it starts, reading the setting then, so the setting goes back only
-         after that pass, whether or not what it did can be judged here: put back before it, the tab came back in front
-         during the next step. */
+      /* The new host reopens dropped tabs 8 s after it starts and reads the setting at that moment, so the setting
+         is restored only after that pass, even when this test cannot judge what the pass did: restored earlier, it
+         let the tab come back in front during the next step. */
       await sleep(20000);
       if (!unmet(second)) check(!await tabUp(), 'and it is not reopened', await tabs());
       await setting('reopenDroppedTabs', undefined);

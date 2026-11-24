@@ -357,7 +357,7 @@ async function main() {
       await sleep(400);
     }
     if (want('plan-bar')) {
-      /* The bar above the message box, from the demo plan, whose question to the user is the red part. */
+      /* The plan bar above the message box; the demo plan's question to the user is its red part. */
       await toBottom();
       const bar = conv.locator('[data-codex-extras="plan-bar"]').first();
       const drawn = await until(() => conv.evaluate(() => {
@@ -421,7 +421,8 @@ async function main() {
       }
     }
     if (want('tabs')) {
-      /* The tab bar with the demo conversation's tab, its dot, and the hover of the tab bar's Codex button. */
+      /* The tab bar with the demo conversation's tab and its dot, while the pointer rests on the tab bar's Codex
+         button and its hover shows. */
       const button = page.locator('.editor-group-container.active .editor-actions .action-item .action-label[aria-label*="Codex"]').first();
       await button.hover();
       await until(() => page.evaluate(() => !![...document.querySelectorAll('.monaco-hover, .workbench-hover')].find((e) => e.offsetParent && e.innerText.trim())), 5000, 200);
