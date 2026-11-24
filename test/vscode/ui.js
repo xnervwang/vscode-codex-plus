@@ -4924,12 +4924,6 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
          Windows cannot do, so there it never says the zone. */
       const zones = process.platform !== 'win32';
       if (!zones) note('Python on Windows has no time.tzset, so the time-zone note is checked to be absent in every mode');
-      /* On Windows no request has yet carried any note of the plugin's hooks, with the hooks trusted and the plugin loaded
-         (CI run 45289112401). There the step only notes what the requests carried, and keeps the conversation's rollout and
-         Codex's own logs for a reader. */
-      const hooksSeen = process.platform !== 'win32';
-      const judge = (ok, what, detail) => (hooksSeen ? check(ok, what, detail)
-        : note(`${what}: not checked on Windows, where the hooks have added nothing so far; it carried ${JSON.stringify(detail)}`));
       const results = [];
       try {
         for (const [i, m] of MODES.entries()) {
@@ -4958,7 +4952,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
           if (i > 0 && MODES[i - 1].mode === 'interface') {
             note(`${name}: the first turn of the conversation already running after Interface features carried ${JSON.stringify(r.running)}`);
           } else {
-            judge(!!r.running && r.running.plan === m.on.plan && r.running.zone === zone && r.running.brief === m.on.brief && !r.running.images,
+            check(!!r.running && r.running.plan === m.on.plan && r.running.zone === zone && r.running.brief === m.on.brief && !r.running.images,
               `${name}: a turn of a conversation already running carries the work plan: ${m.on.plan}, the time-zone note: ${zone}, `
               + `the brief's request for a status: ${m.on.brief}, and no note on images`, r.running || model.seen.slice(-3).map((x) => x.context));
           }
@@ -4967,7 +4961,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
             await emptyBox(fresh);
             r.fresh = await turnIn(fresh, `Token mode check, ${name}, a new conversation.`, m.zone);
             const plugin = m.mode !== 'interface';
-            judge(!!r.fresh && r.fresh.images === (plugin && imagesTold) && r.fresh.skill === plugin && r.fresh.zone === zone && !r.fresh.plan,
+            check(!!r.fresh && r.fresh.images === (plugin && imagesTold) && r.fresh.skill === plugin && r.fresh.zone === zone && !r.fresh.plan,
               `${name}: the first turn of a new conversation carries the note on images: ${plugin && imagesTold}, the work plan skill in Codex's list of `
               + `skills: ${plugin}, the time-zone note: ${zone}, and no work plan, it having none`,
               r.fresh || model.seen.slice(-3).map((x) => x.context));
@@ -4976,7 +4970,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
           const f2 = await running();
           r.runningAgain = f2 ? await turnIn(f2, `Token mode check, ${name}, the running conversation again.`, m.zone) : null;
           /* The time-zone note is repeated only when the last one has gone stale (tell-time-zone.py). */
-          judge(!!r.runningAgain && r.runningAgain.plan === m.on.plan && r.runningAgain.brief === m.on.brief && !r.runningAgain.zone && !r.runningAgain.images,
+          check(!!r.runningAgain && r.runningAgain.plan === m.on.plan && r.runningAgain.brief === m.on.brief && !r.runningAgain.zone && !r.runningAgain.images,
             `${name}: after a new conversation has started, a turn of the one already running carries the work plan: ${m.on.plan}, the brief's request `
             + 'for a status: ' + m.on.brief + ', and neither the time-zone note it was given a turn before nor a note on images', r.runningAgain);
           results.push(r);
@@ -4985,17 +4979,6 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       } finally {
         fs.writeFileSync(path.join(out, 'token-modes.json'), JSON.stringify(results, null, 2) + '\n');
         await agentSetting('tokenMode', undefined);
-        if (!hooksSeen) {
-          const kept = path.join(out, 'token-mode-codex');
-          fs.mkdirSync(kept, { recursive: true });
-          const tail = (f, n) => { try { const b = fs.readFileSync(f); return b.subarray(Math.max(0, b.length - n)); } catch (_) { return Buffer.from(''); } };
-          const rollout = walk(path.join(profile.codexHome, 'sessions')).find((f) => f.endsWith(`${id}.jsonl`));
-          if (rollout) fs.writeFileSync(path.join(kept, 'rollout-tail.jsonl'), tail(rollout, 200000));
-          walk(path.join(profile.user, 'logs')).filter((f) => /openai\.chatgpt|Codex\.log$/i.test(f))
-            .forEach((f, i) => fs.writeFileSync(path.join(kept, `${i}-${path.basename(f)}`), tail(f, 300000)));
-          walk(profile.codexHome).filter((f) => /\.log$/i.test(f) && !/sessions/.test(f))
-            .forEach((f, i) => fs.writeFileSync(path.join(kept, `home-${i}-${path.basename(f)}`), tail(f, 300000)));
-        }
       }
     });
 
