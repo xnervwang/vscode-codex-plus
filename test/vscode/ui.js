@@ -1847,7 +1847,18 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
           muted: mute ? mute.getAttribute('data-codex-extras-muted') : '', meter: !!document.querySelector('[data-codex-extras="meter"]'),
           codexMeterHidden: document.querySelectorAll('.codex-extras-ctx-hidden').length };
       }).catch((e) => ({ error: String(e) }));
-      /* Taken once two readings in a row agree, so a page still drawing its stamps is not taken as what it should go back to. */
+      /* Codex draws a conversation's turns as they come into view and keeps them drawn. In a short window, such as on
+         Windows with the plan bar above the message box, it starts with fewer than all of them and draws the rest once a
+         later redraw brings them near the view. So the conversation is scrolled to its top and back to its end first,
+         and the starting reading is taken once two readings in a row agree. */
+      const scrollTo = (top) => codex.evaluate((up) => {
+        const s = document.querySelector('[data-app-action-timeline-scroll]');
+        if (s) s.scrollTop = up ? 0 : s.scrollHeight;
+      }, top).catch(() => {});
+      await scrollTo(true);
+      await sleep(1500);
+      await scrollTo(false);
+      await sleep(1500);
       let last = '';
       const on = await until(async () => {
         const x = await read(), seen = JSON.stringify(x), again = seen === last;
