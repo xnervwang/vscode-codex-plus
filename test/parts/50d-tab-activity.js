@@ -14,7 +14,7 @@ const fake = require('../fake-vscode');
 
 const X = '01a2f3f3-0000-7000-8000-00000000000a';
 const Y = '01a2f3f3-0000-7000-8000-00000000000b';
-const COLOUR = '✉️', TEXT = '✉︎';
+const COLOUR = '\u{1F4E9}', TEXT = '✉︎';
 const tick = (ms = 30) => new Promise((r) => setTimeout(r, ms));
 
 module.exports = async ({ eq, tmp }) => {

@@ -14,7 +14,7 @@ const fake = require('../fake-vscode');
 const { runSessionsPage } = require('../sessions-page-run');
 
 const ID = (n) => `01a2f2f2-0000-7000-8000-${String(n).padStart(12, '0')}`;
-const COLOUR = '✉️', TEXT = '✉︎';
+const COLOUR = '\u{1F4E9}', TEXT = '✉︎';
 
 module.exports = async ({ eq, root }) => {
   const { vscode } = fake.create();

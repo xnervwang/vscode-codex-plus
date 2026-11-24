@@ -808,7 +808,7 @@
       out.push(mapSection('map-agents', mapHead('Sub-agents', m.agents.length, AGENTS_NOTE), m.agents.map(function (a) {
         var env = null;
         if (a.unseen) {
-          env = mk('span', 'flex-shrink:0;line-height:1;', m.envelope || '✉️');
+          env = mk('span', 'flex-shrink:0;line-height:1;', m.envelope || '\uD83D\uDCE9');
           env.setAttribute(MARK + '-unseen', '');
         }
         var age = kit.age(a.updatedMs);

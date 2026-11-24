@@ -50,7 +50,7 @@ function fakeModel(n, { stamp = '' } = {}) {
   return { account: { account: [{ label: 'Signed in with', value: 'Amazon Bedrock' }], windows: [], tokens: [] },
     closed: [row(n + 1, { title: 'Closed this morning' }), row(n + 2, { title: 'Closed yesterday' })],
     open: rows.slice(0, 2), groups, front: ID(0), noGroups: false, menu: LIST_MENU, colors: COLOR_NAMES.map((name) => ({ name, color: COLORS[name] })),
-    font: chatFont(() => undefined), envelope: '\u2709\uFE0F' };
+    font: chatFont(() => undefined), envelope: '\u{1F4E9}' };
 }
 
 /* Proportional set size of a process, in MB, from /proc; 0 where that cannot be read. */
@@ -202,7 +202,7 @@ async function run({ env, check, shots, out, results }) {
     })()`);
     r.measures.envelope = mail;
     check(mail.cut && mail.ellipsis === 'ellipsis' && !mail.inside && mail.shown && mail.whole && mail.inRow && mail.afterTitle >= 0 && mail.beforeTime >= 0
-      && mail.text === '\u2709\uFE0F',
+      && mail.text === '\u{1F4E9}',
     'sessions: a long title with a reply not seen ends in an ellipsis, and the envelope, outside the title, follows it whole, inside the row and before the time', mail);
     const clipped = await b.evaluate(`(() => { const r = [...document.querySelectorAll('.cp-group[data-key="ungrouped"] .cp-row')].find((x) => x.offsetParent).getBoundingClientRect();
       return { x: Math.floor(r.left), y: Math.floor(r.top), width: Math.ceil(r.width), height: Math.ceil(r.height) }; })()`);

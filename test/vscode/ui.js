@@ -81,7 +81,7 @@ const TITLES = { tab: 'Codex Plus: New Codex Conversation in a Tab', sidebar: 'C
 /* TAB_DOTS in src/patching.js: green working, drawn as a ring with only background work left, and red waiting. */
 const DOTS = { working: [0x22, 0xc5, 0x5e], waiting: [0xef, 0x44, 0x44] };
 /* The unread envelope in the Dark Modern theme that run.js sets (src/envelope.js). */
-const ENVELOPE = '\u2709\uFE0F';
+const ENVELOPE = '\u{1F4E9}';
 /* The form src/envelope.js draws in the light themes. */
 const TEXT_ENVELOPE = '\u2709\uFE0E';
 const envelopes = (text) => (String(text || '').match(/\u2709[\uFE0E\uFE0F]?/g) || []).length;

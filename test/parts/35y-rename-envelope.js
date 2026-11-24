@@ -12,7 +12,7 @@ const path = require('path');
 const fake = require('../fake-vscode');
 const fixture = require('../fixture');
 
-const COLOUR = '✉️', TEXT = '✉︎';
+const COLOUR = '\u{1F4E9}', TEXT = '✉︎';
 const tick = (ms = 20) => new Promise((r) => setTimeout(r, ms));
 
 module.exports = async ({ eq, tmp, root }) => {

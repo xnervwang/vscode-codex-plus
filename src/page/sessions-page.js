@@ -241,7 +241,7 @@
   /* ── the model ── */
   let model = null;
   /* The envelope for an unread reply, in the form the host chose for the theme. */
-  let mark = '\u2709\uFE0F';
+  let mark = '\uD83D\uDCE9';
   let hl = null;
   /* The row the last right-click menu was opened on. A conversation can appear twice, in Open sessions and in a group;
      commands from that menu act on this row. */
@@ -779,7 +779,7 @@
     }, withoutEnvelope);
   }
   /* The same rule as withoutEnvelope in src/title-marks.js, which the host applies again. */
-  const withoutEnvelope = (t) => t.replace(/\u2709[\uFE0E\uFE0F]?/g, ' ').replace(/\s+/g, ' ').trim();
+  const withoutEnvelope = (t) => t.replace(/(?:\uD83D\uDCE9|\u2709)[\uFE0E\uFE0F]?/g, ' ').replace(/\s+/g, ' ').trim();
   function renameGroup(key) {
     const ge = groupEls.get(key);
     if (!ge) { renameGroupKey = key; return; }

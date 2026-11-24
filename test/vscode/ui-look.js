@@ -50,7 +50,7 @@ const LOOK_SETTINGS = { 'window.newWindowDimensions': 'maximized', 'workbench.se
 /* TAB_DOTS in src/patching.js: green working, drawn as a ring with only background work left, and red waiting. */
 const DOTS = { working: [0x22, 0xc5, 0x5e], waiting: [0xef, 0x44, 0x44] };
 /* The unread envelope in the Dark Modern theme that run.js sets (src/envelope.js). */
-const ENVELOPE = '\u2709\uFE0F';
+const ENVELOPE = '\u{1F4E9}';
 const bare = (text) => String(text || '').replace(/\u2709[\uFE0E\uFE0F]?/g, ' ').replace(/\s+/g, ' ').trim();
 const PLAN_DIR = path.join('plugins', 'data', 'agent-work-plan-codex-extras');
 const TRUST = 'Trust the work plan hooks in Codex?';
@@ -820,7 +820,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       return inList('.cp-groups');
     });
     await look('mark-unread', {
-      expect: 'Mark as Unread on the row "Why does the nightly export skip archived rows?" puts an envelope (✉️) after its title, before its time, and no dot, since it is not running; its title stays red from Text Color. As an unread conversation it now counts in "Active · N" and in Agent Plus\'s bell in the status bar, each one more than before.',
+      expect: 'Mark as Unread on the row "Why does the nightly export skip archived rows?" puts an envelope (📩) after its title, before its time, and no dot, since it is not running; its title stays red from Text Color. As an unread conversation it now counts in "Active · N" and in Agent Plus\'s bell in the status bar, each one more than before.',
     }, async () => {
       await pick(row(t1.id), ['Mark as Unread']);
       await until(() => list.evaluate((id) => { const e = document.querySelector(`.cp-groups .cp-row[data-id="${id}"] .cp-unseen`); return !!e && !e.classList.contains('cp-hidden'); }, t1.id), 10000, 300);
@@ -1093,7 +1093,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       return tabAndRow();
     });
     await look('reply-unread', {
-      expect: `With notes.txt in front when the reply lands, the conversation has stopped: its tab\'s Codex logo carries no dot and the tab\'s title reads "${title} ✉️", the envelope once and last; `
+      expect: `With notes.txt in front when the reply lands, the conversation has stopped: its tab\'s Codex logo carries no dot and the tab\'s title reads "${title} 📩", the envelope once and last; `
         + 'its rows in the list have no dot and an envelope after the title, before the time; Agent Plus\'s bell in the status bar shows a count of 1, '
         + `and a notification says "${title}" finished, with two buttons, Open and Dismiss, and no progress bar.`,
     }, async () => {
@@ -1168,7 +1168,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     const renamed = `${title} (renamed)`;
     const sideBefore = ((await part(PARTS.sidebar)) || {}).width || 0;
     await look('renamed-unread', {
-      expect: `After "${renamed} ✉️" is typed, the envelope at its end as if it had been left in, and Enter, the tab's title reads "${renamed} ✉️": one envelope, last, still there because the reply has not been seen. `
+      expect: `After "${renamed} 📩" is typed, the envelope at its end as if it had been left in, and Enter, the tab's title reads "${renamed} 📩": one envelope, last, still there because the reply has not been seen. `
         + `The conversation's rows in the session list read "${renamed}" with one envelope after the title, before the time, and none inside the title.`,
     }, async () => {
       await renameBox.fill(`${renamed} ${ENVELOPE}`);
@@ -1184,7 +1184,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     });
     const kept = `${title} (kept short)`;
     await look('rename-envelope-anywhere', {
-      expect: `Renamed, while the reply is unread, to "✉️ ✉️ ${title} ✉️ (kept short)", the tab's title reads "${kept} ✉️": `
+      expect: `Renamed, while the reply is unread, to "📩 📩 ${title} 📩 (kept short)", the tab's title reads "${kept} 📩": `
         + `none of the typed envelopes is kept, and one envelope is drawn last. The conversation's rows in the session list, their titles cut short in the narrowed side bar, `
         + 'each end in one envelope after the title and none inside it. (The window test checks the rows\' whole titles.)',
     }, async () => {
