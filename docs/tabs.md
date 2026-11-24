@@ -1,5 +1,7 @@
 # Tabs
 
+Codex Plus changes how Codex conversations open in editor tabs and reopens tabs that VS Code did not restore. It adds dots, titles and envelopes to Codex tabs.
+
 ## Opening a conversation in a tab
 
 The Codex button on the editor's tab bar and New in tab in the session list open a new Codex conversation in a tab. They use an editor group holding only Codex tabs if one exists, otherwise a group holding any Codex tab, otherwise the first group (the main editor area). They never open a new split.

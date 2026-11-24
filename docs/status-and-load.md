@@ -1,5 +1,7 @@
 # Show Status, CPU and disk
 
+`Codex Plus: Show Status` reports what is installed, patched and running. Measurements from one machine show how much CPU time Codex Plus uses in the background and how much it reads from disk.
+
 ## Show Status
 
 `Codex Plus: Show Status` writes to the Codex Plus output channel and shows:

@@ -1,5 +1,7 @@
 # Chimes and waiting for your permission
 
+Codex Plus chimes when a turn finishes, when the model waits for your answer and when Codex stops for your permission. A conversation waiting for permission shows as waiting in Agent Plus and on its tab.
+
 ## Chimes
 
 Codex Plus chimes when a turn finishes, when the model asks you something and waits for your answer (a blocking input request), and when Codex stops for your permission. The three sounds are Claude Code Plus's own: rising for a finished turn, falling for a question, and three equal notes for permission. The sound plays in the page showing the conversation: a Codex tab in this window or Codex's sidebar while it shows the conversation. If both show it, only the tab rings.

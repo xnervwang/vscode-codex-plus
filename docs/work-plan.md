@@ -1,5 +1,7 @@
 # The work plan, wake-ups and your time zone
 
+Codex Plus installs a plugin that gives each Codex conversation the option of a work plan and a brief, and you can answer the plan's questions from Agent Plus. The plugin lets the model set a wake-up to keep an idle conversation going and tells Codex your time zone when it runs on another machine.
+
 ## Work plan
 
 Codex conversations appear in Agent Plus's Work plan, Conversations and Answer views. [Agent Plus's README](https://github.com/xnervwang/vscode-agent-plus) says what each view shows. Each conversation can have a work plan: numbered rows, each with a state. Open rows are `discussing`, `todo`, `doing`, `waiting` or `parked`; closed ones are `done` or `dropped`. Codex keeps the plan across turns (one message of yours and Codex's work on it) and compactions (when context fills up and Codex replaces the conversation so far with a summary).
