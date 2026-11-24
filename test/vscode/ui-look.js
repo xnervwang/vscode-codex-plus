@@ -1870,7 +1870,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       let auxBefore = 0;
       await look('sidebar-narrow-box', {
         expect: 'Codex\'s sidebar on the right dragged narrow, about 300 px wide, at the bottom of "Why does the nightly export skip archived rows?": its message box. '
-          + 'Inside the box\'s rounded border, below Codex\'s own row of buttons (the + button, the hand, the model\'s icon, the send button and the others Codex shows), '
+          + 'Inside the box\'s rounded border, below Codex\'s own row of buttons (the + button, the hand, the model picker with its name or its icon, the send button and the others Codex shows), '
           + 'a line of its own holds Codex Plus\'s information button (i) and note button (♪) at its left and the context ring with its percentage at its right, '
           + 'drawn in the same size and colour as Codex\'s own buttons. None of them is outside the box\'s border or below it against the window\'s edge, '
           + 'none covers or touches one of Codex\'s buttons, and none is cut off at the box\'s edge.',
