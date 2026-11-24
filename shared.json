@@ -1,5 +1,5 @@
 {
-  "core": "930b392d02cc6990a13574bf2e588dd259261b22",
+  "core": "7b27b28330d20927999108355cdd30b50b824b22",
   "files": [
     {
       "path": "build/sync-shared.js",
@@ -139,7 +139,7 @@
     {
       "path": "codex-plugin/agent-work-plan/hooks/resume-work-plan.py",
       "from": "shared/plugin/hooks/resume-work-plan.py",
-      "sha256": "6b6253177c4f14b278e8ca7325479a9b193e638e458dac8f2ebf912e2b6863e8"
+      "sha256": "7f9f1db095038227f6e64556012fd71b18856d0bce6e5362f2abd09b6987db89"
     },
     {
       "path": "codex-plugin/agent-work-plan/hooks/tell-time-zone.py",
