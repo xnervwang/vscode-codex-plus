@@ -10,7 +10,7 @@
  *   id, label, logo, extensionId   who the conversations belong to
  *   planPath, planDir              where their plans are (the companion plugin's data directory)
  *   sessionForTab, onDidFocus,     which conversation is in front, and whether a reported one still is; front, the
- *   isFocused, front               one the session list draws as current, by the same latest signal
+ *   isFocused, front               one the session list draws as current
  *   listConversations              every conversation a person started, from the reader's latest snapshot
  *   listAllConversations           the same without the archived ones, for Agent Plus's notices
  *   reveal                         bring one to the front: only a tab already in this window
@@ -284,11 +284,11 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
     } catch (_) { return ''; }
   };
   /*
-   * Which of the two places a conversation is in front came there last: the active editor tab, or Codex's sidebar, by
-   * its starting to follow a conversation or by being shown again with one. The session list's current conversation and
-   * Agent Plus's work plan view both go by it (front()), as in Claude Code Plus both follow Claude Code's own
-   * activeSessionId, the conversation of whichever of its panels became active last. `sidebarSeen` is the conversation
-   * the sidebar showed at its last change, so that only a change of it counts as the sidebar coming forward.
+   * `sidebarLast`: whether Codex's sidebar came to the front after the active editor tab did, by starting to follow a
+   * conversation or by being shown again with one. The session list's current conversation and Agent Plus's work plan
+   * view both go by it (front()). In Claude Code Plus the two follow Claude Code's own activeSessionId, the
+   * conversation of whichever of its panels became active last. `sidebarSeen` is the conversation the sidebar showed at
+   * its last change.
    */
   let sidebarLast = false, sidebarSeen = '';
   let frontTab;
@@ -334,10 +334,10 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
     focused.fire({ sessionId: id });
   }
   /*
-   * Codex's sidebar was shown, hidden or moved to another conversation. Shown with a conversation it did not show at its
-   * last change, it comes to the front. Hidden, or left with none, while it was the last to come forward, the front
-   * goes back to the active tab's conversation, and Agent Plus is told so: it would otherwise keep showing the plan of
-   * a conversation no longer in view.
+   * Codex's sidebar was shown, hidden or moved to another conversation. If it now shows a conversation other than the
+   * one it showed at its last change, it comes to the front. If it is hidden or shows no conversation while it is the
+   * last to have come forward, the front goes back to the active tab's conversation, and Agent Plus is told so: it
+   * would otherwise keep showing the plan of a conversation no longer in view.
    */
   function sidebarMoved() {
     const now = sidebarInFront(), was = sidebarSeen;
@@ -348,9 +348,10 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
     const tab = activeTab(), id = tab ? threadOfCodexTab(vscode, patching, tab) : '';
     if (id) focused.fire({ sessionId: id });
   }
-  /* The conversation in front by the latest signal: Codex's sidebar's when it came forward after the active tab did and
-     the user has not gone to a tab of something else since, else the active tab's when it is Codex's ('' for one with
-     no conversation yet), else the one Codex's sidebar shows, or ''. */
+  /* The conversation in front by the latest signal. It is the one Codex's sidebar shows if the sidebar came forward
+     after the active tab did and the user has not gone to a tab of something else since. Otherwise it is the active
+     tab's conversation if that tab is Codex's ('' for one with no conversation yet), and otherwise the one Codex's
+     sidebar shows, or ''. */
   function frontOne() {
     const side = sidebarInFront();
     if (sidebarLast && !leftSidebar && side) return side;
@@ -773,7 +774,6 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
       sidebarForward(sessionId);
       if (markFront()) changed.fire();
     },
-    /* The conversation in front, the one the session list draws as current (frontOne). */
     front() { return frontOne(); },
     /* Called by the patch when the app-server reports that a turn of `sessionId` started or ended. */
     _heard(sessionId) {

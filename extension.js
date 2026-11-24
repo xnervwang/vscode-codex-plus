@@ -451,7 +451,6 @@ async function activate(context) {
   let sessionsModel = null;
   const account = accountUsage.createAccountUsage({ ask: askAppServer, onChange: () => { if (sessionsModel) sessionsModel.refresh(); } });
   context.subscriptions.push(patching.onAccountNotification((method, params) => account.heard(method, params)));
-  /* The conversation in front, by the same signal Agent Plus's work plan view follows (src/codex-source.js front). */
   const frontNow = () => source.front();
   sessionsModel = new SessionsModel(vscode, { memory, memento: context.globalState, settings, reader,
     stateOf: (id) => lastConversations.get(id), threadState: (id) => source.threadState(id), wantState: (ids) => source.wantState(ids),

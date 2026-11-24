@@ -128,11 +128,10 @@
    * after Codex's permissions button, and a context meter just left of the model picker, where Codex draws its own
    * meter. The toolbar row is a grid whose left column is as wide as its content and whose right group is pushed to the
    * right edge, so adding to either group leaves Codex's buttons where they are, as long as the gap between the groups
-   * is wide enough (rowFits). When it does not, they go to a line of this script's own inside the box, below Codex's
-   * row (toLine), as Claude Code's footer wraps its buttons onto another line, the two buttons still on the left and
-   * the meter on the right. Only a box with no footer grid to hold that line gets a row of this script's own on <body>
-   * instead, just below the box's frame, placed by measuring the box. Neither line takes pointer events, only its
-   * buttons do.
+   * is wide enough (rowFits). When it is not, they go to a line of their own inside the box, below Codex's row
+   * (toLine), as Claude Code's footer wraps its buttons onto another line, the two buttons still on the left and the
+   * meter on the right. A box with no footer grid gets a row of this script's own on <body> instead, just below the
+   * box's frame, placed by measuring the box. Neither line takes pointer events, only its buttons do.
    * Codex's redraws can drop or move what was added, and each pass of either observer puts it back. With the main
    * switch off, or with no box recognised, nothing is drawn.
    *
@@ -406,10 +405,10 @@
     return b;
   }
   /*
-   * In Codex's toolbar row, and in the line of this script's own inside the box, each control copies the classes of a
-   * Codex button, read from the page rather than hard-coded, so it gets that button's size, colour and hover in any
-   * build: the add-context button's for the two icons, the permissions pill's for the meter. In the row below the box
-   * they are as small as that row, with no background.
+   * In Codex's toolbar row and in the controls' own line inside the box, each control copies the classes of a Codex
+   * button, read from the page rather than hard-coded, so it gets that button's size, colour and hover in any build:
+   * the add-context button's for the two icons, the permissions pill's for the meter. In the row below the box they
+   * are as small as that row, with no background.
    */
   var BAR_BUTTON_CSS = 'pointer-events:auto;cursor:pointer;user-select:none;padding:0 4px;border-radius:3px;border:0;margin:0;'
     + 'background:none;color:inherit;font:inherit;display:flex;align-items:center;';
@@ -444,7 +443,7 @@
       else dressOne(meterBtn, '', BAR_BUTTON_CSS + 'gap:3px;' + pageFont(11), key, size + 'px');
     }
     /* Claude Code's own pill rather than a Codex button's classes: 18 px tall in the box, as tall as the row below. In
-       Codex's row it keeps a gap before the model picker; in the line the line's own gap does that. */
+       Codex's row it keeps a gap before the model picker; the line has a gap of its own. */
     if (agentsBtn) dressOne(agentsBtn, '', AGENTS_CSS + (mode === 'row' ? 'margin-right:6px;' : inBox ? '' : 'margin-left:4px;font-size:11px;'), key,
       (inBox ? 18 : size) + 'px');
   }
@@ -452,7 +451,7 @@
     + 'border:0;border-radius:9999px;margin:0;font:inherit;font-size:.85em;line-height:1;white-space:nowrap;color:var(--vscode-foreground,#ccc);'
     + 'background:color-mix(in srgb,var(--vscode-foreground,#ccc) 10%,transparent);';
   /*
-   * Everything into a line of this script's own inside the message box: the last row of Codex's footer grid, spanning
+   * Everything into the controls' own line inside the message box: the last row of Codex's footer grid, spanning
    * every column, the two buttons at its start and the meter with the Agent map pill at its end. It wraps within the
    * box's width rather than widening Codex's columns, and moves with the box as Codex lays it out. A redraw of Codex's
    * that takes it out is undone on the next pass, as for the controls in Codex's row.
@@ -479,7 +478,6 @@
     }
     bar = gone(bar);
   }
-  /* Out of Codex's row: into the line inside the box when there is a footer grid to hold it, below the box otherwise. */
   function outOfRow(at, grid) { if (grid) toLine(grid); else toBar(at); }
   /* Everything into the row below the box. */
   function toBar(at) {
@@ -2721,10 +2719,11 @@
 
   /*
    * Codex's page has turns and this script recognised none of the messages in them, or no message box: a Codex release
-   * has most likely changed an attribute it selects by. A page Codex draws with no message box on purpose (boxWithheld)
-   * is left out: a sub-agent's conversation there can hold a turn with no message in it yet. Told to the host once MISS_PASSES passes in a row have seen it and at least
-   * MISS_MS has gone by since the first, so a conversation still being drawn does not count, and told again only after
-   * the messages have been found in between. The message holds counts, flags and this script's version, nothing else.
+   * has most likely changed an attribute it selects by. The pages boxWithheld() describes are left out: a sub-agent's
+   * conversation there can hold a turn with no message in it yet. Told to the host once MISS_PASSES passes in a row
+   * have seen it and at least MISS_MS has gone by since the first, so a conversation still being drawn does not count,
+   * and told again only after the messages have been found in between. The message holds counts, flags and this
+   * script's version, nothing else.
    */
   var MISS_PASSES = 3, MISS_MS = 5000, missRun = 0, missSince = 0, missTold = false;
   function noteMisses(list) {
