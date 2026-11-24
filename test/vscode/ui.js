@@ -1267,6 +1267,49 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
 
     let codex = null;
     const title = threads[0].title;
+    /*
+     * The end of the conversation in Codex's page `f`: how far its scroller is from its end, whether the row of buttons
+     * under the last reply is inside the part of the scroller that is drawn and above the plan bar, and whether Codex
+     * shows its arrow back to the latest message, which it does once the conversation is more than 112 px from its end.
+     * The plan bar's room comes out of the scroller's height, and a conversation at its end has to stay there when the
+     * room is taken or given back (keepEnd in src/page/codex-extras-page.js). Within 24 px of its end Codex itself
+     * counts a conversation as at its end.
+     */
+    const endOf = (f) => (f ? f.evaluate(() => {
+      const sc = document.querySelector('[data-app-action-timeline-scroll]');
+      const replies = sc ? sc.querySelectorAll('[data-local-conversation-final-assistant]') : [];
+      const reply = replies[replies.length - 1];
+      const arrow = document.querySelector('button[class*="scroll-to-bottom"]');
+      if (!sc || !reply) return { scroller: !!sc, reply: !!reply };
+      const s = sc.getBoundingClientRect(), viewTop = s.top + sc.clientTop, viewBottom = viewTop + sc.clientHeight;
+      const bar = document.querySelector('[data-codex-extras="plan-bar"]');
+      const barTop = bar && bar.style.display !== 'none' && bar.getClientRects().length ? bar.getBoundingClientRect().top : Infinity;
+      const buttons = [...reply.querySelectorAll('button')].map((b) => b.getBoundingClientRect()).filter((b) => b.width > 0 && b.height > 0);
+      const row = buttons.length ? { top: Math.min(...buttons.map((b) => b.top)), bottom: Math.max(...buttons.map((b) => b.bottom)) } : null;
+      const fromEnd = sc.scrollHeight - sc.clientHeight - sc.scrollTop;
+      return { fromEnd: Math.round(fromEnd), atEnd: fromEnd <= 24, view: [viewTop, viewBottom].map(Math.round), barTop: barTop === Infinity ? null : Math.round(barTop),
+        row: row && [row.top, row.bottom].map((v) => Math.round(v * 10) / 10), buttons: buttons.length,
+        rowInView: !!row && row.top >= viewTop - 1 && row.bottom <= Math.min(viewBottom, barTop) + 1, arrow: arrow ? arrow.getAttribute('aria-hidden') !== 'true' : null };
+    }).catch((e) => ({ error: String(e) })) : Promise.resolve(null));
+    const endInView = async (f, what) => {
+      const fine = (x) => !!x && x.atEnd && x.rowInView && x.arrow === false;
+      const at = await until(async () => { const x = await endOf(f); return fine(x) && x; }, 5000, 250) || await endOf(f);
+      check(fine(at), `${what}: the conversation is at its end, with the row of buttons under its last reply in view above the message box, and Codex shows no arrow back to the latest message`, at);
+    };
+    /* Brings the conversation in `f` back to its end with the rail's Bottom of the conversation, after a scroll up with
+       the wheel when `wheel` is set, as a user does. Codex stops following the end at that scroll up, and takes the
+       rail's jump for none of the user's, so it is the page script that keeps the end in view afterwards. The click is
+       dispatched to the button: in a short page the plan bar is drawn over the rail's lower buttons. */
+    const railToEnd = async (f, wheel, what) => {
+      if (wheel) {
+        const sb = await f.locator('[data-app-action-timeline-scroll]').first().boundingBox().catch(() => null);
+        if (sb) { await page.mouse.move(sb.x + sb.width / 2, sb.y + sb.height / 2); await page.mouse.wheel(0, -300); await sleep(800); }
+      }
+      const up = await endOf(f);
+      await f.locator('[data-codex-extras="nav-button"][aria-label="Bottom of the conversation"]').first().dispatchEvent('click', {}, { timeout: 5000 }).catch(() => {});
+      const at = await until(async () => { const x = await endOf(f); return x && x.fromEnd <= 1 && x; }, 5000, 250) || await endOf(f);
+      check(!!at && at.fromEnd <= 1, `${what}: the rail's Bottom of the conversation brings the conversation to its end${wheel ? ' after a scroll up with the wheel' : ''}`, { before: up, after: at });
+    };
     await step('a conversation in a tab', async () => {
       if (!list) throw new Error('the session list did not open');
       const groups = (await tabs()).length;
@@ -1281,6 +1324,13 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await shot('conversation-tab');
       await checkCurrent(threads[0].id, 'with the tab Resume in Tab opened in front');
       await planShown(threads[0].id, 'with the tab Resume in Tab opened in front');
+      /* The plan just written draws the plan bar over the conversation, which opened at its end. */
+      const drawnBar = await until(() => codex.evaluate(() => {
+        const b = document.querySelector('[data-codex-extras="plan-bar"]');
+        return !!b && b.style.display !== 'none' && b.getClientRects().length > 0;
+      }), 20000, 400);
+      if (drawnBar) await endInView(codex, 'with the plan bar drawn over the conversation just opened');
+      else check(false, 'the plan written for the conversation draws the plan bar in its tab', await endOf(codex));
     });
 
     await step('Codex\'s page', async () => {
@@ -1464,6 +1514,10 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         return !b || getComputedStyle(b).display === 'none';
       }), 5000, 200), 'and closes once the pointer leaves the meter', await hoverState());
 
+      /* The jump from the list above left the conversation short of its end in a short page, as on Windows with
+         Codex's setup banner over the message box. Back at its end, it has to stay there through the toggle below,
+         which takes the plan bar's room away and gives it back. */
+      await railToEnd(codex, true, 'before Codex Plus is toggled off and on');
       /* Toggled off and on with the pointer resting on the meter. The meter is taken out from under the pointer, so the
          page still counts the pointer as on it when the controls come back, and the map arrives after them. */
       await codex.locator('[data-codex-extras="meter"]').first().hover();
@@ -1476,6 +1530,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       });
       const backOn = await until(async () => { const b = await barNow(); return b.meter !== null && /timer/.test(b.pill || '') && b; }, 10000, 300);
       check(!!backOn, 'toggled off and on with the pointer resting on the meter, the meter and the Agent map pill are both back within 10 s', backOn || await barNow());
+      await endInView(codex, 'with Codex Plus toggled off and on');
       await shot('toggled-on-over-meter');
       await page.mouse.move(talk ? talk.x + 30 : 0, talk ? talk.y + 15 : 0, { steps: 6 });
     });
@@ -1534,20 +1589,41 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         'a plan with rows doing, waiting on the user and to do draws the bar: 4 open, the deepest doing row as the current one, and "1 to decide" in red',
         full || await barIn(codex));
       check(placed(full), 'the bar sits just above the message box, 6 px clear of it, and is as wide as it', full);
-      /* What lies under the bar, kept in the results: every Codex element whose box meets the bar, except the
-         message box's ancestors. One a pixel or less across is drawn for screen readers only, as Codex's own
-         visually hidden headings are. */
+      /* What lies under the bar, kept in the results: every Codex element whose drawn part meets the bar, except the
+         message box's ancestors. The drawn part is the element's box cut to the inside of each ancestor that clips
+         what it holds (overflow other than visible). Codex's conversation scroller ends where the message box's room
+         begins, which is where the bar is, and the end of a conversation scrolled past it is not drawn there. Only
+         the ancestors the element is laid out in clip it: a fixed element only those that hold fixed elements (a
+         transform or a filter), an absolute one only from its nearest positioned ancestor up. One a pixel or less
+         across is drawn for screen readers only, as Codex's own visually hidden headings are, and a meeting of less
+         than a pixel is a box placed on a fraction of a pixel against the bar, which is placed on whole pixels. */
       const under = await codex.evaluate(() => {
         const b = document.querySelector('[data-codex-extras="plan-bar"]'), box = document.querySelector('[data-codex-composer-root]');
         if (!b || !box) return null;
         const r = b.getBoundingClientRect(), out = [];
+        const drawn = (e) => {
+          const x = e.getBoundingClientRect();
+          let left = x.left, top = x.top, right = x.right, bottom = x.bottom, how = getComputedStyle(e).position;
+          for (let a = e.parentElement; a && left < right && top < bottom; a = a.parentElement) {
+            const st = getComputedStyle(a), holdsFixed = st.transform !== 'none' || st.filter !== 'none';
+            if ((how === 'fixed' && !holdsFixed) || (how === 'absolute' && st.position === 'static' && !holdsFixed)) continue;
+            how = st.position;
+            const ab = a.getBoundingClientRect(), inLeft = ab.left + a.clientLeft, inTop = ab.top + a.clientTop;
+            if (st.overflowX !== 'visible') { left = Math.max(left, inLeft); right = Math.min(right, inLeft + a.clientWidth); }
+            if (st.overflowY !== 'visible') { top = Math.max(top, inTop); bottom = Math.min(bottom, inTop + a.clientHeight); }
+          }
+          return { left, top, right, bottom };
+        };
+        const meets = (x) => Math.min(x.right, r.right) - Math.max(x.left, r.left) >= 1 && Math.min(x.bottom, r.bottom) - Math.max(x.top, r.top) >= 1;
         for (const e of document.body.querySelectorAll('*')) {
           if (e.closest('[data-codex-extras]') || e.closest('[data-agent-plus-plan-bar-list]') || e.contains(box)) continue;
           const x = e.getBoundingClientRect(), st = getComputedStyle(e);
-          if (!(x.width > 1 && x.height > 1) || st.visibility === 'hidden' || st.display === 'none') continue;
-          if (Math.min(x.right, r.right) - Math.max(x.left, r.left) <= 0 || Math.min(x.bottom, r.bottom) - Math.max(x.top, r.top) <= 0) continue;
+          if (!(x.width > 1 && x.height > 1) || st.visibility === 'hidden' || st.display === 'none' || !meets(x)) continue;
+          const d = drawn(e);
+          if (!meets(d)) continue;
           out.push({ tag: e.tagName.toLowerCase(), attrs: [...e.attributes].map((a) => a.name).filter((n) => n !== 'class' && n !== 'style').slice(0, 6),
-            box: [x.left, x.top, x.width, x.height].map(Math.round), position: st.position, z: st.zIndex, text: !![...e.childNodes].some((n) => n.nodeType === 3 && n.nodeValue.trim()) });
+            box: [x.left, x.top, x.width, x.height].map(Math.round), drawn: [d.left, d.top, d.right - d.left, d.bottom - d.top].map(Math.round),
+            position: st.position, z: st.zIndex, text: !![...e.childNodes].some((n) => n.nodeType === 3 && n.nodeValue.trim()) });
         }
         const up = [];
         for (let n = box; n && n !== document.body && up.length < 12; n = n.parentElement) {
@@ -1586,16 +1662,21 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await exec('workbench.action.closePanel');
       await showList();
 
-      /* No plan, no bar; the setting turns it off and on. */
+      /* No plan, no bar; the setting turns it off and on. Each takes the bar's room away or gives it back, with the
+         conversation at its end. */
+      await railToEnd(codex, true, 'before the plan bar goes and comes back');
       fs.rmSync(path.join(PLANS, `${id}.json`), { force: true });
       check(!!await noBar(codex), 'a conversation whose plan is gone has no bar, and the message box no room for one', await barIn(codex));
+      await endInView(codex, 'with the plan bar gone');
       writeRows(id, ROWS);
       check(!!await barSays(codex, (b) => b.count === '4 open'), 'a plan written again brings the bar back', await barIn(codex));
+      await endInView(codex, 'with the plan bar back');
       await setting('planBar', false);
       check(!!await noBar(codex, 10000), 'codexPlus.planBar turned off takes the bar away', await barIn(codex));
       await setting('planBar', undefined);
       const back = await barSays(codex, (b) => b.count === '4 open', 10000);
       check(placed(back), 'and turned on again it is back, in its place', back || await barIn(codex));
+      await endInView(codex, 'with codexPlus.planBar turned off and on');
       await shot('plan-bar-back');
       planFor(id, planTitle(id));
       await exec('agentPlus.refreshWorkPlan');
@@ -3448,10 +3529,11 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
          that has shown the conversation once draws fewer of its turns when it shows it again, and the checks above must
          not see that. */
       {
-        const { since, asked, writeRows, barIn, barSays, placed, planViewRows } = planBarTools;
-        writeRows(t.id, [{ title: 'Look at the export logs', state: 'doing', since },
+        const { since, asked, writeRows, barIn, barSays, noBar, placed, planViewRows } = planBarTools;
+        const SIDE_ROWS = [{ title: 'Look at the export logs', state: 'doing', since },
           { title: 'Choose what to log', state: 'waiting', waitingOn: 'user', question: 'Log every skipped row, or a count?', asked, since: asked },
-          { title: 'Fix the archive filter', state: 'todo', since }]);
+          { title: 'Fix the archive filter', state: 'todo', since }];
+        writeRows(t.id, SIDE_ROWS);
         const sidePage = await frameWhere((want) => innerWidth < 800 && document.body.innerText.includes(want) && !!document.querySelector('[data-codex-composer-root]'), 30000, t.title);
         if (!sidePage) check(false, 'Codex\'s sidebar still shows the conversation for its plan bar to be checked', await narrowPages());
         else {
@@ -3474,6 +3556,14 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
           }
           check(!!narrow && narrow.compact && narrow.count === '3 open' && narrow.red === '1' && !narrow.row && placed(narrow),
             'in Codex\'s sidebar, narrower than 400 px, the bar is compact: the open count and the number of questions, as wide as the box and just above it', narrow || await barIn(sidePage));
+          /* The compact bar taken away and drawn again with the conversation at its end: its room is the full bar's. */
+          fs.rmSync(path.join(PLANS, `${t.id}.json`), { force: true });
+          if (await noBar(sidePage)) {
+            await railToEnd(sidePage, false, 'in Codex\'s sidebar with its plan gone');
+            writeRows(t.id, SIDE_ROWS);
+            if (await barSays(sidePage, (b) => b.compact && b.count === '3 open', 20000)) await endInView(sidePage, 'in Codex\'s sidebar with the compact bar drawn again');
+            else check(false, 'in Codex\'s sidebar the plan written again draws the compact bar again', await barIn(sidePage));
+          } else check(false, 'in Codex\'s sidebar the plan taken away takes the compact bar away', await barIn(sidePage));
           await shot('plan-bar-sidebar');
           await tabNamed(title).click();
           await until(async () => (await frontPage()) === codex, 10000, 300);
