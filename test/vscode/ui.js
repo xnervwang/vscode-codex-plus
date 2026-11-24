@@ -979,6 +979,13 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         await list.evaluate(() => { window.__landed = []; });
         await row(t).click({ button: 'right' });
         await until(() => list.evaluate(() => !!document.querySelector('.cp-ctx')), 5000, 100);
+        /* A row low in a short window has its menu opened above the pointer, which can then rest on an item with a
+           submenu; that submenu opens at once, over the items beside it. Esc closes the submenu alone. */
+        if (await until(() => list.evaluate(() => !!document.querySelector('.cp-ctx-sub')), 500, 100)) {
+          await page.keyboard.press('Escape');
+          const shut = await until(() => list.evaluate(() => !document.querySelector('.cp-ctx-sub')), 2000, 100);
+          note(`a row's menu opened with the pointer on an item with a submenu, which opened over the others; Esc ${shut ? 'closed it' : 'left it open'} before "${labels[0]}" was clicked`);
+        }
         const main = list.locator('.cp-ctx:not(.cp-ctx-sub) .cp-ctx-item').filter({ hasText: labels[0] }).first();
         const lostFocus = () => list.evaluate(() => window.__landed.includes('the page lost the focus'));
         try {
