@@ -551,9 +551,11 @@
   /* The controls first: going to their own line inside the message box, or leaving it, changes the box's height, which
      the row below the box and the plan bar above it are placed by. */
   function placeBar() {
-    placeControls();
-    placeStrip();
-    placePlanBar();
+    keepEnd(function () {
+      placeControls();
+      placeStrip();
+      placePlanBar();
+    });
   }
   function placeControls() {
     var on = view.buttons !== false;
@@ -653,7 +655,7 @@
     if (planBox !== root && typeof ResizeObserver === 'function') {
       if (planSizer) { try { planSizer.disconnect(); } catch (e) { /* gone */ } }
       planBox = root;
-      try { planSizer = new ResizeObserver(function () { placePlanBar(); }); planSizer.observe(root); } catch (e) { planSizer = null; }
+      try { planSizer = new ResizeObserver(function () { keepEnd(placePlanBar); }); planSizer.observe(root); } catch (e) { planSizer = null; }
     }
   }
 
@@ -2205,6 +2207,65 @@
       - (parseFloat(cs.borderLeftWidth) || 0) - (parseFloat(cs.borderRightWidth) || 0)));
   }
 
+  /*
+   * A conversation at its end stays at its end through this script's own changes to the page. The plan bar's room and
+   * the row's below the message box make Codex's scroller shorter, and the stamps and the rail's padding make the turns
+   * taller. Codex scrolls back to the end after such a change only while it is following the end: it stops following
+   * at the user's scroll up, and starts again at a scroll of the user's own back down or a click on its own arrow.
+   * Brought back to the end by this script's rail after a scroll up, the conversation is not followed: the room the
+   * plan bar takes leaves its end under the message box, and when the turns grow, Codex, which measures them on its
+   * next frame, keeps the passage at the top of the view where it was and moves the end down by what they grew.
+   *
+   * So each pass reads how far the scroller is from its end before it changes anything. If that was within END_PX,
+   * the distance within which Codex itself counts a conversation as at its end, the scroller is brought back to that
+   * distance after the pass, and held there on each frame for END_HOLD_MS, which outlasts Codex's measuring. A wheel,
+   * touch, key or press anywhere in the page means the user is doing something and ends the hold, and so does the end
+   * moving away by more than the view is tall, which is Codex showing another part of the conversation or another
+   * conversation. A conversation further up is left where it is. Passes run inside one another, and only the
+   * outermost one measures.
+   */
+  var END_PX = 24, END_HOLD_MS = 500, END_INPUT = ['wheel', 'touchstart', 'pointerdown', 'keydown'];
+  var endDepth = 0, endBefore = -1, endHold = null;
+  function fromEnd(sc) {
+    return sc && sc.clientHeight > 0 ? Math.max(0, (sc.scrollHeight || 0) - sc.clientHeight - (sc.scrollTop || 0)) : -1;
+  }
+  function backToEnd(sc, want) {
+    var d = fromEnd(sc);
+    if (d > want + 0.5) { try { sc.scrollTop = (sc.scrollTop || 0) + d - want; } catch (e) { /* gone */ } }
+  }
+  function keepEnd(pass) {
+    if (endDepth++ === 0) endBefore = fromEnd(scrollerEl());
+    try { return pass(); } finally {
+      if (--endDepth === 0 && endBefore >= 0 && endBefore <= END_PX) {
+        var sc = scrollerEl();
+        if (sc) { backToEnd(sc, endBefore); holdEnd(sc, endBefore); }
+      }
+    }
+  }
+  var nextFrame = function (fn) { return typeof requestAnimationFrame === 'function' ? requestAnimationFrame(fn) : setTimeout(fn, 16); };
+  function holdEnd(sc, want) {
+    if (endHold && endHold.sc === sc) { endHold.until = Date.now() + END_HOLD_MS; endHold.want = Math.min(endHold.want, want); return; }
+    if (endHold) endHold.stop();
+    var h = { sc: sc, want: want, until: Date.now() + END_HOLD_MS, frame: 0 };
+    var opts = { capture: true, passive: true };
+    h.stop = function () {
+      if (h.frame) { try { if (typeof cancelAnimationFrame === 'function') cancelAnimationFrame(h.frame); else clearTimeout(h.frame); } catch (e) { /* gone */ } }
+      h.frame = 0;
+      if (endHold === h) endHold = null;
+      for (var i = 0; i < END_INPUT.length; i++) { try { document.removeEventListener(END_INPUT[i], h.stop, opts); } catch (e) { /* none */ } }
+    };
+    var tick = function () {
+      h.frame = 0;
+      if (endHold !== h) return;
+      if (sc.isConnected === false || Date.now() > h.until || fromEnd(sc) - h.want > sc.clientHeight) { h.stop(); return; }
+      backToEnd(sc, h.want);
+      h.frame = nextFrame(tick);
+    };
+    endHold = h;
+    for (var i = 0; i < END_INPUT.length; i++) { try { document.addEventListener(END_INPUT[i], h.stop, opts); } catch (e) { /* none */ } }
+    h.frame = nextFrame(tick);
+  }
+
   var sheet = null, sheetText = '';
   var OWN_TIME_CLASS = 'codex-extras-own-time';
   function dropSheet() {
@@ -2934,21 +2995,22 @@
   function refresh() {
     if (refreshing || !document.body) return;
     refreshing = true;
-    try {
-      fixImages();
-      foldHooks();
-      var list = entries();
-      noteMisses(list);
-      if (!list) { dropNav(); return; }
-      noteShownTurn(list);
-      var users = stampAll(list);
-      colourAll(users);
-      try { linkAll(list); } catch (e) { /* the links wait for the next pass */ }
-      if (view.navigation) buildNav(users); else dropNav();
-      if (anythingOn() || view.buttons !== false) restyle(); else dropSheet();
-      placeBar();
-    } catch (e) { /* this is Codex's page: a fault here leaves everything of its own as it was */ }
+    try { keepEnd(refreshPass); } catch (e) { /* this is Codex's page: a fault here leaves everything of its own as it was */ }
     finally { refreshing = false; }
+  }
+  function refreshPass() {
+    fixImages();
+    foldHooks();
+    var list = entries();
+    noteMisses(list);
+    if (!list) { dropNav(); return; }
+    noteShownTurn(list);
+    var users = stampAll(list);
+    colourAll(users);
+    try { linkAll(list); } catch (e) { /* the links wait for the next pass */ }
+    if (view.navigation) buildNav(users); else dropNav();
+    if (anythingOn() || view.buttons !== false) restyle(); else dropSheet();
+    placeBar();
   }
 
   /*
