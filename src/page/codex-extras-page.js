@@ -128,8 +128,11 @@
    * after Codex's permissions button, and a context meter just left of the model picker, where Codex draws its own
    * meter. The toolbar row is a grid whose left column is as wide as its content and whose right group is pushed to the
    * right edge, so adding to either group leaves Codex's buttons where they are, as long as the gap between the groups
-   * is wide enough (rowFits). When it does not, all three go to a row of this script's own on <body>,
-   * just below the box's frame, placed by measuring the box; that row takes no pointer events, only its buttons do.
+   * is wide enough (rowFits). When it does not, they go to a line of this script's own inside the box, below Codex's
+   * row (toLine), as Claude Code's footer wraps its buttons onto another line, the two buttons still on the left and
+   * the meter on the right. Only a box with no footer grid to hold that line gets a row of this script's own on <body>
+   * instead, just below the box's frame, placed by measuring the box. Neither line takes pointer events, only its
+   * buttons do.
    * Codex's redraws can drop or move what was added, and each pass of either observer puts it back. With the main
    * switch off, or with no box recognised, nothing is drawn.
    *
@@ -142,7 +145,7 @@
   function pageFont(px, weight) {
     return 'font-style:normal;font-weight:' + (weight || 'normal') + ';font-size:' + px + 'px;line-height:normal;font-family:inherit;';
   }
-  var bar = null, tools = null, infoBtn = null, muteBtn = null, meterBtn = null, infoBox = null, infoAsk = '', barWired = false;
+  var bar = null, line = null, lineEnd = null, tools = null, infoBtn = null, muteBtn = null, meterBtn = null, infoBox = null, infoAsk = '', barWired = false;
   var usage = null;
   /*
    * The two glyphs Claude Code Plus uses, ℹ and ♪, drawn rather than taken from a font: a font's information sign and
@@ -247,6 +250,16 @@
     if (!a || !b || !(a.height > 0) || !(b.height > 0) || (a.top || 0) >= bottomOf(b) || (b.top || 0) >= bottomOf(a)) return null;
     return { left: slotL.parentElement, slotL: slotL, right: slotR.parentElement, slotR: slotR };
   }
+  /* The grid Codex lays out the message box's input and toolbar row in, the nearest ancestor of its permissions (or
+     add-context) button whose display is grid, inside the box; null when there is none. */
+  function footerGrid(root) {
+    var anchor = one(root, PERMS_SEL) || one(root, ADD_SEL);
+    for (var n = anchor ? anchor.parentElement : null, i = 0; n && n !== root && i < 8; n = n.parentElement, i++) {
+      var s = styleOf(n);
+      if (s && String(s.display || '') === 'grid') return n;
+    }
+    return null;
+  }
   /* How far an element reaches, its children's reach when it has no box of its own (display: contents). */
   function reach(el) {
     var r = rectOf(el);
@@ -314,8 +327,9 @@
     if (agentsBtn && !(agentsBtn.parentElement === s.right && agentsBtn.nextElementSibling === s.slotR)) s.right.insertBefore(agentsBtn, s.slotR);
     var next = agentsBtn || s.slotR;
     if (meterBtn && !(meterBtn.parentElement === s.right && meterBtn.nextElementSibling === next)) s.right.insertBefore(meterBtn, next);
+    if (line) { line = gone(line); lineEnd = null; }
   }
-  function rowFits(s, at) {
+  function rowFits(s, at, grid) {
     var sig = (infoBtn ? 'i' : '') + (muteBtn ? 'm' : '') + (meterBtn ? 'c' : '') + (codexMeterHidden ? 'h' : '')
       + (agentsBtn ? 'a' + agentsBtn.textContent.length : '');
     if (sig !== rowSig) { rowSig = sig; rowNeed = -1; }
@@ -329,7 +343,7 @@
       intoRow(s);
       var left = rowRoom(s), roomy = left >= ROW_KEEP && !squeezed(s) && pickerNamed(s.slotR), cut = cutOff(s.slotR);
       if (roomy && cut <= rowCut + 1) { rowCut = Math.min(rowCut, cut); return true; }
-      toBar(at);
+      outOfRow(at, grid);
       /* Codex hides that much of a long name without these controls too, so it is not theirs to make room for. */
       if (roomy && cutOff(s.slotR) + 1 >= cut) { intoRow(s); rowCut = cut; return true; }
       var out = rowRoom(s);
@@ -342,7 +356,7 @@
     var after = rowRoom(s), now = rectOf(s.slotR), cutNow = cutOff(s.slotR);
     var moved = !!(was && now && Math.abs((now.left || 0) - wasLeft) > 0.5) || cutNow > wasCut + 1;
     if (after >= ROW_KEEP && !moved && !squeezed(s)) { rowNeed = Math.max(0, free - after); rowCut = cutNow; return true; }
-    toBar(at);
+    outOfRow(at, grid);
     rowNeed = Math.max(0, free - after, free - ROW_KEEP + 1);
     return false;
   }
@@ -376,6 +390,7 @@
     hideLabel();
     ctxHideNow();
     bar = gone(bar); tools = gone(tools); meterBtn = gone(meterBtn); infoBox = gone(infoBox); ctxBox = gone(ctxBox); agentsBtn = gone(agentsBtn);
+    line = gone(line); lineEnd = null;
     infoBtn = muteBtn = null;
     rowMode = '';
   }
@@ -391,10 +406,10 @@
     return b;
   }
   /*
-   * In Codex's toolbar row each control copies the classes of a Codex button, read
-   * from the page rather than hard-coded, so it gets that button's size, colour and hover in any build: the add-context
-   * button's for the two icons, the permissions pill's for the meter. In the row below the box they are as small as
-   * that row, with no background.
+   * In Codex's toolbar row, and in the line of this script's own inside the box, each control copies the classes of a
+   * Codex button, read from the page rather than hard-coded, so it gets that button's size, colour and hover in any
+   * build: the add-context button's for the two icons, the permissions pill's for the meter. In the row below the box
+   * they are as small as that row, with no background.
    */
   var BAR_BUTTON_CSS = 'pointer-events:auto;cursor:pointer;user-select:none;padding:0 4px;border-radius:3px;border:0;margin:0;'
     + 'background:none;color:inherit;font:inherit;display:flex;align-items:center;';
@@ -410,33 +425,66 @@
     el.style.height = height || '';
   }
   function dress(mode) {
-    var root = composerRoot(), size = mode === 'row' ? ICON_PX : iconPx(root);
-    var iconCls = mode === 'row' && root ? String((one(root, ADD_SEL) || { getAttribute: function () { return ''; } }).getAttribute('class') || '') : '';
-    var pillCls = mode === 'row' && root ? String((one(root, PERMS_SEL) || { getAttribute: function () { return ''; } }).getAttribute('class') || '') : '';
+    var inBox = mode !== 'bar';
+    var root = composerRoot(), size = inBox ? ICON_PX : iconPx(root);
+    var iconCls = inBox && root ? String((one(root, ADD_SEL) || { getAttribute: function () { return ''; } }).getAttribute('class') || '') : '';
+    var pillCls = inBox && root ? String((one(root, PERMS_SEL) || { getAttribute: function () { return ''; } }).getAttribute('class') || '') : '';
     var key = mode + size + iconCls.length + ':' + pillCls.length;
     [infoBtn, muteBtn].forEach(function (b) {
       if (!b) return;
-      if (mode === 'row') dressOne(b, iconCls, iconCls ? ROW_BUTTON_CSS : ROW_FALLBACK_CSS + 'padding:0;', key, iconCls ? '' : '28px');
+      if (inBox) dressOne(b, iconCls, iconCls ? ROW_BUTTON_CSS : ROW_FALLBACK_CSS + 'padding:0;', key, iconCls ? '' : '28px');
       else dressOne(b, '', BAR_BUTTON_CSS, key, size + 'px');
       var svg = one(b, 'svg'), px = String(size);
       if (svg && svg.getAttribute('width') !== px) { svg.setAttribute('width', px); svg.setAttribute('height', px); }
     });
-    if (tools) dressOne(tools, '', mode === 'row' ? 'display:flex;align-items:center;gap:5px;flex-shrink:0;pointer-events:none;'
+    if (tools) dressOne(tools, '', inBox ? 'display:flex;align-items:center;gap:5px;flex-shrink:0;pointer-events:none;'
       : 'display:flex;gap:2px;pointer-events:none;', key);
     if (meterBtn) {
-      if (mode === 'row') dressOne(meterBtn, pillCls, pillCls ? ROW_BUTTON_CSS : ROW_FALLBACK_CSS, key, pillCls ? '' : '28px');
+      if (inBox) dressOne(meterBtn, pillCls, pillCls ? ROW_BUTTON_CSS : ROW_FALLBACK_CSS, key, pillCls ? '' : '28px');
       else dressOne(meterBtn, '', BAR_BUTTON_CSS + 'gap:3px;' + pageFont(11), key, size + 'px');
     }
-    /* Claude Code's own pill rather than a Codex button's classes: 18 px tall in the row, as tall as the row below. */
-    if (agentsBtn) dressOne(agentsBtn, '', AGENTS_CSS + (mode === 'row' ? 'margin-right:6px;' : 'margin-left:4px;font-size:11px;'), key,
-      (mode === 'row' ? 18 : size) + 'px');
+    /* Claude Code's own pill rather than a Codex button's classes: 18 px tall in the box, as tall as the row below. In
+       Codex's row it keeps a gap before the model picker; in the line the line's own gap does that. */
+    if (agentsBtn) dressOne(agentsBtn, '', AGENTS_CSS + (mode === 'row' ? 'margin-right:6px;' : inBox ? '' : 'margin-left:4px;font-size:11px;'), key,
+      (inBox ? 18 : size) + 'px');
   }
   var AGENTS_CSS = 'pointer-events:auto;flex-shrink:0;cursor:pointer;user-select:none;display:inline-flex;align-items:center;gap:4px;padding:0 8px;'
     + 'border:0;border-radius:9999px;margin:0;font:inherit;font-size:.85em;line-height:1;white-space:nowrap;color:var(--vscode-foreground,#ccc);'
     + 'background:color-mix(in srgb,var(--vscode-foreground,#ccc) 10%,transparent);';
+  /*
+   * Everything into a line of this script's own inside the message box: the last row of Codex's footer grid, spanning
+   * every column, the two buttons at its start and the meter with the Agent map pill at its end. It wraps within the
+   * box's width rather than widening Codex's columns, and moves with the box as Codex lays it out. A redraw of Codex's
+   * that takes it out is undone on the next pass, as for the controls in Codex's row.
+   */
+  var LINE_CSS = 'grid-column:1/-1;min-width:0;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;'
+    + 'gap:4px 8px;pointer-events:none;';
+  function toLine(grid) {
+    dress('line');
+    if (!line) {
+      line = document.createElement('div');
+      line.setAttribute(MARK, 'line');
+      line.style.cssText = LINE_CSS;
+      lineEnd = document.createElement('div');
+      lineEnd.setAttribute(MARK, 'line-end');
+      lineEnd.style.cssText = 'display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:4px;min-width:0;margin-left:auto;pointer-events:none;';
+      line.appendChild(lineEnd);
+    }
+    if (line.parentElement !== grid || line.nextElementSibling) grid.appendChild(line);
+    if (lineEnd.parentElement !== line) line.appendChild(lineEnd);
+    if (tools && !(tools.parentElement === line && tools.nextElementSibling === lineEnd)) line.insertBefore(tools, lineEnd);
+    if (meterBtn && !(meterBtn.parentElement === lineEnd && !meterBtn.previousElementSibling)) lineEnd.insertBefore(meterBtn, lineEnd.firstChild);
+    if (agentsBtn && !(agentsBtn.parentElement === lineEnd && agentsBtn.previousElementSibling === meterBtn)) {
+      lineEnd.insertBefore(agentsBtn, meterBtn && meterBtn.parentElement === lineEnd ? meterBtn.nextSibling : lineEnd.firstChild);
+    }
+    bar = gone(bar);
+  }
+  /* Out of Codex's row: into the line inside the box when there is a footer grid to hold it, below the box otherwise. */
+  function outOfRow(at, grid) { if (grid) toLine(grid); else toBar(at); }
   /* Everything into the row below the box. */
   function toBar(at) {
     dress('bar');
+    if (line) { line = gone(line); lineEnd = null; }
     if (!bar || !bar.isConnected) {
       bar = gone(bar);
       bar = document.createElement('div');
@@ -516,9 +564,9 @@
     build(wantInfo, wantMute, wantMeter, wantAgents);
     drawPill();
     hideCodexMeter(!!meterBtn);
-    var s = rowSlots(root);
+    var s = rowSlots(root), grid = footerGrid(root);
     watchPicker(s && s.slotR);
-    if (s && rowFits(s, at)) { rowMode = 'row'; bar = gone(bar); } else { rowMode = 'bar'; toBar(at); }
+    if (s && rowFits(s, at, grid)) { rowMode = 'row'; bar = gone(bar); } else { rowMode = grid ? 'line' : 'bar'; outOfRow(at, grid); }
     if (!barWired) {
       barWired = true;
       try { globalThis.addEventListener('resize', function () { placeBar(); }); } catch (e) { /* no window events */ }
@@ -534,12 +582,12 @@
       var slash = one(muteBtn, '[data-codex-extras-mute]');
       if (slash) { var vis = muted ? 'visible' : 'hidden'; if (slash.getAttribute('visibility') !== vis) slash.setAttribute('visibility', vis); }
       if (muteBtn.getAttribute(MARK + '-muted') !== (muted ? 'true' : 'false')) muteBtn.setAttribute(MARK + '-muted', muted ? 'true' : 'false');
-      var dim = muted ? '0.4' : rowMode === 'row' ? '' : '0.75';
+      var dim = muted ? '0.4' : rowMode === 'bar' ? '0.75' : '';
       if (muteBtn.style.opacity !== dim) muteBtn.style.opacity = dim;
       labelled(muteBtn, muted ? 'Chimes are muted - click to hear a chime when a turn finishes'
         : 'A chime when a turn finishes, and when Codex is waiting for you - click to mute');
     }
-    if (infoBtn && rowMode !== 'row' && infoBtn.style.opacity !== '0.75') infoBtn.style.opacity = '0.75';
+    if (infoBtn && rowMode === 'bar' && infoBtn.style.opacity !== '0.75') infoBtn.style.opacity = '0.75';
     drawMeter();
     markLowContext();
     restyleIfOn();
@@ -3000,7 +3048,7 @@
         turnsKeyed: lastPass.turnsKeyed, matched: lastPass.turnsMatched, drawn: lastPass.figuresDrawn },
       /* The two buttons below the message box, and the box they are placed by. */
       buttons: { setting: view.buttons !== false, composerFound: !!composerRoot(), withheld: boxWithheld(),
-        drawn: !!((tools && tools.isConnected) || (meterBtn && meterBtn.isConnected)), inToolbar: rowMode === 'row',
+        drawn: !!((tools && tools.isConnected) || (meterBtn && meterBtn.isConnected)), inToolbar: rowMode === 'row', inBoxLine: rowMode === 'line',
         info: !!(infoBtn && infoBtn.isConnected), chime: !!(muteBtn && muteBtn.isConnected) },
       /* Codex's own context meter, and whether this script outlined it. The percentage is the number Codex shows. */
       context: { meterFound: meter.found, percentUsed: meter.percent, outlined: meter.low,

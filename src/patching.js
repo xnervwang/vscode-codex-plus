@@ -688,7 +688,7 @@ function selfCheckLines(answer) {
   const bt = r.buttons || {};
   lines.push(`  Message box controls: ${bt.setting === false ? 'turned off'
     : !bt.composerFound ? (bt.withheld ? 'none, as Codex shows this conversation read-only, with no message box' : 'no message box found') : !bt.drawn ? 'none drawn'
-    : `${bt.inToolbar ? 'in Codex\'s toolbar row' : 'in the row below the message box'}; information button ${yesNo(bt.info)}, chime button ${yesNo(bt.chime)}`}`);
+    : `${bt.inToolbar ? 'in Codex\'s toolbar row' : bt.inBoxLine ? 'in a line of their own inside the message box' : 'in the row below the message box'}; information button ${yesNo(bt.info)}, chime button ${yesNo(bt.chime)}`}`);
   const cx = r.context || {};
   lines.push(`  Codex's context meter: ${cx.meterFound ? `found, ${cx.percentUsed}% used${cx.codexMeterHidden ? ', hidden while this extension\'s is drawn' : ''}`
     : 'not found (Codex shows it only with its own setting on)'}; this extension's: ${cx.ours ? `drawn, ${cx.oursPercent}% used` : 'not drawn'}`

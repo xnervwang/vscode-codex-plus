@@ -43,7 +43,9 @@
  *   a question   Codex's asynchronous question answered while its turn still runs, on its card or by a message typed
  *                into the message box: once the turn has ended there is no red dot on the tab, the list row or Agent
  *                Plus's panel, and no count. A question left unanswered gets the red dot in all three places, and the count
- *   the sidebar  a conversation resumed in Codex's sidebar: each reply's stamp inside its column
+ *   the sidebar  a conversation resumed in Codex's sidebar: each reply's stamp inside its column, and, with the sidebar
+ *                too narrow for them in Codex's toolbar row, this extension's controls in a line of their own inside the
+ *                message box
  *   archived     the conversation in the tab archived while open: the tab keeps its turns, read-only, and opening it
  *                from the list unarchives it and gives the tab its message box back
  *   a New tab    a first message typed into a tab the tab bar button opened: the tab is titled by the conversation, and
@@ -3250,6 +3252,61 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       const sideNow = await frameWhere(() => innerWidth < 800 && !!document.querySelector('[data-codex-composer-root]'), 10000);
       check(!!read, 'opening Codex\'s sidebar on it again takes the envelope away', { row: await unseen(), sidebar: await auxiliaryShowsCodex(),
         sidebarPage: await pageSays(sideNow), patch: await call(`${OWN} const p = own('patching'); return { showing: p.sidebarShowing(), last: p.sidebarThread() };`).catch((e) => String(e)) });
+      /* This extension's controls by the message box, in Codex's sidebar narrowed until Codex's toolbar row has no room for
+         them: they stay inside the box, in a line of their own below Codex's row, as Claude Code's footer wraps its buttons
+         onto another line, and with the sidebar wide enough they go back into that row. Either way each is inside Codex's
+         footer grid, which the box's border encloses, and covers none of Codex's buttons. */
+      {
+        const box = await frameWhere((want) => innerWidth < 800 && document.body.innerText.includes(want) && !!document.querySelector('[data-codex-composer-root]'), 30000, t.title);
+        const auxWidth = () => page.evaluate(() => { const b = document.getElementById('workbench.parts.auxiliarybar'); return b ? Math.round(b.getBoundingClientRect().width) : 0; });
+        const auxTo = async (to) => {
+          const edge = await page.evaluate(() => {
+            const b = document.getElementById('workbench.parts.auxiliarybar').getBoundingClientRect();
+            const e = [...document.querySelectorAll('.monaco-sash.vertical')].map((x) => x.getBoundingClientRect()).find((r) => r.height > 100 && Math.abs((r.left + r.right) / 2 - b.left) < 4);
+            return e && { x: (e.left + e.right) / 2, y: b.top + b.height / 2, width: b.width };
+          });
+          if (!edge) return;
+          await page.mouse.move(edge.x, edge.y);
+          await page.mouse.down();
+          await page.mouse.move(edge.x + (edge.width - to), edge.y, { steps: 10 });
+          await page.mouse.up();
+          await sleep(1000);
+        };
+        const placed = () => box.evaluate(() => {
+          const root = document.querySelector('[data-codex-composer-root]');
+          if (!root) return null;
+          const rect = (e) => { const r = e.getBoundingClientRect(); return { l: r.left, t: r.top, r: r.right, b: r.bottom }; };
+          const anchor = root.querySelector('[data-composer-navigation-target="permissions"]') || root.querySelector('[data-composer-navigation-target="add-context"]');
+          let grid = null;
+          for (let n = anchor && anchor.parentElement; n && n !== root && !grid; n = n.parentElement) if (getComputedStyle(n).display === 'grid') grid = n;
+          const ours = [...document.querySelectorAll('[data-codex-extras="bar-button"], [data-codex-extras="meter"], [data-codex-extras="agents"]')]
+            .filter((e) => e.getClientRects().length && e.getBoundingClientRect().width > 0);
+          const theirs = [...root.querySelectorAll('button')].filter((b) => !b.closest('[data-codex-extras]') && b.getBoundingClientRect().width > 0);
+          const g = grid && rect(grid);
+          const inside = (x) => !!g && x.l >= g.l - 0.5 && x.r <= g.r + 0.5 && x.t >= g.t - 0.5 && x.b <= g.b + 0.5;
+          const meets = (x, y) => x.l < y.r - 0.5 && y.l < x.r - 0.5 && x.t < y.b - 0.5 && y.t < x.b - 0.5;
+          return { page: innerWidth, grid: !!grid,
+            place: document.querySelector('[data-codex-extras="bar"]') ? 'below the box' : document.querySelector('[data-codex-extras="line"]') ? 'line'
+              : ours.length && ours.every((e) => grid && grid.contains(e)) ? 'row' : 'none',
+            controls: ours.map((e) => ({ what: e.getAttribute('data-codex-extras'), inside: inside(rect(e)),
+              covers: theirs.filter((b) => meets(rect(e), rect(b))).map((b) => b.getAttribute('aria-label') || b.textContent.trim().slice(0, 20)) })) };
+        }).catch((e) => ({ error: String(e) }));
+        const fine = (x) => !!x && x.grid && x.controls.length >= 2 && x.controls.every((c) => c.inside && !c.covers.length);
+        if (!box) check(false, 'Codex\'s sidebar still shows the conversation for its message box to be checked', await narrowPages());
+        else {
+          const was = await auxWidth();
+          await auxTo(300);
+          const tight = await until(async () => { const x = await placed(); return x && x.place === 'line' && fine(x) && x; }, 15000, 500) || await placed();
+          check(!!tight && tight.place === 'line' && fine(tight), 'in Codex\'s sidebar dragged to 300 px, whose toolbar row has no room for this extension\'s controls, '
+            + 'they are in a line of their own inside the message box, each inside the box and covering none of Codex\'s buttons, and none is below the box', tight);
+          await shot('sidebar-narrow-box');
+          await auxTo(460);
+          const roomy = await until(async () => { const x = await placed(); return x && x.place === 'row' && fine(x) && x; }, 15000, 500) || await placed();
+          check(!!roomy && (roomy.place === 'row' || roomy.place === 'line') && fine(roomy), 'with the sidebar widened again, they are inside the box too, covering none of Codex\'s buttons', roomy);
+          if (roomy && roomy.place === 'line') note(`at a ${roomy.page} px sidebar Codex's toolbar row still had no room for this extension's controls on ${process.platform}, so they stayed in their own line`);
+          if (was) await auxTo(was);
+        }
+      }
       /* The plan bar in Codex's sidebar, which is narrow: compact, and a click on it shows the sidebar's conversation's plan
          in the Work plan view though the tab in front shows another. Last in this step, so that the checks above see the
          sidebar as they would with no plan bar step before them: a sidebar page that has shown the conversation once draws

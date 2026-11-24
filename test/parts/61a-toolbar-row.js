@@ -49,7 +49,7 @@ function toolbar(dom, { rightAt = 799, meter = false, squeeze = false, build = '
   /* The right group wider than the box that holds it: how a row out of room looks while the gap between the groups
      still measures wide enough. */
   if (squeeze) { right.parentElement.clientWidth = 200; right.parentElement.scrollWidth = 260; }
-  return { root, add, perm, left, right, modelSlot, trigger, ide, send, editor, codexMeter };
+  return { root, grid, add, perm, left, right, modelSlot, trigger, ide, send, editor, codexMeter };
 }
 
 function page(root, build) {
@@ -78,7 +78,8 @@ module.exports = async ({ eq, root }) => {
     eq([!!tools, tools && tools.parentNode === p.box.left, tools && tools.previousElementSibling === p.box.perm, buttons.length,
       buttons.every((b) => tools && tools.contains(b))], [true, true, true, 2, true],
     'the information and chime buttons go into Codex\'s toolbar row, straight after its permissions button');
-    eq(p.q('[data-codex-extras="bar"]').length, 0, 'and with them there, no row of this script\'s own is drawn below the message box');
+    eq(p.q('[data-codex-extras="bar"]').length + p.q('[data-codex-extras="line"]').length, 0,
+      'and with them there, no line of this script\'s own is drawn in the message box or below it');
     eq([buttons.map((b) => b.tagName), buttons.map((b) => b.getAttribute('type')), buttons.map((b) => b.getAttribute('tabindex')),
       buttons.map((b) => b.className === ICON_CLASS)],
     [['BUTTON', 'BUTTON'], ['button', 'button'], ['-1', '-1'], [true, true]],
@@ -116,7 +117,7 @@ module.exports = async ({ eq, root }) => {
     p.view({ infoButton: false, chimeButton: false, contextMeter: false });
     eq(p.q('[data-codex-extras="tools"]').length + p.q('[data-codex-extras="bar-button"]').length, 0, 'both off, neither is drawn');
     p.view({ buttons: false });
-    eq(p.q('[data-codex-extras="tools"]').length + p.q('[data-codex-extras="bar"]').length, 0, 'and the main switch off draws neither');
+    eq(p.q('[data-codex-extras="tools"]').length + p.q('[data-codex-extras="bar"]').length + p.q('[data-codex-extras="line"]').length, 0, 'and the main switch off draws neither');
   }
   {
     const p = page(root, (dom) => toolbar(dom, { build: '26.1021' }));
@@ -126,24 +127,40 @@ module.exports = async ({ eq, root }) => {
       'with the model picker as 26.1021 marks it, the buttons go into the toolbar row the same way');
   }
   {
-    /* The room between the groups is less than the buttons need: they go below the message box instead, as before. */
+    /* The room between the groups is less than the buttons need: they go to a line of their own inside the message box,
+       below Codex's row, as Claude Code's footer wraps its buttons, rather than outside the box. */
     const p = page(root, (dom) => toolbar(dom, { rightAt: 172 }));
     p.view();
-    const bar = p.q('[data-codex-extras="bar"]')[0];
-    eq([p.q('[data-codex-extras="tools"]').filter((t) => t.parentNode === p.box.left).length, !!bar, bar && bar.parentNode === p.dom.document.body,
-      bar && p.q('[data-codex-extras="bar-button"]').every((b) => bar.contains(b))], [0, true, true, true],
-    'where the toolbar has no room for them they are not squeezed in: they sit in the row below the message box');
-    eq([/pointer-events:none/.test(bar.style.cssText), p.q('[data-codex-extras="bar-button"]').every((b) => /pointer-events:auto/.test(b.style.cssText))],
-      [true, true], 'and that row takes no clicks, only its buttons do');
+    const line = p.q('[data-codex-extras="line"]')[0];
+    eq([p.q('[data-codex-extras="tools"]').filter((t) => t.parentNode === p.box.left).length, !!line, line && line.parentNode === p.box.grid,
+      line && p.box.grid.children.slice(-1)[0] === line, line && p.q('[data-codex-extras="bar-button"]').every((b) => line.contains(b)),
+      p.q('[data-codex-extras="bar"]').length], [0, true, true, true, true, 0],
+    'where the toolbar has no room for them they are not squeezed in: they go to a line of their own inside the message box, the last row of Codex\'s footer grid, and none is drawn below the box');
+    eq([/grid-column:1\/-1/.test(line.style.cssText), /flex-wrap:wrap/.test(line.style.cssText), /min-width:0/.test(line.style.cssText)], [true, true, true],
+      'that line spans the grid\'s columns and wraps inside the box\'s width rather than widening Codex\'s columns');
+    eq([/pointer-events:none/.test(line.style.cssText), p.q('[data-codex-extras="bar-button"]').every((b) => /pointer-events:auto/.test(b.style.cssText))],
+      [true, true], 'and it takes no clicks, only its buttons do');
+    eq(p.q('[data-codex-extras="bar-button"]').map((b) => b.className === ICON_CLASS), [true, true],
+      'there they keep the classes of Codex\'s add-context button, as in Codex\'s row');
+    eq(!!p.q('style').find((x) => /margin-bottom:4px/.test(x.textContent || '')), false, 'and the box is given no room below it, since nothing is drawn there');
+    /* Codex redrawing its grid drops the line; the next pass puts it back as the grid's last row. */
+    line.remove();
+    p.pass();
+    const again = p.q('[data-codex-extras="line"]')[0];
+    eq([!!again, again && p.box.grid.children.slice(-1)[0] === again, p.q('[data-codex-extras="bar-button"]').every((b) => again && again.contains(b))], [true, true, true],
+      'a line Codex\'s redraw took out is put back as the last row of its grid, with the buttons in it');
+    const quiet = p.dom.takeMutations().length;
+    p.pass();
+    eq(p.dom.takeMutations().length - quiet <= 0, true, 'and a pass that finds it in place changes nothing in Codex\'s tree');
   }
   {
     /* The gap measures wide enough, but with the buttons added Codex's right group overflows the box that holds it and
        its buttons end up over the send button, so this also counts as no room. */
     const p = page(root, (dom) => toolbar(dom, { squeeze: true }));
     p.view();
-    const bar = p.q('[data-codex-extras="bar"]')[0];
-    eq([!!bar, p.q('[data-codex-extras="tools"]').filter((t) => t.parentNode === p.box.left).length], [true, 0],
-      'a right group pushed past the box that holds it counts as no room, and the buttons go below the message box');
+    const line = p.q('[data-codex-extras="line"]')[0];
+    eq([!!line && line.parentNode === p.box.grid, p.q('[data-codex-extras="tools"]').filter((t) => t.parentNode === p.box.left).length], [true, 0],
+      'a right group pushed past the box that holds it counts as no room, and the buttons go to their own line in the message box');
     p.dom.takeMutations();
     p.pass(); p.pass();
     eq(p.dom.takeMutations().filter((m) => !(m.target.closest && m.target.closest('[data-codex-extras]'))).length, 0,
@@ -164,6 +181,8 @@ module.exports = async ({ eq, root }) => {
     return box;
   };
   const inLeft = (p) => p.q('[data-codex-extras="tools"]').filter((t) => t.parentNode === p.box.left).length;
+  /* Whether the buttons are out of Codex's row, in their own line inside the box. */
+  const outside = (p) => { const l = p.q('[data-codex-extras="line"]')[0]; return !!l && l.parentNode === p.box.grid && !p.q('[data-codex-extras="bar"]').length; };
   {
     let shown = false;
     const p = page(root, withLabel('with-tools', () => shown));
@@ -171,8 +190,8 @@ module.exports = async ({ eq, root }) => {
     const before = inLeft(p);
     shown = true;
     p.pass();
-    eq([before, inLeft(p), !!p.q('[data-codex-extras="bar"]')[0]], [1, 0, true],
-      'a model name that shows up after the buttons went into the row, and is cut off by them, sends them below the message box');
+    eq([before, inLeft(p), outside(p)], [1, 0, true],
+      'a model name that shows up after the buttons went into the row, and is cut off by them, sends them to their own line in the message box');
   }
   {
     let shown = false;
@@ -188,12 +207,12 @@ module.exports = async ({ eq, root }) => {
   {
     const p = page(root, (dom) => toolbar(dom, { named: false }));
     p.view();
-    const waiting = [inLeft(p), !!p.q('[data-codex-extras="bar"]')[0]];
+    const waiting = [inLeft(p), outside(p)];
     p.box.trigger.appendChild(p.dom.text('5.5 Medium'));
     const picker = p.dom.live().find((o) => o.targets.some((t) => t.target === p.box.modelSlot));
     if (picker) { picker.fn([{ type: 'childList', target: p.box.trigger }]); p.dom.runTimers(); }
     eq([waiting, inLeft(p)], [[0, true], 1],
-      'until Codex has drawn its model picker\'s name the buttons wait below the message box, and go into the row once it has');
+      'until Codex has drawn its model picker\'s name the buttons wait in their own line in the message box, and go into the row once it has');
   }
   {
     const p = page(root, (dom) => toolbar(dom));
@@ -204,13 +223,13 @@ module.exports = async ({ eq, root }) => {
     const out = inLeft(p);
     p.pass(); p.pass();
     eq([before, out, inLeft(p)], [1, 0, 0],
-      'a model picker that turns into a bare icon with the buttons in the row sends them below the box, and they are not tried again at that width');
+      'a model picker that turns into a bare icon with the buttons in the row sends them to their own line in the box, and they are not tried again at that width');
   }
   {
     const p = page(root, withLabel('with-tools', () => true));
     p.view();
-    eq([inLeft(p), !!p.q('[data-codex-extras="bar"]')[0]], [0, true],
-      'buttons that would cut off the model name when they go in stay below the message box');
+    eq([inLeft(p), outside(p)], [0, true],
+      'buttons that would cut off the model name when they go in stay in their own line in the message box');
   }
   {
     const p = page(root, withLabel('always', () => true));

@@ -24,7 +24,7 @@ const { createDom } = require('../fake-dom');
 const FLEX = { display: 'flex' }, CONTENTS = { display: 'contents' };
 const PILL_CLASS = 'no-drag cursor-interaction rounded-full text-tertiary h-token-button-composer px-2';
 
-function toolbar(dom, { rightAt = 799, codexMeter = 0 } = {}) {
+function toolbar(dom, { rightAt = 799, codexMeter = 0, grid: laidOut = false } = {}) {
   const { el } = dom;
   const add = el('button', { attrs: { type: 'button', 'data-composer-navigation-target': 'add-context' }, class: 'aspect-square',
     rect: { top: 708, left: 16, width: 28, height: 28 } });
@@ -37,9 +37,11 @@ function toolbar(dom, { rightAt = 799, codexMeter = 0 } = {}) {
     kids: [el('span', { attrs: { role: 'img', 'aria-label': `Context usage: ${codexMeter}%` }, rect: { top: 715, left: rightAt, width: 16, height: 16 } })] }) : null;
   const right = el('div', { computed: FLEX, rect: { top: 708, left: rightAt, width: 250, height: 28 }, kids: [...(wrap ? [wrap] : []), modelSlot] });
   if (!wrap) modelSlot.rect.left = rightAt;
-  const grid = el('div', { attrs: { 'data-composer-footer-responsive': '' }, kids: [el('div', { kids: [left] }), el('div', { kids: [right] })] });
+  /* With `grid` the footer is laid out as a grid, as Codex lays it out; without it there is no grid to hold a line. */
+  const grid = el('div', { attrs: { 'data-composer-footer-responsive': '' }, ...(laidOut ? { computed: { display: 'grid' } } : {}),
+    kids: [el('div', { kids: [left] }), el('div', { kids: [right] })] });
   const root = el('div', { attrs: { 'data-codex-composer-root': '' }, rect: { top: 602, left: 8, width: 1084, height: 142 }, kids: [grid] });
-  return { root, left, right, modelSlot, wrap };
+  return { root, grid, left, right, modelSlot, wrap };
 }
 
 function page(root, opts) {
@@ -189,7 +191,19 @@ module.exports = async ({ eq, note, tmp, root }) => {
     p.send({ type: 'codex-extras-usage', usage: USAGE });
     const bar = p.q('[data-codex-extras="bar"]')[0];
     eq([!!bar, bar && bar.contains(p.q('[data-codex-extras="meter"]')[0])], [true, true],
-      'with no room in the toolbar the meter goes below the message box with the two buttons');
+      'with no room in the toolbar and no footer grid to hold a line, the meter goes below the message box with the two buttons');
+  }
+  {
+    const p = page(root, { rightAt: 172, grid: true });
+    p.view();
+    p.send({ type: 'codex-extras-usage', usage: USAGE });
+    const line = p.q('[data-codex-extras="line"]')[0], end = p.q('[data-codex-extras="line-end"]')[0];
+    const meter = p.q('[data-codex-extras="meter"]')[0], tools = p.q('[data-codex-extras="tools"]')[0];
+    eq([!!line && line.parentNode === p.box.grid, !!end && end.parentNode === line, meter && meter.parentNode === end, tools && tools.parentNode === line,
+      line && line.children[0] === tools, line && line.children.slice(-1)[0] === end, p.q('[data-codex-extras="bar"]').length],
+    [true, true, true, true, true, true, 0],
+    'with no room in the toolbar but a footer grid, the two buttons start a line of their own inside the box and the meter ends it, on the right as in the row');
+    eq([meter.className, /margin-left:auto/.test(end.style.cssText)], [PILL_CLASS, true], 'the meter keeps the permissions pill\'s classes there, pushed to the line\'s end');
   }
 
   /* ── the host ── */
