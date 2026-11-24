@@ -22,6 +22,7 @@
 - `codex-plugin/`: the companion Codex plugin (marketplace `codex-extras`, plugin `agent-work-plan`): hooks, skill, MCP server.
 - `src/edits.js`, `src/host.js`, `src/webview-inject.js`, `src/manifest.js`, `src/adapters.js`, `src/patching.js`, `uninstall.js`, `src/uninstall-plan.js`: the patch to Codex and its use, and which editors' Codex an uninstall puts back.
 - `src/page/codex-extras-page.js`: the script added to Codex's page; it also takes the layout sample (the structure of the conversation's DOM, with none of its text) for the render check, since the page is where Codex's run-time structure exists at all.
+- `docs/codex-page.md`: how the script this extension adds to Codex's page finds what it draws on, and how to see what it found.
 - `test/render/`: the render check ([The render check](#the-render-check)): stand-ins for VS Code and Codex's host in the page, an offline app-server, a made-up conversation, and the measurements.
 - `test/vscode/`: what the `.github/workflows/vscode.yml` workflow runs: `run.js` (the runner), `ui.js` (the window, driven through Playwright), `suite/` (checks inside VS Code), `helper/` (the vscode API for `ui.js`), `lib/`, `baseline/<platform>/` (the approved crops) and `update-baseline.js`; `readme-shots.js`, which takes the README's screenshots and is not run by the workflow.
 - `src/open-times.js`: how long Codex's pages took to open, from the `app_start` spans Codex writes to its own `Codex.log`, or from its `app routes mounted` line in a log with no span.

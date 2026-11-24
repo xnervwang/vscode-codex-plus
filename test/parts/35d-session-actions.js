@@ -137,7 +137,7 @@ module.exports = async ({ eq, tmp, root }) => {
     'the right-click menu of a conversation\'s page has Rename, Mark as Unread and Add to Group, as Claude Code\'s has its three');
   const onTab = (menus['editor/title/context'] || []).filter((m) => /\bresourceScheme == 'openai-codex'/.test(m.when || '')).map((m) => m.command).sort();
   eq(onTab, ['codexPlus.markThreadUnread', 'codexPlus.moveThreadToSection', 'codexPlus.renameThread'],
-    'and so has the right-click menu of a Codex tab itself, as README says');
+    'and so has the right-click menu of a Codex tab itself, as docs/tabs.md says');
   const hidden = (menus.commandPalette || []).filter((m) => m.when === 'false').map((m) => m.command);
   eq(['renameThread', 'moveThreadToSection', 'markThreadUnread'].filter((c) => !hidden.includes(`codexPlus.${c}`)), [],
     'none of them is in the command palette, where Claude Code has none of them either');

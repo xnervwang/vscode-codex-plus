@@ -110,7 +110,7 @@ async function offerReloadForStale() {
  * it covers is read through it here, which is why nothing else in the extension has to ask about it.
  *
  * What it does not cover: the work plan and the session list. Those are not of a piece with the rest - a work plan the
- * model is keeping is not an adornment to be switched off by the command that stops a chime - and the README says as
+ * model is keeping is not an adornment to be switched off by the command that stops a chime - and docs/install.md says as
  * much.
  *
  * `patchCodex` is 'on' or 'off' and is not a setting: Codex is patched at start-up unless the switch is off or the user

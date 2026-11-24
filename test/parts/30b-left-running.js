@@ -314,8 +314,8 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
   await section('the extension', async () => {
     const ext = fs.readFileSync(path.join(root, 'extension.js'), 'utf8');
     eq(/scanLeft: \(\) => keepsShared\(\)/.test(ext), true, 'a window that stands down for a newer build scans only while no window runs the installed one, and one being uninstalled never does');
-    const readme = fs.readFileSync(path.join(root, 'README.md'), 'utf8');
-    eq(/still running after (its|the) turn/i.test(readme), true, 'the README says so in its features');
+    const doc = fs.readFileSync(path.join(root, 'docs', 'session-list.md'), 'utf8');
+    eq(/still running after (its|the) turn/i.test(doc), true, 'docs/session-list.md says so under its status dots');
   });
   if (left) ok('the module that reads /proc for work left running loads');
 };

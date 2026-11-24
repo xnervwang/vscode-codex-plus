@@ -137,7 +137,7 @@ function statusLines() {
 /*
  * How many answers one conversation needs from the user, and how many requests Codex will answer by itself once its
  * countdown runs out. This covers only the conversations of this window, since each window runs its own app-server,
- * so a conversation running in another window or started by `codex exec` is not here (README says so).
+ * so a conversation running in another window or started by `codex exec` is not here (docs/waiting-and-chimes.md says so).
  */
 function approvalsOf(thread) { return approvals.of(thread); }
 /** Agent Plus's waitingFor for the conversation, from this window's requests (src/approvals.js); null when they give

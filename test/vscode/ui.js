@@ -2891,8 +2891,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       const listed = await until(async () => { const r = await openRows(); return r && r.includes(t.id) && r; }, 15000, 500);
       check(!!listed, `${how}, Open sessions lists it`, await openRows());
       await planShown(t.id, how);
-      /* README: Codex's sidebar showing the conversation counts as looking at it, so a reply landing there with the window
-         focused is neither unread, announced nor counted. */
+      /* docs/session-list.md: Codex's sidebar showing the conversation counts as looking at it, so a reply landing
+         there with the window focused is neither unread, announced nor counted. */
       const unseenRow = () => list.evaluate((id) => {
         const r = document.querySelector(`.cp-group .cp-row[data-id="${id}"]`);
         return !!r && [...r.querySelectorAll('.cp-unseen')].some((x) => getComputedStyle(x).display !== 'none');
@@ -3325,7 +3325,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     /*
      * The tabs VS Code restores at a reload, as after an update of the patch or a Remote SSH reconnection: the tab
      * from Resume in Tab, whose URI names its conversation, and the one from the tab bar button, whose URI names none,
-     * left in front. README says a Codex tab is titled by its conversation.
+     * left in front. docs/tabs.md says a Codex tab is titled by its conversation.
      */
     let restored = null;
     await step('tabs restored at a reload', async () => {
@@ -3354,7 +3354,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       if (own && !own.active) await revealTab(own);
       const shownPage = await until(async () => { const f = await frontPage(); const s = await pageSays(f); return s && s.turns >= 1 && s.text.includes(begun.text) && f; }, 60000, 1000);
       check(!!shownPage, 'the restored New tab shows its conversation again, with its message box', { tab: own, inFrontBeforeTheCheck: own && own.active, page: await pageSays(await frontPage()) });
-      check(!!own && bare(own.label) === bare(begun.label), 'and is titled by that conversation, as README says a Codex tab is', { tab: own, tabs: after, patch: await panelTrace() });
+      check(!!own && bare(own.label) === bare(begun.label), 'and is titled by that conversation, as docs/tabs.md says a Codex tab is', { tab: own, tabs: after, patch: await panelTrace() });
       const twins = after.filter((x) => bare(x.label) === bare(begun.label));
       check(twins.length === 1 && after.length === before.length, 'and no second tab is opened on that conversation: the window has the Codex tabs it had',
         { before, after });

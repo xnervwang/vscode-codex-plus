@@ -78,11 +78,11 @@ module.exports = async ({ eq, note, tmp, root }) => {
   eq(tm.SWITCHES.filter((s) => s.extension === 'xnervwang.codex-plus').map((s) => s.key), KEYS, 'and they are the five src/token-mode.js lists for Codex Plus');
   eq(tm.SWITCHES.filter((s) => s.key.startsWith('codexPlus.')).every((s) => props[s.key] && props[s.key].default === s.default), true,
     'with the defaults this extension declares');
-  const readme = fs.readFileSync(path.join(root, 'README.md'), 'utf8');
-  const table = /## What it costs in tokens\n\n(?:[^|#\n][^\n]*\n\n)*((?:\|[^\n]*\n)+)/.exec(readme);
+  const doc = fs.readFileSync(path.join(root, 'docs', 'token-costs.md'), 'utf8');
+  const table = /^# What it costs in tokens\n\n(?:[^|#\n][^\n]*\n\n)*((?:\|[^\n]*\n)+)/.exec(doc);
   eq([!!table && table[1].split('\n')[0], !!table && KEYS.every((k) => table[1].includes(`\`${k}\``))],
     ['| Feature | Interface features | Essential features | All features | Custom |', true],
-    'the README\'s token section, after its opening paragraphs, has a table of the four modes, naming each feature\'s setting under Custom');
+    'docs/token-costs.md, after its opening paragraphs, has a table of the four modes, naming each feature\'s setting under Custom');
 
   /* Activates the extension with `config`, collecting every configuration listener so a change can be told to all. */
   const start = async (config, { codex = '', globalState, codexVersion = '' } = {}) => {
