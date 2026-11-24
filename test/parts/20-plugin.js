@@ -76,12 +76,16 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
     'SessionStart', 'SessionEnd', 'SubagentStart', 'SubagentStop', 'Stop', 'Interrupt'];
   const unknown = Object.keys(hooks).filter((e) => !KNOWN.includes(e));
   eq(unknown, [], 'every hook event is one Codex has (it has no PostToolBatch)');
-  const scripts = [];
+  const scripts = [], bare = [];
   for (const groups of Object.values(hooks)) for (const g of groups) for (const h of g.hooks) {
-    const m = /\$PLUGIN_ROOT\/hooks\/([\w-]+\.py)/.exec(h.command);
+    const m = /"\$\{PLUGIN_ROOT\}\/hooks\/([\w-]+\.py)" "\$\{PLUGIN_DATA\}"$/.exec(h.command);
     if (!m) bad(`hook command does not run a script of the plugin: ${h.command}`);
     else scripts.push(m[1]);
+    if (/\$(?!\{)/.test(h.command)) bare.push(h.command);
   }
+  /* Codex replaces ${PLUGIN_ROOT} and ${PLUGIN_DATA} in the line itself; a bare $PLUGIN_ROOT is left to the shell, which
+     on Windows is PowerShell or cmd, and neither reads it as the environment variable. */
+  eq(bare, [], 'every hook command names the plugin\'s folders as ${PLUGIN_ROOT} and ${PLUGIN_DATA}, which Codex fills in before any shell reads the line');
   const missing = scripts.filter((s) => !fs.existsSync(path.join(hooksDir, s)));
   eq(missing, [], `every script hooks.json names exists (${new Set(scripts).size} scripts)`);
   const mcp = JSON.parse(fs.readFileSync(path.join(plugin, '.mcp.json'), 'utf8')).mcpServers.work_plan;

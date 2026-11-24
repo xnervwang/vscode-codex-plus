@@ -151,6 +151,8 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
   const commands = (stage) => { const out = []; for (const g of Object.values(hooksOf(stage).hooks)) for (const x of g) for (const h of (x.hooks || [])) out.push(h.command); return out; };
   const mcpOf = (stage) => JSON.parse(fs.readFileSync(path.join(stage, pi.PLUGIN, '.mcp.json'), 'utf8')).mcpServers.work_plan;
   const launcherFile = (stage) => path.join(stage, pi.PLUGIN, 'hooks', 'launcher.json');
+  /* Codex's own replacement in a plugin's hook command, before the line reaches a shell (hooks/src/engine/discovery.rs). */
+  const codexFills = (line, root, data) => line.split('${PLUGIN_ROOT}').join(root).split('${PLUGIN_DATA}').join(data);
 
   const asShipped = tmp('stage-shipped');
   pi.stageMarketplace(asShipped, pi.SOURCE, pi.SHIPPED_PYTHON);
@@ -162,7 +164,7 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
   const fitted = tmp('stage-py3-launcher');
   const r1 = pi.fitHooks(pi.stageMarketplace(fitted, pi.SOURCE, pi.SHIPPED_PYTHON) && fitted,
     { launcher: ['py', '-3'], executable: 'C:/Python312/python.exe', version: '3.12' });
-  eq([r1.state, r1.hooks, commands(fitted).every((c) => c.startsWith('py -3 "$PLUGIN_ROOT/hooks/'))],
+  eq([r1.state, r1.hooks, commands(fitted).every((c) => c.startsWith('py -3 "${PLUGIN_ROOT}/hooks/'))],
     ['fitted', 17, true], 'a launcher with arguments goes in front of every hook command, leaving the rest of the line alone');
   eq([mcpOf(fitted).command, mcpOf(fitted).args], ['C:/Python312/python.exe', ['./hooks/plan-mcp.py']],
     "the MCP server gets the interpreter's own path, since it is not started from the user's shell, and none of the "
@@ -184,11 +186,21 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
   eq(JSON.parse(fs.readFileSync(launcherFile(fitted), 'utf8')), { row: ['py', '-3'] },
     'and launcher.json gets the words a person would type, which is what the model is told to run');
 
+  /* What Codex makes of the fitted line on Windows before handing it to PowerShell, or to cmd when it finds no PowerShell:
+     ${PLUGIN_ROOT} and ${PLUGIN_DATA} replaced by the paths (Codex 0.164 and later, hooks/src/engine/discovery.rs). A
+     `$` or a `%` left in it would be read by one of those shells as a variable of its own. */
+  const winRoot = 'C:\\Users\\Jo Ann\\.codex\\plugins\\cache\\codex-extras\\agent-work-plan\\1.0.0';
+  const winData = 'C:\\Users\\Jo Ann\\.codex\\plugins\\data\\agent-work-plan-codex-extras';
+  const filled = commands(fitted).map((c) => codexFills(c, winRoot, winData));
+  eq(filled[0], `py -3 "${winRoot}/hooks/inject-work-plan.py" "${winData}"`,
+    'on Windows Codex turns a fitted hook command into the launcher and the two paths, each in double quotes');
+  eq(filled.filter((c) => /[$%`]/.test(c)), [], 'leaving nothing in any of the 17 for PowerShell or cmd to expand');
+
   /* A name resolves through PATH in whichever shell Codex uses; a quoted path does not, so the name is preferred even
      though the interpreter's own path is known. */
   const named = tmp('stage-named');
   pi.stageMarketplace(named, pi.SOURCE, { launcher: ['python'], executable: 'C:/Python312/python.exe', version: '3.12' });
-  eq(commands(named)[0], 'python "$PLUGIN_ROOT/hooks/inject-work-plan.py" "$PLUGIN_DATA"',
+  eq(commands(named)[0], 'python "${PLUGIN_ROOT}/hooks/inject-work-plan.py" "${PLUGIN_DATA}"',
     "a hook command names the launcher rather than the interpreter's path, the way the shipped one names python3");
   eq(mcpOf(named).command, 'C:/Python312/python.exe',
     'while the MCP server, which Codex starts as a program rather than as a shell line, still gets the path');
@@ -197,7 +209,7 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
   const spaced = tmp('stage-spaced');
   pi.stageMarketplace(spaced, pi.SOURCE, { launcher: ['C:/Users/Jo Ann/py/python.exe'],
     executable: 'C:/Users/Jo Ann/py/python.exe', version: '3.12' });
-  eq(commands(spaced)[0], '"C:/Users/Jo Ann/py/python.exe" "$PLUGIN_ROOT/hooks/inject-work-plan.py" "$PLUGIN_DATA"',
+  eq(commands(spaced)[0], '"C:/Users/Jo Ann/py/python.exe" "${PLUGIN_ROOT}/hooks/inject-work-plan.py" "${PLUGIN_DATA}"',
     'a launcher that is a path, having no name to use, is quoted the way the paths already in that line are');
 
   const none = tmp('stage-none');
@@ -211,7 +223,7 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
   pi.stageMarketplace(odd, pi.SOURCE, pi.SHIPPED_PYTHON);
   const oddFile = path.join(odd, pi.PLUGIN, 'hooks', 'hooks.json');
   const oddConfig = JSON.parse(fs.readFileSync(oddFile, 'utf8'));
-  oddConfig.hooks.UserPromptSubmit[0].hooks[0].command = 'uv run $PLUGIN_ROOT/hooks/inject-work-plan.py';
+  oddConfig.hooks.UserPromptSubmit[0].hooks[0].command = 'uv run ${PLUGIN_ROOT}/hooks/inject-work-plan.py';
   fs.writeFileSync(oddFile, JSON.stringify(oddConfig, null, 2));
   let threw = '';
   try { pi.fitHooks(odd, { launcher: ['python'], executable: '/usr/bin/python', version: '3.12' }); } catch (e) { threw = e.message; }
@@ -220,8 +232,8 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
 
   /*
    * The two sides together, as far as a machine that is not Windows can show it: a real interpreter put in by path
-   * rather than by name, the rewritten line run as a shell line the way its own `$PLUGIN_ROOT` implies, and the
-   * Python side reading back the launcher this wrote.
+   * rather than by name, the rewritten line run as a shell line once Codex has filled in the paths, and the Python side
+   * reading back the launcher this wrote.
    */
   if (!found) { ok('no Python here, so the fitted command could not be run'); return; }
   const live = tmp('stage-live');
@@ -231,14 +243,22 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
   const session = '01a1b8f2-fd2b-7e60-9ffc-16e5cb642e31';
   fs.writeFileSync(path.join(data, `${session}.json`), JSON.stringify({ nodes: [{ title: 'Fit the hooks', state: 'doing' }] }));
   const line = commands(live).find((c) => c.includes('inject-work-plan.py'));
-  const shell = cp.spawnSync('bash', ['-c', line], { encoding: 'utf8',
-    env: { ...process.env, PLUGIN_ROOT: pluginRoot, PLUGIN_DATA: data },
-    input: JSON.stringify({ hook_event_name: 'UserPromptSubmit', session_id: session, turn_id: 'turn-1',
-      transcript_path: null, cwd: data, model: 'm', permission_mode: 'default', prompt: 'p' }) });
-  let injected = '';
-  try { injected = JSON.parse(shell.stdout).hookSpecificOutput.additionalContext; } catch (_) { injected = ''; }
-  eq([line.startsWith(found.executable), /Fit the hooks/.test(injected)], [true, true],
-    'a hook command fitted to an interpreter path runs as a shell line and still injects the plan');
+  const hookInput = JSON.stringify({ hook_event_name: 'UserPromptSubmit', session_id: session, turn_id: 'turn-1',
+    transcript_path: null, cwd: data, model: 'm', permission_mode: 'default', prompt: 'p' });
+  const injects = (shellLine, env) => {
+    const r = cp.spawnSync('bash', ['-c', shellLine], { encoding: 'utf8', env, input: hookInput });
+    try { return /Fit the hooks/.test(JSON.parse(r.stdout).hookSpecificOutput.additionalContext); } catch (_) { return false; }
+  };
+  const withoutFolders = { ...process.env };
+  delete withoutFolders.PLUGIN_ROOT; delete withoutFolders.PLUGIN_DATA;
+  eq([line.startsWith(found.executable), injects(codexFills(line, pluginRoot, data), withoutFolders)], [true, true],
+    'a hook command fitted to an interpreter path, with the paths filled in as Codex fills them, runs as a shell line '
+      + 'and still injects the plan, needing no variable from the shell');
+  /* In a data directory of its own, since the hook says only "not changed" for a plan it has already shown. */
+  const data2 = tmp('plan-data-env');
+  fs.copyFileSync(path.join(data, `${session}.json`), path.join(data2, `${session}.json`));
+  eq(injects(line, { ...process.env, PLUGIN_ROOT: pluginRoot, PLUGIN_DATA: data2 }), true,
+    'and a POSIX shell given the line as it is reads ${PLUGIN_ROOT} and ${PLUGIN_DATA} from the environment just the same');
   const askPython = cp.spawnSync(found.executable, ['-c',
     `import json,sys; sys.path.insert(0, ${JSON.stringify(path.join(pluginRoot, 'hooks'))}); import plan_path; `
     + 'print(json.dumps([plan_path.launcher(), plan_path.launcher_quoted()]))'], { encoding: 'utf8' });

@@ -242,8 +242,8 @@ const SHIPPED = 'python3';
 const SHIPPED_PYTHON = { launcher: [SHIPPED], executable: SHIPPED, version: '' };
 /* A hook command as the plugin ships it; the program is replaced and the rest of the line is left exactly as it was. */
 const HOOK_COMMAND = /^python3 (".+")$/;
-/* Hook commands are a shell line, as the `$PLUGIN_ROOT` in them shows, so a program with a space in its path is
-   quoted the way the paths already in that line are. A Windows path cannot contain a double quote. */
+/* Codex runs a hook command as a line for the conversation's shell, so a program with a space in its path is quoted the
+   way the paths already in that line are. A Windows path cannot contain a double quote. */
 const quote = (w) => (/^[\w@%+=:,./\\-]+$/.test(w) ? w : `"${w.replace(/"/g, '')}"`);
 
 /**
@@ -254,10 +254,16 @@ const quote = (w) => (/^[\w@%+=:,./\\-]+$/.test(w) ? w : `"${w.replace(/"/g, '')
  *
  * With any other Python, the three places that start it are rewritten to use the one that was found.
  *
- * A hook command is a shell line, since the `$PLUGIN_ROOT` in it needs a shell to expand it, so it gets the words
- * a person would type (`py -3`, `python`) rather than the interpreter's path. A bare name needs no quoting and runs
- * under whichever shell Codex uses; a quoted path does not, because PowerShell, which Codex uses on Windows, needs `&`
- * in front of one, and no single spelling runs in both it and a POSIX shell. The shipped command already resolves
+ * Codex runs a hook command as a line for the conversation's own shell: sh, bash or zsh elsewhere, PowerShell on
+ * Windows, or cmd there when it finds no PowerShell. The line names the plugin's folders as `${PLUGIN_ROOT}` and
+ * `${PLUGIN_DATA}`, which Codex replaces with the paths itself before any shell reads it. A bare `$PLUGIN_ROOT` would be
+ * left to the shell, and only a POSIX shell reads it as the environment variable: in PowerShell it is an unset variable
+ * of PowerShell's own, so the script's path loses its folder, and cmd does not expand it at all. The paths go in as
+ * text between the double quotes, so a folder whose name holds a `$` or a backquote would break the line.
+ *
+ * The program gets the words a person would type (`py -3`, `python`) rather than the interpreter's path. A bare name
+ * needs no quoting and runs under whichever shell Codex uses; a quoted path does not, because PowerShell needs `&` in
+ * front of one, and no single spelling runs in both it and a POSIX shell. The shipped command already resolves
  * `python3` through PATH, and keeping to a bare name keeps it that way. The only launcher with no name to use is a
  * Python downloaded by this extension, which is a path and is quoted; plan_path.launcher_quoted marks that same case
  * for the row command.
