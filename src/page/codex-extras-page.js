@@ -498,6 +498,7 @@
   }
   function placeBar() {
     placeStrip();
+    placePlanBar();
     var on = view.buttons !== false;
     var wantInfo = on && view.infoButton !== false, wantMute = on && view.chimeButton !== false;
     var wantMeter = on && view.contextMeter !== false && !!usage;
@@ -538,6 +539,68 @@
     restyleIfOn();
   }
   function restyleIfOn() { if (anythingOn() || view.buttons !== false) restyle(); }
+
+  /*
+   * The plan bar: one line just above the message box, as wide as the box, saying where the conversation's work plan
+   * stands. Agent Plus's shared fragment draws it (agentPlusPlanBar, src/page/plan-bar.js, put in front of this script);
+   * the host sends the summary of this page's conversation (codex-extras-plan-bar, src/plan-bars.js), and a click sends
+   * back only which part was clicked.
+   *
+   * Like the row below the box it is this script's own element on <body>, placed by measuring the box, since nothing of
+   * this script's goes inside an element Codex draws. While it is drawn the stylesheet gives the box PLAN_ROOM more top
+   * margin, which takes that much height from the conversation above it, so the bar covers neither the conversation
+   * nor anything Codex draws above the box. Each pass of either observer places it again and puts it back on <body> if
+   * a redraw of Codex's took it off, and a ResizeObserver on the box follows the box as it grows with what is typed. It
+   * sits on Codex's content and under every overlay Codex draws (Z_BELOW_CODEX), and with no box, no summary, or the bar
+   * turned off it is removed with its style.
+   */
+  var planBarApi = agentPlusPlanBar;
+  var PLAN_H = 26, PLAN_GAP = 6, PLAN_ROOM = PLAN_H + PLAN_GAP;
+  var planBarMsg = { on: false, summary: null }, planBar = null, planBox = null, planSizer = null, planRoomOn = false;
+  var planShown = function () { return !!(planBar && planBar.el.isConnected && planBar.el.style.display !== 'none'); };
+  function dropPlanBar() {
+    if (planSizer) { try { planSizer.disconnect(); } catch (e) { /* gone */ } }
+    planSizer = null; planBox = null;
+    if (planBar) { planBar.destroy(); planBar = null; }
+    var left = all(document, 'style[' + planBarApi.MARK + '-style]');
+    for (var i = 0; i < left.length; i++) gone(left[i]);
+  }
+  function makePlanBar() {
+    var b = planBarApi.create(document, {
+      onOpen: function () { post({ kind: 'planBar', action: 'open' }); },
+      onAnswer: function () { post({ kind: 'planBar', action: 'answer' }); },
+      css: 'position:fixed;z-index:' + Z_BELOW_CODEX + ';margin:0;'
+    });
+    b.el.setAttribute(MARK, 'plan-bar');
+    return b;
+  }
+  function placePlanBar() {
+    var root = planBarMsg.on && planBarMsg.summary && view.buttons !== false && document.body ? composerRoot() : null;
+    var r = rectOf(root);
+    if (!r || !(r.width > 0)) {
+      dropPlanBar();
+      if (planRoomOn) restyleIfOn();
+      return;
+    }
+    /* A bar whose style a redraw took out of the page is made again, which puts the style back. */
+    if (planBar && !one(document, 'style[' + planBarApi.MARK + '-style]')) dropPlanBar();
+    if (!planBar) planBar = makePlanBar();
+    if (!planBar.el.isConnected) document.body.appendChild(planBar.el);
+    planBar.update(planBarMsg.summary);
+    /* The room goes in first and the box is measured after it, since a box that is not at the bottom of the page (a new
+       conversation's) moves down by it. */
+    if (planShown() !== planRoomOn) { restyleIfOn(); r = rectOf(root) || r; }
+    var width = Math.round(r.width);
+    planBar.el.style.left = Math.round(r.left || 0) + 'px';
+    planBar.el.style.top = Math.max(0, Math.round(r.top || 0) - PLAN_ROOM) + 'px';
+    planBar.el.style.width = width + 'px';
+    planBar.fit(width);
+    if (planBox !== root && typeof ResizeObserver === 'function') {
+      if (planSizer) { try { planSizer.disconnect(); } catch (e) { /* gone */ } }
+      planBox = root;
+      try { planSizer = new ResizeObserver(function () { placePlanBar(); }); planSizer.observe(root); } catch (e) { planSizer = null; }
+    }
+  }
 
   /*
    * The Agent map: a copy of Claude Code's dialog of that name and of the "N agents" pill that opens it, with Claude
@@ -2092,6 +2155,7 @@
   function dropSheet() {
     if (sheet) { try { sheet.remove(); } catch (e) { /* gone */ } }
     sheet = null; sheetText = '';
+    planRoomOn = false;
   }
   /* One stylesheet of this script's own for everything it shows. Stamps copy Claude Code Plus's: the editor's
      monospace font, 0.8em, and the message's text colour at 60% opacity. */
@@ -2122,6 +2186,8 @@
     if ((bar && bar.isConnected) || (strip && strip.style.display !== 'none')) {
       css += '[data-codex-composer-root]{margin-bottom:' + ROW_ROOM + 'px !important;}';
     }
+    planRoomOn = planShown();
+    if (planRoomOn) css += '[data-codex-composer-root]{margin-top:' + PLAN_ROOM + 'px !important;}';
     if (codexMeterHidden) css += '.' + HIDE_CLASS + '{display:none !important;}';
     if (convos.on) css += LINK_SEL + '{color:var(--vscode-textLink-foreground,#4493f8);cursor:pointer;}' + LINK_SEL + ':hover{text-decoration:underline;}';
     css += NAV_CSS;
@@ -2981,6 +3047,10 @@
       if (document.body) placeBar();
     }
     else if (m.type === 'codex-extras-compacted') compacted(m);
+    else if (m.type === 'codex-extras-plan-bar') {
+      planBarMsg = { on: m.on === true, summary: m.on === true && m.summary && typeof m.summary === 'object' ? m.summary : null };
+      if (document.body) placeBar();
+    }
     else if (m.type === 'codex-extras-sample') {
       var reply = { kind: 'sample', id: m.id };
       try {

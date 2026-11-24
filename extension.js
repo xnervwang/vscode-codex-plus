@@ -26,6 +26,7 @@ const { createSeen } = require('./src/seen');
 const { CodexReader } = require('./src/codex-reader');
 const hostLink = require('./src/host-link');
 const { createConversationLinks } = require('./src/convo-links');
+const { createPlanBars } = require('./src/plan-bars');
 const { TabMemory } = require('./src/tab-memory');
 const { SessionsModel, SessionsView, COLOR_NAMES, LIST_MENU, looksLikeId } = require('./src/sessions-view');
 const { createGroups, createPlacer } = require('./src/session-groups');
@@ -146,6 +147,7 @@ function settings() {
     contextMeter: on && c.get('contextMeter', true),
     replyImages: on && c.get('replyImages', true),
     conversationLinks: on && c.get('conversationLinks', true),
+    planBar: on && c.get('planBar', true),
   };
 }
 
@@ -524,12 +526,19 @@ async function activate(context) {
     exec: (...a) => vscode.commands.executeCommand(...a) });
   context.subscriptions.push(convoLinks);
   convoLinks.sync();
+  /* The plan bar above the message box in Codex's page (src/plan-bars.js), from the same Agent Plus. */
+  const planBars = createPlanBars({ core: link.registered ? link.core : null, log: say,
+    enabled: () => settings().planBar, onChange: (id) => patching.refreshPlanBars(id),
+    exec: (...a) => vscode.commands.executeCommand(...a) });
+  context.subscriptions.push(planBars);
+  planBars.sync();
 
   context.subscriptions.push(tokenMode.warnOutsideCustom(vscode, MODE_SWITCHES, { who: 'Codex Plus', log: say }));
   context.subscriptions.push(vscode.workspace.onDidChangeConfiguration((e) => {
     const modeChanged = e.affectsConfiguration(tokenMode.SETTING);
     if (e.affectsConfiguration(CONFIG) || modeChanged) { writeHookSettings(context); sessionsModel.refresh(); }
     if (e.affectsConfiguration(`${CONFIG}.conversationLinks`) || e.affectsConfiguration(`${CONFIG}.enabled`)) convoLinks.sync();
+    if (e.affectsConfiguration(`${CONFIG}.planBar`) || e.affectsConfiguration(`${CONFIG}.enabled`)) planBars.sync();
     if (modeChanged || e.affectsConfiguration(`${CONFIG}.conversationBrief`) || e.affectsConfiguration(`${CONFIG}.workPlan`)) source.featuresChanged();
     else if (e.affectsConfiguration('chat.fontFamily') || e.affectsConfiguration('chat.fontSize')) sessionsModel.refresh();
     if (e.affectsConfiguration(`${CONFIG}.enabled`)) ownTabBar();
@@ -627,7 +636,8 @@ async function activate(context) {
         adjustRequest: windowOverride(context, say), contextWindowFrom: windowSource(context),
         copy: async (value, label) => { await vscode.env.clipboard.writeText(value); vscode.window.setStatusBarMessage(`Copied ${label}`, 3000); },
         toggleChime: () => cfg().update('chime', !cfg().get('chime', true), vscode.ConfigurationTarget.Global),
-        conversations: () => convoLinks.view(), openConversation: (sourceId, sessionId) => convoLinks.open(sourceId, sessionId) });
+        conversations: () => convoLinks.view(), openConversation: (sourceId, sessionId) => convoLinks.open(sourceId, sessionId),
+        planBar: (id, opts) => planBars.view(id, opts), planBarAct: (id, action) => planBars.act(id, action) });
     } catch (e) { say(`patching: ${e.message}`); }
   };
   whenTrusted();

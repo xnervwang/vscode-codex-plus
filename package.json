@@ -554,6 +554,11 @@
           "type": "boolean",
           "default": true,
           "markdownDescription": "With the patch: a reply's mentions of your other conversations are links that open them."
+        },
+        "codexPlus.planBar": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "With the patch: a line just above the message box saying how many rows of the conversation's work plan are open, which row is current and how many questions wait for your answer, which opens the plan in Agent Plus when clicked."
         }
       }
     }

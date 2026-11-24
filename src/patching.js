@@ -454,6 +454,40 @@ function refreshConversationLinks() {
   if (side || sidebarConvosSent) postConvosToSidebar(side, all);
 }
 
+/*
+ * The plan bar above the message box (src/plan-bars.js): each page gets its own conversation's summary, only when it
+ * differs from what that page was last sent. A page that loaded afresh (its time zone message) is sent it again, with
+ * the summary asked of Agent Plus again.
+ */
+const NO_PLAN_BAR = require('./plan-bars').NO_BAR;
+const planBarSent = new WeakMap();
+let sidebarPlanBarSent = '';
+function planBarFor(thread, fresh) {
+  if (!deps || typeof deps.planBar !== 'function' || deps.settings().enabled === false) return NO_PLAN_BAR;
+  try { return deps.planBar(thread || '', { fresh: !!fresh }) || NO_PLAN_BAR; } catch (_) { return NO_PLAN_BAR; }
+}
+function postPlanBar(panel, thread, fresh) {
+  let webview = null;
+  try { webview = panel.webview; } catch (_) { return; }
+  const m = planBarFor(thread, fresh), json = JSON.stringify(m);
+  if (!webview || planBarSent.get(webview) === json) return;
+  planBarSent.set(webview, json);
+  postTo(panel, m);
+}
+function postPlanBarToSidebar(thread, fresh) {
+  const m = planBarFor(thread, fresh), json = JSON.stringify(m);
+  if (json === sidebarPlanBarSent) return;
+  sidebarPlanBarSent = json;
+  postToSidebar(m);
+}
+/* Sends the plan bar again to the pages showing `thread`, or to every conversation page and the sidebar with none;
+   called when Agent Plus says a summary changed, and when the bar is turned on or off. */
+function refreshPlanBars(thread) {
+  for (const [panel, rec] of registry) if (isConversationPanel(rec) && (!thread || rec.thread === thread)) postPlanBar(panel, rec.thread);
+  const side = sidebarShowing();
+  if (!thread ? side || sidebarPlanBarSent : side === thread) postPlanBarToSidebar(side);
+}
+
 /* Put `text` into the conversation's message box as a draft. Codex's composer takes a draft from the route state it is
    navigated with, and leaves a box that already has text alone, and nothing reports back which of the two happened.
    So the outcome is uncertain (the protocol's word for it): the sender keeps the answer and tells the user to look. */
@@ -1015,12 +1049,14 @@ async function refreshPanels() {
   postToSidebar(view);
   const convos = convosNow();
   if (side) postConvosToSidebar(side, convos);
+  if (side || sidebarPlanBarSent) postPlanBarToSidebar(side);
   if (!registry.size && !side) return;
   /* The settings reach a page whose conversation is not known yet as well: it draws from them as soon as one starts. */
   for (const [panel, rec] of registry) {
     if (!isConversationPanel(rec)) continue;
     if (!rec.thread) postTo(panel, view);
     postConvos(panel, rec.thread, convos);
+    postPlanBar(panel, rec.thread);
   }
   /* Only while the stamps, the list, the line under each reply or the links to other conversations are on, and only for
      the conversations a panel here shows: the stamps use the times, the list places the compaction points by them, the
@@ -1187,12 +1223,23 @@ function installHooks() {
         if (rec.thread) postMap({ webview }, rec.thread);
         convosSent.delete(webview);
         if (isConversationPanel(rec)) postConvos({ webview }, rec.thread);
+        planBarSent.delete(webview);
+        if (isConversationPanel(rec)) postPlanBar({ webview }, rec.thread, true);
       } else {
         sidebarMapSent = '';
         if (sidebar) postMapToSidebar(sidebar);
         sidebarConvosSent = '';
         if (sidebar) postConvosToSidebar(sidebar);
+        sidebarPlanBarSent = '';
+        if (sidebar) postPlanBarToSidebar(sidebar, true);
       }
+    }
+    /* A click on the plan bar ('open') or on its red part ('answer'), for the conversation the page shows. */
+    if (msg && msg.kind === 'planBar' && (msg.action === 'open' || msg.action === 'answer') && deps && typeof deps.planBarAct === 'function') {
+      const rec = recordOfWebview(webview);
+      const thread = rec ? rec.thread : sidebar;
+      if (thread) Promise.resolve().then(() => deps.planBarAct(thread, msg.action))
+        .catch((e) => { if (deps.log) deps.log(`plan bar ${msg.action}: ${(e && e.message) || e}`); });
     }
     /* A link in a reply to another conversation (src/convo-links.js): only the agent and the id come from the page. */
     if (msg && msg.kind === 'openConversation' && typeof msg.sourceId === 'string' && typeof msg.sessionId === 'string'
@@ -1435,15 +1482,17 @@ function removePatch(vscode) {
   const noMap = require('./agent-map').NO_MAP;
   const noLinks = convosFor('', NO_CONVERSATIONS).msg;
   for (const panel of registry.keys()) {
-    postTo(panel, off); postTo(panel, NO_FIGURES); postTo(panel, noMap); postTo(panel, noLinks);
-    try { mapSent.delete(panel.webview); convosSent.delete(panel.webview); } catch (_) { /* disposed */ }
+    postTo(panel, off); postTo(panel, NO_FIGURES); postTo(panel, noMap); postTo(panel, noLinks); postTo(panel, NO_PLAN_BAR);
+    try { mapSent.delete(panel.webview); convosSent.delete(panel.webview); planBarSent.delete(panel.webview); } catch (_) { /* disposed */ }
   }
   postToSidebar(off);
   postToSidebar(NO_FIGURES);
   postToSidebar(noMap);
   postToSidebar(noLinks);
+  postToSidebar(NO_PLAN_BAR);
   sidebarMapSent = '';
   sidebarConvosSent = '';
+  sidebarPlanBarSent = '';
   return [...targets].reverse().map((t) => { try { return `${t.name}: ${t.restore(dir).message}`; } catch (e) { return `${t.name}: ${e.message}`; } });
 }
 
@@ -1514,6 +1563,6 @@ function activate(context, opts) {
 
 module.exports = { activate, ensurePatched, statusLines, openInSidebar, openSidebarRoute, canType, canDeliver, deliver, sidebarThread, panelThreads, shownIn, newPanelThreadsTitled,
   nowShowing, revealPanel, threadOfTabUri, shownByTabs, SHOWN_KEY, removePatch, NOT_SUPPORTED_MESSAGE, SHOW_DETAILS,
-  figuresOf, usageOf, compactThread, hostRequest, safeColor, viewOf, selfCheckPage, selfCheckLines, installHooks, refreshPanels, refreshConversationLinks, approvalsOf,
+  figuresOf, usageOf, compactThread, hostRequest, safeColor, viewOf, selfCheckPage, selfCheckLines, installHooks, refreshPanels, refreshConversationLinks, refreshPlanBars, approvalsOf,
   waitReasonOf, onApprovalsChanged, offerReloadIfStale, sidebarShowing, onSidebarChanged, onPanelClosed, onAccountNotification, onAppServerNotification, runningCommands, heardCommand, turnEndChime, turnHeard, _state: () => state, _registry: registry, _approvals: approvals,
   TAB_DOTS, ASK_MS, PATCH_REMOVED_KEY };
