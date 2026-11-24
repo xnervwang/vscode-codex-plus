@@ -474,21 +474,56 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
   };
   const pageSays = (f) => (f ? f.evaluate(() => ({ turns: document.querySelectorAll('[data-turn-key]').length, text: document.body.innerText.slice(0, 200) }))
     .catch((e) => ({ error: String(e) })) : null);
+  /* What Codex put in the page VS Code shows in front when it gave up on it: "Codex could not start", for a page that had
+     none of its files within 30 s, or its recovery page, "ChatGPT hit a snag", which it draws when one of its own modules
+     failed to load (Codex.log: "Failed to fetch dynamically imported module"); '' otherwise. */
+  const brokenInFront = async () => {
+    for (const f of page.frames()) {
+      try {
+        const why = await f.evaluate(() => (document.title === 'Codex could not start' ? 'Codex could not start'
+          : /ChatGPT hit a snag/.test(document.body ? document.body.innerText : '') ? 'ChatGPT hit a snag' : ''));
+        if (!why) continue;
+        const host = f.parentFrame() && await f.parentFrame().frameElement();
+        if (host && await host.isVisible()) return why;
+      } catch (_) { /* gone */ }
+    }
+    return '';
+  };
+  /*
+   * Does `act`, which brings a conversation's page to the front, and resolves to what `shown` resolves to once it is
+   * truthy, or to a falsy value after `ms`. On the CI machines Codex has now and then given up on such a page in one of the
+   * two ways above, which is Codex's page failing to start rather than what the step checks, and one failed page used to
+   * fail every step after it that needed the conversation. So the tab is then closed, once VS Code has caught up with
+   * Codex's files, and `act` done once more, with a note.
+   */
+  const shownOrAgain = async (what, act, shown, ms = 90000) => {
+    let broke = '';
+    await act();
+    const got = await until(async () => (await shown()) || ((broke = await brokenInFront()) ? 'broke' : null), ms, 500);
+    if (got !== 'broke') return got;
+    note(`${what}: Codex put "${broke}" in the page in front, so its tab was closed and that was done again`);
+    await settle(`${what}: before the tab Codex gave up on was closed`, 0);
+    await exec('workbench.action.closeActiveEditor');
+    await act();
+    return until(shown, ms, 500);
+  };
   /* Opens conversation `t` in a tab with Codex Plus's command and resolves to the page VS Code shows in that tab once it
      has drawn turns, or to null after 90 s. Looking for any page with the conversation's title finds the page of Codex's
      hidden sidebar at once, which lists recent conversations by title, while the tab's own page has not started. When
      the tab is not in front within 10 s the command is run again, which brings it there. */
   const openShown = async (t) => {
     const mine = async () => (await codexTabsNow()).find((x) => x.route === `/local/${t.id}`);
-    await exec('codexPlus.openThreadInTab', t.id);
-    if (!await until(async () => { const x = await mine(); return x && x.active; }, 10000, 250)) await exec('codexPlus.openThreadInTab', t.id);
-    return until(async () => {
+    const open = async () => {
+      await exec('codexPlus.openThreadInTab', t.id);
+      if (!await until(async () => { const x = await mine(); return x && x.active; }, 10000, 250)) await exec('codexPlus.openThreadInTab', t.id);
+    };
+    return shownOrAgain(`opening "${t.title}" in a tab`, open, async () => {
       const x = await mine();
       if (!x || !x.active) return null;
       const f = await frontPage();
       const s = await pageSays(f);
       return s && s.turns >= 1 && f;
-    }, 90000, 500);
+    });
   };
   const tabNamed = (label) => page.locator('.tabs-container .tab').filter({ hasText: label }).first();
   /* The conversation Agent Plus last said is in front, as its output channel has it: "codex <id>",
@@ -1198,13 +1233,13 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     await step('a conversation in a tab', async () => {
       if (!list) throw new Error('the session list did not open');
       const groups = (await tabs()).length;
-      retried(await pick(threads[0], ['Codex Plus: Resume in Tab']), 'Resume in Tab');
-      const open = await until(async () => { const t = await tabs(); const x = t.flatMap((g) => g.tabs).find((y) => bare(y.label) === title); return x && x.active && t; }, 20000, 500);
+      let open = null;
+      codex = await shownOrAgain('a conversation in a tab', async () => {
+        retried(await pick(threads[0], ['Codex Plus: Resume in Tab']), 'Resume in Tab');
+        open = open || await until(async () => { const t = await tabs(); const x = t.flatMap((g) => g.tabs).find((y) => bare(y.label) === title); return x && x.active && t; }, 20000, 500);
+      }, () => frameWhere((want) => !!document.querySelector('[data-codex-composer-root]') && document.querySelectorAll('[data-turn-key]').length >= 4
+        && document.body.innerText.includes(want), 0, title));
       check(!!open && open.length === groups, 'Resume in Tab opens the conversation in a tab of the group there, titled by the conversation', open || await tabs());
-      codex = await frameWhere((want) => {
-        return !!document.querySelector('[data-codex-composer-root]') && document.querySelectorAll('[data-turn-key]').length >= 4
-          && document.body.innerText.includes(want);
-      }, 90000, title);
       check(!!codex, 'Codex draws the conversation in that tab, every turn of it, with its message box');
       await shot('conversation-tab');
       await checkCurrent(threads[0].id, 'with the tab Resume in Tab opened in front');
@@ -3413,8 +3448,12 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         if (process.platform === 'linux') check(false, why, await pageSays(f)); else note(`${why}; not checked on ${process.platform}`);
         return null;
       }
+      /* When the tab is not titled, what Codex's state database holds for the conversation then says whether the title was
+         there to read. */
+      const inDb = named || !id ? null : await call(`${OWN} const t = (own('codex-files').listThreads() || []).find((x) => x.id === arg);
+        return t ? { title: t.title, updatedMs: t.updatedMs, now: Date.now() } : 'not listed';`, id).catch((e) => String(e));
       check(!!id && !!named, `${how}: while that turn runs, the tab is titled by the conversation Codex made of the message`,
-        { thread: id, tab: await frontTab(), patch: await panelTrace() });
+        { thread: id, tab: await frontTab(), inDb, patch: await panelTrace() });
       check(!!id && !!await until(() => agentFront() === `codex ${id}`, 15000, 500), `${how}: and Agent Plus has that conversation in front`, { thread: id, agentPlus: agentFront() });
       model.release();
       const ended = await until(() => f.evaluate((r) => document.body.innerText.includes(r), REPLY).catch(() => false), 30000, 500);
@@ -3508,8 +3547,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     let inTabNew = null;
     await step('a conversation begun with Codex\'s new conversation button in a tab', async () => {
       const t = threads[1];
-      await exec('codexPlus.openThreadInTab', t.id);
-      const f = await until(async () => { const x = await frontPage(); const s = await pageSays(x); return s && s.turns >= 1 && s.text.includes(t.title.slice(0, 30)) && x; }, 90000, 1000);
+      const f = await shownOrAgain('Resume in Tab for another conversation', () => exec('codexPlus.openThreadInTab', t.id),
+        async () => { const x = await frontPage(); const s = await pageSays(x); return s && s.turns >= 1 && s.text.includes(t.title.slice(0, 30)) && x; });
       check(!!f, 'Resume in Tab opens another conversation in a tab', { page: await pageSays(await frontPage()) });
       if (!f) return;
       await checkCurrent(t.id, 'with that tab in front');
@@ -3785,25 +3824,32 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       const had = newestStarted(t.id) || shown;
       const closedIds = () => list.evaluate(() => [...document.querySelectorAll('.cp-section[data-key="closed"] .cp-row')].map((r) => r.dataset.id)).catch(() => null);
       const firstClosed = (id) => until(async () => { if (!await showList()) return null; const r = await closedIds(); return r && r[0] === id && r; }, 20000, 500);
-      const cameBack = (label, turn) => until(async () => { const x = await frontTab(); return x && bare(x.label) === label && (await newestInFront()) === turn && x; }, 60000, 1000);
+      const cameBack = (label, turn, ms = 60000) => until(async () => { const x = await frontTab(); return x && bare(x.label) === label && (await newestInFront()) === turn && x; }, ms, 1000);
+      const reopenKeys = async () => {
+        /* The keys go to the editor area, where a user's would, rather than to the session list. */
+        await exec('workbench.action.focusActiveEditorGroup');
+        await page.keyboard.press(REOPEN);
+      };
       await settle('a closed conversation brought back: before its tab was closed');
       await exec('workbench.action.closeActiveEditor');
       check(!!await firstClosed(t.id), 'closing the tab of a conversation puts it first in Recently closed', await closedIds());
-      if (!await list.evaluate(() => document.querySelector('.cp-section[data-key="closed"]').classList.contains('cp-open'))) {
-        await list.locator('.cp-section[data-key="closed"] .cp-section-head').first().click();
-      }
-      await list.locator(`.cp-section[data-key="closed"] .cp-row[data-id="${t.id}"]`).first().click();
-      check(!!await cameBack(title, had), 'a click on it there opens it in a tab again, in front, titled by it and drawn down to its newest turn',
+      const fromClosed = async () => {
+        await firstClosed(t.id);
+        if (!await list.evaluate(() => document.querySelector('.cp-section[data-key="closed"]').classList.contains('cp-open'))) {
+          await list.locator('.cp-section[data-key="closed"] .cp-section-head').first().click();
+        }
+        await list.locator(`.cp-section[data-key="closed"] .cp-row[data-id="${t.id}"]`).first().click();
+      };
+      check(!!await shownOrAgain('a click on it in Recently closed', fromClosed, () => cameBack(title, had, 0), 60000),
+        'a click on it there opens it in a tab again, in front, titled by it and drawn down to its newest turn',
         { tab: await frontTab(), newest: await newestInFront(), had });
       await checkCurrent(t.id, 'the conversation opened again from Recently closed');
       await shot('reopened-from-recently-closed');
       await settle('a closed conversation brought back: before the tab opened again from Recently closed was closed');
       await exec('workbench.action.closeActiveEditor');
       await firstClosed(t.id);
-      /* The keys go to the editor area, where a user's would, rather than to the session list. */
-      await exec('workbench.action.focusActiveEditorGroup');
-      await page.keyboard.press(REOPEN);
-      check(!!await cameBack(title, had), `closed again, ${REOPEN} opens it again the same way`, { tab: await frontTab(), newest: await newestInFront(), had });
+      check(!!await shownOrAgain(`${REOPEN} for it`, reopenKeys, () => cameBack(title, had, 0), 60000),
+        `closed again, ${REOPEN} opens it again the same way`, { tab: await frontTab(), newest: await newestInFront(), had });
       await checkCurrent(t.id, `the conversation opened again with ${REOPEN}`);
       if (restored) {
         /* The New tab's URI names no conversation, so what it showed comes from its panel (src/tab-memory.js). */
@@ -3812,9 +3858,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         await settle('a closed conversation brought back: before the New tab was closed');
         await exec('workbench.action.closeActiveEditor');
         check(!!await firstClosed(begun.id), 'closing the New tab a conversation was begun in puts that conversation first in Recently closed', await closedIds());
-        await exec('workbench.action.focusActiveEditorGroup');
-        await page.keyboard.press(REOPEN);
-        check(!!await cameBack(restored.label, turn), `and ${REOPEN} opens that conversation again, titled by it and drawn down to its newest turn`,
+        check(!!await shownOrAgain(`${REOPEN} for the conversation of a New tab`, reopenKeys, () => cameBack(restored.label, turn, 0), 60000),
+          `and ${REOPEN} opens that conversation again, titled by it and drawn down to its newest turn`,
           { tab: await frontTab(), newest: await newestInFront(), had: turn, closed: await closedIds(), codexTabs: await codexTabsNow() });
         await checkCurrent(begun.id, `the conversation of a New tab opened again with ${REOPEN}`);
       }
@@ -5107,10 +5152,11 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await setting('reopenDroppedTabs', false);
       const second = await dropOnce();
       check(second.closed && second.back, 'with codexPlus.reopenDroppedTabs off, the tab is closed the same way', second);
-      if (!unmet(second)) {
-        await sleep(20000);
-        check(!await tabUp(), 'and it is not reopened', await tabs());
-      }
+      /* The new host reopens dropped tabs 8 s after it starts, reading the setting then, so the setting goes back only
+         after that pass, whether or not what it did can be judged here: put back before it, the tab came back in front
+         during the next step. */
+      await sleep(20000);
+      if (!unmet(second)) check(!await tabUp(), 'and it is not reopened', await tabs());
       await setting('reopenDroppedTabs', undefined);
     });
 
