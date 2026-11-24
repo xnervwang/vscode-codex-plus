@@ -101,11 +101,16 @@ function threadUri(vscode, thread) {
  * URI for good: a second New would bring the first one forward. VS Code compares the fragment along with the rest of
  * the URI, and Codex reads a tab's route from its path and query alone (its URI parser), so the fragment makes a new
  * resource without changing the route.
+ *
+ * Codex's own New Codex Agent, which the New chat button of its page in a tab runs too, takes its fragment from here
+ * as well (src/host.js, "new conversation tabs"), so every New tab this window opens carries one of this one shape.
  */
 let newPanels = 0;
+function newPanelFragment() {
+  return `new-${Date.now().toString(36)}-${(++newPanels).toString(36)}`;
+}
 function newPanelUri(vscode) {
-  const fragment = `new-${Date.now().toString(36)}-${(++newPanels).toString(36)}`;
-  return vscode.Uri.from({ scheme: SCHEME, authority: AUTHORITY, path: NEW_PANEL_PATH, fragment });
+  return vscode.Uri.from({ scheme: SCHEME, authority: AUTHORITY, path: NEW_PANEL_PATH, fragment: newPanelFragment() });
 }
 
 /*
@@ -169,4 +174,4 @@ async function openRouteInSidebar(vscode, route) {
 const threadRoute = (id) => `/local/${encodeURIComponent(String(id))}`;
 
 module.exports = { sidebarRouteUri, openRouteInSidebar, threadRoute, VIEW_TYPE, SCHEME, AUTHORITY, NEW_PANEL_PATH, isCodexViewType, isCodexTab, tabShape, threadOfUri, threadOfTab, codexTabs,
-  activeThread, threadUri, newPanelUri, openInTab, openNewInTab, codexGroup };
+  activeThread, threadUri, newPanelFragment, newPanelUri, openInTab, openNewInTab, codexGroup };

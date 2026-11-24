@@ -33,12 +33,19 @@
  *                           is written to no file (src/approvals.js). Three places, all unconditional - the two
  *                           coordinators Codex hands these to are each behind a feature switch, so hooking those
  *                           would report nothing whenever a switch is off
+ *   new conversation tabs   the URI Codex's New Codex Agent opens a new conversation tab on, given a fragment this
+ *                           extension hands back, so a second New opens a second tab instead of bringing the first
+ *                           one forward
  *
  * Every edit must match exactly once on a pristine bundle, all or nothing, and the result must parse; the marker carries
- * a digest of the edits so an older patch is recognised as outdated. Backing up, writing and restoring are the steps
- * every patch target shares (src/patch-target.js).
+ * a digest of the edits so an older patch is recognised as outdated. The exception is an edit marked `optional`, whose
+ * loss leaves Codex doing that one thing as it ships, which this extension copes with: it is tried on its own once every
+ * other edit fits, and a build it does not fit is patched without it rather than not at all. A patched file says which
+ * of them it went without (missingOptional). Backing up, writing and restoring are the steps every patch target shares
+ * (src/patch-target.js).
  */
 const crypto = require('crypto');
+const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 const { applyEdits, shapesOf } = require('./edits');
@@ -160,6 +167,24 @@ const EDITS = [
       + `(...cxpArgs)=>{let cxpTaken=!1;try{cxpTaken=!!(globalThis.__codexExtrasTabBar&&globalThis.__codexExtrasTabBar(cxpArgs))}`
       + `catch(cxpErr){}return cxpTaken?void 0:${fn}(...cxpArgs)})`,
   },
+  /*
+   * Codex's createNewPanel, behind its New Codex Agent and behind the New chat button of its page in a tab (the page
+   * runs chatgpt.newCodexPanel there), opens every new conversation tab on the same URI. Codex allows one editor per
+   * resource, so a second New brings the first tab forward with the conversation begun in it. The URI it built is
+   * given a fragment __codexExtrasNewPanelFragment returns (src/codex-tabs.js newPanelFragment); Codex reads a tab's
+   * route from the path and query only. With no answer, an empty one or a fault, Codex's own URI is opened unchanged.
+   */
+  {
+    name: 'new conversation tabs',
+    optional: {
+      sign: '__codexExtrasNewPanelFragment',
+      lost: 'Codex\'s own New Codex Agent, and the New chat button of its page in a tab, bring a New tab already open to the front instead of opening another',
+    },
+    re: /(async createNewPanel\(\)\{let [\w$]+=)([\w$]+\("\/extension\/panel\/new"\))/g,
+    to: (m, head, made) => `${head}(()=>{let cxpUri=${made};try{let cxpFragment=globalThis.__codexExtrasNewPanelFragment`
+      + '&&globalThis.__codexExtrasNewPanelFragment();if(typeof cxpFragment==="string"&&cxpFragment)cxpUri=cxpUri.with({fragment:cxpFragment})}'
+      + 'catch(cxpErr){}return cxpUri})()',
+  },
 ];
 
 const MARK = `/* CODEX-EXTRAS-HOST v${VERSION}-` + crypto.createHash('sha256')
@@ -168,15 +193,38 @@ const MARK = `/* CODEX-EXTRAS-HOST v${VERSION}-` + crypto.createHash('sha256')
 
 function hostFile(codexExtensionPath) { return path.join(codexExtensionPath, 'out', 'extension.js'); }
 
-/** Pure transform. Returns { out, chosen } or { error }. Never partially applies. */
+/*
+ * Pure transform. Returns { out, chosen, skipped } or { error }; `skipped` is [{ name, error }] for each optional edit
+ * the build did not fit. Never partially applies the others.
+ */
 function patchSource(src) {
   if (src.includes(ANY_MARK)) return { error: 'the source to patch already carries a host patch' };
-  const r = applyEdits(src, EDITS, 'Codex');
+  const r = applyEdits(src, EDITS.filter((e) => !e.optional), 'Codex');
   if (r.error) return { error: r.error };
-  const out = MARK + '\n' + r.out;
+  let body = r.out;
+  const chosen = [...r.chosen], skipped = [];
+  for (const e of EDITS.filter((x) => x.optional)) {
+    const o = applyEdits(body, [e], 'Codex');
+    if (o.error) { skipped.push({ name: e.name, error: o.error }); continue; }
+    body = o.out;
+    chosen.push(...o.chosen);
+  }
+  const out = MARK + '\n' + body;
   try { new vm.Script(out, { filename: 'extension.js' }); }
   catch (err) { return { error: `patched host code does not parse: ${err.message}` }; }
-  return { out, chosen: r.chosen };
+  return { out, chosen, skipped };
+}
+
+/*
+ * The optional edits the bundle in `dir` went without when this version's patch was written to it: [{ name, lost }],
+ * by the call each puts in. Empty when the bundle does not carry this version's patch, since then none of them is in
+ * effect for a reason of their own.
+ */
+function missingOptional(dir) {
+  let text = '';
+  try { text = fs.readFileSync(hostFile(dir), 'utf8'); } catch (_) { return []; }
+  if (!text.startsWith(MARK)) return [];
+  return EDITS.filter((e) => e.optional && !text.includes(e.optional.sign)).map((e) => ({ name: e.name, lost: e.optional.lost }));
 }
 
 /* A backup can stand for Codex's bundle when it parses. Anything else is not put back over it. */
@@ -198,5 +246,5 @@ const target = patchTarget({
 
 module.exports = {
   id: 'openai.chatgpt', name: 'Codex host', VERSION, MARK, ANY_MARK, BACKUP_SUFFIX, LOCAL_PREFIX, EDITS,
-  patchSource, status: target.status, apply: target.apply, restore: target.restore, targetFile: hostFile,
+  patchSource, missingOptional, status: target.status, apply: target.apply, restore: target.restore, targetFile: hostFile,
 };
