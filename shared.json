@@ -1,5 +1,5 @@
 {
-  "core": "4c8e133a66cf46276ec3fa667d7b48a00eb2cdc9",
+  "core": "140867a8623e0a9c75c0b91513a41e08682ae968",
   "files": [
     {
       "path": "build/sync-shared.js",
@@ -149,7 +149,7 @@
     {
       "path": "codex-plugin/agent-work-plan/hooks/tell-reply-images.py",
       "from": "shared/plugin/hooks/tell-reply-images.py",
-      "sha256": "f2a9799555c53cc3f59ec08833eee12c916ac06a31b4ff162ebb23e2e68ae8a6"
+      "sha256": "7cb4444344d4d30d6a7f649cf9c734310e06c085bddf5004ff98c72be91f56c1"
     },
     {
       "path": "codex-plugin/agent-work-plan/hooks/nudge-work-plan.py",
@@ -164,7 +164,7 @@
     {
       "path": "codex-plugin/agent-work-plan/hooks/plan_agent.py",
       "from": "shared/plugin/codex/plan_agent.py",
-      "sha256": "869579e12694acedd96169c5146cbf2bf213773455b5ededa4cf5d986027305f"
+      "sha256": "f2e41b9134592a05dbbc8227106b9340089c8d6b3f48ecdab03495fc5370aaf2"
     },
     {
       "path": "codex-plugin/agent-work-plan/skills/maintain/SKILL.md",
