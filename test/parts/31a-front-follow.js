@@ -6,13 +6,10 @@
 /*
  * Which conversation is in front while Codex's sidebar and a Codex tab are both open. The session list draws
  * source.front() as its current conversation, and Agent Plus's work plan view follows the conversation its focus
- * tracker settles on; the two must be the same one. As in Claude Code Plus, where both follow Claude Code's own
- * activeSessionId, the conversation of whichever of its panels became active last: whichever came to the front last,
- * the active tab or Codex's sidebar, and the sidebar hidden hands the front back to the tab.
+ * tracker settles on. Both must be the conversation of whichever came to the front last, the active tab or Codex's
+ * sidebar, and hiding the sidebar gives the front back to the tab. Claude Code Plus gets the same from Claude Code's
+ * own activeSessionId, the conversation of whichever of its panels became active last.
  *
- * Agent Plus's side is its own Focus class, from its checkout (AGENT_WORK_PLAN_DIR, or vscode-agent-plus beside this
- * repository), driven as its src/views.js drives it: a tab change offers it the active tab, and a focus report offers
- * the active tab again and then, a moment later, the reported conversation if the source still says it is in front.
  * The patch stands in as in 31-sidebar-hidden.js, with the conversation the sidebar last went to and whether a sidebar
  * view is visible.
  */

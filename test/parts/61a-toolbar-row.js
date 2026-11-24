@@ -128,7 +128,7 @@ module.exports = async ({ eq, root }) => {
   }
   {
     /* The room between the groups is less than the buttons need: they go to a line of their own inside the message box,
-       below Codex's row, as Claude Code's footer wraps its buttons, rather than outside the box. */
+       below Codex's row, as Claude Code's footer wraps its buttons onto another line. */
     const p = page(root, (dom) => toolbar(dom, { rightAt: 172 }));
     p.view();
     const line = p.q('[data-codex-extras="line"]')[0];

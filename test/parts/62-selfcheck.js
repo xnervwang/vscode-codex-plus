@@ -335,8 +335,7 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
     constructor(...a) { super(...(a.length ? a : [clockMs])); }
     static now() { return clockMs; }
   };
-  /* With its message box, as a conversation's page has one: a page with none and no element for one is a read-only page,
-     which is not looked at (below). */
+  /* With its message box. */
   pageFromSample(moved, renamed, { meter: 'Context usage: 10%' });
   const movedPage = pageUnder(root, moved);
   const told = () => movedPage.posted.filter((m) => m.kind === 'anchorsMissing');
@@ -370,10 +369,10 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
    *
    * Codex shows a sub-agent's conversation, opened from the Agent map, and a conversation archived while its tab is
    * open, read-only: the message box is not there, and neither is the element Codex puts it in
-   * (data-thread-find-composer), as a live 26.1120 page of each showed. Such a page is not one whose box this script no
-   * longer finds, however long it stays that way, and neither are its messages looked for: a sub-agent's turn can hold
-   * no message yet, as a restored sub-agent's tab on Windows showed. A page that has that element and no box this script
-   * recognises in it still says so.
+   * (data-thread-find-composer). Live 26.1120 pages of both kinds showed this. Such a page is not one whose box this
+   * script no longer finds, and its messages are not looked for either: a sub-agent's turn can hold no message yet (one
+   * did in a sub-agent's tab restored on Windows). A page with that element but no box this script recognises still
+   * says so.
    */
   {
     const clocked = () => {

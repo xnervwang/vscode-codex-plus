@@ -37,7 +37,8 @@ function toolbar(dom, { rightAt = 799, codexMeter = 0, grid: laidOut = false } =
     kids: [el('span', { attrs: { role: 'img', 'aria-label': `Context usage: ${codexMeter}%` }, rect: { top: 715, left: rightAt, width: 16, height: 16 } })] }) : null;
   const right = el('div', { computed: FLEX, rect: { top: 708, left: rightAt, width: 250, height: 28 }, kids: [...(wrap ? [wrap] : []), modelSlot] });
   if (!wrap) modelSlot.rect.left = rightAt;
-  /* With `grid` the footer is laid out as a grid, as Codex lays it out; without it there is no grid to hold a line. */
+  /* `grid` gives the footer display: grid, as Codex's has. Without it the box has no footer grid for the controls'
+     line, and they go below the box. */
   const grid = el('div', { attrs: { 'data-composer-footer-responsive': '' }, ...(laidOut ? { computed: { display: 'grid' } } : {}),
     kids: [el('div', { kids: [left] }), el('div', { kids: [right] })] });
   const root = el('div', { attrs: { 'data-codex-composer-root': '' }, rect: { top: 602, left: 8, width: 1084, height: 142 }, kids: [grid] });

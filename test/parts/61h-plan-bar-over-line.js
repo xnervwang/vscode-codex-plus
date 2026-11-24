@@ -4,12 +4,11 @@
 
 'use strict';
 /*
- * The plan bar over a message box this script's own controls make taller. When Codex's toolbar row has no room for
- * them they go to a line of their own inside the box, and the box grows by that line; the plan bar placed in the same
- * pass has to sit above the box as it is with the line in it. Codex makes room run out on its own, as when a turn starts
- * and it draws its message box in one row, so this happens with no resize of the window. The stand-in box grows by
- * 28 px, a Codex button's height, while the line is in it, as Codex's footer grid (no gap between its rows) does; the
- * stand-in DOM has no ResizeObserver, so only the pass itself can move the bar.
+ * The plan bar over a message box this script's own controls make taller. When Codex's toolbar row has no room for them
+ * they go to a line of their own inside the box, and the box grows by that line. This happens without any resize of the
+ * window, as when a turn starts and Codex draws its message box in one row. The stand-in box grows by 28 px, a Codex
+ * button's height, while the line is in it, as Codex's footer grid does (it has no gap between its rows). The stand-in
+ * DOM has no ResizeObserver, so only the pass itself can move the bar.
  */
 const path = require('path');
 const vm = require('vm');
