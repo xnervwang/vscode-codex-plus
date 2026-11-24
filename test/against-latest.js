@@ -80,7 +80,10 @@ async function newest() {
     const dir = path.join(work, 'extension');
     const hostText = fs.readFileSync(host.targetFile(dir), 'utf8');
     const h = host.patchSource(hostText);
-    if (h.error) { failed++; console.log(`FAIL  host: ${h.error}`); } else console.log(`ok    host: every edit matches once (${h.chosen.map((c) => c.name).join(', ')}) and parses`);
+    if (h.error) { failed++; console.log(`FAIL  host: ${h.error}`); }
+    else if (!h.skipped.length) console.log(`ok    host: every edit matches once (${h.chosen.map((c) => c.name).join(', ')}) and parses`);
+    /* An optional edit that does not fit is left out of the patch everyone gets, quietly but for a line in the log. */
+    for (const s of (h.skipped || [])) { failed++; console.log(`FAIL  host: the optional edit ${s.error}, so it would be left out`); }
     /* The names the host edits declare carry a prefix so that they cannot hide one of Codex's (src/host.js LOCAL_PREFIX). */
     const taken = [...new Set([...hostText.matchAll(new RegExp(`(?:^|[^\\w$])(${host.LOCAL_PREFIX}[A-Z][\\w$]*)`, 'g'))].map((x) => x[1]))];
     if (taken.length) { failed++; console.log(`FAIL  names: this build has its own ${taken.join(', ')}, which the host edits' prefix ${host.LOCAL_PREFIX} was to keep clear of`); }

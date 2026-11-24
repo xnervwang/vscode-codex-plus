@@ -113,6 +113,14 @@ function anchorsMissingLine(m) {
     + 'The page self-check at the end of "Codex Plus: Show Status" says which part was not found.';
 }
 
+/* The optional host edits the patched Codex in `dir` went without (src/host.js missingOptional). */
+const leftOut = (dir) => {
+  const host = targets.find((t) => typeof t.missingOptional === 'function');
+  try { return dir && host ? host.missingOptional(dir) : []; } catch (_) { return []; }
+};
+const leftOutLine = (m) => `Left out of the host patch: "${m.name}", whose place in this Codex build has a shape this extension does not know. `
+  + `So ${m.lost}.`;
+
 function statusLines() {
   const lines = [`Patch to Codex: ${state.active ? 'in place and connected' : 'not in effect'} (${state.reason})`];
   if (deps) {
@@ -121,6 +129,7 @@ function statusLines() {
     const codex = deps.vscode.extensions.getExtension('openai.chatgpt');
     lines.push(`  Tab bar button: ${require('./manifest').carries(codex && codex.packageJSON)
       ? "this extension's, titled for what it opens" : "Codex's own: the Codex manifest this window loaded does not hide it"}`);
+    for (const m of leftOut(dir)) lines.push(`  ${leftOutLine(m)}`);
   }
   if (state.anchorsMissing) lines.push(`  At ${new Date(state.anchorsMissing.at).toISOString()}: ${anchorsMissingLine(state.anchorsMissing)}`);
   const waiting = approvals.threads();
@@ -1432,7 +1441,8 @@ async function ensurePatched(vscode, context, log, mode) {
   const states = linked.map((t) => t.status(dir));
   const due = targets.filter((t) => t.standsAlone && t.status(dir) !== 'patched');
   const linkedDone = states.every((s) => s === 'patched');
-  if (linkedDone && !due.length) { state.reason = state.active ? 'connected' : 'patched; reload to connect'; return; }
+  const sayLeftOut = () => { for (const m of leftOut(dir)) log(leftOutLine(m)); };
+  if (linkedDone && !due.length) { state.reason = state.active ? 'connected' : 'patched; reload to connect'; sayLeftOut(); return; }
   if (mode === 'off') {
     state.reason = context.globalState.get(PATCH_REMOVED_KEY) === true
       ? 'removed by "Remove the Patch from Codex"; "Codex Plus: Turn On" puts it back' : 'the additions are off (codexPlus.enabled)';
@@ -1452,6 +1462,7 @@ async function ensurePatched(vscode, context, log, mode) {
   const TAB_BAR = 'Codex Plus put its own tab bar button in place of Codex\'s, with a title that says what it opens. Reload the window for it to take effect.';
   if (linkedDone) {
     state.reason = state.active ? 'connected' : 'patched; reload to connect';
+    sayLeftOut();
     if (tabBar) await offer(TAB_BAR);
     return;
   }
@@ -1467,6 +1478,7 @@ async function ensurePatched(vscode, context, log, mode) {
     return;
   }
   state.reason = 'patched; reload the window to connect';
+  sayLeftOut();
   await offer(refresh ? 'Codex Plus brought its patch of Codex up to this version. Reload the window for it to take effect.'
     : 'Codex is patched. Reload the window for it to take effect.');
 }

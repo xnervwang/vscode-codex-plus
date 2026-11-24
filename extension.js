@@ -875,6 +875,11 @@ function registerCommands(context, { source, memory, sessionsModel, sessionsView
     newConversationInTab(say).catch((e) => say(`new conversation in a tab: ${e.message}`));
     return true;
   };
+  /*
+   * The fragment Codex's own New Codex Agent gives the URI of the tab it opens (src/host.js, "new conversation tabs"),
+   * of the shape this extension's New tabs carry. '' leaves Codex's URI as it built it, as with the main switch off.
+   */
+  globalThis.__codexExtrasNewPanelFragment = () => (settings().enabled === false ? '' : tabs.newPanelFragment());
   /* Set below, beside Unarchive. */
   let unarchiveToOpen = async () => {};
   reg('openThreadInTab', async (arg) => {
@@ -1551,6 +1556,7 @@ async function trustPlugin(say, { interactive, command = false }) {
 function deactivate() {
   /* A patched Codex still running then finds no one to ask, and its button opens its sidebar again. */
   delete globalThis.__codexExtrasTabBar;
+  delete globalThis.__codexExtrasNewPanelFragment;
   files.closeAll();
   try { uninstallPlan.finishUninstall(selfPath, [ID, ...uninstallPlan.FORMER_IDS]); } catch (_) { /* VS Code runs the hook later */ }
 }

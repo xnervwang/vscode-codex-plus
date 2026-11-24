@@ -3514,8 +3514,9 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
 
     /*
      * Codex's own New Codex Agent, the command behind its New button and the + of VS Code's Chat Sessions view. It
-     * opens Codex's New URI with no fragment, in the group of the text editor last focused, where this extension's
-     * button gives each new tab a fragment of its own.
+     * opens Codex's New route in the group of the text editor last focused, and with the patch its URI carries a
+     * fragment of its own, as the tabs of this extension's button do (src/host.js, "new conversation tabs"). Pressed
+     * twice: "New Codex Agent twice and Codex's New chat in a tab, each a new conversation".
      */
     let agentNew = null;
     await step('a conversation begun in a tab New Codex Agent opened', async () => {
@@ -3527,19 +3528,12 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       check(!!f, 'New Codex Agent, run with notes.txt in front, opens a new conversation page in a tab');
       if (!f) return;
       const where = (await codexTabsNow()).find((x) => x.active);
-      check(!!where && where.route === '/extension/panel/new' && !where.fragment && (await tabs()).length === groups,
-        'on Codex\'s own New URI, which has no fragment, in a group already there', { tab: where, groups: [groups, (await tabs()).length] });
+      check(!!where && where.route === '/extension/panel/new' && /^new-[0-9a-z]+-[0-9a-z]+$/.test(where.fragment || '') && (await tabs()).length === groups,
+        'on Codex\'s New route with a fragment of its own, of the shape this extension\'s New tabs carry, in a group already there',
+        { tab: where, groups: [groups, (await tabs()).length] });
       if (where) note(`New Codex Agent opened its tab in editor group ${where.column}`);
       agentNew = await firstMessage(f, 'Write the migration guide for 1.2.', 'a conversation begun in a tab New Codex Agent opened');
       await shot('new-codex-agent-conversation');
-      /* Codex opens one editor per URI, so a second New Codex Agent brings the same tab forward. */
-      await openNotes();
-      await exec('chatgpt.newCodexPanel');
-      await sleep(3000);
-      const again = await frontTab(), bareTabs = (await codexTabsNow()).filter((x) => x.route === '/extension/panel/new' && !x.fragment);
-      note(`New Codex Agent run again: the tab in front is "${again ? again.label : ''}", and ${bareTabs.length} tab(s) are on Codex's own New URI; `
-        + 'Codex opens its New URI in the editor that already has it');
-      if (agentNew) await checkCurrent(bare(again && again.label) === bare(agentNew.label) ? agentNew.id : '', 'with the tab New Codex Agent brought forward in front');
     });
 
     /* Codex's new conversation button in its page, pressed in a tab Resume in Tab opened on another conversation. Where
@@ -3615,6 +3609,125 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await checkCurrent('', `with the new conversation page Codex's "${button.label}" button opened in front, nothing typed into it yet`);
       inTabNew = await firstMessage(target.f, 'Plan the cache warm-up for the release.', `a conversation begun from Codex's "${button.label}" button in a tab`);
       await shot('in-tab-new-conversation');
+    });
+
+    /*
+     * Codex's own New Codex Agent pressed twice with a text file in front, then the New chat button of Codex's page in
+     * a tab, which runs the same command there. Codex alone opens every one of them on one URI and so brings the tab it
+     * opened before to the front; with the patch each is a tab on a New URI of its own (src/host.js, "new conversation
+     * tabs"). Last, a New tab is closed and New chat pressed at once in the tab that comes to the front: on one URI the
+     * new page once carried its first message on in the conversation just closed. The tabs opened here are closed again
+     * at the end.
+     */
+    await step('New Codex Agent twice and Codex\'s New chat in a tab, each a new conversation', async () => {
+      const NEW_URI = /^new-[0-9a-z]+-[0-9a-z]+$/;
+      const sameTab = (x, y) => !!x && !!y && x.route === y.route && x.fragment === y.fragment;
+      const front = async () => (await codexTabsNow()).find((x) => x.active);
+      const reveal = (x) => call(`await vscode.commands.executeCommand('vscode.openWith', vscode.Uri.from({ scheme: 'openai-codex', authority: 'route',
+        path: arg.route, fragment: arg.fragment }), 'chatgpt.conversationEditor', { viewColumn: arg.column, preview: false }); return true;`, x);
+      const toFront = async (x, f) => {
+        await reveal(x);
+        return until(async () => sameTab(await front(), x) && (await frontPage()) === f, 15000, 300);
+      };
+      const opened = [];
+      /* The page a press opened and its tab, once that tab, one not open before, is in front. */
+      const newTab = async (press) => {
+        const had = await codexTabsNow(), groups = (await tabs()).length, before = new Set(page.frames());
+        await press();
+        const f = await newPageSince(before);
+        const tab = f ? await until(async () => { const x = await front(); return x && !had.some((y) => sameTab(x, y)) && x; }, 15000, 500) : null;
+        if (tab) opened.push(tab);
+        return { f, tab, had, groups: [groups, (await tabs()).length] };
+      };
+      const fresh = (r) => !!r.f && !!r.tab && r.tab.route === '/extension/panel/new' && NEW_URI.test(r.tab.fragment || '') && r.groups[0] === r.groups[1];
+      /* Marks the New chat button in the header of Codex's page `f` and resolves to its label, '' when there is none. */
+      const newChatButton = (f) => f.evaluate(() => {
+        const name = (b) => (b.getAttribute('aria-label') || b.getAttribute('title') || '').trim();
+        const hit = [...document.querySelectorAll('button, [role="button"], a')].filter((b) => b.offsetParent && /^new (chat|thread|task|conversation)$/i.test(name(b)))
+          .sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top)[0];
+        if (!hit) return '';
+        document.querySelectorAll('[data-cxp-test="new-chat"]').forEach((b) => b.removeAttribute('data-cxp-test'));
+        hit.setAttribute('data-cxp-test', 'new-chat');
+        return name(hit);
+      }).catch(() => '');
+      const pressNewChat = async (f) => {
+        const label = await newChatButton(f);
+        check(!!label, 'Codex\'s page in the tab has its New chat button');
+        if (!label) return null;
+        return newTab(() => f.locator('[data-cxp-test="new-chat"]').first().click());
+      };
+      const shows = (f, text) => f.evaluate((t) => document.body.innerText.includes(t), text).catch(() => false);
+
+      await openNotes();
+      const one = await newTab(() => exec('chatgpt.newCodexPanel'));
+      await openNotes();
+      const two = await newTab(() => exec('chatgpt.newCodexPanel'));
+      check(fresh(one) && fresh(two) && one.f !== two.f && one.tab.fragment !== two.tab.fragment && two.had.length === one.had.length + 1,
+        'New Codex Agent run twice with notes.txt in front opens two new conversation tabs, each on Codex\'s New route with a fragment of its own, in a group already there',
+        { one: one.tab, two: two.tab, groups: [one.groups, two.groups], tabs: await codexTabsNow() });
+      if (!fresh(one) || !fresh(two)) return;
+      await shot('new-codex-agent-twice');
+      const b = await firstMessage(two.f, 'Draft the rollback plan for 1.2.', 'the second tab New Codex Agent opened');
+      check(!!await toFront(one.tab, one.f), 'the first tab New Codex Agent opened is still there, and comes to the front by its URI', { want: one.tab, tabs: await codexTabsNow() });
+      const a = await firstMessage(one.f, 'Write the test plan for 1.2.', 'the first tab New Codex Agent opened');
+      check(!!a && !!b && a.id !== b.id && bare(a.label) !== bare(b.label), 'the two tabs hold two different conversations, each titled by its own',
+        { a, b, tabs: await codexTabsNow() });
+      if (!a || !b) return;
+      const listed = await until(async () => { const r = await openRows(); return r && [a.id, b.id].every((id) => r.includes(id)) && r; }, 15000, 500);
+      check(!!listed, 'Open sessions lists both conversations', { want: [a.id, b.id], open: await openRows() });
+
+      /* New chat in the first tab's page: a new tab, and the first tab keeps its conversation. */
+      const c0 = await pressNewChat(one.f);
+      if (!c0) return;
+      check(fresh(c0) && ![one.tab, two.tab].some((x) => sameTab(x, c0.tab)),
+        'New chat in the page of a tab with a conversation in it opens a new conversation tab on a New URI of its own, in the same group',
+        { tab: c0.tab, groups: c0.groups, tabs: await codexTabsNow() });
+      if (!fresh(c0)) return;
+      await checkCurrent('', 'with the new conversation page New chat opened in front, nothing typed into it yet');
+      const c = await firstMessage(c0.f, 'List the risks of the 1.2 rollout.', 'a conversation begun from New chat in a tab New Codex Agent opened');
+      check(!!c && ![a.id, b.id].includes(c.id), 'and the conversation begun there is a new one', { a: a.id, b: b.id, c });
+      const back = await toFront(one.tab, one.f);
+      const kept = (await codexTabsNow()).find((x) => sameTab(x, one.tab));
+      check(!!back && !!kept && bare(kept.label) === bare(a.label) && await shows(one.f, a.text),
+        'the tab New chat was pressed in still shows its own conversation, titled by it', { kept, a, page: await pageSays(one.f) });
+      check(!!await until(() => agentFront() === `codex ${a.id}`, 15000, 500), 'and in front puts that conversation in front for Agent Plus', { want: a.id, agentPlus: agentFront() });
+      await checkCurrent(a.id, 'the tab New chat was pressed in, back in front');
+      await shot('new-chat-in-a-tab-kept');
+
+      /* A New tab closed, and New chat pressed at once in the tab that comes to the front. */
+      if (!c) return;
+      const panels = () => call(`${OWN} return own('patching')._registry.size;`).catch(() => -1);
+      await toFront(two.tab, two.f);
+      await toFront(c0.tab, c0.f);
+      await settle('New Codex Agent twice and Codex\'s New chat in a tab: before a New tab was closed');
+      const had = await panels();
+      await exec('workbench.action.closeActiveEditor');
+      if (!await until(async () => (await frontPage()) === two.f, 5000, 100)) await toFront(two.tab, two.f);
+      const e0 = await pressNewChat(two.f);
+      const left = await panels();
+      note(`New chat was pressed ${left < had ? 'after' : 'before'} Codex let go of the panel of the tab just closed (${had} panels before the close, ${left} at the press)`);
+      if (!e0) return;
+      check(fresh(e0) && !opened.slice(0, -1).some((x) => sameTab(x, e0.tab)), 'New chat pressed right after a New tab was closed opens a new conversation tab on a New URI of its own',
+        { tab: e0.tab, tabs: await codexTabsNow() });
+      if (!fresh(e0)) return;
+      const text = 'Write the release announcement for 1.2.';
+      const e = await firstMessage(e0.f, text, 'a conversation begun from New chat right after a New tab was closed');
+      const rollout = (id) => walk(path.join(profile.codexHome, 'sessions')).find((f) => f.endsWith('.jsonl') && path.basename(f).includes(id));
+      const intoClosed = !!rollout(c.id) && fs.readFileSync(rollout(c.id), 'utf8').includes(`"message":${JSON.stringify(text).slice(0, -1)}`);
+      check(!!e && ![a.id, b.id, c.id].includes(e.id) && !intoClosed, 'its first message starts a new conversation, not one more turn of the conversation just closed',
+        { closed: c.id, e, intoClosed });
+      await shot('new-chat-after-a-close');
+
+      /* The tabs opened here closed again, so the steps after this one see the tabs they always had. */
+      for (const x of opened) {
+        const now = (await codexTabsNow()).find((y) => sameTab(x, y));
+        if (!now) continue;
+        await reveal(now).catch(() => {});
+        await settle('New Codex Agent twice and Codex\'s New chat in a tab: before a tab it opened was closed', 0);
+        if (sameTab(await front(), now)) await exec('workbench.action.closeActiveEditor');
+      }
+      const still = (await codexTabsNow()).filter((y) => opened.some((x) => sameTab(x, y)));
+      check(!still.length, 'and the tabs this step opened are closed again', still);
     });
 
     /* The session list's New in tab, the same kind of tab as the tab bar button's. */

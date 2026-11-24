@@ -13,7 +13,8 @@
         "page messages",
         "app-server requests",
         "app-server answers",
-        "tab bar button"
+        "tab bar button",
+        "new conversation tabs"
       ],
       "manifestEdits": [
         "tab bar button when"
@@ -79,7 +80,8 @@
         "page messages",
         "app-server requests",
         "app-server answers",
-        "tab bar button"
+        "tab bar button",
+        "new conversation tabs"
       ],
       "manifestEdits": [
         "tab bar button when"
@@ -146,7 +148,8 @@
         "page messages",
         "app-server requests",
         "app-server answers",
-        "tab bar button"
+        "tab bar button",
+        "new conversation tabs"
       ],
       "manifestEdits": [
         "tab bar button when"
@@ -214,7 +217,8 @@
         "page messages",
         "app-server requests",
         "app-server answers",
-        "tab bar button"
+        "tab bar button",
+        "new conversation tabs"
       ],
       "manifestEdits": [
         "tab bar button when"
@@ -282,7 +286,8 @@
         "page messages",
         "app-server requests",
         "app-server answers",
-        "tab bar button"
+        "tab bar button",
+        "new conversation tabs"
       ],
       "manifestEdits": [
         "tab bar button when"
