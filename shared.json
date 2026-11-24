@@ -1,5 +1,5 @@
 {
-  "core": "e63c33bc7e1489047b2ffa98e45ed6627f897412",
+  "core": "7db9ad2df58ad3e89984b66dd414881fc2f8aae9",
   "files": [
     {
       "path": "build/sync-shared.js",
@@ -79,7 +79,7 @@
     {
       "path": "src/title-marks.js",
       "from": "src/title-marks.js",
-      "sha256": "6590ac3e3b8f6e562bb6a73e00cb039956b17a5dcb311057388288a49a8c2ccb"
+      "sha256": "313c8ab8f80b95f9e0f555e72c89ed6d4bd0de805601fc69ffadb609231eda3c"
     },
     {
       "path": "src/token-mode.js",
@@ -94,7 +94,7 @@
     {
       "path": "src/page/plan-bar.js",
       "from": "shared/page/plan-bar.js",
-      "sha256": "d671cb5e0d37ba15303546ff404daf26158a24570b540316232fcad887aaf87a"
+      "sha256": "8322d7f05b59dfbf6acb5bdc559e0ad939563f8243188703a47366b35d5fd5e0"
     },
     {
       "path": "src/python-runtime.js",
@@ -139,17 +139,17 @@
     {
       "path": "codex-plugin/agent-work-plan/hooks/resume-work-plan.py",
       "from": "shared/plugin/hooks/resume-work-plan.py",
-      "sha256": "cdfd230eb78c0b211e98bcb3be604b159ecf9f2b723fb966bdf4bd8033adaac7"
+      "sha256": "6b6253177c4f14b278e8ca7325479a9b193e638e458dac8f2ebf912e2b6863e8"
     },
     {
       "path": "codex-plugin/agent-work-plan/hooks/tell-time-zone.py",
       "from": "shared/plugin/hooks/tell-time-zone.py",
-      "sha256": "67bf56532b919f2c5085508f6bf172f25010fac805af571a6ab7d9334ebee655"
+      "sha256": "87cd3c1c5338e227808b45415fe325a64d1ccfd9acf5569af3383dcbf04c6902"
     },
     {
       "path": "codex-plugin/agent-work-plan/hooks/tell-reply-images.py",
       "from": "shared/plugin/hooks/tell-reply-images.py",
-      "sha256": "7cb4444344d4d30d6a7f649cf9c734310e06c085bddf5004ff98c72be91f56c1"
+      "sha256": "4b2cdd6f6f20cd17197cf084a16b7cb858e89d1e3e95f0a27bfa6fdcfe4cca6f"
     },
     {
       "path": "codex-plugin/agent-work-plan/hooks/nudge-work-plan.py",
@@ -164,7 +164,7 @@
     {
       "path": "codex-plugin/agent-work-plan/hooks/plan_agent.py",
       "from": "shared/plugin/codex/plan_agent.py",
-      "sha256": "f2e41b9134592a05dbbc8227106b9340089c8d6b3f48ecdab03495fc5370aaf2"
+      "sha256": "4f3b93276c4c01a96af619e04c3c38366672dd0796fe97a3f27d75523f85b986"
     },
     {
       "path": "codex-plugin/agent-work-plan/skills/maintain/SKILL.md",
