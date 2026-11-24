@@ -29,7 +29,7 @@
  * approval request at once.
  *
  * Each conversation also reports `activity`, `unseen`, `lastUserAt` and `lastReplyAt`; `state` stays for an older Agent
- * Plus. `lastReplyAt` is when its latest turn ended: the time of that turn's reply.
+ * Plus. `lastReplyAt` is when its latest turn ended.
  * `activity` is `working` during a turn, `background` after the turn while work it started still runs, `waiting` for
  * `prompt` and for a question its work plan put to the user after the user's last message, and `stopped` otherwise.
  * `unseen` marks a reply the user has not looked at; it is measured from the latest finished turn, so a later turn does

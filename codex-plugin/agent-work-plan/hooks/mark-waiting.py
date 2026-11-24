@@ -33,12 +33,10 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from plan_path import SESSION_NAME, data_dir, read_payload, write_quietly
 
 WAITING_DIR = "waiting"
-# The events that remove marks; clear() says which marks each one removes.
 CLEARS = ("PostToolUse", "Stop", "SubagentStop", "Interrupt", "UserPromptSubmit")
 
 
 def thread_of(payload):
-    """The conversation the event belongs to: the sub-agent's own thread for a sub-agent's event, else the session."""
     for field in ("agent_id", "session_id"):
         value = str(payload.get(field) or "").strip()
         if SESSION_NAME.match(value):
@@ -47,7 +45,7 @@ def thread_of(payload):
 
 
 def key_of(tool, tool_input):
-    """What one call is known by in both PermissionRequest and PostToolUse, which give no call id in common: the tool and
+    """The key of one call, the same in PermissionRequest and PostToolUse, which share no call id: the tool and
     its command, or all its arguments except the description, which only the approval carries."""
     if isinstance(tool_input, dict) and isinstance(tool_input.get("command"), str):
         subject = tool_input["command"]
