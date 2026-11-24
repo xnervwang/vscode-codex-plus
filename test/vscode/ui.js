@@ -763,6 +763,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       if (btn) base.compare('tab-bar-button', await crop({ x: btn.x - 4, y: btn.y - 4, width: btn.width + 8, height: btn.height + 8 }));
 
       const groups = (await tabs()).length;
+      const framesBefore = new Set(page.frames());
       await codexButton().click();
       const opened = await until(async () => {
         const t = await tabs();
@@ -771,7 +772,16 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       }, 20000, 500);
       check(!!opened && opened.t.length === groups, 'a click opens a new Codex conversation in a tab titled Codex, in the group already there rather than a new split',
         opened || await tabs());
-      const loaded = await until(frontPage, 90000, 500);
+      /* A page that was not there before the click, so not the page of Codex's sidebar, which has a message box too. The
+         window opens 1024 px wide on macOS and Windows, and with Codex's sidebar open beside the tab, the page is narrower
+         than the tab pages the other steps look for. */
+      const loaded = await until(async () => {
+        for (const f of page.frames()) {
+          if (framesBefore.has(f)) continue;
+          if (await f.evaluate(() => !!document.querySelector('[data-codex-composer-root]')).catch(() => false)) return f;
+        }
+        return null;
+      }, 90000, 500);
       check(!!loaded, 'and Codex draws its message box in that tab');
       await shot('tab-bar-new-tab');
 
