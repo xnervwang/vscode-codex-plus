@@ -1869,19 +1869,19 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     {
       let auxBefore = 0;
       await look('sidebar-narrow-box', {
-        expect: 'Codex\'s sidebar on the right dragged narrow, about 300 px wide, at the bottom of "Why does the nightly export skip archived rows?": its message box. '
+        expect: 'Codex\'s sidebar on the right dragged narrow, about 280 px wide, at the bottom of "Why does the nightly export skip archived rows?": its message box. '
           + 'Inside the box\'s rounded border, below Codex\'s own row of buttons (the + button, the hand, the model picker with its name or its icon, the send button and the others Codex shows), '
           + 'a line of its own holds Codex Plus\'s information button (i) and note button (♪) at its left and the context ring with its percentage at its right, '
           + 'drawn in the same size and colour as Codex\'s own buttons. None of them is outside the box\'s border or below it against the window\'s edge, '
           + 'none covers or touches one of Codex\'s buttons, and none is cut off at the box\'s edge.',
-        unchanged: 'The sidebar shows the same conversation as before, only narrower.',
+        unchanged: 'The sidebar shows the same conversation as before, at about 280 px.',
       }, async () => {
-        auxBefore = await auxTo(300);
+        auxBefore = await auxTo(280);
         const side = await frameWhere((want) => innerWidth < 800 && document.body.innerText.includes(want) && !!document.querySelector('[data-codex-composer-root]'), 30000, t1.title.slice(0, 30));
         if (!side) throw new Error('Codex\'s sidebar no longer shows the conversation');
         const placed = await until(() => side.evaluate(() => (document.querySelector('[data-codex-extras="line"]') ? 'line'
           : document.querySelector('[data-codex-extras="bar"]') ? 'bar' : '')).catch(() => ''), 15000, 300);
-        if (placed !== 'line') tell(`at about 300 px Codex Plus's controls are ${placed === 'bar' ? 'in the row below the message box' : 'not in a line of their own'}`);
+        if (placed !== 'line') tell(`at about 280 px Codex Plus's controls are ${placed === 'bar' ? 'in the row below the message box' : 'not in a line of their own'}`);
         await sleep(800);
         const box = await boxIn(side, '[data-codex-composer-root]'), ab = await part(PARTS.auxiliary);
         if (!box || !ab) return ab;
@@ -1935,6 +1935,9 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         }), 20000, 500);
         if (!drawn) tell('the sidebar\'s plan bar did not say "3 open" within 20 s');
         else if (!drawn.compact) tell(`the sidebar's page is ${drawn.page} px wide, so its plan bar is the full one`);
+        /* The pointer rests where the step before clicked the Agent map pill; with the pill shorter now, the meter next to
+           it can have moved under the pointer and opened its hover box. */
+        await away();
         return union([await planBarBox(side), await part(PARTS.auxiliary)]);
       });
       try { fs.unlinkSync(plan1); } catch (_) { /* never written */ }
