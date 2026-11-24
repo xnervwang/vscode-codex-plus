@@ -1276,6 +1276,18 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       }), 10000, 200);
       check(!!hover && /Work plan: injected 1 time since the conversation began: \d+ characters, about \d+ tokens/.test(hover),
         'the context meter\'s hover says how much the work plan has added to the conversation\'s context', hover);
+      /* The hover reaches up from the toolbar over where the plan bar is; where the two meet, the hover is on top. */
+      const overBar = await codex.evaluate(() => {
+        const b = document.querySelector('[data-codex-extras="context"]'), p = document.querySelector('[data-codex-extras="plan-bar"]');
+        if (!b || !p || !p.getClientRects().length) return { bar: !!p };
+        const x = b.getBoundingClientRect(), y = p.getBoundingClientRect();
+        const l = Math.max(x.left, y.left), r = Math.min(x.right, y.right), t = Math.max(x.top, y.top), d = Math.min(x.bottom, y.bottom);
+        if (r - l < 2 || d - t < 2) return { bar: true, meet: false };
+        const top = document.elementFromPoint((l + r) / 2, (t + d) / 2);
+        return { bar: true, meet: true, hoverOnTop: !!top && b.contains(top) };
+      }).catch((e) => ({ error: String(e) }));
+      if (overBar.meet) check(overBar.hoverOnTop, 'where the context meter\'s hover meets the plan bar, the hover is drawn over the bar', overBar);
+      else note(`the context meter's hover and the plan bar did not meet (${JSON.stringify(overBar)}), so which is on top was not checked`);
       await shot('context-meter-hover');
       /* Jumping the pointer from the meter to the window's corner leaves the hover open. The hover takes the click meant
          for the message box, and every click after it. The pointer goes to the top of the conversation, above the hover,
@@ -1326,11 +1338,14 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await tabNamed(title).click();
       await until(async () => (await frontPage()) === codex, 10000, 300);
       const since = new Date().toISOString().replace(/\.\d+Z$/, '+00:00');
+      /* Asked days before the user's last message, so the question counts in the bar but gives the tab no red dot, which
+         the steps after this one do not expect. */
+      const asked = new Date(Date.now() - 3 * 86400e3).toISOString().replace(/\.\d+Z$/, '+00:00');
       const QUESTION = 'Should the retry delay stay at 30 seconds?';
       const ROWS = [
         { title: 'Find the retry delay', state: 'done', since, closed: since },
         { title: 'Change the retry delay', state: 'doing', since, children: [{ title: 'Read the sync job', state: 'doing', since }] },
-        { title: 'Decide the default delay', state: 'waiting', waitingOn: 'user', question: QUESTION, asked: since, since },
+        { title: 'Decide the default delay', state: 'waiting', waitingOn: 'user', question: QUESTION, asked, since: asked },
         { title: 'Update the docs', state: 'todo', since }];
       const writeRows = (thread, nodes) => { fs.mkdirSync(PLANS, { recursive: true }); fs.writeFileSync(path.join(PLANS, `${thread}.json`), JSON.stringify({ nodes })); };
       /* What the bar in frame `f` shows, part by part, and where it is against the message box. */
@@ -1415,7 +1430,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       /* In Codex's sidebar, which is narrow, the compact bar; a click there shows that conversation's plan, though the
          tab in front shows another. */
       writeRows(other.id, [{ title: 'Look at the export logs', state: 'doing', since },
-        { title: 'Choose what to log', state: 'waiting', waitingOn: 'user', question: 'Log every skipped row, or a count?', asked: since, since },
+        { title: 'Choose what to log', state: 'waiting', waitingOn: 'user', question: 'Log every skipped row, or a count?', asked, since: asked },
         { title: 'Fix the archive filter', state: 'todo', since }]);
       await call('vscode.commands.executeCommand("codexPlus.openThreadInSidebar", arg); return true;', other.id);
       const allow = page.locator('.monaco-dialog-box').filter({ hasText: 'open this URI' }).first();
@@ -1468,6 +1483,10 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       planFor(id, planTitle(id));
       fs.rmSync(path.join(PLANS, `${other.id}.json`), { force: true });
       await exec('agentPlus.refreshWorkPlan');
+      /* The steps after this one start from a tab with no dot. */
+      if (!await until(async () => { const d = await dotsOn(title); return d && d.waiting === 0 && d.working === 0; }, 20000, 500)) {
+        note(`the plan bar: the tab still had a dot when the step ended: ${JSON.stringify(await dotsOn(title))}`);
+      }
     });
 
     await step('the dot on a tab', async () => {
