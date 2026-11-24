@@ -3283,8 +3283,19 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       if (await allow.waitFor({ state: 'visible', timeout: 15000 }).then(() => true, () => false)) {
         await allow.locator('.dialog-buttons .monaco-button').filter({ hasText: 'Open' }).first().click({ timeout: 5000 });
       }
-      const side = await frameWhere((want) => innerWidth < 800 && document.body.innerText.includes(want)
-        && document.querySelectorAll('.codex-extras-stamp-assistant').length >= 4, 90000, t.title);
+      /* Codex draws a conversation's turns as they come into view and keeps them drawn. In a short sidebar, as on Windows
+         with Codex's setup banner above the message box, it starts with fewer than all of them, so the conversation is
+         scrolled to its top and back to its end before every reply's stamp is looked for. */
+      const shownSide = await frameWhere((want) => innerWidth < 800 && document.body.innerText.includes(want)
+        && document.querySelectorAll('.codex-extras-stamp-assistant').length >= 1, 90000, t.title);
+      if (shownSide) {
+        for (const up of [true, false]) {
+          await shownSide.evaluate((u) => { const sc = document.querySelector('[data-app-action-timeline-scroll]'); if (sc) sc.scrollTop = u ? 0 : sc.scrollHeight; }, up).catch(() => {});
+          await sleep(1500);
+        }
+      }
+      const side = shownSide && await until(() => shownSide.evaluate(() => document.querySelectorAll('.codex-extras-stamp-assistant').length >= 4).catch(() => false), 30000, 500)
+        ? shownSide : null;
       /* For a failure's detail: each page narrower than 800 px, its turns, its stamps on replies and whether it names the
          conversation. */
       const narrowPages = async () => {
@@ -3482,9 +3493,13 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         await checkCurrent(id, how);
         await checkPlan(planTitle(id), how);
       };
+      /* Agent Plus logs the conversation in front only when a tab change or a focus report moves it, not when it reads
+         the plans again after they changed (its refreshPlans), so the plans are written well before the first click. */
       for (const id of [t.id, s1.id]) planFor(id, planTitle(id));
       await exec('agentPlus.refreshWorkPlan');
+      await sleep(3000);
       await openNotes();
+      await sleep(800);
       await tabNamed(title).click();
       await same(t.id, 'with the tab of a conversation in front and Codex\'s sidebar closed');
       await call('vscode.commands.executeCommand("codexPlus.openThreadInSidebar", arg); return true;', s1.id);
