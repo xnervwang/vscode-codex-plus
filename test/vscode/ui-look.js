@@ -1935,9 +1935,17 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         }), 20000, 500);
         if (!drawn) tell('the sidebar\'s plan bar did not say "3 open" within 20 s');
         else if (!drawn.compact) tell(`the sidebar's page is ${drawn.page} px wide, so its plan bar is the full one`);
-        /* The pointer rests where the step before clicked the Agent map pill; with the pill shorter now, the meter next to
-           it can have moved under the pointer and opened its hover box. */
-        await away();
+        /* The pointer rests where the step before clicked the Agent map pill; with the pill gone or shorter now, the meter
+           next to it can have moved under the pointer and opened its hover box. It is moved first to an empty spot near the
+           top of the sidebar's page, so the page sees it leave whatever it was over (a pointer that leaves the page on its
+           way across can leave a hover box or a tooltip open there), and then in one move onto the editor beside it. */
+        const bar = await part(PARTS.auxiliary);
+        if (bar) {
+          await page.mouse.move(bar.x + 24, bar.y + 115, { steps: 4 });
+          await sleep(400);
+          await page.mouse.move(Math.max(3, bar.x - 200), bar.y + 300);
+          await sleep(800);
+        }
         return union([await planBarBox(side), await part(PARTS.auxiliary)]);
       });
       try { fs.unlinkSync(plan1); } catch (_) { /* never written */ }
