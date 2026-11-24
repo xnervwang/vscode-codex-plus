@@ -46,8 +46,8 @@ function withPlan(text) {
   return lines.join('\n');
 }
 
-/* Writes a rollout for each of `threads` under `top` of `home`, the conversation i of the list dated `ago(i)` days back,
-   and returns the files written. */
+/* Writes one rollout per thread of `threads` into the `top` folder of `home`, dating thread i `ago(i)` days back, and
+   returns the files written. */
 function rollouts(home, { folder, threads, top = 'sessions', ago = (i) => i, edit = (text) => text }) {
   const cwd = JSON.stringify(folder).slice(1, -1);
   const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'cxp-fake-'));
@@ -89,8 +89,8 @@ function write(home, { folder, modelUrl }) {
   return { home, threads: THREADS };
 }
 
-/* Conversations Codex archived some time ago: each rollout under archived_sessions/, its turns and its file's time
-   `days` days back. */
+/* Conversations Codex archived some time ago: the rollouts go under archived_sessions/, and each one's turns and file
+   time are set to its `days` before now. */
 function archived(home, { folder, threads }) {
   const files = rollouts(home, { folder, threads, top: 'archived_sessions', ago: (i) => threads[i].days });
   files.forEach((f) => { const t = threads.find((x) => f.includes(x.id)); const at = new Date(Date.now() - t.days * 86400e3); fs.utimesSync(f, at, at); });

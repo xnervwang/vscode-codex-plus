@@ -5,10 +5,11 @@
 'use strict';
 /*
  * The Agent map in Codex's page (src/page/codex-extras-page.js), on the stand-in DOM: Claude Code's pill, shown next to
- * this script's other controls while the conversation has a wake-up, a goal or a sub-agent, and the dialog it opens:
- * the conversation's own row first under a heading of its own, then a section for each of the three under a heading
- * with its count, leaving out any that is empty, each row a card of two lines. Each button sends one of the ACTIONS in
- * src/agent-map.js. The render check covers sizes, colours and where the pill ends up in a drawn page.
+ * this script's other controls while the conversation has a wake-up, a goal or a sub-agent, and the dialog it opens.
+ * The dialog has the conversation's own row first, under a heading of its own, then a section for each of the three
+ * under a heading with its count. An empty section is left out, and each row is a card of two lines. Each button sends
+ * one of the ACTIONS in src/agent-map.js. The render check covers sizes, colours and where the pill ends up in a drawn
+ * page.
  */
 const path = require('path');
 const vm = require('vm');

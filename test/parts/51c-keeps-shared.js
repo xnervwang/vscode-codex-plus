@@ -4,9 +4,9 @@
 
 'use strict';
 /*
- * keepsShared() decides whether a window notes and sends the ends of work left running, and wake-ups. A window whose
- * build was installed over keeps them while no live window says it runs the installed build, so that they are not left
- * undone, and then sent hours late, while every window still runs an earlier build.
+ * keepsShared() decides whether a window records and sends the ends of work left running and the wake-ups. A window
+ * whose build was installed over keeps them while no live window runs the installed build, going by the windows'
+ * entries, so that they are not left undone until a window is reloaded, which can be hours later.
  */
 const fs = require('fs');
 const path = require('path');

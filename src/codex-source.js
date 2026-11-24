@@ -4,8 +4,8 @@
 
 'use strict';
 /*
- * Codex as a conversation source of Agent Plus (xnervwang.agent-plus, protocol 1; its docs/protocol.md), which
- * draws the work plan, Conversations and Answer views.
+ * Codex as a conversation source of Agent Plus (xnervwang.agent-plus, protocol 1; its docs/protocol.md), which draws
+ * the work plan, Conversations and Answer views.
  *
  *   id, label, logo, extensionId   who the conversations belong to
  *   planPath, planDir              where their plans are (the companion plugin's data directory)
@@ -31,10 +31,11 @@
  * Each conversation also reports `activity`, `unseen`, `lastUserAt` and `lastReplyAt`; `state` stays for an older Agent
  * Plus. `lastReplyAt` is the end of its latest turn, which is when the reply that turn ended with landed.
  * `activity` is `working` during a turn, `background` after the turn while work it started still runs, `waiting` for
- * `prompt` and for a question its work plan put to the user after the user's last message, and `stopped` otherwise. `unseen` marks a reply the user has not looked at; it is measured from the latest
- * finished turn, so a later turn does not clear it. `lastUserAt` is when the user last typed a message. A waiting one
- * says what it waits for in `waitingFor` when that is known: the approval this window's request or another window's
- * mark names, a question asked with request_user_input_async, or a question in its plan.
+ * `prompt` and for a question its work plan put to the user after the user's last message, and `stopped` otherwise.
+ * `unseen` marks a reply the user has not looked at; it is measured from the latest finished turn, so a later turn does
+ * not clear it. `lastUserAt` is when the user last typed a message. A waiting one carries `waitingFor` when its reason
+ * is known: the approval named by this window's request or by another window's mark, a question asked with
+ * request_user_input_async, or a question in its plan.
  *
  * This module opens none of Codex's files; src/codex-reader.js has the snapshot its worker thread made.
  */
@@ -105,14 +106,14 @@ const lastOf = (thread, st, heard) => Math.max((thread && thread.updatedMs) || 0
  * src/left-running.js). While it is not empty, an idle or unread conversation's `state` is working, as Claude Code Plus
  * reported it, and `ownState` keeps the state it would otherwise have; its `activity` is background.
  *
- * `planAsked` is when its work plan last put a question to the user (src/workplan.js latestQuestionAt). Later than the
- * user's last message, the activity is waiting once the turn has ended, since the question reaches the user in that
- * turn's reply, as Agent Plus's Conversations panel has it (activityOf in its src/conversations.js), so the tab and the
- * session list draw the panel's red dot. `state` is left alone: an older Agent Plus reads its `prompt` as a permission
- * prompt, and finds the question in the plan itself.
+ * `planAsked` is when its work plan last put a question to the user (src/workplan.js latestQuestionAt). If that is
+ * later than the user's last message, the activity is waiting once the turn has ended, because the question reaches
+ * the user in that turn's reply. Agent Plus's Conversations panel decides the same way (activityOf in its
+ * src/conversations.js), so the tab and the session list show the panel's red dot. `state` is left alone: an older
+ * Agent Plus reads its `prompt` as a permission prompt, and finds the question in the plan itself.
  *
- * `waiting.reason` is what the requests stopped on the user name (waitingFor); only a request says what it is about,
- * so a conversation waiting on one gets no reason from the rollout or the plan.
+ * `waiting.reason` is the reason those requests give (waitingFor). A conversation waiting on a request takes its reason
+ * from the request, not from its rollout or plan.
  */
 function conversationOf(thread, { unread, openHere, now = Date.now(), state = null, hasPlan = false, waiting = null, heard = null, left = [],
   planAsked = 0 }) {
@@ -247,7 +248,7 @@ function threadOfCodexTab(vscode, patching, tab) {
  * has it), trusted() (not in Restricted Mode), seen (src/seen.js) and log. scanLeft() says whether this window scans
  * for what conversations left running after their turn (src/left-running.js): no more often than leftEveryMs, in
  * procDir and in the Claude Code session records under claudeSessions. A window that stands down for a newer build
- * does not scan. While holdSeen() is true, what is in front does not count as read.
+ * does not scan. While holdSeen() is true, the conversation in front is not marked as read.
  */
 function createCodexSource(vscode, { log = () => {}, reader, patching = null, enabled = () => true, trusted = () => true,
   briefs = () => true, seen = createSeen(), scanLeft = () => false, leftEveryMs = LEFT_EVERY_MS, procDir = '/proc',
@@ -304,7 +305,7 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
       try { subs.push(vscode.window.onDidChangeWindowState((s) => { if (s && s.focused && markFront()) changed.fire(); })); } catch (_) { /* none */ }
     }
     /* An approval request and its answer change `activity` without writing anything the poll could find. The marks are
-       read again too, so the one of a request answered here goes at once. */
+       read again too, so the mark of a request answered here clears at once. */
     if (patching && typeof patching.onApprovalsChanged === 'function') {
       try { subs.push(patching.onApprovalsChanged(() => { readMarks(); changed.fire(); })); } catch (_) { /* no patch */ }
     }
@@ -376,9 +377,9 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
     try { return patching.approvalsOf(id); } catch (_) { return null; }
   };
   /*
-   * The marks of approvals asked for anywhere (src/waiting-marks.js), read on every poll and whenever this window's
-   * requests change. `askedAt` keeps, for each marked thread, the last time this window's app-server had an approval of
-   * it outstanding.
+   * The marks left for every approval Codex asks for, in any window (src/waiting-marks.js), read on every poll and
+   * whenever this window's requests change. `askedAt` keeps, for each marked thread, the last time this window's
+   * app-server had an approval of it outstanding.
    */
   let marks = new Map(), marksKey = '[]';
   const askedAt = new Map();
@@ -388,7 +389,7 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
     for (let i = 0; t && t.parent && i < 20; i++) t = reader.thread(t.parent) || null;
     return t;
   };
-  /* The approvals of `id` its marks still stand for, as { count, tool }, removing the ones that are over. */
+  /* Counts the approvals of `id` that its marks still stand for, and removes the marks that are over. */
   const markedFor = (id) => {
     const list = marks.get(String(id || '').toLowerCase());
     if (!list || !list.length) return { count: 0, tool: '' };
@@ -416,15 +417,15 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
     marksKey = key;
     return moved;
   }
-  /* What this window's requests say `id` waits for, or null without the patch. */
+  /* The reason this window's requests give for `id` waiting, or null without the patch. */
   const reasonHere = (id) => {
     if (!patching || typeof patching.waitReasonOf !== 'function') return null;
     try { return patching.waitReasonOf(id) || null; } catch (_) { return null; }
   };
   /*
-   * What `id` is stopped on: this window's own requests, and as many more as the marks of other places say, with the
-   * reason the user is needed. A request the user has to answer here names it; else a mark does, by the tool its hook
-   * named; else a request Codex will answer by itself.
+   * What `id` is stopped on, and why the user is needed. The count is this window's own requests, raised to what the
+   * marks count. The reason comes from a request the user has to answer here; else from a mark; else from a request
+   * Codex will answer by itself.
    */
   const waitingOn = (id) => {
     const own = askedHere(id);
@@ -694,8 +695,8 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
       notice = next || null;
       if (JSON.stringify(notice) !== was) noticeChanged.fire();
     },
-    /* Brings the conversation to the front if this window shows it, and is false otherwise; Agent Plus then asks the
-       window that shows it. */
+    /* Brings the conversation to the front when this window shows it. Otherwise it returns false, and Agent Plus asks
+       the window that does. */
     async reveal(sessionId) {
       if (!files.THREAD_ID.test(String(sessionId || ''))) return false;
       if (tabs.codexTabs(vscode).some((t) => t.thread === sessionId)) {

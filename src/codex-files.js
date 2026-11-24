@@ -436,7 +436,7 @@ function rolloutState(file, lines = null) {
         if (st.model) pastStart = true;
       }
     }
-    /* The lines run newest first, so a user message met before the question came after it and answered it. */
+    /* A user message found here is later than the question, so the question was answered. */
     if (!st.startedMs && row.type === 'response_item' && p.type === 'message' && p.role === 'user') {
       const text = textOf(p);
       if (QUESTION_REPLY.test(text) || typedByUser(text)) replied = true;

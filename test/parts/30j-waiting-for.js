@@ -4,12 +4,12 @@
 
 'use strict';
 /*
- * What a waiting conversation waits for, as Agent Plus reads it (`waitingFor`, its docs/protocol.md Conversations), and
- * `shows`, which Agent Plus asks only when `features` lists it.
+ * The reason a waiting conversation gives Agent Plus (`waitingFor`, in the Conversations part of its docs/protocol.md),
+ * and `shows`, which Agent Plus asks only when `features` lists it.
  *
- * A request this window's app-server sent is named by the tool Codex's PermissionRequest hook names for the same action
+ * A request this window's app-server sent gets the tool name Codex's PermissionRequest hook uses for the same action
  * (codex-rs/core/src/tools/approvals.rs, permission_request_payload), so the window that runs the conversation and a
- * window reading the hook's mark name it alike. The marks carry that name themselves. A question asked with
+ * window reading the hook's mark show the same name. The marks carry that name themselves. A question asked with
  * request_user_input_async, and one put in the work plan after the user's last message, have no tool.
  */
 const fs = require('fs');
@@ -53,7 +53,7 @@ module.exports = async ({ eq, tmp, root }) => {
     { kind: 'choice' }, 'a page an MCP server asks the user to go to is a choice');
   eq([of('item/started', {}), reasonOf(null)], [null, null], 'anything that does not wait has no reason');
 
-  /* ── the reason of a conversation, out of what this window has outstanding ── */
+  /* ── a conversation's reason, from the requests this window has outstanding ── */
   const book = approvals.createApprovals();
   const bookReason = (t) => (typeof book.reasonOf === 'function' ? book.reasonOf(t) : undefined);
   book.request({ id: 'r1', method: 'item/tool/requestUserInput', params: { threadId: T, isBlocking: false, questions: [{ id: 'q' }] } });

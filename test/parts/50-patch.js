@@ -89,8 +89,8 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
       'window broadcasts, 26.1117\'s shape: a conversation a page retains is handed over as followed, and Codex still keeps it');
   }
   {
-    /* 26.1117's store: each page that shows a conversation retains it, and the callback hears true for the first and
-       false once the last has let go. */
+    /* In 26.1117's store each page that shows a conversation retains it; the callback gets true for the first page and
+       false once the last one has let go. */
     const r = applyEdits('class S{retainActiveConversation(t,r){let n=this.interests.get(t)??new Set;this.interests.set(t,n);let o=Symbol();'
       + 'return n.add(o),n.size===1&&r(!0),()=>{this.interests.get(t)!==n||!n.delete(o)||n.size!==0||(this.interests.delete(t),r(!1))}}}',
     host.EDITS.filter((e) => e.name === 'window broadcasts'), 'Codex');

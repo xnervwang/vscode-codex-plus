@@ -75,8 +75,8 @@ function demoId(id) {
 const TITLE = 'Import bank statements';
 const TITLES = { '01a1c321-8585-7621-93b0-f7d7106ca508': 'Import bank statements' };
 
-/* The pack's rollouts carry the skill lists an earlier release injected on the machine they were recorded on, naming
-   that machine's skills and paths, so those blocks are left out of the copy. */
+/* The pack's rollouts were recorded on a machine where Codex Plus 1.3.0 or earlier injected skill lists. Those lists
+   name that machine's skills and paths, so they are left out of the copy. */
 const routed = (line) => line.includes('"role":"developer"') && line.includes('Skills that may fit this message');
 
 function lastTime(lines) {

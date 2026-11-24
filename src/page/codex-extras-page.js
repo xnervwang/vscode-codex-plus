@@ -542,10 +542,11 @@
   /*
    * The Agent map: a copy of Claude Code's dialog of that name and of the "N agents" pill that opens it, with Claude
    * Code Plus's timers added. It shows this conversation's own row, its sub-agents, the work it started that still
-   * runs, its wake-up and its goal, which the host sends (codex-extras-agent-map, src/agent-map.js) whenever they change. The pill sits in
-   * the row with the other controls whenever there is something to show. Its dot is green while any of that work runs,
-   * red while a sub-agent waits for the user, and grey once it has all ended. The dialog is built when it opens and
-   * removed when it closes. Each button posts one of the host's ACTIONS; Open also posts the sub-agent's id.
+   * runs, its wake-up and its goal, which the host sends (codex-extras-agent-map, src/agent-map.js) whenever they
+   * change. The pill sits in the row with the other controls whenever there is something to show. Its dot is green
+   * while any of that work runs, red while a sub-agent waits for the user, and grey once it has all ended. The dialog
+   * is built when it opens and removed when it closes. Each button posts one of the host's ACTIONS; Open also posts the
+   * sub-agent's id.
    */
   var agentMap = null, agentsBtn = null, mapBox = null, mapKeysWired = false;
   var Z_MAP = 28;
@@ -668,11 +669,10 @@
   var cutTo = function (text, n) { return text.length > n ? text.slice(0, n - 1) + '…' : text; };
 
   /*
-   * How the map is laid out, after Claude Code Plus's layout of Claude Code's own map: the conversation's own row first,
-   * under a heading of its own, then a section for each kind of thing listed - the sub-agents, the work left running,
-   * the wake-up and the goal, in that order - each under a heading that reads as one: a label in capitals and a count,
-   * smaller and bolder than the rows, behind a thin line. Every row is a card in the form Claude Code draws its own: a
-   * dot, a title on one line and one line under it. An empty section is left out.
+   * The layout: the conversation's own row first, under a heading of its own, then a section for each kind of thing
+   * listed, in the order named above. A section's heading is a label in capitals and a count, smaller and bolder than
+   * the rows, behind a thin line. Every row is a card in the form Claude Code draws its own: a dot, a one-line title
+   * and a line of details under it. An empty section is left out.
    *
    * The map's hover text is drawn above its overlay, which covers the page's other labels.
    */
@@ -688,7 +688,8 @@
   var MAP_CARD = 'box-sizing:border-box;display:flex;flex-direction:column;justify-content:center;align-items:stretch;gap:2px;width:300px;'
     + 'max-width:100%;margin:0;padding:6px 10px;text-align:left;font:inherit;color:var(--vscode-foreground,#ccc);list-style:none;'
     + 'background-color:var(--vscode-menu-background,#252526);border:1px solid ' + EDGE + ';border-radius:4px;';
-  /* A section's heading; `count` is null for the heading over the conversation's own row, which has none and no line. */
+  /* A section's heading; `count` is null for the heading over the conversation's own row, which shows no count and no
+     line. */
   function mapHead(label, count, note) {
     var hd = mk('div', MAP_HEAD + (count === null ? 'border-top:0;margin:0;padding-top:0;' : ''));
     hd.setAttribute(MARK + '-head', label);
@@ -712,7 +713,7 @@
    * A card. `o.dot` is a state of dotEl, `o.title` the first line, `o.after` what follows the title on it, `o.meta` the
    * second line; `o.tag` the element it is (a div by default). Its hover text is `o.note` and then the second line,
    * which a narrow side bar cuts short. A card with `o.body` is the summary of a <details> that opens the body below it
-   * on a click, with an arrow that says so; `o.key` keeps it open or closed across redraws, as `open` records them.
+   * on a click, with an arrow that says so; `o.key` is its key in `open`, which keeps it open or closed across redraws.
    */
   function mapCard(o, open) {
     var line = mk('span', 'display:flex;align-items:center;gap:6px;min-width:0;white-space:nowrap;');
@@ -744,7 +745,6 @@
     d.appendChild(body);
     return d;
   }
-  /* A card with its buttons under it. */
   function withActs(card, buttons) {
     var w = mk('div', 'display:flex;flex-direction:column;align-items:flex-start;gap:6px;max-width:100%;');
     w.appendChild(card);
@@ -768,7 +768,7 @@
   }
   var WORK_META = { detached: 'detached', command: 'background terminal', codexExec: 'codex exec', claudeWorker: 'claude -p', claudeBg: 'claude --bg' };
   var CMD_SHOWN = 120, CMD_HOVER = 500;
-  /* A command line with its program named by the last part of its path, as Claude Code Plus titles its cards: a program
+  /* Shortens a command line's program to the last part of its path, as Claude Code Plus titles its cards: a program
      run by its full path, such as the codex in Codex's extension folder, would otherwise fill the title with the path. */
   var titleOf = function (cmd) { return cmd.replace(/^[\/~]\S*\/([^\/\s]+)(?=\s|$)/, '$1'); };
   function jobCard(d, open) {
@@ -796,7 +796,7 @@
   function mapSections(m, open) {
     var out = [];
     /* The conversation's own row: its title, the dot its tab has, and the model and the context in use as the meter has
-       them, the model named as the reply stamps name it (src/user-times.js). */
+       them, with the model's name in the form the reply stamps use (src/user-times.js). */
     var me = m.me && typeof m.me === 'object' ? m.me : {};
     var ownMeta = [];
     if (usage && usage.model) ownMeta.push(usage.model.replace(/^openai\./, ''));
@@ -1991,19 +1991,22 @@
   /*
    * Other conversations a reply names, drawn as links (codexPlus.conversationLinks). The host sends every agent's
    * conversations and the one this page shows (codex-extras-conversations); agentPlusKit finds the names and puts one
-   * of this script's own elements in place of each. A click sends the host the conversation's agent and id, nothing else.
+   * of this script's own elements in place of each. A click sends the host the conversation's agent and id, nothing
+   * else.
    *
    * Only a reply Codex has finished writing is touched. Codex's page is React's: while a reply streams, React keeps
    * rewriting the text nodes this would split, and inserting next to them, and once it ends Codex draws it again with
-   * its finished renderer. A reply counts as finished by the rollout, as the stamps' times do: every reply of a turn
-   * that is not the last one shown, and in the last one a reply the rollout already holds at its place in the turn, or
-   * every reply once the rollout has ended the turn. One newly finished is linked LINK_HOLD_MS later, after that redraw.
+   * its finished renderer. Whether a reply is finished is read from the rollout, as for the stamps' times. In every
+   * turn but the last one shown, all replies are finished. In the last one, a reply is finished once the rollout holds
+   * it at its place in the turn, and all of them are once the rollout has ended the turn. A newly finished reply is
+   * linked LINK_HOLD_MS later, after that redraw.
    */
   var convos = { on: false, ix: null, version: 0 };
   var LINK_MARK = 'convo-link', LINK_SEL = '[' + MARK + '="' + LINK_MARK + '"]', LINK_HOLD_MS = 600;
   var finishedAt = (typeof WeakMap === 'function') ? new WeakMap() : null, linkDue = 0, linksDrawn = 0;
-  /* What each reply looked like when it was last linked: the list it was linked from, its length and its links. One
-     that still looks so is not read again, which spares a long conversation a scan of every reply on each pass. */
+  /* What each reply looked like when it was last linked: the version of the list, its text length and its number of
+     links. A reply that still looks the same is not read again, which spares a long conversation a scan of every reply
+     on each pass. */
   var linkedAs = (typeof WeakMap === 'function') ? new WeakMap() : null;
   var looks = function (node) { return String(node.textContent || '').length + ':' + all(node, LINK_SEL).length; };
   function finished(e, lastTurn) {
@@ -2028,8 +2031,8 @@
     a.addEventListener('keydown', function (ev) { if (ev && ev.key === 'Enter') open(ev); });
     return a;
   }
-  /* A link put back as text, joined to the text on either side: the link was split out of one text node, and a name
-     is found only within one. Only a finished reply has links, so React no longer writes to those nodes. */
+  /* Turns a link back into text and joins it with the text nodes on either side: the link was split out of one text
+     node, and a name is found only within one. */
   function unlink(a) {
     var p = a.parentNode;
     if (!p) return;
@@ -2941,8 +2944,6 @@
       images: { media: imageCounts.media, links: imageCounts.links, hidden: imageCounts.hidden, setting: view.replyImages !== false },
       /* Prompts a Stop hook gave the model, folded to one line. */
       hookPrompts: { folded: hookCount },
-      /* Links to other conversations: whether they are on, how many conversations the page knows of, and how many links
-         are drawn. */
       conversationLinks: { on: convos.on, known: convos.ix ? convos.ix.size : 0, drawn: all(document, LINK_SEL).length },
       page: { hidden: !!document.hidden, marksObserving: !!observer },
     };

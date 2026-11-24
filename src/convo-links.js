@@ -6,12 +6,12 @@
 /*
  * Links in Codex's page to the other conversations a reply names (codexPlus.conversationLinks). The page script finds
  * the names and draws the links (src/page/codex-extras-page.js); this side gives it the conversations to look for and
- * opens the one a link names.
+ * opens the conversation behind a clicked link.
  *
- * The list is every agent's conversations, from Agent Plus's allConversations (its docs/protocol.md). Agent Plus
- * gathers it only while something listens, so this listens only while the setting is on. A page is sent only what it
- * matches and labels by: the agent, the id, the title and when it was last active. A click comes back as an agent and
- * an id, and the folder Agent Plus opens the conversation in is taken from this side's own copy of the list.
+ * The list holds every agent's conversations; Agent Plus provides it as allConversations, described in its
+ * docs/protocol.md. Agent Plus builds the list only for a subscriber. A page gets only the agent, id, title and last
+ * active time of each conversation, which is what it matches and labels links by. A click comes back as an agent and an
+ * id; this side looks up the rest, the folder included, in its own copy of the list and hands it to Agent Plus.
  */
 const { coreHas } = require('./core-link');
 
@@ -39,7 +39,7 @@ function createConversationLinks({ core = null, enabled = () => false, onChange 
     version++;
   }
 
-  /* Starts or stops listening as the setting now says. */
+  /* Subscribes while the setting is on and Agent Plus offers the list, and unsubscribes otherwise. */
   function sync() {
     const want = !!enabled() && offered();
     if (want && !sub) {

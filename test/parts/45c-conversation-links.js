@@ -6,7 +6,7 @@
 /*
  * The host's side of the links to other conversations (codexPlus.conversationLinks): it listens to Agent Plus's
  * allConversations only while the setting is on, hands the list to each Codex page with the conversation that page
- * shows, and opens a conversation a page's link names through agentPlus.openConversation. An Agent Plus without the
+ * shows, and opens the conversation behind a page's link through agentPlus.openConversation. An Agent Plus without the
  * feature leaves it all off without an error.
  */
 const path = require('path');
@@ -77,7 +77,7 @@ module.exports = async ({ eq, tmp, root }) => {
   none.sync();
   eq(none.view().on, false, 'and no Agent Plus at all');
 
-  /* ── through the patch: each page gets the list with its own conversation, and a click is opened ── */
+  /* ── through the patch ── */
   const { vscode } = fake.create();
   fake.install(vscode);
   for (const k of Object.keys(require.cache)) if (/[/\\]src[/\\]patching\.js$/.test(k)) delete require.cache[k];
@@ -173,7 +173,8 @@ module.exports = async ({ eq, tmp, root }) => {
     o.tell('conversationLinks');
   } catch (e) { threw = e; } finally { if (o) o.close(); }
   eq(threw, null, 'an older Agent Plus with no allConversations activates Codex Plus and takes the setting\'s changes with no error');
-  /* The extension's modules, with what its activations left in them, are not the ones the next part loads. */
+  /* Drops the extension's modules from the require cache, so the next part does not get them with what these
+     activations left in them. */
   await new Promise((r) => setTimeout(r, 50));
   for (const k of Object.keys(require.cache)) if (k.startsWith(root + path.sep) && !k.includes(`${path.sep}test${path.sep}`)) delete require.cache[k];
 };

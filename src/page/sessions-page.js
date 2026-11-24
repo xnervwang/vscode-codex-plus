@@ -883,7 +883,8 @@
       if (a >= 0 && b >= 0) { select(list.slice(Math.min(a, b), Math.max(a, b) + 1).map((x) => x._row.id)); highlight(r); return; }
     }
     /* As in Claude Code's list, a plain click empties the selection and opens the row, which the host then draws as the
-       current one; only Ctrl and Shift choose rows, so nothing is left looking chosen once the conversation goes. */
+       current one. Only Ctrl and Shift select rows, so once the host stops drawing that conversation as current, no row
+       is left looking selected. */
     anchor = id;
     select([]);
     highlight(null);
@@ -1015,8 +1016,8 @@
     else if (msg.type === 'startRename' && typeof msg.id === 'string') startRename(rowFor(msg.id));
     else if (msg.type === 'startRenameGroup' && typeof msg.key === 'string') renameGroup(msg.key);
   });
-  /* The row the arrow keys are on looks hovered, with its buttons showing; once the list has lost the focus, as to the
-     tab Enter opened, nothing there says which row the keys were on. */
+  /* The row the arrow keys are on is drawn as hovered, with its buttons showing. When the list loses the focus, as to
+     the tab Enter opened, that look is dropped, since the keys no longer move in the list. */
   window.addEventListener('blur', () => { hideHover(); closeMenu(); closeCtx(); highlight(null); });
   window.addEventListener('resize', closeCtx);
   filter();

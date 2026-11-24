@@ -186,9 +186,9 @@ function removeSideFiles(dir, ids) {
 }
 
 /*
- * The skill search of releases before this one kept its index, log and locks in SKILL_SEARCH_DIR here, and a
+ * The skill search of Codex Plus 1.3.0 and earlier kept its index, log and locks in SKILL_SEARCH_DIR here, and a
  * <session id>.routed per conversation. Only those two are deleted, once per plan directory: `doneFile` lists the
- * directories already cleared, and a directory with a deletion that failed is tried again on the next call.
+ * directories already cleared, and if a deletion fails, the directory is tried again on the next call.
  */
 const SKILL_SEARCH_DIR = 'skill-route';
 const ROUTED_FILE = /^[0-9a-f][0-9a-f-]{7,}\.routed$/i;
@@ -226,7 +226,7 @@ const whenOf = (v) => { const t = typeof v === 'string' ? Date.parse(v.trim()) :
 /*
  * When the plan in `file` last put a question to the user, in ms since the epoch, 0 for none. Rows are dated as Agent
  * Plus dates them (planQuestions in src/folders.js over its node()): a row waiting on the user by `asked` when it has a
- * question, else by `since`; a row with no title is not read, nor its children.
+ * question, else by `since`. A row with no title is skipped, and so are its children.
  */
 function latestQuestionAt(file) {
   let raw;

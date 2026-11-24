@@ -4,10 +4,10 @@
 
 'use strict';
 /*
- * Other conversations named in a reply, drawn as links by the page script (codexPlus.conversationLinks): a title in
- * corner brackets, a whole title standing on its own and a session id each become a link; the conversation the page
- * shows, code blocks and a reply still being written are left alone; a click asks the host to open the conversation;
- * a redraw of Codex's that drops a link gets it back; and with the setting off no link is left.
+ * Other conversations named in a reply, drawn as links by the page script (codexPlus.conversationLinks). A title in
+ * corner brackets, a whole title standing on its own and a session id each become a link. The conversation the page
+ * shows, code blocks and a reply still being written are left alone. A click asks the host to open the conversation,
+ * a link that a redraw of Codex's drops comes back, and with the setting off no link is left.
  */
 const path = require('path');
 const vm = require('vm');
@@ -22,7 +22,8 @@ const B = '019a6a20-3333-7000-8000-000000000003';
 const C = 'c0ffee42-4444-7000-8000-000000000004';
 const MENTION = 'data-agent-plus-mention';
 
-/* The page's clock, moved on by the test: a reply newly finished is linked only some time after the pass that found it. */
+/* The test moves the page's clock forward, because a newly finished reply is linked only some time after the pass
+   that found it. */
 let skew = 0;
 class Clock extends Date {
   constructor(...a) { if (a.length) super(...a); else super(Date.now() + skew); }
@@ -61,7 +62,7 @@ module.exports = async ({ eq, root }) => {
     turnEl(T1, userEl('first'), r1), turnEl(T2, userEl('second'), r2), turnEl(T3, userEl('third'), r3a, r3b)] })] }));
   const page = pageUnder(root, dom);
   page.send({ type: 'codex-extras-view', timestamps: true, navigation: false, userEdge: false, buttons: true });
-  /* The last turn is running: the rollout holds its first reply and not yet the one being written. */
+  /* While the last turn runs, the rollout holds its first reply but not yet the one being written. */
   const times = (replies3, ended3) => ({ type: 'codex-extras-user-times', times: null, compactions: [], turns: {},
     turnTimes: { [T1]: { u: [now - 9e5], r: [now - 8e5], d: 9000 }, [T2]: { u: [now - 7e5], r: [now - 6e5], d: 9000 },
       [T3]: { u: [now - 5e5], r: replies3.map((k) => now - 4e5 + k), ...(ended3 ? { e: true } : {}) } } });
@@ -139,7 +140,7 @@ module.exports = async ({ eq, root }) => {
   page.send({ type: 'codex-extras-conversations', on: true, list, self: { sessionId: SELF, title: list[0].title } });
   eq(linkTo(p1), [`claude-code:${A}=黑盒测试 ADV和 AUV`], 'and turned on again, the title in brackets is found again');
 
-  /* A turn ended without the rollout holding its last reply, as when it was stopped. */
+  /* A stopped turn: it ended before its last reply reached the rollout. */
   const p4 = el('p', { texts: ['Stopped before 「黑盒测试 ADV和 AUV」'] });
   r3b.appendChild(p4);
   page.send(times([1], true));

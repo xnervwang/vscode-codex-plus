@@ -5,12 +5,12 @@
 'use strict';
 /*
  * Approvals asked for outside this window: the plugin's PermissionRequest hook leaves a mark beside the plans
- * (codex-plugin/agent-work-plan/hooks/mark-waiting.py), and the source reads it (src/waiting-marks.js), so a conversation
- * another window or Codex's terminal interface runs shows as waiting for the user here too.
+ * (codex-plugin/agent-work-plan/hooks/mark-waiting.py), and the source reads it (src/waiting-marks.js), so a
+ * conversation running in another window or in Codex's terminal interface shows as waiting for the user here too.
  *
- * The hook is run as Codex runs it, with the JSON Codex 26.1117 sends on standard input (the input schemas that build
- * embeds: permission-request, post-tool-use, stop, user-prompt-submit). The reader stands in with rollout states the test
- * sets, and the patch with the approvals this window's own app-server asked for.
+ * The test runs the hook the way Codex does, with the JSON Codex 26.1117 sends on standard input (the input schemas
+ * that build embeds). A stand-in reader returns rollout states the test sets, and a stand-in patch reports the
+ * approvals this window's own app-server asked for.
  */
 const cp = require('child_process');
 const fs = require('fs');
@@ -120,7 +120,8 @@ module.exports = async ({ eq, note, tmp, root }) => {
     send({ ...common(EXEC, 't1'), hook_event_name: 'Stop', stop_hook_active: false, last_assistant_message: '' });
     eq(marksOn(), [], 'their marks go at the end of their turns');
 
-    /* This window's own request: the mark is written before Codex sends it, and the patch then has it outstanding. */
+    /* For a request of this window's own, the mark is written before Codex sends the request, and the patch then has
+       it outstanding. */
     asks(HERE, 't1', 'make check');
     pending[HERE] = 1;
     approvalsChanged.fire();

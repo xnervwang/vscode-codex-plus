@@ -4,10 +4,10 @@
 
 'use strict';
 /*
- * The news a conversation gets of the `claude --bg` sessions it launched (src/bg-ends.js): each change of state written
- * down once whichever window saw it, nothing on the first look, nothing for a session the conversation stopped itself or
- * did not launch, nothing while notices are off, and sent by one window that has the conversation loaded through
- * src/detached-ends.js deliver().
+ * The notices a conversation gets about the `claude --bg` sessions it launched (src/bg-ends.js). Each change of state
+ * is written down once, whichever window saw it, and sent by one window that has the conversation loaded, through
+ * src/detached-ends.js deliver(). The first look reports nothing, and neither does a session the conversation stopped
+ * itself or did not launch, or any change while notices are off.
  */
 const fs = require('fs');
 const path = require('path');
@@ -34,7 +34,7 @@ module.exports = async ({ eq, tmp, root }) => {
   fs.writeFileSync(fileB, rows([...launch('b1', 'bbbb0001'), ...launch('b2', 'bbbb0002')]));
   const threads = [{ id: A, rollout: fileA }, { id: B, rollout: fileB }];
 
-  /* A session's record, written the way Claude Code's daemon writes it, with a file time that moves with the clock. */
+  /* A session's record in the form Claude Code's daemon writes, with a file time that moves with the clock. */
   let stamp = 0;
   const state = (job, fields) => {
     const file = path.join(jobs, job, 'state.json');
@@ -43,7 +43,8 @@ module.exports = async ({ eq, tmp, root }) => {
     const t = clock / 1000 + (++stamp);
     fs.utimesSync(file, t, t);
   };
-  /* Claude Code's record of the process running a session, and that process's stat file under the made-up /proc. */
+  /* Writes Claude Code's record of the process running a session, and that process's stat file under the made-up
+     /proc. */
   const running = (pid, job, start = '777', recordStart = start) => {
     fs.writeFileSync(path.join(sessions, `${pid}.json`), JSON.stringify({ pid, kind: 'bg', jobId: job, status: 'idle', procStart: recordStart }));
     fs.mkdirSync(path.join(proc, String(pid)), { recursive: true });

@@ -210,7 +210,7 @@ module.exports = async ({ eq, tmp, root }) => {
     eq(own && [own.name, own.folders, [ID(3), ID(8)].every((x) => own.sessions.includes(x)), own.sessions.includes(ID(12))],
       ['Window A', [path.join(home, 'a')], true, false],
       'this window writes its entry among the windows: its name, its folders and the conversations its tabs show');
-    /* Another window, alive, whose entry lists conversations: the test's parent process stands in for it. */
+    /* A live window whose entry lists conversations; the test's parent process plays that window. */
     const other = process.ppid;
     const entry = (pid, sessions, extra = {}) => {
       fs.mkdirSync(windowsDir, { recursive: true });

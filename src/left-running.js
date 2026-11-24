@@ -62,8 +62,8 @@ const LAUNCH_TAIL = 8 << 20;
 /* Per rollout: the claude --bg calls remembered until their output is read, and the job ids kept. */
 const MAX_CALLS = 500;
 const MAX_JOBS = 20;
-/* What exec_command answers when its command is still running after yield_time_ms: write_stdin on that session id reads
-   the rest of its output, in calls of their own. */
+/* What exec_command answers when its command is still running after yield_time_ms. Later write_stdin calls on that
+   session id read the rest of its output. */
 const STILL_RUNNING = /Process running with session ID (\d+)/g;
 const MAX_SESSIONS = 200;
 
@@ -316,8 +316,8 @@ function commandOf(argsText) {
 /*
  * The job ids of the `claude --bg` sessions the commands in a rollout launched, read on from where the last call left
  * off (`cache`, by file). A launch counts only in the output of a command that ran `claude … --bg`: a command that
- * printed an older launch back, a grep of a log say, leaves the very same line. Such a command still running when
- * exec_command answers has the rest of its output read by write_stdin calls on its session, which count as well.
+ * printed an older launch back, a grep of a log say, leaves the very same line. When such a command is still running as
+ * exec_command answers, a launch in its later write_stdin output counts as well.
  */
 function launches(file, cache) {
   let st;

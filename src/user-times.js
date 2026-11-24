@@ -150,8 +150,8 @@ function turnFigure(e) {
   return parts.join(' · ');
 }
 
-/** The newest turns' times, as { turnId: { u, r, d, e } }: the user's messages, the replies, the duration once ended, and
-    whether it ended, which an interrupted turn records with no duration. */
+/** The newest turns' times, as { turnId: { u, r, d, e } }: the user's messages, the replies, the duration once ended,
+    and whether it ended. An interrupted turn ends with no duration. */
 function turnTimes(turns) {
   const out = {};
   for (const id of [...turns.byId.keys()].slice(-TURNS_SENT)) {

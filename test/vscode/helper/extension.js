@@ -9,7 +9,8 @@
  * the request's body with `vscode` in scope and writes the result back. Files rather than a socket, because the
  * window is reloaded during the run: the extension host restarts, and the requests left in the folder wait for the next
  * one. Each extension host writes host-<pid>.json when it is up, with the folder its window has open. A request that
- * names a folder is left to the window that has that folder open, so the windows of one run can share the folder.
+ * names a folder is run only by the window with that folder open, which lets the windows of one run share the control
+ * folder.
  */
 const fs = require('fs');
 const path = require('path');

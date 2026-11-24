@@ -10,9 +10,8 @@
  * marks add those of the other windows and of Codex's terminal interface.
  *
  * The hook takes a mark away when the tool has run, the thread's turn ends or the next one starts. A denied call gets no
- * hook, and neither does an approval given in another window before its tool finishes, so a mark also stops counting
- * once the rollout shows its turn over, and the window whose app-server asked removes the marks of a request it has seen
- * answered (counted()).
+ * hook, and neither does an approval given in another window before its tool finishes, so counted() also ends a mark by
+ * the rollout and by the requests this window saw answered.
  */
 const fs = require('fs');
 const path = require('path');
@@ -50,18 +49,20 @@ function remove(list) {
   for (const file of list) { try { fs.unlinkSync(file); } catch (_) { /* gone already */ } }
 }
 
-/* A key that changes whenever the marks do, so a change can be told without comparing them. */
+/* A string that differs whenever the marks differ; comparing it stands in for comparing the marks. */
 const keyOf = (marks) => JSON.stringify([...marks].sort(([a], [b]) => (a < b ? -1 : 1)).map(([t, l]) => [t, l.map((m) => m.at)]));
 
 /*
- * How many of `list`, the marks of one thread, stand for an approval that is still asked for, and which are over.
- * `state` is the rollout state the reader has for the thread (src/codex-files.js); `askedHereAt` the last time this
- * window's app-server had an approval of the thread outstanding, 0 if never, and `askedHere` whether it has one now.
+ * Counts the marks in `list`, all of one thread, that stand for an approval still asked for, and lists those that are
+ * over. `state` is the rollout state the reader has for the thread (src/codex-files.js); `askedHereAt` the last time
+ * this window's app-server had an approval of the thread outstanding, 0 if never, and `askedHere` whether it has one
+ * now.
  *
  * A mark is over once a turn of the thread ended or started after it was made, or once this window has seen its own
  * request for the thread answered: the mark of a request is written before Codex sends it, so it is older than the
- * moment this window saw it outstanding. One the rollout does not show running yet still counts as not running.
- * `tool` is what the oldest one still counted names (the hook's tool_name), '' when none does.
+ * moment this window saw it outstanding. A mark is counted only while the rollout shows its thread running; until then
+ * it is kept but not counted. `tool` is the hook's tool_name on the oldest mark still counted, '' when there is none or
+ * it names no tool.
  */
 function counted(list, { state = null, askedHereAt = 0, askedHere = false } = {}) {
   let count = 0, tool = '';

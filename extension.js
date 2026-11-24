@@ -64,7 +64,7 @@ let reader = null;
 let memento = null;
 /* Deletes conversations archived longer than codexPlus.deleteArchivedAfterDays (src/archive-sweep.js). */
 let archiveSweeper = null;
-/* Writes this window's entry among the windows (src/window-entries.js), once activation has what it shows. */
+/* Writes this window's entry (src/window-entries.js); activate() sets it once it knows what the window shows. */
 let publishWindow = () => {};
 /* Which of the archived conversations given the daily pass would leave alone; set with the commands. */
 let holdArchived = null;
@@ -118,8 +118,8 @@ async function offerReloadForStale() {
  * kept up to date; with the switch off it does not take an applied patch out of Codex's files, which only the remove
  * command does.
  */
-/* The settings Codex's pages draw from, through settings() below: those of viewOf in src/patching.js, and the links to
-   other conversations, which reach a page with their list (src/convo-links.js). */
+/* The settings Codex's pages draw from: those of viewOf in src/patching.js, and
+   conversationLinks, which a page gets together with the list of conversations (src/convo-links.js). */
 const PAGE_SETTINGS = ['enabled', 'timestamps', 'conversationNavigation', 'userMessageColor', 'userMessageEdge', 'lowContextOutline',
   'turnFigures', 'replyDuration', 'chime', 'infoButton', 'chimeButton', 'contextMeter', 'replyImages', 'conversationLinks'];
 function settings() {
@@ -265,7 +265,8 @@ function applyContextWindow(context, say) {
 /*
  * A model_context_window that someone else wrote into config.toml keeps the setting from applying (handWritten). Each
  * window asks once per value whether to keep it, recorded as the setting's value for the default model, or to replace
- * it with the setting's; a value equal to the setting's is taken as this extension's without asking.
+ * it with the setting's. A value that equals the setting's value is treated as written by this extension, and nothing
+ * is asked.
  */
 const handWindowAsked = new Set();
 let handWindowKept = false;
@@ -378,7 +379,8 @@ async function activate(context) {
   context.subscriptions.push(reader);
   /* A conversation is shown as working while something it started is still running (src/left-running.js). A window
      running an older build than the installed one leaves this scan, the end notices and wake-ups to the windows running
-     the installed build, and keeps them while no window does (src/uninstall-plan.js keepsShared). */
+     the installed build, and keeps doing them while no window runs the installed build (src/uninstall-plan.js
+     keepsShared). */
   const keepsShared = () => {
     const s = standsDown();
     if (!s) return true;
@@ -483,7 +485,7 @@ async function activate(context) {
     }).catch(() => { /* left where Codex put it */ });
   };
   /*
-   * This window's entry among the windows (src/window-entries.js): the conversations its tabs and Codex's sidebar show.
+   * This window's entry (src/window-entries.js) lists the conversations its tabs and Codex's sidebar show.
    * The other windows leave those alone when they delete. Written at once, on the source's poll and when the tabs change.
    */
   const shownHere = () => [...new Set([...memory.openThreads(), patching.sidebarShowing()].filter(Boolean))];
@@ -543,10 +545,9 @@ async function activate(context) {
       followTokenMode(context, say).then((r) => (r === 'left' && runs('workPlan') && !install.installedVersions(files.codexHome()).length
         ? ensurePlugin(context, say) : undefined)).catch((err) => say(`the work plan plugin under the new token mode: ${err.message}`));
     }
-    /* The time stamps, the message list, the colours, the figures, the toolbar's controls and the images in replies
-       live in Codex's page, and this is how a change to one of them gets there: the same redraw the figures use, rather
-       than a watcher of its own. The master switch is in the list because it decides all of them, and a page has to be
-       told when it goes either way. */
+    /* These settings take effect in Codex's page (time stamps, message list, colours, figures, toolbar controls, images
+       in replies). A change reaches the page through the same redraw the figures use, not through a watcher of its own.
+       `enabled` is in the list because it turns all of them on or off, and a page has to be told when it changes. */
     if (PAGE_SETTINGS.some((k) => e.affectsConfiguration(`${CONFIG}.${k}`))) {
       const typed = String(cfg().get('userMessageColor', '') || '').trim();
       if (typed && !patching.safeColor(typed)) {
@@ -640,7 +641,7 @@ async function activate(context) {
 }
 
 /* Each Codex tab VS Code restored behind another is shown for a moment, so that its page and conversation load
-   (src/load-tabs.js). Returns how many were. */
+   (src/load-tabs.js). Returns how many tabs it showed. */
 async function loadRestored(say) {
   if (settings().enabled === false || cfg().get('loadRestoredTabs', false) !== true) return 0;
   const front = vscode.window.tabGroups.activeTabGroup;
@@ -693,8 +694,8 @@ function registerCommands(context, { source, memory, sessionsModel, sessionsView
   /* A conversation as a command is given it: its id, the context of a session list row, or Agent Plus's. */
   const threadArg = (arg) => (typeof arg === 'string' ? arg : arg && typeof arg.threadId === 'string' ? arg.threadId
     : arg && arg.thread ? arg.thread.id : arg && arg.sessionId) || tabThread(arg);
-  /* A tab's own right-click menu passes the URI of the tab right-clicked, which need not be the one in front: its
-     conversation, as Agent Plus is told it, or '' for a URI that is not a Codex tab's. */
+  /* Right-clicking a tab passes that tab's URI, which need not be the tab in front. Returns its conversation, as Agent
+     Plus is told it, or '' for a URI that is not a Codex tab's. */
   const tabThread = (uri) => {
     if (!uri || typeof uri.scheme !== 'string' || typeof uri.path !== 'string') return '';
     const key = String(uri);
@@ -932,7 +933,7 @@ function registerCommands(context, { source, memory, sessionsModel, sessionsView
       ? selected.map(threadArg) : [threadArg(arg)];
     return [...new Set(ids.filter(Boolean))];
   };
-  /* The menu of a conversation's page names no conversation: it is the one in the tab in front. */
+  /* The menu inside a conversation's page passes no conversation, so it acts on the one in the tab in front. */
   const inFront = () => {
     const tab = (vscode.window.tabGroups.activeTabGroup || {}).activeTab;
     const id = tab ? source.sessionForTab(tab) : null;
@@ -1119,7 +1120,8 @@ function registerCommands(context, { source, memory, sessionsModel, sessionsView
     return stuck;
   };
   const named = (list) => list.map((b) => `"${b.title}"${b.by ? ` (its sub-agent "${b.by}")` : ''}`).join(', ');
-  /* Why each of `busy` is left alone: open or running here, or open in another window, which is named. */
+  /* The message saying why the conversations in `busy` were left alone: open or running here, or open in another
+     window, which it names. */
   const whyLeft = (busy) => {
     const here = busy.filter((b) => !b.windows), away = busy.filter((b) => b.windows);
     return [here.length ? `${named(here)} ${here.length === 1 ? 'is' : 'are'} open or running` : '',
@@ -1549,7 +1551,7 @@ function deactivate() {
    (codexPlus.loadRestoredTabs) run after a delay during activation, so the tests call them directly. `_tokenModeLine`
    is Show Status's line for the token mode. `_sweepArchived` runs the pass over archived conversations that activation
    starts a minute in, and `_holdArchived` says which of the conversations given that pass would leave alone.
-   `_removeSkillSearchLeftovers` is the deletion of the skill search's files that activation runs a minute in too. */
+   `_removeSkillSearchLeftovers` deletes the skill search's files; activation also runs it a minute in. */
 module.exports = { activate, deactivate, _settings: settings, _ensurePlugin: ensurePlugin, _reopenDropped: reopenDropped, _loadRestored: loadRestored,
   _tokenModeLine: tokenModeLine, _sweepArchived: () => (archiveSweeper ? archiveSweeper.run() : Promise.resolve(null)),
   _holdArchived: (ids) => (holdArchived ? holdArchived(ids) : Promise.resolve(null)), _removeSkillSearchLeftovers: removeSkillSearchLeftovers };

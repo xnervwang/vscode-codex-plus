@@ -104,8 +104,8 @@ module.exports = async ({ eq, tmp, root }) => {
     eq(await run('renameThread', { webview: 'chatgpt.conversationEditor' }).then((r) => r.length), 0,
       'and Rename from the page renames the conversation in that tab (here dismissed, so nothing is sent)');
 
-    /* From a tab's own right-click menu, which VS Code calls with the URI of the tab right-clicked, whether or not it is
-       the one in front, and the tab's place as the second argument. */
+    /* From the right-click menu of a tab: VS Code passes that tab's URI, even when the tab is not in front, and its
+       place as the second argument. */
     const behind = control.codexTab(made[1].id);
     control.setTabs([control.codexTab(made[0].id), behind], 0);
     control.fireTabs();

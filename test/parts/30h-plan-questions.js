@@ -4,13 +4,14 @@
 
 'use strict';
 /*
- * A question the conversation's work plan put to the user after the user's last message makes the conversation wait
+ * When the conversation's work plan puts a question to the user after the user's last message, the conversation waits
  * for the user: the red dot on its tab and on its row in the session list, as Agent Plus's Conversations panel counts
- * it (its src/conversations.js activityOf). A question from before that message, or with no last message to compare
- * with, leaves the activity as it was.
+ * it (activityOf in Agent Plus's src/conversations.js). A question from before that message, or with no last message
+ * to compare with, leaves the activity as it was.
  *
- * The worker reads the questions with the rest of its snapshot, and a plan rewritten in place moves its stamp, as the
- * plugin's hooks and this suite's window test both write a plan without touching its folder.
+ * The worker reads the questions with the rest of its snapshot. A plan rewritten in place still changes the snapshot's
+ * stamp, which matters because the plugin's hooks and this suite's window test both write a plan without touching its
+ * folder.
  */
 const fs = require('fs');
 const path = require('path');
@@ -69,7 +70,7 @@ module.exports = async ({ eq, tmp }) => {
     const before = fs.statSync(plans).mtimeMs;
     const file = path.join(plans, `${one.id}.json`);
     fs.writeFileSync(file, planOf({ asked: iso(later) }));
-    /* A write in the same clock tick as the first can leave the file's time as it was. */
+    /* A write in the same clock tick as the first may not change the file's time. */
     fs.utimesSync(file, new Date(now + 5000), new Date(now + 5000));
     eq(fs.statSync(plans).mtimeMs, before, 'writing a plan in place leaves its folder\'s time alone');
     const next = ops.snapshot({ home, previous: first.stamp });

@@ -7,8 +7,8 @@
  * The feature list of the look run (test/vscode/ui-look-features.json) against the scenes of test/vscode/ui-look.js and
  * this extension's package.json.
  *
- * The step names are taken from the look('<name>', ...) calls in the source, since loading ui-look.js needs Playwright,
- * and a feature's `checks` from the step('<name>', ...) calls of ui.js, the window test that CI runs.
+ * The step names are taken from the look('<name>', ...) calls in the source, since loading ui-look.js needs Playwright.
+ * A feature's `checks` are taken from the step('<name>', ...) calls of ui.js, the window test that CI runs.
  */
 const fs = require('fs');
 const path = require('path');
@@ -46,8 +46,8 @@ module.exports = async ({ eq, note, root }) => {
   eq(commands.filter((c) => !listedCommands.has(c)), [], `each of the ${commands.length} commands in package.json is in a feature`);
   eq([...listedSettings].filter((s) => !settings.includes(s)).concat([...listedCommands].filter((c) => !commands.includes(c))), [],
     'and the list names no setting or command package.json does not have');
-  /* Given a value through a setting() helper of either test, one whose name ends in "setting" or "Setting" and whose first
-     argument is the setting's name, or among the settings a window starts with. */
+  /* The settings the two tests change: those passed by name, as the first argument, to a helper whose name ends in
+     "setting" or "Setting", and those a window starts with. */
   const both = windowTest + source;
   const changed = new Set([...both.matchAll(/\b\w*[sS]etting\(\s*'([A-Za-z]+)'/g)].map((m) => `codexPlus.${m[1]}`)
     .concat([...both.matchAll(/'(codexPlus\.[A-Za-z]+)'\s*:/g)].map((m) => m[1])));

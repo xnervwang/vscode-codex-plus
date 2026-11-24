@@ -128,8 +128,9 @@ function createDetachedEnds({ dir, ask, now = Date.now, enabled = () => true, ra
     return ended;
   }
 
-  /** Sends the ends written down to the conversations this window has loaded. Returns how many notices went. `sub` and
-      `text` name another kind's folder in `dir()` and its notice, as for the claude --bg sessions (src/bg-ends.js). */
+  /** Sends the recorded ends to their conversations that this window has loaded, and returns how many notices it
+      sent. `sub` and `text` give the folder in `dir()` and the notice text for another kind
+      of end, such as the claude --bg sessions (src/bg-ends.js). */
   async function deliver({ sub = DIR, text = noticeText } = {}) {
     const here = path.join(dir(), sub);
     let names;

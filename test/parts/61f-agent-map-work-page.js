@@ -4,9 +4,9 @@
 
 'use strict';
 /*
- * The Agent map's pill and dialog in Codex's page (src/page/codex-extras-page.js), on the stand-in DOM. The pill is green
- * while anything the conversation started still runs, red while a sub-agent waits for the user, and grey once it has
- * all ended; its label has one count per kind. The dialog lists that work in one section, each item a card with a green
+ * The Agent map's pill and dialog in Codex's page (src/page/codex-extras-page.js), on the stand-in DOM. The pill is
+ * green while anything the conversation started still runs, red while a sub-agent waits for the user, and grey once it
+ * has all ended; its label has one count per kind. The dialog lists that work in one section, as cards with a green
  * dot. The host's side is test/parts/35x-agent-map-work.js.
  */
 const path = require('path');

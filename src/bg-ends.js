@@ -4,17 +4,17 @@
 
 'use strict';
 /*
- * Tells a conversation when a `claude --bg` session it started ends or stops to wait for an answer. Claude Code does not
- * tell it. Without this the conversation has to keep checking, or set a wake-up.
+ * Tells a conversation when a `claude --bg` session it started ends or stops to wait for an answer. Claude Code does
+ * not tell it, so without this the conversation has to keep checking or set a wake-up.
  *
- * The sessions a conversation started are the launches src/left-running.js reads from its rollout, and a session's
- * state is its record under ~/.claude/jobs. Every window compares those states with the ones last seen, kept in
- * SEEN_FILE in the folder the windows share. Each change worth reporting is written once, as its own file in ENDS_DIR
- * created with O_EXCL, and src/detached-ends.js deliver() sends the files to a conversation a window has loaded: an idle
+ * src/left-running.js finds the sessions a conversation started among the launches in its rollout; a session's state is
+ * its record under ~/.claude/jobs. Every window compares those states with the ones last seen, kept in SEEN_FILE in the
+ * folder the windows share. Each change worth reporting is written once, as its own file in ENDS_DIR created with
+ * O_EXCL. src/detached-ends.js deliver() sends those files to a conversation a window has loaded, and an idle
  * conversation starts a turn.
  *
- * On the first look nothing is reported; the sessions that ended before then are only noted. Nor is a session the
- * conversation stopped itself.
+ * The first look only notes the sessions that have already ended. A session the conversation stopped itself is not
+ * reported either.
  *
  * update() blocks; it runs in the worker thread (src/codex-worker.js), after each scan for work left running.
  */
@@ -73,7 +73,7 @@ function signature(e, live, now) {
 /*
  * The job ids of the `claude --bg` sessions whose process is alive, from Claude Code's process records. Where `proc`
  * can be read, a record counts only if the process now holding its pid started at the time the record gives, as in
- * src/left-running.js readRecords; only the stat files of the pids the records name are read.
+ * src/left-running.js readRecords; only the stat file of each pid a record names is read.
  */
 function liveJobs(dir, proc = '/proc') {
   const out = new Set();
@@ -97,7 +97,8 @@ function liveJobs(dir, proc = '/proc') {
   return out;
 }
 
-/* Whether one of the conversation's commands stopped or removed session `id`. `lines` are the end of its rollout. */
+/* Whether one of the conversation's commands, in `lines` from the end of its rollout, stopped or removed session
+   `id`. */
 function stoppedBy(lines, id) {
   const direct = new RegExp(`\\b(?:stop|rm)\\s+["']?${id}\\b`);
   const loop = new RegExp(`\\bfor\\s+(\\w+)\\s+in\\s+[^;\\n]*\\b${id}\\b[\\s\\S]*?\\b(?:stop|rm)\\s+["']?\\$\\{?\\1\\b`);
@@ -184,7 +185,7 @@ function line(e) {
   return `- ${e.name ? `"${clip(e.name, 80)}" ` : ''}(${e.job}) ${what}`;
 }
 
-/* The opening line says it is not from the user, since a queued message reads as the user's. */
+/* The first line says who sent the notice, because a queued message reaches the model as a user message. */
 function noticeText(ends, { who = WHO } = {}) {
   const one = ends.length === 1;
   const lines = ends.slice().sort((a, b) => (a.goneAt - b.goneAt) || String(a.job).localeCompare(String(b.job))).map(line);

@@ -12,11 +12,11 @@
  *
  * script(thread, steps) answers the next requests of conversation `thread` with `steps` in order, then with the usual
  * reply: { call, namespace, args } is a tool call, { reply } a message; either may give inputTokens, the input the
- * response reports using (1200 otherwise). args may be a function of the request's body, its JSON text, returning the
- * arguments, for a call that answers what an earlier tool output in the turn said. While a script is set, a request from
- * any other conversation (a sub-agent's, or a codex exec's) is held until releaseOthers(). left() counts the steps not yet sent;
- * script(null) goes back to the usual reply for every conversation. sent(text) counts the requests whose body held `text`,
- * among the last BODIES_KEPT.
+ * response reports using (1200 otherwise). args may instead be a function that takes the request's body as JSON text
+ * and returns the arguments, so a call can depend on what an earlier tool output in the turn said. While a script is
+ * set, a request from any other conversation (a sub-agent's, or a codex exec's) is held until releaseOthers(). left()
+ * counts the steps not yet sent; script(null) goes back to the usual reply for every conversation. sent(text) counts
+ * the requests whose body held `text`, among the last BODIES_KEPT.
  *
  * Each entry of `seen` also says what the request's input carries after the conversation's last reply (`context`): the
  * text the user typed, and which of the notes the work plan plugin's hooks add are there.

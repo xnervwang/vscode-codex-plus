@@ -374,7 +374,7 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
       'Resume in Sidebar and New in Sidebar open Codex\'s own link for the route, in this editor\'s scheme, and run nothing else');
     eq(w.probed.refused, ['vscode.openWith', 'chatgpt.openSidebar', 'chatgpt.newChat'],
       'when Codex does not take the link, the conversation opens in a tab and a new one through Codex\'s own commands');
-    /* With the patch connected, this window's own sidebar is navigated and the link is not opened at all. */
+    /* With the patch connected, the window navigates its own sidebar and does not open the link. */
     const viaPatch = [];
     const p = await run(root, tmp, { probe: async ({ control }) => {
       const patchingMod = require(path.join(root, 'src', 'patching'));

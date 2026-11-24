@@ -78,11 +78,11 @@ function finishUninstall(extensionPath, id = IDS, spawn = require('child_process
 }
 
 /*
- * Whether this window notes and sends what every window would otherwise leave to the installed build: the ends of work
- * left running, and wake-ups. A window running the installed build does (`standing` is ''). One whose build was
- * installed over ('replaced') does too while no live window's entry (`others`, src/window-entries.js) says it runs the
- * installed build, or else, until a window is reloaded, which can be hours later, nobody would. An entry naming this
- * window's own build (`build`) is not believed: that build is no longer the installed one, and an entry says so only at
+ * Whether this window records and sends the ends of work left running and the wake-ups, which every other window leaves
+ * to the installed build. A window running the installed build does (`standing` is ''). One whose build was installed
+ * over ('replaced') does too while no live window's entry (`others`, src/window-entries.js) says it runs the installed
+ * build, or else, until a window is reloaded, which can be hours later, nobody would. An entry that names the build
+ * this window runs, `build`, is not believed: that build is no longer the installed one, and an entry says so only at
  * its window's next pass after an install. A window being uninstalled never does.
  */
 function keepsShared({ standing: s = '', build = '' } = {}, others = []) {

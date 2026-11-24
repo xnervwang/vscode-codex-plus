@@ -9,8 +9,8 @@
  * stands for it, so it is read from the rollout. The lines below have the shape of a real rollout of Codex 26.1021
  * (one taken on this machine, with every text replaced): the call, its { accepted } output, the turn's end, and the
  * answer opening a turn of its own. In Codex 26.1117 the card's answer is sent into the turn while it still runs, as a
- * user message holding a <send_user_message_question_reply> block, and the turn goes on to finish after it; the shape of
- * that reply is taken from a rollout of that build, every text replaced.
+ * user message holding a <send_user_message_question_reply> block, and the turn finishes after it. That reply's shape
+ * comes from a rollout of that build, its text replaced too.
  */
 const fs = require('fs');
 const path = require('path');

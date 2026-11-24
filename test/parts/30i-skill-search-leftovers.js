@@ -4,9 +4,9 @@
 
 'use strict';
 /*
- * What the skill search of earlier releases left in the plan directory, its index folder and one <session id>.routed
- * per conversation, is deleted once per plan directory and nothing else there is touched (removeSkillSearchLeftovers in
- * src/workplan.js, run by extension.js a minute after a trusted window starts).
+ * The skill search of Codex Plus 1.3.0 and earlier left its index folder and one <session id>.routed per conversation
+ * in the plan directory. These are deleted once per plan directory, and nothing else there is touched
+ * (removeSkillSearchLeftovers in src/workplan.js, run by extension.js a minute after a trusted window starts).
  */
 const fs = require('fs');
 const path = require('path');
@@ -72,7 +72,7 @@ module.exports = async ({ eq, note, tmp, root }) => {
     'a plan directory that does not exist has nothing to delete and is not created');
   eq(JSON.parse(fs.readFileSync(doneFile, 'utf8')), [dir, other, missing], 'and each is recorded once');
 
-  /* A folder named skill-route that is a link is not the search's own: neither it nor what it points to is touched. */
+  /* The search never made a skill-route folder that is a link, so neither such a link nor its target is touched. */
   const linked = tmp('linked-plans');
   const target = tmp('link-target');
   put(target, 'keep.txt');
@@ -84,7 +84,7 @@ module.exports = async ({ eq, note, tmp, root }) => {
       'a link named like the search\'s folder is left, and so is the folder it points to');
   } else note('symbolic links cannot be made here: the case of a link named like the search\'s folder did not run');
 
-  /* A deletion that fails leaves the directory unrecorded, so the next start tries again. */
+  /* If a deletion fails, the directory is not recorded and the next start tries again. */
   if (process.platform !== 'win32' && !(process.getuid && process.getuid() === 0)) {
     const stuck = tmp('stuck-plans');
     const gs = path.join(tmp('gs-stuck'), 'cleared.json');
@@ -97,7 +97,7 @@ module.exports = async ({ eq, note, tmp, root }) => {
       [{ folder: false, files: 1, failed: '' }, false], 'so the next call deletes it');
   } else note('a read-only directory does not stop a deletion here: the case of a deletion that fails did not run');
 
-  /* What extension.js runs: the record goes in the extension's global storage, and the log says what was deleted. */
+  /* Through extension.js, the record goes in the extension's global storage and the log says what was deleted. */
   {
     const { vscode } = fake.create();
     fake.install(vscode);

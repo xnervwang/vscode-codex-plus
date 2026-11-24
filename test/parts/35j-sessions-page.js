@@ -210,7 +210,7 @@ module.exports = async ({ eq, root }) => {
   eq($$('.cp-menu-item[data-status]')[1].focused, true, 'the arrow keys move through the status filter\'s menu');
   $$('.cp-menu-item[data-status]')[1].bubble('keydown', { key: 'Escape' });
 
-  /* ── a row a click chose, once its conversation is no longer in front ── */
+  /* ── a clicked row, once its conversation is no longer in front ── */
   const chosen = (n) => [...$$(`.cp-row[data-id="${ID(n)}"]`)].flatMap((r) => ['cp-current', 'cp-selected', 'cp-hl'].filter((c) => r.classList.contains(c))).sort();
   const withFront = (id) => Object.assign(JSON.parse(JSON.stringify(model)), { front: id });
   toPage({ type: 'model', model });

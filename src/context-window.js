@@ -32,9 +32,9 @@ const APPLIED_KEY = 'codexPlus.contextWindowWritten';
 
 /*
  * Windows the vendor publishes, which count output as well as input. The value written is the published window minus
- * the model's maximum output, and never more than `input`: the smallest of the largest inputs Amazon Bedrock accepted
- * from these models, which took 921,610 to 921,857 tokens and refused one more (OpenAI gives 922,000 as the maximum
- * input). `source` was read on 2026-11-23.
+ * the model's maximum output, and never more than `input`, which stays below the largest input Amazon Bedrock accepted
+ * from each of these models: they took 921,610 to 921,857 tokens and refused one more (OpenAI gives 922,000 as the
+ * maximum input). `source` was read on 2026-11-23.
  */
 const PUBLISHED = [
   { models: ['gpt-6.2-sol', 'gpt-6.2-astra', 'gpt-6.1-sol', 'gpt-6.1-terra', 'gpt-6-astra', 'gpt-6-sol', 'gpt-6-luna',
@@ -129,11 +129,11 @@ async function applyTopLevel({ ask, memento, map, model, inFile, log = () => {} 
 }
 
 /*
- * A model_context_window in config.toml that this extension did not write, while the setting has entries: applyTopLevel
- * leaves such a value alone, and the setting then applies to no model. The result is what to put to the user: `file`
- * is the value in config.toml and `want` the setting's value for the default model (null when it has none). `same` is
- * set when the two agree, so the value can be taken as this extension's without asking. null when there is no such
- * value or the setting is empty.
+ * Looks for a model_context_window in config.toml that this extension did not write. applyTopLevel leaves such a value
+ * alone, so the setting then applies to no model. Returns what the notification to the user needs: `file` is the value
+ * in config.toml and `want` the setting's value for the default model (null when it has none). `same` is set when the
+ * two agree, so the value can be taken as this extension's without asking. Returns null when there is no such value or
+ * the setting is empty.
  */
 function handWritten({ map, model, inFile, ours = 0 }) {
   const now = +inFile || 0;
@@ -143,8 +143,8 @@ function handWritten({ map, model, inFile, ours = 0 }) {
 }
 
 /*
- * The setting's text for `model` that valueFor turns back into `value`. For a model with a published window that is the
- * value plus the model's output; a value over the largest input the model takes becomes that input.
+ * What to write in the setting for `model` so that valueFor gives back `value`. For a model with a published window
+ * that is the value plus the model's output.
  */
 function textFor(model, value) {
   const p = published(model);

@@ -46,8 +46,9 @@ function hasCountdown(meta) {
 const STRIKES = 2;
 
 /*
- * The tool each approval is of, by the name Codex's PermissionRequest hook gives the same action (permission_request_payload
- * in codex-rs/core/src/tools/approvals.rs), so a window reading the hook's marks (src/waiting-marks.js) names it alike.
+ * For each approval method, the tool it is for, under the name Codex's PermissionRequest hook uses for the same action
+ * (permission_request_payload in codex-rs/core/src/tools/approvals.rs). A window that reads the hook's marks
+ * (src/waiting-marks.js) then shows the same name.
  */
 const TOOLS = {
   'item/commandExecution/requestApproval': (p) => (p.kind === 'writeStdin' ? 'write_stdin' : 'Bash'),
@@ -56,14 +57,14 @@ const TOOLS = {
   applyPatchApproval: () => 'apply_patch',
   'item/permissions/requestApproval': () => 'request_permissions',
 };
-/* The id prefix of a question Codex asks to approve an MCP tool call when it does not use an elicitation for it
+/* Codex approves an MCP tool call either through an elicitation or by asking a question whose id starts with this
    (MCP_TOOL_APPROVAL_QUESTION_ID_PREFIX in codex-rs/core/src/mcp_tool_call.rs). */
 const MCP_APPROVAL_QUESTION = 'mcp_tool_call_approval';
 
 /*
  * What a request waits for, as Agent Plus's `waitingFor`: { kind: 'permission', tool } for an approval, the tool left
- * out when the request does not name it, { kind: 'question' } for something to answer, { kind: 'choice' } for a page to
- * go to; null for a request that does not wait.
+ * out when the request does not name it, { kind: 'question' } for an input request or an elicitation, { kind: 'choice'
+ * } for an elicitation in url mode; null for a request that does not wait.
  */
 function reasonOfRequest(msg) {
   const method = msg && typeof msg.method === 'string' ? msg.method : '';
@@ -163,7 +164,7 @@ function createApprovals({ now = () => Date.now() } = {}) {
       for (const e of pending.values()) if (e.thread === thread && e.decides && e.method === 'item/tool/requestUserInput') n++;
       return n;
     },
-    /** What a conversation waits for: the reason of its oldest request the user has to answer, else of its oldest one
+    /** The reason of a conversation's oldest request the user has to answer, else of its oldest one
         Codex will answer by itself, else null. A page's card alone names nothing. */
     reasonOf(thread) {
       let soon = null;

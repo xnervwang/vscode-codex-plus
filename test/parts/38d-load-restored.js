@@ -4,9 +4,9 @@
 
 'use strict';
 /*
- * codexPlus.loadRestoredTabs: off by default; on, each Codex tab behind another is shown once when the window starts
- * (src/load-tabs.js) and the tab that was in front comes back, and the conversations shown for that moment do not
- * count as read.
+ * codexPlus.loadRestoredTabs is off by default. When it is on, each Codex tab behind another is shown once when the
+ * window starts (src/load-tabs.js), the tab that was in front comes back, and the conversations shown for that moment
+ * do not count as read.
  */
 const fs = require('fs');
 const path = require('path');
@@ -21,7 +21,7 @@ module.exports = async ({ eq, tmp, root }) => {
   fake.install(vscode);
   for (const k of Object.keys(require.cache)) if (k.startsWith(root + path.sep) && !k.includes(`${path.sep}test${path.sep}`)) delete require.cache[k];
 
-  /* What is in front counts as read, except while holdSeen() says the tabs are being loaded. */
+  /* The conversation in front counts as read, except while holdSeen() says the tabs are being loaded. */
   {
     const { createCodexSource } = require(path.join(root, 'src', 'codex-source.js'));
     const reader = { threads: () => [], sections: () => new Map(), state: () => null, unread: () => new Map(), hasPlan: () => false,

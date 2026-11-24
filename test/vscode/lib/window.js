@@ -67,16 +67,16 @@ async function open({ exe, profile, env, playwright, log }) {
   const sameFolder = (a, b) => (process.platform === 'win32' ? path.resolve(String(a)).toLowerCase() === path.resolve(String(b)).toLowerCase() : a === b);
   const hosts = () => fs.readdirSync(profile.control).filter((n) => /^host-\d+\.json$/.test(n))
     .map((n) => JSON.parse(fs.readFileSync(path.join(profile.control, n), 'utf8')));
-  /* The newest extension host's pid, once there is one newer than `after` (ms since the epoch), of the window that has
-     `folder` open if one is given. */
+  /* Waits for an extension host that came up after `after` (ms since the epoch), in the window with `folder` open if
+     one is given, and returns the newest one's entry (host-<pid>.json). */
   const hostUp = async (after = 0, folder) => {
     const h = await until(() => hosts().filter((x) => x.at > after && (!folder || sameFolder(x.folder, folder))).sort((a, b) => b.at - a.at)[0], 120000);
     if (!h) throw new Error('the helper extension did not start in the extension host in 120 s');
     return h;
   };
   /*
-   * Runs `body` in the extension host, as an async function of (vscode, require, arg), and returns what it returns. With
-   * a second window open, `folder` (or the one pin() set) says whose extension host runs it.
+   * Runs `body` in the extension host as an async function of (vscode, require, arg) and returns its result. With a
+   * second window open, `folder` (or the one pin() set) says whose extension host runs it.
    */
   const call = async (body, arg, ms = 60000, folder = pinned) => {
     const id = `r${process.pid}-${++next}`;
@@ -99,7 +99,8 @@ async function open({ exe, profile, env, playwright, log }) {
     await page.waitForSelector('.monaco-workbench', { timeout: 90000 });
     return hostUp(before);
   };
-  /* The workbench page of another window of this VS Code, by a word of its title such as its folder's name. */
+  /* Finds the workbench page of another window of this VS Code whose title contains `word`, such as its folder's
+     name. */
   const pageOf = (word, ms = 60000) => until(async () => {
     for (const p of browser.contexts().flatMap((c) => c.pages())) {
       if (p === page || !/workbench\.html/.test(p.url())) continue;

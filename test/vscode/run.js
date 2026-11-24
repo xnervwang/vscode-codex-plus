@@ -38,8 +38,9 @@ const NO_PROXY_TO = 'http://127.0.0.1:9';
 
 /* The environment for VS Code and everything it starts. It drops the variables a VS Code that runs this script sets
    (ELECTRON_RUN_AS_NODE would start VS Code as plain Node, and VSCODE_IPC_HOOK_CLI would send an install to that other
-   VS Code), LD_LIBRARY_PATH (VS Code brings its own libraries) and those of a Claude Code session that runs it (the
-   windows' commands would be taken for that session's), and puts HOME and CODEX_HOME in the temporary root. */
+   VS Code) and LD_LIBRARY_PATH (VS Code brings its own libraries). It also drops those of a Claude Code session that
+   runs it, since the windows' commands would otherwise be taken for that session's. HOME and CODEX_HOME go in the
+   temporary root. */
 const CLAUDE_SESSION = /^(CLAUDECODE|CLAUDE_CODE_(SESSION_ID|ENTRYPOINT|CHILD_SESSION|SSE_PORT))$/;
 function cleanEnv(root, extra = {}) {
   const env = { ...process.env };
@@ -153,7 +154,6 @@ async function testStage() {
   const model = await fakeModel.start();
   const made = fakeHome.write(p.codexHome, { folder: p.folder, modelUrl: model.url });
   fakeHome.wakeup(p.codexHome, made.threads[0].id);
-  /* What a stage needs in place before its window starts. */
   if (typeof ui.prepare === 'function') ui.prepare({ profile: p, fakeHome });
   fs.writeFileSync(path.join(p.folder, 'notes.txt'), 'A file to have an editor open, so the tab bar has its buttons.\n');
   fs.mkdirSync(path.join(p.user, 'User'), { recursive: true });

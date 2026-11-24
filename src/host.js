@@ -97,7 +97,7 @@ const EDITS = [
    * From 26.1117 Codex's host keeps the conversations itself and has no broadcasts between windows. A page that starts
    * showing a conversation retains it in that store instead, at the moment the older builds broadcast that the window
    * started following it. Codex calls the retain's callback with false once the last page showing the conversation has
-   * let go of it, which is handed over as no longer followed.
+   * let go of it; that is passed on as the window no longer following the conversation.
    */
   {
     name: 'window broadcasts',

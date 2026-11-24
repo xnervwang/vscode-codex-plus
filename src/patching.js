@@ -140,7 +140,8 @@ function statusLines() {
  * so a conversation running in another window or started by `codex exec` is not here (README says so).
  */
 function approvalsOf(thread) { return approvals.of(thread); }
-/** What this window's requests say the conversation waits for, as Agent Plus's waitingFor, or null (src/approvals.js). */
+/** Agent Plus's waitingFor for the conversation, from this window's requests (src/approvals.js); null when they give
+    none. */
 function waitReasonOf(thread) { return approvals.reasonOf(thread); }
 /** Told whenever the outstanding set changed, so the views redraw without waiting for the next poll. */
 function onApprovalsChanged(fn) {
@@ -412,9 +413,9 @@ function postMapToSidebar(thread) {
 }
 
 /*
- * The conversations a page links the replies' mentions of to (src/convo-links.js), with the one the page shows, which
- * it does not link. Sent to a page again only when the list, the setting or the page's own conversation changed, or
- * when the page loaded afresh (its time zone message).
+ * The conversations whose mentions in replies a page turns into links (src/convo-links.js), and the one the page shows,
+ * which it does not link. Sent to a page again only when the list, the setting or the page's own conversation changed,
+ * or when the page loaded afresh (its time zone message).
  */
 const NO_CONVERSATIONS = { on: false, version: 0, list: [] };
 const convosSent = new WeakMap();
@@ -444,7 +445,8 @@ function postConvosToSidebar(thread, all = convosNow()) {
   sidebarConvosSent = key;
   postToSidebar(msg);
 }
-/* Every conversation page in this window, with the titles the last redraw read; for a change of the list itself. */
+/* Sends the list of conversations again to every conversation page in this window and to the sidebar, with the titles
+   the last redraw read; called when the list itself changes. */
 function refreshConversationLinks() {
   const all = convosNow();
   for (const [panel, rec] of registry) if (isConversationPanel(rec)) postConvos(panel, rec.thread, all);

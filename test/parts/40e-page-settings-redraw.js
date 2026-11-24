@@ -4,15 +4,15 @@
 
 'use strict';
 /*
- * Every setting that Codex's page draws from (viewOf in src/patching.js, and the links to other conversations, which
- * reach it with their list) reaches the pages already open when it changes: the extension redraws them at once rather
- * than at the next turn or list change.
+ * Every setting that Codex's page draws from (viewOf in src/patching.js, and conversationLinks, which a page gets with
+ * the list of conversations) takes effect in the pages already open: the extension redraws them at once rather than at
+ * the next turn or list change.
  */
 const path = require('path');
 const fake = require('../fake-vscode');
 const fixture = require('../fixture');
 
-/* The settings each field of viewOf comes from, through settings() in extension.js, and codexPlus.conversationLinks. */
+/* The settings the fields of viewOf come from, plus codexPlus.conversationLinks. */
 const PAGE_SETTINGS = ['enabled', 'timestamps', 'conversationNavigation', 'userMessageColor', 'userMessageEdge', 'lowContextOutline',
   'turnFigures', 'replyDuration', 'chime', 'infoButton', 'chimeButton', 'contextMeter', 'replyImages', 'conversationLinks'];
 

@@ -138,8 +138,7 @@ module.exports = async ({ eq, tmp, root }) => {
   const storage = tmp('gs');
   await ext.activate({ subscriptions: subs, workspaceState: fake.memento(), globalState: fake.memento({ 'codexPlus.patchRemoved': true }),
     globalStorageUri: vscode.Uri.file(storage), extensionPath: self });
-  /* Another window, alive (the test's parent process stands in for it), shows the one archived 40 days ago that is open
-     elsewhere. */
+  /* A live window, played by the test's parent process, has the conversation archived 40 days ago open. */
   const windowsDir = path.join(home, 'plugins', 'data', 'agent-work-plan-codex-extras', 'windows');
   const otherEntry = path.join(windowsDir, `${process.ppid}.json`);
   fs.mkdirSync(windowsDir, { recursive: true });

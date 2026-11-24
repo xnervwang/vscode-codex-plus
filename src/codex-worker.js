@@ -60,7 +60,7 @@ function stampOf(dir, threads) {
 }
 
 /* [id, ms] of each of `ids` whose plan asks the user something (src/workplan.js latestQuestionAt). Only conversations
-   whose rollout was read are asked: without its last user message a question is not taken to be new anyway. */
+   whose rollout was read are looked up: without its last user message a question is not taken to be new anyway. */
 function askedOf(dir, ids) {
   const out = [];
   for (const id of ids) {
@@ -75,7 +75,8 @@ function askedOf(dir, ids) {
   return out;
 }
 
-/* The recent conversations and sub-agents with their rollouts, '' for one only kept compressed, which is not read. */
+/* The recent conversations and sub-agents with their rollouts. A rollout that exists only compressed (.zst) is given
+   as '' and is not read. */
 function recentRollouts(dir) {
   const since = Date.now() - STATE_WINDOW_MS;
   return (files.listThreads(dir) || []).filter((t) => (t.kind === 'user' || t.kind === 'subagent') && t.updatedMs >= since && t.rollout)
@@ -144,8 +145,8 @@ const ops = {
     const threads = recentRollouts(at(h));
     return require('./left-running').leftRunning({ threads, proc, sessionsDir, cache: launchCache, environs, share });
   },
-  /* The changes of the claude --bg sessions the same conversations launched, each written down in `dir` for
-     src/detached-ends.js to send (src/bg-ends.js). */
+  /* Writes down in `dir` what changed in the claude --bg sessions those conversations launched, for
+     src/detached-ends.js to send. */
   bgEnds({ home: h, dir, proc = '/proc', sessionsDir, jobsDir, claim = true }) {
     const threads = recentRollouts(at(h));
     return require('./bg-ends').update({ dir, threads, cache: launchCache, proc, claim,
