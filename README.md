@@ -31,7 +31,7 @@ Click a conversation in Agent Plus's Conversations view to see its [brief](docs/
 
 ### Wake-ups
 
-When you ask for a [wake-up](docs/work-plan.md#wake-ups) or before a long stretch of work, Codex can use `set_wakeup` to prompt an idle conversation at regular intervals (every 5 minutes by default) so unfinished work can continue without you. A conversation can have one wake-up and receives its prompts only while open in this VS Code window; the wake-up expires seven days after Codex sets it, or you can remove it sooner with the Remove button in the Agent map.
+When you ask for a [wake-up](docs/work-plan.md#wake-ups) or before a long stretch of work, the model can set one with the work plan plugin's `set_wakeup` tool, and Codex Plus then sends its prompt to the idle conversation at the interval the model chose (every 5 minutes by default), so unfinished work can continue without you. A conversation can have one wake-up and receives its prompts only while open in this VS Code window; the wake-up is removed seven days after it was set, or you can remove it sooner with the Remove button in the Agent map.
 
 ![The Agent map with a wake-up's card opened to its whole prompt](images/shots/wake-up.png)
 
@@ -53,7 +53,7 @@ Use a row's [right-click menu](docs/session-list.md#menus-and-groups) to rename 
 
 ### Tabs
 
-With the patch, [Codex Plus's tab bar button](docs/tabs.md) replaces Codex's and opens a new conversation in a tab, or opens Codex's sidebar if `codexPlus.tabBarButton` is set to `sidebar`. Each Codex tab shows the session list's dots on its logo, uses the conversation name as its title and adds an envelope to the title for an unread reply; Codex Plus reopens tabs that VS Code missed after a reconnect, and Ctrl+Shift+T (Cmd+Shift+T on a Mac) reopens the conversation from the last Codex tab you closed.
+With the patch, [Codex Plus's tab bar button](docs/tabs.md) replaces Codex's and opens a new conversation in a tab, or opens Codex's sidebar if `codexPlus.tabBarButton` is set to `sidebar`. Each Codex tab shows the conversation's status dot on its logo, as its row in the session list does, uses the conversation name as its title and adds an envelope to the title for an unread reply; Codex Plus reopens tabs that VS Code missed after a reconnect, and Ctrl+Shift+T (Cmd+Shift+T on a Mac) reopens the conversation from the last Codex tab you closed.
 
 ![A Codex tab with its dot and title, and the hover of Codex Plus's tab bar button](images/shots/tabs.png)
 
