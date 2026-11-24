@@ -39,16 +39,24 @@ function at(h) {
   return files.codexHome();
 }
 
-/* Cheap: the state database's and its write-ahead log's sizes and times, session_index.jsonl's, which is the whole list
-   when the database cannot be read and whose threads name no rollout, and the size of every rollout touched in the
-   last day. Only when that moves is the rest read again. */
-function stampOf(dir, threads) {
+/* The part of the stamp taken before the thread list is read: the state database's and its write-ahead log's sizes
+   and times, session_index.jsonl's, which is the whole list when the database cannot be read and whose threads name
+   no rollout, and the plans' folder's time. Taken after the list, it would already cover a write the list missed, and
+   every read after it would answer that nothing moved. */
+function filesStampOf(dir) {
   const db = files.stateDbPath(dir), goals = files.goalsDbPath(dir);
   const parts = [];
   for (const f of [db, db && db + '-wal', path.join(dir, 'session_index.jsonl'), goals, goals && goals + '-wal']) {
     try { const s = fs.statSync(f); parts.push(s.size, s.mtimeMs); } catch (_) { parts.push(0); }
   }
   try { const s = fs.statSync(install.planDir(dir)); parts.push(s.mtimeMs); } catch (_) { parts.push(0); }
+  return parts;
+}
+
+/* Cheap: `filesPart` (filesStampOf), then the size of every rollout touched in the last day and the time of each of
+   those conversations' plans, taken before any of them is read. Only when the stamp moves is the rest read again. */
+function stampOf(dir, threads, filesPart = filesStampOf(dir)) {
+  const parts = filesPart.slice();
   const day = Date.now() - STAMP_WINDOW_MS, subs = Date.now() - SUBAGENT_WINDOW_MS;
   for (const t of threads || []) {
     if (!t.rollout || !(t.kind === 'user' ? t.updatedMs >= day : t.kind === 'subagent' && t.updatedMs >= subs)) continue;
@@ -91,8 +99,9 @@ const ops = {
    */
   snapshot({ home: h, previous = '', extra = [] }) {
     const dir = at(h);
+    const filesPart = filesStampOf(dir);
     const threads = files.listThreads(dir);
-    const stamp = stampOf(dir, threads);
+    const stamp = stampOf(dir, threads, filesPart);
     if (previous && stamp === previous) return { stamp, same: true };
     const want = new Set(Array.isArray(extra) ? extra : []);
     const since = Date.now() - STATE_WINDOW_MS, subs = Date.now() - SUBAGENT_WINDOW_MS;
