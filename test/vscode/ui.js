@@ -529,6 +529,11 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
   /* The conversation Agent Plus last said is in front, as its output channel has it: "codex <id>",
      "codex (no session yet)", "(none)", or '' before it said any. */
   const walk = (d) => { try { return fs.readdirSync(d, { withFileTypes: true }).flatMap((n) => (n.isDirectory() ? walk(path.join(d, n.name)) : [path.join(d, n.name)])); } catch (_) { return []; } };
+  /* Everything Codex Plus's output channel has written in this run, across reloads, and its line for a page whose
+     message box or messages the page script did not recognise (src/patching.js anchorsMissingLine). */
+  const ownLog = () => walk(path.join(profile.user, 'logs')).filter((f) => /Codex Plus\.log$/.test(f)).map((f) => fs.readFileSync(f, 'utf8')).join('\n');
+  const NO_ANCHORS = /the page script recognised none of [^\n]*/g;
+  const noAnchors = () => ownLog().match(NO_ANCHORS) || [];
   const agentFront = () => {
     const logs = walk(path.join(profile.user, 'logs')).filter((f) => /Agent Plus\.log$/.test(f))
       .map((f) => ({ f, at: fs.statSync(f).mtimeMs })).sort((a, b) => b.at - a.at);
@@ -3342,8 +3347,13 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await page.locator('.tabs-container .tab').filter({ hasText: title }).first().click();
       await exec('codexPlus.archiveThread', { webviewSection: 'thread', threadId: t.id, webview: 'codexPlus.sessions' }, [t.id]);
       check(!!await until(shelvedOnDisk, 30000, 500), 'Archive moves the rollout of the conversation open in the tab to archived_sessions/');
+      const unrecognised = noAnchors().length;
       check(!!await drawn(false), 'the tab still shows the conversation\'s turns, read-only, with no message box');
       await shot('archived-while-open');
+      /* The page script reports a miss that has held for 5 s. */
+      await sleep(8000);
+      const archivedSays = { warned: await codex.evaluate(() => !!document.querySelector('[data-codex-extras="warn"]')).catch(() => null), logged: noAnchors().slice(unrecognised) };
+      check(archivedSays.warned === false && !archivedSays.logged.length, 'and that page is not taken for one whose message box Codex Plus no longer finds: no "!" on it and no such line in Codex Plus\'s log', archivedSays);
       await exec('codexPlus.openThreadInTab', t.id);
       check(!!await until(() => !shelvedOnDisk(), 30000, 500), 'opening it from the list unarchives it');
       check(!!await drawn(true), 'and the tab has its message box again');
@@ -3655,6 +3665,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     });
 
     /* The Agent map's row of a sub-agent opens the sub-agent's own conversation in a tab. */
+    let subAgent = '';
     await step('a sub-agent opened in a tab from the Agent map', async () => {
       const parent = threads[0];
       await page.locator('.tabs-container .tab').filter({ hasText: title }).first().click();
@@ -3669,6 +3680,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await f.locator('[data-codex-extras="map-agent"]').first().click();
       const opened = await until(async () => { const x = (await codexTabsNow()).find((y) => y.active); return x && x.route === `/local/${agent}` && x; }, 20000, 500);
       check(!!opened, 'a click on a sub-agent in the Agent map opens its conversation in a tab, in front', { agent, tabs: await codexTabsNow() });
+      if (opened) subAgent = agent;
       check(!!await until(() => agentFront() === `codex ${agent}`, 15000, 500), 'and Agent Plus has the sub-agent in front', { agent, agentPlus: agentFront(), parent: parent.id });
       await shot('sub-agent-tab');
     });
@@ -3693,6 +3705,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await exec('notifications.clearAll');
       /* The step above has just opened a sub-agent's conversation in a tab. */
       await settle('tabs restored at a reload: before the reload');
+      const unrecognisedBefore = noAnchors().length;
       await w.reload();
       await until(async () => { const s = await patchState(); return s && s.active; }, 60000, 1000);
       const same = (x) => x.route === mine.route && x.fragment === mine.fragment;
@@ -3760,6 +3773,30 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
           await checkCurrent(o.made.id, `${o.what}, restored, in front`);
         }
       }
+      /* The sub-agent's tab the step before opened is restored too. Codex shows a sub-agent's conversation read-only, with
+         no message box, which is not a page whose message box the page script has stopped recognising. */
+      const subTab = subAgent && (await codexTabsNow()).find((x) => x.route === `/local/${subAgent}`);
+      if (subTab) {
+        await revealTab(subTab);
+        const sub = await until(async () => {
+          for (const f of page.frames()) {
+            try {
+              if (!await f.evaluate(() => innerWidth > 600 && document.querySelectorAll('[data-turn-key]').length > 0 && !document.querySelector('[data-codex-composer-root]'))) continue;
+              const host = f.parentFrame() && await f.parentFrame().frameElement();
+              if (host && await host.isVisible()) return f;
+            } catch (_) { /* gone */ }
+          }
+          return null;
+        }, 60000, 1000);
+        /* The page script reports a miss that has held for 5 s. */
+        await sleep(8000);
+        const warned = sub ? await sub.evaluate(() => !!document.querySelector('[data-codex-extras="warn"]')).catch(() => null) : null;
+        const logged = noAnchors().slice(unrecognisedBefore);
+        check(!!sub && warned === false && !logged.length, 'the restored tab of the sub-agent, read-only with no message box, is not taken for a page whose '
+          + 'message box Codex Plus no longer finds: no "!" on its page and no such line in Codex Plus\'s log since the reload', { sub: !!sub, warned, logged, tab: subTab });
+        const home = (await codexTabsNow()).find(same);
+        if (home) await revealTab(home);
+      } else note('the step before opened no sub-agent\'s tab, so its page after the reload was not looked at');
       const final = await codexTabsNow();
       check(final.length === before.length, 'after all that the window still has the Codex tabs it had before the reload, and no more', { before, after: final });
     });

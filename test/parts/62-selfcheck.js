@@ -364,6 +364,54 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
   eq(page.posted.length && dom.document.root.querySelectorAll('[data-codex-extras="warn"]').length, 0, 'and never shows the "!"');
 
   /*
+   * ── a page Codex draws with no message box on purpose ──
+   *
+   * Codex shows a sub-agent's conversation, opened from the Agent map, and a conversation archived while its tab is
+   * open, read-only: the messages are there, the message box is not, and neither is the element Codex puts it in
+   * (data-thread-find-composer), as a live 26.1120 page of each showed. Such a page is not one whose box this script no
+   * longer finds, however long it stays that way. A page that has that element and no box this script recognises in it
+   * still says so.
+   */
+  {
+    const clocked = () => {
+      const d = createDom();
+      const clock = { ms: Date.UTC(2026, 10, 24, 5, 0, 0) };
+      d.sandbox.Date = class extends Date {
+        constructor(...a) { super(...(a.length ? a : [clock.ms])); }
+        static now() { return clock.ms; }
+      };
+      pageFromSample(d, sample);
+      return { d, clock };
+    };
+    const held = (d, clock, p) => {
+      p.view(); p.view(); p.view();
+      clock.ms += 6000;
+      p.view(); p.view();
+      clock.ms += 60000;
+      p.view();
+      return { told: p.posted.filter((m) => m.kind === 'anchorsMissing'), warn: !!warnOf(d) };
+    };
+    const ro = clocked(), roPage = pageUnder(root, ro.d);
+    const roSaid = held(ro.d, ro.clock, roPage);
+    eq([roSaid.told.length, roSaid.warn], [0, false],
+      'a read-only page, with its messages and no message box or element for one, is not told to the host however long it stays, and shows no "!"');
+    const roCheck = roPage.ask().report.buttons;
+    eq([roCheck.composerFound, roCheck.withheld], [false, true], 'its self-check says the box is withheld rather than not found');
+    const roLine = require('../../src/patching').selfCheckLines(roPage.ask()).find((l) => /Message box controls/.test(l)) || '';
+    eq(/read-only, with no message box/.test(roLine) && !/no message box found/.test(roLine), true,
+      'and Show Status says Codex shows that conversation read-only', roLine);
+
+    const lost = clocked();
+    const place = lost.d.el('div', { attrs: { 'data-thread-find-composer': 'true' }, kids: [lost.d.el('div', { attrs: { 'data-codex-composer-root-renamed': '' } })] });
+    lost.d.document.root.querySelectorAll(`[${ACTIVITY}]`)[0].appendChild(place);
+    const lostPage = pageUnder(root, lost.d);
+    const lostSaid = held(lost.d, lost.clock, lostPage);
+    eq([lostSaid.told.length, lostSaid.told[0] && lostSaid.told[0].composer, lostSaid.told[0] && lostSaid.told[0].messages > 0, lostSaid.warn], [1, false, true, true],
+      'a page with the element Codex keeps its message box in, and no box this script recognises there, is told once with the box missing and shows the "!"');
+    eq(lostPage.ask().report.buttons.withheld, false, 'and its self-check does not call that box withheld');
+  }
+
+  /*
    * ── the line under each reply, placed by turn id ──
    *
    * The sample records the turn-id attribute's name and not its value, so the rebuilt page's turns are given ids here,

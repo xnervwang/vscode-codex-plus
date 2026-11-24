@@ -363,6 +363,12 @@
   }
   function labelled(el, text) { tips.wire(el, text, MARK + '-labelled'); }
   var composerRoot = function () { return one(document, '[data-codex-composer-root]') || one(document, '[data-codex-composer]'); };
+  /*
+   * Whether Codex draws this page with no message box on purpose, as it does a sub-agent's conversation and one archived
+   * while its tab is open: it then leaves out the element its message box sits in, data-thread-find-composer, as well.
+   * A box missing from a page that has that element is one this script no longer recognises.
+   */
+  var boxWithheld = function () { return !composerRoot() && !one(document, '[data-thread-find-composer]'); };
   var infoOpen = function () { return !!(infoBox && infoBox.isConnected && infoBox.style.display === 'block'); };
   function closeInfo() { if (infoBox) infoBox.style.display = 'none'; }
   var gone = function (el) { if (el) { try { el.remove(); } catch (e) { /* gone */ } } return null; };
@@ -2663,8 +2669,8 @@
   }
 
   /*
-   * Codex's page has turns and this script recognised none of the messages in them: a Codex release has most likely
-   * changed an attribute it selects by. Told to the host once MISS_PASSES passes in a row have seen it and at least
+   * Codex's page has turns and this script recognised none of the messages in them, or no message box where Codex keeps
+   * one (boxWithheld): a Codex release has most likely changed an attribute it selects by. Told to the host once MISS_PASSES passes in a row have seen it and at least
    * MISS_MS has gone by since the first, so a conversation still being drawn does not count, and told again only after
    * the messages have been found in between. The message holds counts, flags and this script's version, nothing else.
    */
@@ -2672,7 +2678,7 @@
   function noteMisses(list) {
     var turns = list ? lastTurns : all(document, SEL.turn).length;
     var composer = !!composerRoot();
-    if (!turns || (list && list.length && composer)) { missRun = 0; missSince = 0; missTold = false; showWarn(false); return; }
+    if (!turns || (list && list.length && (composer || boxWithheld()))) { missRun = 0; missSince = 0; missTold = false; showWarn(false); return; }
     if (!missRun) missSince = Date.now();
     missRun++;
     if (missTold) { showWarn(true); return; }
@@ -2993,7 +2999,7 @@
       replyFigures: { setting: view.replyFigures !== false, fromHost: Object.keys(hostTurns).length,
         turnsKeyed: lastPass.turnsKeyed, matched: lastPass.turnsMatched, drawn: lastPass.figuresDrawn },
       /* The two buttons below the message box, and the box they are placed by. */
-      buttons: { setting: view.buttons !== false, composerFound: !!composerRoot(),
+      buttons: { setting: view.buttons !== false, composerFound: !!composerRoot(), withheld: boxWithheld(),
         drawn: !!((tools && tools.isConnected) || (meterBtn && meterBtn.isConnected)), inToolbar: rowMode === 'row',
         info: !!(infoBtn && infoBtn.isConnected), chime: !!(muteBtn && muteBtn.isConnected) },
       /* Codex's own context meter, and whether this script outlined it. The percentage is the number Codex shows. */
