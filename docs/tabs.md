@@ -6,6 +6,8 @@ The Codex button on the editor's tab bar and New in tab in the session list open
 
 With the patch in effect, the tab bar shows Codex Plus's button instead of Codex's own. It opens what `codexPlus.tabBarButton` specifies: `tab` by default, or `sidebar`. Its hover says *New Codex Conversation in a Tab* or *Open Codex Sidebar* to match. VS Code takes that hover from the command's title in the extension's `package.json`, so the patch adds a condition to Codex's `package.json` that hides Codex's button while this extension's is shown. The button appears once the window has been reloaded after the patch is written.
 
+With the patch in place, `Codex: New Codex Agent` and the `New chat` button on a Codex page in an editor tab each open a new conversation in a new tab. Codex Plus gives each tab's address its own fragment, as it does for its tab bar button and `New in tab` in the session list. With `codexPlus.enabled` off, or after `Codex Plus: Remove the Patch from Codex`, Codex brings the existing `New` tab to the front with the conversation you started in it. This is a Codex bug: [openai/codex#15807](https://github.com/openai/codex/issues/15807).
+
 ## Reopening tabs
 
 Codex Plus reopens tabs that VS Code did not restore after a reconnect. The status bar reports how many for ten seconds, as Claude Code Plus does. `codexPlus.reopenDroppedTabs` turns this off. After a window reload, VS Code restores Codex tabs. If you open a tab with the Codex Plus tab bar's New button, the session list's New in tab, or Codex's New Codex Agent, Codex shows an empty conversation in the restored tab. Codex Plus remembers which conversation the tab showed and reopens it in the same tab with its name.

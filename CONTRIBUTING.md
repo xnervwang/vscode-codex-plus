@@ -62,13 +62,14 @@ Everything this extension adds to Codex depends on the exact shape of one build,
 
 - The builds each release was checked against are recorded in `src/supported-versions.json`, with the date and what was checked on each.
 - `Codex Plus: Show Status` says whether the installed build is one of them. An unrecorded build is also noted in one line of the Codex Plus output channel; it does not open a dialog.
-- An unrecorded build is still patched if every place the patch edits is found in it. If one is not, the patch leaves Codex untouched and says so in the status.
+- An unrecorded build is still patched if every place the patch requires is found in it. If one is not, the patch leaves Codex untouched and says so in the status. If only the optional `new conversation tabs` edit does not fit, the patch applies the other edits and `test/against-latest.js` reports the build as a failure.
 
 Add an entry after checking a build; the suite then keeps that entry in step with the code.
 
 - `test/parts/70-supported.js` compares each entry's three lists against the places they are read from: the patch's own rule names, the columns `src/codex-files.js` queries, and the `data-*` attributes `src/page/codex-extras-page.js` looks for. So a new column or a new attribute fails the suite until some build with it has been checked and recorded.
 - It also fails when the Codex installed here is not in the record, which is how an upgrade gets noticed.
 - Drop a build once it is no longer installed, rather than carrying it forward. `git log -S<version> -- src/supported-versions.json` finds the commits that claimed it. Keep the build that the layout sample in `test/fixtures/` was taken from, though: `test/parts/70-supported.js` fails if the record does not name it.
+- When you add a build to `src/supported-versions.json` with `new conversation tabs` among its host edits, copy that build's `createNewPanel` source exactly as shipped into `SHIPPED` in `test/parts/39b-codex-new-panel.js`. The test fails if any such build has no entry in `SHIPPED`.
 
 ## The render check
 
@@ -137,5 +138,5 @@ What a change must not break:
 - `package.json` `version` changes only for a release.
 - Code, comments and commit messages are English; every source file starts with the BSD 3-Clause header.
 - The page script never puts a node inside one Codex draws.
-- Every patch edit matches exactly once on a pristine Codex build, or nothing is written.
+- Every required patch edit matches exactly once on a pristine Codex build, or nothing is written. The patch tries the optional `new conversation tabs` edit only after all the required edits fit.
 - Every name the edits in `src/host.js` declare inside Codex's code starts with `cxp` and an upper-case letter (`LOCAL_PREFIX`), so that it cannot hide one of Codex's minified names. `test/parts/50c-patch-local-names.js` checks this rule.
