@@ -4,10 +4,8 @@
 
 'use strict';
 /*
- * The host's side of the plan bar (codexPlus.planBar, src/plan-bars.js): it listens to Agent Plus's planSummary only
- * while the setting is on, asks for a conversation's summary once and again only when Agent Plus says it changed or a
- * page loads afresh, hands each Codex page the summary of the conversation it shows, and runs Agent Plus's two commands
- * for a click with the conversation's source and id. An Agent Plus without the feature draws no bar and raises no error.
+ * The host's side of the plan bar (codexPlus.planBar, src/plan-bars.js) listens to Agent Plus's planSummary only while
+ * the setting is on.
  */
 const path = require('path');
 const fake = require('../fake-vscode');
@@ -97,7 +95,8 @@ module.exports = async ({ eq, tmp, root }) => {
   /* ── through the patch ── */
   const { vscode, control } = fake.create();
   fake.install(vscode);
-  /* Removing the patch tells the pages first, once it finds the Codex it would restore. */
+  /* removePatch tells the open pages to drop the bar before it restores Codex's files, and only once it has found a
+     Codex to restore, so the fake window is given one. */
   control.state.extensions.set('openai.chatgpt', { extensionPath: tmp('codex-of-this-window'), packageJSON: { version: '26.1021.22027' } });
   for (const k of Object.keys(require.cache)) if (/[/\\]src[/\\]patching\.js$/.test(k)) delete require.cache[k];
   const patching = require('../../src/patching');

@@ -5,10 +5,8 @@
 'use strict';
 /*
  * The plan bar in Codex's page (src/page/codex-extras-page.js), on the stand-in DOM: drawn by Agent Plus's shared
- * fragment from the summary the host sends, on <body> just above the message box and as wide as it, with the box given
- * the room it takes. A click says only which part was clicked. A narrow box gets the compact bar, a bar a redraw took
- * off the page is put back, the bar follows the box, and with no summary, the bar turned off, Codex Plus turned off or
- * no box it is gone with its style and its room. The window test (test/vscode/ui.js) checks it in a drawn Codex.
+ * fragment from the summary the host sends, on <body> just above the message box. The window test (test/vscode/ui.js)
+ * checks the bar on Codex's own page in a real VS Code window.
  */
 const path = require('path');
 const vm = require('vm');

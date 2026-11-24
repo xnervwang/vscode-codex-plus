@@ -12,10 +12,11 @@
  *   node test/against-latest.js            the newest release
  *   CODEX_EXTRAS_PRERELEASE=1 node ...     the newest version, pre-releases included
  *
- * Exits 1 when an edit does not match exactly once, the result does not parse, the build has a name of its own with the
- * prefix the host edits give theirs, or a request or a question tool name is not in its list. The codex program is run
- * only when PLATFORM below is this machine's own. It cannot check what the page script relies on at run time: that is
- * messages, with no text in the files to match them against.
+ * Exits 1 if an edit does not match exactly once, the result does not parse, the downloaded build already contains a
+ * name that starts with the host edits' prefix (LOCAL_PREFIX in src/host.js) followed by an upper-case letter, or a
+ * request or a question tool name is not in its list. The codex program is run only when PLATFORM below is this
+ * machine's own. It cannot check what the page script relies on at run time: that is messages, with no text in the
+ * files to match them against.
  */
 const fs = require('fs');
 const os = require('os');
@@ -81,7 +82,6 @@ async function newest() {
     const hostText = fs.readFileSync(host.targetFile(dir), 'utf8');
     const h = host.patchSource(hostText);
     if (h.error) { failed++; console.log(`FAIL  host: ${h.error}`); } else console.log(`ok    host: every edit matches once (${h.chosen.map((c) => c.name).join(', ')}) and parses`);
-    /* The names the host edits declare carry a prefix so that they cannot hide one of Codex's (src/host.js LOCAL_PREFIX). */
     const taken = [...new Set([...hostText.matchAll(new RegExp(`(?:^|[^\\w$])(${host.LOCAL_PREFIX}[A-Z][\\w$]*)`, 'g'))].map((x) => x[1]))];
     if (taken.length) { failed++; console.log(`FAIL  names: this build has its own ${taken.join(', ')}, which the host edits' prefix ${host.LOCAL_PREFIX} was to keep clear of`); }
     else console.log(`ok    names: no name in this build starts with ${host.LOCAL_PREFIX}, the prefix of the names the host edits declare`);

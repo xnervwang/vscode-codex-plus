@@ -5,15 +5,15 @@
 'use strict';
 /*
  * The names the patch declares inside Codex's code. Codex's bundle is minified: its names are one to three characters
- * and change with every build (the function the tab bar button runs was vi, Zs and ra in three builds in a row). A name
- * the patch declares that is also one of Codex's hides Codex's inside the patch's own code, and the hook then quietly
- * does nothing, as happened to Claude Code Plus with Claude Code 2.1.331. So every name a host edit declares starts
- * with the prefix of src/host.js, which no minifier hands out, and the edits that refer to one of Codex's names inside
- * a scope of their own are run with several names Codex could give it.
+ * and change with every build (the function the tab bar button runs was vi, Zs and ra in three builds in a row). If the
+ * patch declares a variable with the same name as a minified Codex variable, references inside the patch resolve to the
+ * local variable and the hook does nothing without raising an error, as happened to Claude Code Plus with Claude Code
+ * 2.1.331. So every name a host edit declares starts with the prefix of src/host.js, which no minifier hands out, and
+ * the edits that refer to one of Codex's names inside a scope of their own are run with several names Codex could give
+ * it.
  *
- * The edits are read with each captured group, and the whole match, standing for a placeholder: what is left of the
- * replacement is the patch's own text, and the placeholders are Codex's names, which an edit may write again where
- * Codex had them.
+ * Reading each edit's replacement with placeholders for the whole match and each captured group separates the patch's
+ * own code from the Codex names the edit may reuse in their original positions.
  */
 const fs = require('fs');
 const os = require('os');
@@ -28,7 +28,7 @@ const CONTROL = new Set(['if', 'for', 'while', 'switch', 'catch', 'with', 'funct
   'delete', 'await', 'yield', 'in', 'of', 'instanceof', 'do', 'else', 'try', 'finally', 'throw', 'case', 'super', 'import']);
 const PLACEHOLDER = /^\$codex/;
 
-/* Identifiers, strings, numbers and punctuation. A template literal is refused: code inside one would go unread. */
+/* Identifiers, strings, numbers and punctuation. */
 function tokens(src) {
   const out = [];
   let i = 0;
@@ -131,7 +131,7 @@ function bindings(tk, a, b) {
   return names;
 }
 
-/** Every name a piece of JavaScript declares: let, const, var, function and class names, parameters, catch bindings. */
+/** Every name a piece of JavaScript declares, parameters and catch bindings included. */
 function declaredNames(src) {
   const tk = tokens(src);
   const names = new Set();
@@ -169,7 +169,8 @@ function declaredNames(src) {
   return [...names];
 }
 
-/* One shape's replacement with each group, and the whole match, as a placeholder. */
+/* The replacement text of one shape, with $codex1, $codex2 and so on for its groups and $codexMatch for the whole
+   match. */
 function replacementOf(shape) {
   const groups = new RegExp(`${shape.re.source}|`, shape.re.flags.replace(/[gy]/g, '')).exec('').length - 1;
   const caps = Array.from({ length: groups }, (_, k) => `$codex${k + 1}`);
@@ -194,14 +195,14 @@ module.exports = async ({ ok, bad, note, eq }) => {
   const prefix = host.LOCAL_PREFIX;
   const ours = new RegExp(`^${prefix}[A-Z][A-Za-z0-9]*$`);
 
-  /* The reader first, so that a check that finds nothing cannot pass for one that finds everything in order. */
+  /* The reader is tested on a sample first: a reader that missed names would let a badly named declaration through. */
   const sample = 'let r=1,{a:b,c=2,...d}=x;const[e,,f=3]=y;var g;function h(i,{j},k=(l)=>l){}class M{n(o,p){}}'
     + 'try{}catch(q){}(s,...t)=>0;u=>u;async(v)=>0;w.x({key:y});if(z){}for(let aa of bb){}';
   eq(declaredNames(sample).sort(), ['M', 'aa', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v'].sort(),
     'the reader finds every kind of declaration and none of the names that are only used');
 
-  /* Every target whose file is JavaScript: today that is the host bundle alone. The page edit adds a script tag to an
-     HTML page, and the manifest edit adds keys to JSON. */
+  /* Only targets whose file is JavaScript: the page edit adds a script tag to an HTML page, and the manifest edit
+     adds keys to JSON. */
   const targets = require('../../src/adapters').filter((t) => /\.js$/.test(t.targetFile(path.join(os.tmpdir(), 'codex'))));
   eq(targets.map((t) => t.name), ['Codex host'], 'the host bundle is the one patched file that is JavaScript');
   const found = new Map();
@@ -237,9 +238,9 @@ module.exports = async ({ ok, bad, note, eq }) => {
   }
 
   /*
-   * The two edits whose own code refers to one of Codex's names: the tab bar button calls Codex's function, and the
-   * conversation retain passes on Codex's id and calls Codex's callback. Each is run with names Codex has used and
-   * could use, among them the one-letter names the patch itself once declared there.
+   * The tab bar button calls Codex's function, and the conversation retain passes on the id and calls the callback it
+   * got from Codex. Each is run with names Codex has used and could use, among them the one-letter names the patch
+   * itself once declared there.
    */
   const tabBar = host.EDITS.filter((e) => e.name === 'tab bar button');
   const tabBarRuns = {};

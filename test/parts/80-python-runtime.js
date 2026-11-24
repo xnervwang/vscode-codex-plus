@@ -151,7 +151,8 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
   const commands = (stage) => { const out = []; for (const g of Object.values(hooksOf(stage).hooks)) for (const x of g) for (const h of (x.hooks || [])) out.push(h.command); return out; };
   const mcpOf = (stage) => JSON.parse(fs.readFileSync(path.join(stage, pi.PLUGIN, '.mcp.json'), 'utf8')).mcpServers.work_plan;
   const launcherFile = (stage) => path.join(stage, pi.PLUGIN, 'hooks', 'launcher.json');
-  /* Codex's own replacement in a plugin's hook command, before the line reaches a shell (hooks/src/engine/discovery.rs). */
+  /* Codex's own replacement in a plugin's hook command, before the line reaches a shell (Codex 0.164 and later,
+     hooks/src/engine/discovery.rs). */
   const codexFills = (line, root, data) => line.split('${PLUGIN_ROOT}').join(root).split('${PLUGIN_DATA}').join(data);
 
   const asShipped = tmp('stage-shipped');
@@ -186,9 +187,8 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
   eq(JSON.parse(fs.readFileSync(launcherFile(fitted), 'utf8')), { row: ['py', '-3'] },
     'and launcher.json gets the words a person would type, which is what the model is told to run');
 
-  /* What Codex makes of the fitted line on Windows before handing it to PowerShell, or to cmd when it finds no PowerShell:
-     ${PLUGIN_ROOT} and ${PLUGIN_DATA} replaced by the paths (Codex 0.164 and later, hooks/src/engine/discovery.rs). A
-     `$` or a `%` left in it would be read by one of those shells as a variable of its own. */
+  /* The fitted line as Codex hands it to PowerShell on Windows, or to cmd when it finds no PowerShell. A `$` or a
+     `%` left in it would be read by one of those shells as a variable of its own. */
   const winRoot = 'C:\\Users\\Jo Ann\\.codex\\plugins\\cache\\codex-extras\\agent-work-plan\\1.0.0';
   const winData = 'C:\\Users\\Jo Ann\\.codex\\plugins\\data\\agent-work-plan-codex-extras';
   const filled = commands(fitted).map((c) => codexFills(c, winRoot, winData));
