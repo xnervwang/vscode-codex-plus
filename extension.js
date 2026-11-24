@@ -871,8 +871,8 @@ function registerCommands(context, { source, memory, sessionsModel, sessionsView
     return true;
   };
   /*
-   * The fragment Codex's own New Codex Agent gives the URI of the tab it opens (src/host.js, "new conversation tabs"),
-   * of the shape this extension's New tabs carry. '' leaves Codex's URI as it built it, as with the main switch off.
+   * Codex's own New Codex Agent, once patched (src/host.js, "new conversation tabs"), calls this for the fragment of
+   * the tab it opens. '' leaves Codex's URI as it built it.
    */
   globalThis.__codexExtrasNewPanelFragment = () => (settings().enabled === false ? '' : tabs.newPanelFragment());
   /* Set below, beside Unarchive. */

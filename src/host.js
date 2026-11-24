@@ -37,11 +37,10 @@
  *                           extension hands back, so a second New opens a second tab instead of bringing the first
  *                           one forward
  *
- * Every edit must match exactly once on a pristine bundle, all or nothing, and the result must parse; the marker carries
- * a digest of the edits so an older patch is recognised as outdated. The exception is an edit marked `optional`, whose
- * loss leaves Codex doing that one thing as it ships, which this extension copes with: it is tried on its own once every
- * other edit fits, and a build it does not fit is patched without it rather than not at all. A patched file says which
- * of them it went without (missingOptional). Backing up, writing and restoring are the steps every patch target shares
+ * Every edit must match exactly once on a pristine bundle, all or nothing, and the result must parse; the marker
+ * carries a digest of the edits so an older patch is recognised as outdated. An edit marked `optional` is the
+ * exception. Without it Codex keeps that one behaviour as shipped and the rest of this extension still works, so it is
+ * tried alone after every other edit fits. Backing up, writing and restoring are the steps every patch target shares
  * (src/patch-target.js).
  */
 const crypto = require('crypto');
@@ -168,11 +167,11 @@ const EDITS = [
       + `catch(cxpErr){}return cxpTaken?void 0:${fn}(...cxpArgs)})`,
   },
   /*
-   * Codex's createNewPanel, behind its New Codex Agent and behind the New chat button of its page in a tab (the page
-   * runs chatgpt.newCodexPanel there), opens every new conversation tab on the same URI. Codex allows one editor per
-   * resource, so a second New brings the first tab forward with the conversation begun in it. The URI it built is
+   * Codex's createNewPanel opens every new conversation tab on the same URI. New Codex Agent runs it, and so does the
+   * New chat button of Codex's page in a tab (the page runs chatgpt.newCodexPanel there). Codex allows one editor per
+   * resource, so a second New brings the first tab forward, showing the conversation started there. The URI it built is
    * given a fragment __codexExtrasNewPanelFragment returns (src/codex-tabs.js newPanelFragment); Codex reads a tab's
-   * route from the path and query only. With no answer, an empty one or a fault, Codex's own URI is opened unchanged.
+   * route from the path and query only.
    */
   {
     name: 'new conversation tabs',
@@ -216,9 +215,9 @@ function patchSource(src) {
 }
 
 /*
- * The optional edits the bundle in `dir` went without when this version's patch was written to it: [{ name, lost }],
- * by the call each puts in. Empty when the bundle does not carry this version's patch, since then none of them is in
- * effect for a reason of their own.
+ * The optional edits missing from the bundle in `dir` when this version's patch was written to it: [{ name, lost }].
+ * Empty when the bundle does not carry this version's patch, since its optional edits are then absent along with everything else the patch
+ * adds.
  */
 function missingOptional(dir) {
   let text = '';

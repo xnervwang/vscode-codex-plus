@@ -113,7 +113,7 @@ function anchorsMissingLine(m) {
     + 'The page self-check at the end of "Codex Plus: Show Status" says which part was not found.';
 }
 
-/* The optional host edits the patched Codex in `dir` went without (src/host.js missingOptional). */
+/* The optional edits missing from the patched Codex in `dir` (src/host.js missingOptional). */
 const leftOut = (dir) => {
   const host = targets.find((t) => typeof t.missingOptional === 'function');
   try { return dir && host ? host.missingOptional(dir) : []; } catch (_) { return []; }

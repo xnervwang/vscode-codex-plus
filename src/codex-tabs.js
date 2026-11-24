@@ -102,8 +102,9 @@ function threadUri(vscode, thread) {
  * the URI, and Codex reads a tab's route from its path and query alone (its URI parser), so the fragment makes a new
  * resource without changing the route.
  *
- * Codex's own New Codex Agent, which the New chat button of its page in a tab runs too, takes its fragment from here
- * as well (src/host.js, "new conversation tabs"), so every New tab this window opens carries one of this one shape.
+ * Codex's own New Codex Agent takes its fragment from here too (src/host.js, "new conversation tabs"). The New chat
+ * button of Codex's page in a tab runs that same command, so every New tab this window opens has a fragment of this
+ * shape.
  */
 let newPanels = 0;
 function newPanelFragment() {
