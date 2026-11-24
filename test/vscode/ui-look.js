@@ -433,8 +433,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     await sleep(500);
   };
 
-  /* Drags the left edge of the secondary side bar, where Codex's sidebar is, so the bar is `to` CSS pixels wide; resolves
-     to its width before. */
+  /* Drags the left edge of the secondary side bar, the one Codex's sidebar is in, until it is `to` CSS pixels wide, and
+     resolves to the width it had before. */
   const auxTo = async (to) => {
     const ab = await part(PARTS.auxiliary);
     if (!ab || Math.abs(ab.width - to) < 4) return ab ? ab.width : 0;
@@ -1862,12 +1862,12 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await sleep(1500);
       return union([await part(PARTS.auxiliary), await part(PARTS.sidebar)]);
     });
-    /* The same conversation's message box with Codex's sidebar narrower than Codex's toolbar row needs for the controls
-       Codex Plus adds to it. */
+    /* The same conversation's message box, with Codex's sidebar too narrow for Codex Plus's controls to fit in Codex's
+       toolbar row. */
     {
       let auxBefore = 0;
       await look('sidebar-narrow-box', {
-        expect: 'Codex\'s sidebar on the right dragged narrow, about 280 px wide, at the bottom of "Why does the nightly export skip archived rows?": its message box. '
+        expect: 'Codex\'s sidebar on the right, dragged to about 280 px wide, showing the bottom of "Why does the nightly export skip archived rows?": its message box. '
           + 'Inside the box\'s rounded border, below Codex\'s own row of buttons (the + button, the hand, the model picker with its name or its icon, the send button and the others Codex shows), '
           + 'a line of its own holds Codex Plus\'s information button (i) and note button (♪) at its left and the context ring with its percentage at its right, '
           + 'drawn in the same size and colour as Codex\'s own buttons. None of them is outside the box\'s border or below it against the window\'s edge, '
@@ -1935,8 +1935,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         else if (!drawn.compact) tell(`the sidebar's page is ${drawn.page} px wide, so its plan bar is the full one`);
         /* The pointer rests where the step before clicked the Agent map pill; with the pill gone or shorter now, the meter
            next to it can have moved under the pointer and opened its hover box. It is moved first to an empty spot near the
-           top of the sidebar's page, so the page sees it leave whatever it was over (a pointer that leaves the page on its
-           way across can leave a hover box or a tooltip open there), and then in one move onto the editor beside it. */
+           top of the sidebar's page, so the page sees it leave whatever it was over, and then in one move onto the editor
+           beside it. A pointer that leaves the page on its way across can leave a hover box or a tooltip open there. */
         const bar = await part(PARTS.auxiliary);
         if (bar) {
           await page.mouse.move(bar.x + 24, bar.y + 115, { steps: 4 });
