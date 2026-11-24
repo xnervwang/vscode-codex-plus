@@ -46,6 +46,8 @@
  *   the sidebar  a conversation resumed in Codex's sidebar: each reply's stamp inside its column, and, with the sidebar
  *                too narrow for them in Codex's toolbar row, this extension's controls in a line of their own inside the
  *                message box
+ *   side and tab Codex's sidebar opened on one conversation with the tab of another in front: the session list's
+ *                current row, Agent Plus's front and its work plan view follow the same one, whichever came forward last
  *   archived     the conversation in the tab archived while open: the tab keeps its turns, read-only, and opening it
  *                from the list unarchives it and gives the tab its message box back
  *   a New tab    a first message typed into a tab the tab bar button opened: the tab is titled by the conversation, and
@@ -3352,6 +3354,49 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         planFor(t.id, planTitle(t.id));
         await exec('agentPlus.refreshWorkPlan');
       }
+      await exec('workbench.action.closeAuxiliaryBar');
+    });
+
+    /*
+     * Codex's sidebar opened on one conversation while the tab of another stays in front. The session list's current
+     * conversation and Agent Plus's work plan view follow the same one: whichever came to the front last, the sidebar
+     * or the active tab (src/codex-source.js front), as Claude Code Plus's both follow Claude Code's activeSessionId.
+     * Closing the sidebar while it was in front gives both back to the tab.
+     */
+    await step('Codex\'s sidebar and a Codex tab both open', async () => {
+      if (!codex) throw new Error('the conversation did not open in a tab');
+      const t = threads[0], s1 = threads[1];
+      const same = async (id, how) => {
+        check(!!await until(() => agentFront() === `codex ${id}`, 15000, 500), `${how}, Agent Plus has that conversation in front`, { want: id, agentPlus: agentFront() });
+        await checkCurrent(id, how);
+        await checkPlan(planTitle(id), how);
+      };
+      for (const id of [t.id, s1.id]) planFor(id, planTitle(id));
+      await exec('agentPlus.refreshWorkPlan');
+      await openNotes();
+      await tabNamed(title).click();
+      await same(t.id, 'with the tab of a conversation in front and Codex\'s sidebar closed');
+      await call('vscode.commands.executeCommand("codexPlus.openThreadInSidebar", arg); return true;', s1.id);
+      const allow = page.locator('.monaco-dialog-box').filter({ hasText: 'open this URI' }).first();
+      if (await allow.waitFor({ state: 'visible', timeout: 15000 }).then(() => true, () => false)) {
+        await allow.locator('.dialog-buttons .monaco-button').filter({ hasText: 'Open' }).first().click({ timeout: 5000 });
+      }
+      const side = await frameWhere((want) => innerWidth < 800 && document.body.innerText.includes(want) && !!document.querySelector('[data-codex-composer-root]'), 90000, s1.title);
+      check(!!side, 'Resume in Sidebar on another conversation draws it in Codex\'s sidebar');
+      if (!side) { await exec('workbench.action.closeAuxiliaryBar'); return; }
+      const tabStill = await frontTab();
+      check(!!tabStill && bare(tabStill.label) === bare(title), 'and the tab stays the active one', tabStill);
+      await same(s1.id, 'with Codex\'s sidebar opened on another conversation and that tab still in front');
+      await shot('sidebar-and-tab');
+      await exec('workbench.action.closeAuxiliaryBar');
+      await same(t.id, 'with Codex\'s sidebar closed again, the tab still in front');
+      await exec('chatgpt.openSidebar');
+      const back = await frameWhere((want) => innerWidth < 800 && document.body.innerText.includes(want) && !!document.querySelector('[data-codex-composer-root]'), 30000, s1.title);
+      if (back) await same(s1.id, 'with Codex\'s sidebar shown again on its conversation');
+      else note('Codex\'s sidebar, shown again, did not draw its conversation within 30 s, so that case was not checked');
+      await openNotes();
+      await tabNamed(title).click();
+      await same(t.id, 'with a click on the tab after a text file, the sidebar still open');
       await exec('workbench.action.closeAuxiliaryBar');
     });
 
