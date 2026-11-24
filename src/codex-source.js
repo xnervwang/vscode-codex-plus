@@ -29,7 +29,7 @@
  * approval request at once.
  *
  * Each conversation also reports `activity`, `unseen`, `lastUserAt` and `lastReplyAt`; `state` stays for an older Agent
- * Plus. `lastReplyAt` is the end of its latest turn, which is when the reply that turn ended with landed.
+ * Plus. `lastReplyAt` is when its latest turn ended: the time of that turn's reply.
  * `activity` is `working` during a turn, `background` after the turn while work it started still runs, `waiting` for
  * `prompt` and for a question its work plan put to the user after the user's last message, and `stopped` otherwise.
  * `unseen` marks a reply the user has not looked at; it is measured from the latest finished turn, so a later turn does
@@ -596,7 +596,7 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
     return reader.busy ? Promise.resolve(reader.busy).then(go, go) : go();
   }
 
-  /* The conversations a person started that `keep` keeps, from the reader's latest snapshot, in the protocol's terms. */
+  /* The conversations a person started, filtered by `keep`, from the reader's latest snapshot and in the protocol's shape. */
   async function listed(keep) {
     const snap = await reader.ready(files.codexHome());
     const threads = ((snap && snap.threads) || []).filter((t) => t.kind === 'user' && keep(t));
@@ -645,9 +645,9 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
       return !leftSidebar && sidebarInFront() === sessionId;
     },
     listConversations() { return listed(() => true); },
-    /* For Agent Plus's notices and the conversations it gives to extensions that link to them: every conversation not
-       archived, from every folder. Read receipts and plan questions are shared by every window; what only this window
-       knows (an approval it was asked, a tab it shows) can only add to them. */
+    /* Every conversation not archived, from every folder, for Agent Plus's notices and for the extensions that link to
+       conversations through it. Read receipts and plan questions are shared by every window; what only this window
+       knows (an approval request it received, a tab it shows) can only add to them. */
     listAllConversations() { return listed((t) => !t.archived); },
     /* Any thread's state, sub-agents included, computed the same way listConversations computes a conversation's;
        null when the thread is not in the snapshot or its rollout has not been read. */

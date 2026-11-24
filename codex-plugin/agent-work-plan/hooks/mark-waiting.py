@@ -7,7 +7,7 @@
 
 Codex asks its client for an approval over the app-server connection and writes nothing about it to any file, so a VS Code
 window sees only the requests of its own app-server. A conversation running in another window, or in Codex's own terminal
-interface, waits for the user unseen. PermissionRequest runs inside Codex itself, wherever the conversation runs, just
+interface, waits for the user unseen. PermissionRequest runs in the Codex process that has the conversation, just
 before the approval is asked for, so this hook marks the conversation there; the extension reads the marks
 (src/waiting-marks.js).
 
@@ -18,8 +18,7 @@ same call once the tool has run, Stop, SubagentStop and Interrupt at the end of 
 which starts another turn. A denied call gets no PostToolUse, so its mark goes at the end of the turn, or sooner when the
 window running the conversation sees the request answered.
 
-The hook writes nothing to standard output and always exits 0: Codex takes no output as no decision, so the approval goes
-on exactly as it would without it.
+The hook writes nothing to standard output and always exits 0, which Codex takes as no decision.
 """
 import glob
 import hashlib
@@ -34,12 +33,12 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from plan_path import SESSION_NAME, data_dir, read_payload, write_quietly
 
 WAITING_DIR = "waiting"
-# The events that end what a mark stands for, and the marks each takes away (see clear()).
+# The events that remove marks; clear() says which marks each one removes.
 CLEARS = ("PostToolUse", "Stop", "SubagentStop", "Interrupt", "UserPromptSubmit")
 
 
 def thread_of(payload):
-    """The conversation the event belongs to: a sub-agent's own thread when it is one, else the session's."""
+    """The conversation the event belongs to: the sub-agent's own thread for a sub-agent's event, else the session."""
     for field in ("agent_id", "session_id"):
         value = str(payload.get(field) or "").strip()
         if SESSION_NAME.match(value):
@@ -49,7 +48,7 @@ def thread_of(payload):
 
 def key_of(tool, tool_input):
     """What one call is known by in both PermissionRequest and PostToolUse, which give no call id in common: the tool and
-    its command, or all its arguments but the description only the approval carries."""
+    its command, or all its arguments except the description, which only the approval carries."""
     if isinstance(tool_input, dict) and isinstance(tool_input.get("command"), str):
         subject = tool_input["command"]
     elif isinstance(tool_input, dict):
