@@ -5659,29 +5659,53 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       const tabUp = () => page.evaluate((want) => [...document.querySelectorAll('.tabs-container .tab')].some((e) => e.textContent.includes(want)), t.title);
       /* The tab is closed the moment the extension host is told to restart, when nothing in the host is left to record it.
          Killing the host instead closes a window started for extension development, as this one is. */
-      const dropOnce = async () => {
+      const dropRound = async (doing, cut) => {
+        const next = (what) => { if (cut.done) throw new Error('given up'); doing.now = what; };
+        next('opening the tab');
         await exec('codexPlus.openThreadInTab', t.id);
+        next('waiting for the tab');
         if (!await until(tabUp, 20000, 500)) throw new Error(`no tab of "${t.title}" opened`);
+        next('clicking the tab');
         await tabNamed(t.title).click();
         await sleep(3000);
         const pidNow = () => call('return process.pid;', null, 300).catch(() => 0);
+        next('reading the extension host\'s pid');
         const was = await pidNow();
         const at = Date.now();
+        next('waiting for Codex\'s pages to settle');
         await settle('a tab closed while the extension host was away: before the extension host restarted');
+        next('asking the extension host to restart');
         call('setTimeout(() => vscode.commands.executeCommand("workbench.action.restartExtensionHost"), 50); return true;', null, 3000).catch(() => {});
         /* Watches for a moment when no host answers: the old host gone and the new one not yet up. */
         let gap = false;
+        next('watching the extension host restart');
         await until(async () => { const p = await pidNow(); if (!p) { gap = true; return true; } return p !== was; }, 20000, 100);
+        next('pressing the key that closes the tab');
         await page.keyboard.press(process.platform === 'darwin' ? 'Meta+W' : 'Control+W');
+        next('waiting for the tab to close');
         let closed = await until(async () => !await tabUp(), 3000, 100);
         if (!closed) {
+          next('closing the tab with its close button');
           await tabNamed(t.title).hover().catch(() => {});
           await tabNamed(t.title).locator('.tab-actions .action-label').first().click({ timeout: 3000 }).catch(() => {});
           closed = await until(async () => !await tabUp(), 3000, 100);
         }
+        next('waiting for the new extension host');
         const back = await w.hostUp(at).then(() => true, () => false);
+        next('waiting for Codex Plus in the new extension host');
         await until(async () => { const s = await patchState().catch(() => null); return s && s.active; }, 60000, 1000);
         return { closed: !!closed, back, gap, closedAfterMs: Date.now() - at };
+      };
+      /* A round has once waited for good on Linux after the host's restart, with nothing printed: some call into the
+         window that has no time limit of its own never answered. A round is given ROUND_MS and then fails the step,
+         saying what it was waiting for; a round given up does nothing more once that call does answer, so it cannot
+         press keys or restart the host during a later step. */
+      const ROUND_MS = 180000;
+      const dropOnce = async () => {
+        const doing = { now: 'starting' }, cut = { done: false };
+        let timer = null;
+        const late = new Promise((_, no) => { timer = setTimeout(() => { cut.done = true; no(new Error(`a round of closing the tab took more than ${ROUND_MS / 1000} s; it was ${doing.now}`)); }, ROUND_MS); });
+        try { return await Promise.race([dropRound(doing, cut), late]); } finally { clearTimeout(timer); }
       };
       /* If no moment without a host was seen, the close may have been recorded, and the check after it proves nothing. */
       const unmet = (r) => { if (r.gap) return false; note(`no moment without an extension host was seen on ${process.platform} while it restarted (${JSON.stringify(r)}), so the tab may have been closed under a host that recorded it; not checked`); return true; };
