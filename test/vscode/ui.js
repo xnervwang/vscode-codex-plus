@@ -513,6 +513,24 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     return !!(part && part.offsetWidth > 0 && part.offsetHeight > 0 && /Codex/.test(part.innerText));
   });
 
+  /* Where the plan bar sits in frame `f` against the message box and against each element `sel` selects, which are
+     Codex's own (its question card, its approval card): { bar, box, over } with the boxes rounded, or null with no bar. */
+  const planBarAgainst = (f, sel) => (f ? f.evaluate((q) => {
+    const rect = (e) => { const r = e.getBoundingClientRect(); return { left: Math.round(r.left), top: Math.round(r.top), right: Math.round(r.right), bottom: Math.round(r.bottom) }; };
+    const b = document.querySelector('[data-codex-extras="plan-bar"]');
+    if (!b || b.style.display === 'none' || !b.getClientRects().length) return null;
+    const bar = rect(b), boxEl = document.querySelector('[data-codex-composer-root]');
+    const over = (q ? [...document.querySelectorAll(q)] : []).filter((e) => e.getClientRects().length).map(rect)
+      .filter((r) => Math.min(r.right, bar.right) - Math.max(r.left, bar.left) > 0 && Math.min(r.bottom, bar.bottom) - Math.max(r.top, bar.top) > 0);
+    return { bar, box: boxEl ? rect(boxEl) : null, over };
+  }, sel || '').catch(() => null) : null);
+  /* With a plan bar drawn, checks that it is clear of what `sel` selects; says so in a note when there is no bar. */
+  const planBarClear = async (f, sel, what) => {
+    const at = await planBarAgainst(f, sel);
+    if (!at) { note(`${what}: no plan bar was drawn, so whether it would cover it was not checked`); return; }
+    check(!at.over.length, `${what}: the plan bar above the message box covers none of it`, at);
+  };
+
   /* A frame of the window's webviews in which `test` (a function of document) is true. */
   const frameWhere = async (test, ms, arg) => until(async () => {
     for (const f of page.frames()) {
@@ -1298,6 +1316,160 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await page.mouse.move(talk ? talk.x + 30 : 0, talk ? talk.y + 15 : 0, { steps: 6 });
     });
 
+    /* The plan bar above the message box (codexPlus.planBar, src/plan-bars.js and the page script's placePlanBar): the
+       summary Agent Plus gives of a conversation's plan, drawn by Agent Plus's fragment just above the box and as wide as
+       it, compact in Codex's narrow sidebar, following the plan as it changes, and opening Agent Plus's views. */
+    await step('the plan bar', async () => {
+      if (!codex) throw new Error('the conversation did not open');
+      const id = threads[0].id, other = threads[1];
+      await clearToasts();
+      await tabNamed(title).click();
+      await until(async () => (await frontPage()) === codex, 10000, 300);
+      const since = new Date().toISOString().replace(/\.\d+Z$/, '+00:00');
+      const QUESTION = 'Should the retry delay stay at 30 seconds?';
+      const ROWS = [
+        { title: 'Find the retry delay', state: 'done', since, closed: since },
+        { title: 'Change the retry delay', state: 'doing', since, children: [{ title: 'Read the sync job', state: 'doing', since }] },
+        { title: 'Decide the default delay', state: 'waiting', waitingOn: 'user', question: QUESTION, asked: since, since },
+        { title: 'Update the docs', state: 'todo', since }];
+      const writeRows = (thread, nodes) => { fs.mkdirSync(PLANS, { recursive: true }); fs.writeFileSync(path.join(PLANS, `${thread}.json`), JSON.stringify({ nodes })); };
+      /* What the bar in frame `f` shows, part by part, and where it is against the message box. */
+      const barIn = (f) => (f ? f.evaluate(() => {
+        const b = document.querySelector('[data-codex-extras="plan-bar"]');
+        if (!b || b.style.display === 'none' || !b.getClientRects().length) return null;
+        const t = (sel) => { const e = b.querySelector(sel); return e ? e.textContent.trim() : null; };
+        const r = b.getBoundingClientRect(), x = (document.querySelector('[data-codex-composer-root]') || b).getBoundingClientRect();
+        return { count: t('.apb-count'), row: t('.apb-row'), red: t('.apb-q'), compact: b.getAttribute('data-compact') === '1',
+          segments: [...b.querySelectorAll('.apb-seg')].map((s) => s.getAttribute('data-state')), page: innerWidth,
+          at: { left: Math.round(r.left), top: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.height) },
+          box: { left: Math.round(x.left), top: Math.round(x.top), width: Math.round(x.width) } };
+      }).catch(() => null) : null);
+      const barSays = (f, test, ms = 20000) => until(async () => { const b = await barIn(f); return b && test(b) && b; }, ms, 400);
+      const noBar = (f, ms = 20000) => until(() => f.evaluate(() => !document.querySelector('[data-codex-extras="plan-bar"]')).catch(() => false), ms, 400);
+      const placed = (b) => !!b && b.at.left === b.box.left && b.at.width === b.box.width && Math.abs(b.at.top + b.at.height + 6 - b.box.top) <= 1;
+      /* The rows the side bar shows as it is, without bringing Agent Plus's container forward as planRows does: with the
+         session list in front there are none, since that list is a page of its own. */
+      const planViewRows = () => page.evaluate(() => {
+        const bar = document.getElementById('workbench.parts.sidebar');
+        return bar ? [...bar.querySelectorAll('.monaco-list-row')].filter((r) => r.offsetParent).map((r) => r.innerText.trim()) : [];
+      }).catch(() => null);
+
+      writeRows(id, ROWS);
+      const full = await barSays(codex, (b) => b.count === '4 open' && /2\.1 Read the sync job/.test(b.row || '') && b.red === '1 to decide');
+      check(!!full && !full.compact && full.segments.join() === 'doing,waiting,todo',
+        'a plan with rows doing, waiting on the user and to do draws the bar: 4 open, the deepest doing row as the current one, and "1 to decide" in red',
+        full || await barIn(codex));
+      check(placed(full), 'the bar sits just above the message box, 6 px clear of it, and is as wide as it', full);
+      /* What lies under the bar, kept in the results: every element of Codex's other than the box's ancestors whose box meets
+         it. One a pixel or less across is drawn for screen readers only, as Codex's own visually hidden headings are. */
+      const under = await codex.evaluate(() => {
+        const b = document.querySelector('[data-codex-extras="plan-bar"]'), box = document.querySelector('[data-codex-composer-root]');
+        if (!b || !box) return null;
+        const r = b.getBoundingClientRect(), out = [];
+        for (const e of document.body.querySelectorAll('*')) {
+          if (e.closest('[data-codex-extras]') || e.closest('[data-agent-plus-plan-bar-list]') || e.contains(box)) continue;
+          const x = e.getBoundingClientRect(), st = getComputedStyle(e);
+          if (!(x.width > 1 && x.height > 1) || st.visibility === 'hidden' || st.display === 'none') continue;
+          if (Math.min(x.right, r.right) - Math.max(x.left, r.left) <= 0 || Math.min(x.bottom, r.bottom) - Math.max(x.top, r.top) <= 0) continue;
+          out.push({ tag: e.tagName.toLowerCase(), attrs: [...e.attributes].map((a) => a.name).filter((n) => n !== 'class' && n !== 'style').slice(0, 6),
+            box: [x.left, x.top, x.width, x.height].map(Math.round), position: st.position, z: st.zIndex, text: !![...e.childNodes].some((n) => n.nodeType === 3 && n.nodeValue.trim()) });
+        }
+        const up = [];
+        for (let n = box; n && n !== document.body && up.length < 12; n = n.parentElement) {
+          const x = n.getBoundingClientRect(), st = getComputedStyle(n);
+          up.push({ tag: n.tagName.toLowerCase(), attrs: [...n.attributes].map((a) => a.name).filter((a) => a !== 'class' && a !== 'style').slice(0, 6),
+            box: [x.left, x.top, x.width, x.height].map(Math.round), display: st.display, position: st.position, margin: st.marginTop, kids: n.children.length });
+        }
+        return { bar: [r.left, r.top, r.width, r.height].map(Math.round), under: out.slice(0, 40), up };
+      }).catch((e) => ({ error: String(e) }));
+      fs.writeFileSync(path.join(out, 'plan-bar-layout.json'), JSON.stringify(under, null, 2));
+      const drawnUnder = (under && under.under || []).filter((e) => e.text || /^(button|svg|img|input|textarea)$/.test(e.tag));
+      check(!!under && !under.error && !drawnUnder.length, 'nothing of Codex\'s with text or a control in it lies under the bar', drawnUnder);
+      await shot('plan-bar');
+
+      /* The plan changes: a row added, and the rows that were doing closed. */
+      writeRows(id, [...ROWS, { title: 'Write the release note', state: 'todo', since }]);
+      const more = await barSays(codex, (b) => b.count === '5 open');
+      check(!!more, 'a row added to the plan shows at once as one more open', more || await barIn(codex));
+      writeRows(id, [ROWS[0], { title: 'Change the retry delay', state: 'done', since, closed: since, children: [{ title: 'Read the sync job', state: 'done', since, closed: since }] },
+        ROWS[2], ROWS[3], { title: 'Write the release note', state: 'todo', since }]);
+      const fewer = await barSays(codex, (b) => b.count === '3 open' && /3 Decide the default delay/.test(b.row || ''));
+      check(!!fewer && fewer.segments.join() === 'waiting,todo', 'rows closed leave fewer open, and with none doing the row waiting on the user is the current one', fewer || await barIn(codex));
+      writeRows(id, ROWS);
+      await barSays(codex, (b) => b.count === '4 open');
+
+      /* A click on the bar shows the plan in Agent Plus's Work plan view; one on the red part opens the question. */
+      await showList();
+      await codex.locator('[data-codex-extras="plan-bar"] .apb-name').first().click({ timeout: 10000 });
+      const shown = await until(async () => { const r = await planViewRows(); return r && r.some((x) => x.includes('Read the sync job')) && r; }, 15000, 500);
+      check(!!shown, 'a click on the bar brings Agent Plus\'s Work plan view forward with the conversation\'s plan', shown || await planViewRows());
+      await shot('plan-bar-opened-plan');
+      await codex.locator('[data-codex-extras="plan-bar"] .apb-q').first().click({ timeout: 10000 });
+      const answer = await frameWhere((q) => { const e = document.getElementById('question'); return !!e && e.textContent.includes(q); }, 20000, QUESTION);
+      const said = answer && await answer.evaluate(() => ({ row: (document.getElementById('row') || {}).textContent || '', question: document.getElementById('question').textContent }));
+      check(!!said && /Decide the default delay/.test(said.row), 'a click on its red part opens the Answer view at the question, with its row', said);
+      await shot('plan-bar-opened-answer');
+      await exec('workbench.action.closePanel');
+      await showList();
+
+      /* In Codex's sidebar, which is narrow, the compact bar; a click there shows that conversation's plan, though the
+         tab in front shows another. */
+      writeRows(other.id, [{ title: 'Look at the export logs', state: 'doing', since },
+        { title: 'Choose what to log', state: 'waiting', waitingOn: 'user', question: 'Log every skipped row, or a count?', asked: since, since },
+        { title: 'Fix the archive filter', state: 'todo', since }]);
+      await call('vscode.commands.executeCommand("codexPlus.openThreadInSidebar", arg); return true;', other.id);
+      const allow = page.locator('.monaco-dialog-box').filter({ hasText: 'open this URI' }).first();
+      if (await allow.waitFor({ state: 'visible', timeout: 10000 }).then(() => true, () => false)) {
+        await allow.locator('.dialog-buttons .monaco-button').filter({ hasText: 'Open' }).first().click({ timeout: 5000 });
+      }
+      const side = await frameWhere((want) => innerWidth < 800 && document.body.innerText.includes(want) && !!document.querySelector('[data-codex-composer-root]'), 60000, other.title);
+      if (!side) throw new Error('Codex\'s sidebar did not show the second conversation');
+      let narrow = await barSays(side, (b) => b.count === '3 open', 30000);
+      if (narrow && !narrow.compact) {
+        /* The sidebar opened wider than the compact width; its edge is dragged in. */
+        const edge = await page.evaluate(() => {
+          const b = document.getElementById('workbench.parts.auxiliarybar').getBoundingClientRect();
+          const s = [...document.querySelectorAll('.monaco-sash.vertical')].map((e) => e.getBoundingClientRect()).find((r) => r.height > 100 && Math.abs((r.left + r.right) / 2 - b.left) < 4);
+          return s && { x: (s.left + s.right) / 2, y: b.top + b.height / 2, width: b.width };
+        });
+        if (edge) {
+          await page.mouse.move(edge.x, edge.y);
+          await page.mouse.down();
+          await page.mouse.move(edge.x + Math.max(0, edge.width - 340), edge.y, { steps: 10 });
+          await page.mouse.up();
+          await sleep(800);
+        }
+        narrow = await barSays(side, (b) => b.compact, 10000) || await barIn(side);
+      }
+      check(!!narrow && narrow.compact && narrow.count === '3 open' && narrow.red === '1' && !narrow.row && placed(narrow),
+        'in Codex\'s sidebar, narrower than 400 px, the bar is compact: the open count and the number of questions, as wide as the box and just above it', narrow);
+      await shot('plan-bar-sidebar');
+      await showList();
+      await side.locator('[data-codex-extras="plan-bar"] .apb-name').first().click({ timeout: 10000 });
+      const theirs = await until(async () => { const r = await planViewRows(); return r && r.some((x) => x.includes('Look at the export logs')) && r; }, 15000, 500);
+      check(!!theirs && !theirs.some((x) => x.includes('Read the sync job')), 'a click on the sidebar\'s bar shows that conversation\'s plan in the Work plan view, not the plan of the tab in front',
+        theirs || await planViewRows());
+      await exec('workbench.action.closeAuxiliaryBar');
+      await showList();
+      await tabNamed(title).click();
+      await until(async () => (await frontPage()) === codex, 10000, 300);
+
+      /* No plan, no bar; the setting turns it off and on. */
+      fs.rmSync(path.join(PLANS, `${id}.json`), { force: true });
+      check(!!await noBar(codex), 'a conversation whose plan is gone has no bar, and the message box no room for one', await barIn(codex));
+      writeRows(id, ROWS);
+      check(!!await barSays(codex, (b) => b.count === '4 open'), 'a plan written again brings the bar back', await barIn(codex));
+      await setting('planBar', false);
+      check(!!await noBar(codex, 10000), 'codexPlus.planBar turned off takes the bar away', await barIn(codex));
+      await setting('planBar', undefined);
+      const back = await barSays(codex, (b) => b.count === '4 open', 10000);
+      check(placed(back), 'and turned on again it is back, in its place', back || await barIn(codex));
+      await shot('plan-bar-back');
+      planFor(id, planTitle(id));
+      fs.rmSync(path.join(PLANS, `${other.id}.json`), { force: true });
+      await exec('agentPlus.refreshWorkPlan');
+    });
+
     await step('the dot on a tab', async () => {
       if (!codex) throw new Error('the conversation did not open');
       const id = threads[0].id;
@@ -1786,6 +1958,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       }).catch(() => null);
       const approve = async (name) => {
         await clearToasts();
+        await planBarClear(codex, '[data-codex-approval-surface]', `${name}: Codex's approval card`);
         const buttons = codex.locator('[data-codex-approval-surface] button');
         const yes = buttons.filter({ hasText: /^(Yes|Allow once|Allow this time|Approve|Run)\b/ }).first();
         if (await yes.count()) await yes.click();
@@ -2737,6 +2910,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         const radios = shown ? await card.locator('button[role="radio"]').evaluateAll((bs) => bs.map((b) => b.getAttribute('aria-label'))) : [];
         check(shown && OPTIONS.every((o) => radios.includes(o)), `${name}: while the turn runs, Codex's page shows the question's card above the message box, with its options`,
           { radios, page: await pageSays(codex) });
+        if (shown) await planBarClear(codex, '[data-codex-composer-request-navigation]', `${name}: the question's card`);
         await shot(`question-${name.replace(/\W+/g, '-')}-card`);
         if (answer === 'card') {
           /* With one question the pick is the answer, sent a moment later; a click on Send meanwhile takes the pick back. */

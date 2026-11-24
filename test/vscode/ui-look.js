@@ -1025,6 +1025,22 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       return mapBox();
     });
     await closeMap();
+    /* The plan bar of the conversation's plan as written at the start: a row doing, a question waiting for the user and a
+       row to do. */
+    const planBarBox = async (f = codex) => union([await inCodex('[data-codex-extras="plan-bar"]', f), await inCodex('[data-codex-composer-root]', f)]);
+    const PLAN_BAR = 'From the left: a list icon and "Plan" in bold; a short track of three coloured segments, blue for the row doing, orange for the one waiting '
+      + 'and purple for the one to do, of equal length; "3 open"; then "1 Find the retry delay" after a play icon; at the right a red-tinted pill with a red dot and '
+      + '"1 to decide", and an arrow. ';
+    await look('plan-bar', {
+      expect: `Just above the message box, as wide as it and 6 px clear of its top edge, the plan bar, one line high with a thin border and rounded corners. ${PLAN_BAR}`
+        + 'It covers neither the last lines of the conversation nor the message box: the conversation ends above it. The toolbar inside the message box is unchanged.',
+    }, async () => {
+      if (!await until(() => codex.evaluate(() => /3 open/.test((document.querySelector('[data-codex-extras="plan-bar"]') || {}).textContent || '')), 20000, 500)) {
+        tell('the plan bar did not say "3 open" within 20 s');
+      }
+      await toBottom();
+      return planBarBox();
+    });
     const noteButton = () => codex.locator('[data-codex-extras="bar-button"]:not([aria-label^="About this conversation"])').first();
     await look('chime-button-off', {
       expect: 'A click on the note button turns the chimes off: the note icon is drawn struck through; the information button beside it is unchanged.',
@@ -1460,6 +1476,17 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         return mapBox();
       });
       await closeMap();
+      await look('plan-bar-light', {
+        expect: 'The plan bar above the message box in the Default Light Modern theme, as wide as the box: "Plan" in bold, a track of two equal segments, orange for '
+          + 'the row waiting and purple for the one to do, "2 open", then "2 Decide the default delay" in dark text after an orange clock icon, and at the right the '
+          + 'red-tinted pill with a red dot and "1 to decide", and an arrow. Its background and border are the light theme\'s input colours, and every part is readable.',
+        unchanged: 'The first row of the plan is done by now, so it is no longer counted.',
+      }, async () => {
+        if (!await until(() => codex.evaluate(() => /2 open/.test((document.querySelector('[data-codex-extras="plan-bar"]') || {}).textContent || '')), 20000, 500)) {
+          tell('the plan bar did not say "2 open" within 20 s');
+        }
+        return planBarBox();
+      });
       await setting('colorTheme', 'Default Dark Modern', 'workbench');
       await sleep(2000);
       await hostRequest('thread/goal/clear', { threadId: t0.id, origin: 'user' }).catch(() => null);
@@ -1845,6 +1872,26 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await page.keyboard.press('Escape');
       await hostRequest('thread/goal/clear', { threadId: t1.id, origin: 'user' }).catch(() => null);
       try { fs.unlinkSync(wake1); } catch (_) { /* never written */ }
+      const plan1 = path.join(plans, `${t1.id}.json`);
+      await look('plan-bar-sidebar', {
+        expect: 'In Codex\'s sidebar on the right, which is narrow, the plan bar of "Why does the nightly export skip archived rows?" just above its message box and as '
+          + 'wide as it, in its compact form: the list icon, "Plan" in bold, "3 open", then a gap, a red-tinted pill with a red dot and just "1", and the arrow at the '
+          + 'right end. No track and no current row. It fits inside the sidebar and covers nothing of the conversation or of the message box.',
+      }, async () => {
+        fs.writeFileSync(plan1, JSON.stringify({ nodes: [{ title: 'Look at the export logs', state: 'doing', since: iso() },
+          { title: 'Choose what to log', state: 'waiting', waitingOn: 'user', question: 'Log every skipped row, or a count?', asked: iso(), since: iso() },
+          { title: 'Fix the archive filter', state: 'todo', since: iso() }] }));
+        const side = await frameWhere((want) => innerWidth < 800 && document.body.innerText.includes(want) && !!document.querySelector('[data-codex-composer-root]'), 30000, t1.title.slice(0, 30));
+        if (!side) throw new Error('Codex\'s sidebar no longer shows the conversation');
+        const drawn = await until(() => side.evaluate(() => {
+          const b = document.querySelector('[data-codex-extras="plan-bar"]');
+          return b && /3 open/.test(b.textContent) && { compact: b.getAttribute('data-compact') === '1', page: innerWidth };
+        }), 20000, 500);
+        if (!drawn) tell('the sidebar\'s plan bar did not say "3 open" within 20 s');
+        else if (!drawn.compact) tell(`the sidebar's page is ${drawn.page} px wide, so its plan bar is the full one`);
+        return union([await planBarBox(side), await part(PARTS.auxiliary)]);
+      });
+      try { fs.unlinkSync(plan1); } catch (_) { /* never written */ }
     }
     await exec('workbench.action.closeAuxiliaryBar');
 
