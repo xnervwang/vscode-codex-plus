@@ -4277,9 +4277,17 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       /* Each way opens a conversation and closes it a moment later. On a slow machine its page is still fetching most of
          its code then, and what it leaves queued holds up every Codex page for minutes, so the page is let draw the
          conversation and go 2 s with no file reaching it before its tab is closed; and again when VS Code was still
-         behind with Codex's files, as the page's own may have been among them. */
+         behind with Codex's files, as the page's own may have been among them. The page is looked for among those of
+         Codex's tabs, which share one webview origin, learnt from the page in front: the page of Codex's hidden sidebar,
+         left on a conversation by an earlier step, has a composer too and the titles of the conversations in its text. */
+      let tabsHost = '';
       const letFinish = async (t) => {
-        const f = await frameWhere((want) => !!document.querySelector('[data-codex-composer-root]') && document.body.innerText.includes(want), 60000, t.title.slice(0, 30));
+        if (!tabsHost) {
+          const fp = await until(frontPage, 60000, 500);
+          tabsHost = fp ? await fp.evaluate(() => location.host).catch(() => '') : '';
+        }
+        const f = tabsHost ? await frameWhere(([want, host]) => location.host === host && !!document.querySelector('[data-codex-composer-root]')
+          && document.body.innerText.includes(want), 60000, [t.title.slice(0, 30), tabsHost]) : null;
         if (!f) { note(`rows of conversations no longer open: the page of "${t.title}" had not drawn it in 60 s when its tab was to be closed`); return; }
         await f.evaluate(() => { const g = globalThis; if (g.__cxpLastFile !== undefined) return; g.__cxpLastFile = performance.now();
           try { new PerformanceObserver(() => { g.__cxpLastFile = performance.now(); }).observe({ type: 'resource' }); } catch (_) { /* none */ } }).catch(() => {});
