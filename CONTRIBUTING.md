@@ -13,6 +13,7 @@
 - `src/workplan.js`: plan files: the states and limits they share with the plugin and Agent Plus, and the sweep of plans whose conversation is gone.
 - `src/logo-dot.js`: Codex's logo with an activity dot or ring, for the tab icons.
 - `src/title-marks.js` (from Agent Plus): the envelope for a reply not seen, kept out of a conversation's name and drawn once after its title; `src/envelope.js` (from Agent Plus) picks its form for the colour theme.
+- `src/plan-bars.js`: the plan bar above the message box: each conversation's plan summary from Agent Plus, kept until Agent Plus says it changed, and Agent Plus's two commands for the bar's clicks; `src/page/plan-bar.js` (from Agent Plus) draws the bar in the page script.
 - `src/sessions-view.js`, `src/tab-memory.js`, `src/session-info.js`, `src/session-groups.js`: the Codex sessions view (its model and the webview view), recently closed and dropped tabs, session information, the groups (Codex's sections) and their order; `src/account-usage.js`: Account & usage.
 - `src/archive-sweep.js`: deleting the conversations archived longer than `codexPlus.deleteArchivedAfterDays`, by one window a day, with its state file and lock folder in this extension's global storage.
 - `src/agent-map.js`: each conversation's Agent map (its wake-up, goal and sub-agents) from the snapshot, which the page script draws as Claude Code's pill and dialog; `src/wakeup.js` lists the wake-ups for the worker and removes one.

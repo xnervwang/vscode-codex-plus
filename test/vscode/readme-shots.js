@@ -42,8 +42,8 @@ const { sleep, until } = win;
 /* Short, because Codex listens on a Unix socket under CODEX_HOME. */
 const ROOT = path.join(os.tmpdir(), 'codex-plus-demo');
 const PLAN_DIR = path.join('plugins', 'data', 'agent-work-plan-codex-extras');
-const SHOTS = ['work-plan', 'images-in-replies', 'reply-figures', 'navigation', 'context-meter', 'session-info', 'agent-map',
-  'wake-up', 'tabs', 'session-list', 'session-menu', 'token-mode', 'answer-view'];
+const SHOTS = ['work-plan', 'images-in-replies', 'reply-figures', 'navigation', 'plan-bar', 'context-meter', 'session-info',
+  'agent-map', 'wake-up', 'tabs', 'session-list', 'session-menu', 'token-mode', 'answer-view'];
 
 const args = process.argv.slice(2);
 const flag = (name, dflt = '') => { const i = args.indexOf(name); if (i < 0) return dflt; const v = args[i + 1] || ''; args.splice(i, 2); return v; };
@@ -267,7 +267,9 @@ async function main() {
     await exec('workbench.action.closeAuxiliaryBar').catch(() => {});
     await exec('workbench.action.closePanel').catch(() => {});
     await exec('codexPlus.openThreadInTab', tid);
-    const conv = await frameWhere(() => innerWidth > 600 && document.querySelectorAll('[data-response-annotation-target]').length >= 4
+    /* Codex draws only the turns in view, and the plan bar above the box leaves room for fewer of them, so any reply
+       with a time on it shows the conversation is open. */
+    const conv = await frameWhere(() => innerWidth > 600 && document.querySelectorAll('[data-response-annotation-target]').length > 0
       && !!document.querySelector('[data-codex-extras="stamp"]'), 120000);
     if (!conv) throw new Error('the demo conversation did not open in 120 s');
     await sleep(3000);
@@ -353,6 +355,22 @@ async function main() {
       await snap('navigation', await editor());
       await conv.locator('.codex-extras-rail-handle').first().click();
       await sleep(400);
+    }
+    if (want('plan-bar')) {
+      /* The bar above the message box, from the demo plan, whose question to the user is the red part. */
+      await toBottom();
+      const bar = conv.locator('[data-codex-extras="plan-bar"]').first();
+      const drawn = await until(() => conv.evaluate(() => {
+        const b = document.querySelector('[data-codex-extras="plan-bar"]');
+        return !!(b && b.style.display !== 'none' && b.getClientRects().length && b.querySelector('.apb-q'));
+      }), 30000, 500);
+      if (!drawn) log('the plan bar was not drawn with a question: plan-bar skipped');
+      else {
+        await away();
+        await sleep(800);
+        const box = await conv.locator('[data-codex-composer-root]').first().boundingBox();
+        await snap('plan-bar', await around([await bar.boundingBox(), box]));
+      }
     }
     if (want('context-meter')) {
       await toBottom();
