@@ -1,5 +1,5 @@
 {
-  "core": "15096576d7ec55e35ce1362cdaead1ab2591fc2b",
+  "core": "9f71740007f7e44555bfd462f0953de88b709fde",
   "files": [
     {
       "path": "build/sync-shared.js",
@@ -74,12 +74,12 @@
     {
       "path": "src/envelope.js",
       "from": "src/envelope.js",
-      "sha256": "53cc30e27783dd13f41c0dfd4895ba7b853c02bf5e0eb67fd9cf345d6cac5c9b"
+      "sha256": "300e433bd5dec1c531c01fa3f4777024f81870495e7df3fd87c463705806b50b"
     },
     {
       "path": "src/title-marks.js",
       "from": "src/title-marks.js",
-      "sha256": "f92c3452c20bc9fd4da45545b37ae404e72d292b43291fbf034c4d6d203ff6dc"
+      "sha256": "6590ac3e3b8f6e562bb6a73e00cb039956b17a5dcb311057388288a49a8c2ccb"
     },
     {
       "path": "src/token-mode.js",
@@ -89,7 +89,7 @@
     {
       "path": "src/page/kit.js",
       "from": "shared/page/kit.js",
-      "sha256": "ee200722f346cb5720b62f1b862f04d74ce953b259c06c74ea1071e542464eb7"
+      "sha256": "610e342637df9df91e69525cd787f34c2f2ed380b557363eed9dc513c741820c"
     },
     {
       "path": "src/python-runtime.js",
