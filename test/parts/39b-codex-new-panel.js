@@ -4,16 +4,13 @@
 
 'use strict';
 /*
- * Codex's own New Codex Agent pressed again while the tab it opened before is still open. Its createNewPanel opens
- * every new conversation tab on one URI, and VS Code keeps one Codex editor per resource, so without the patch the
- * second press brings the first tab forward with whatever conversation it now shows. The New chat button of Codex's
- * page in a tab runs the same command. The host edit "new conversation tabs" (src/host.js) gives that URI a fragment
- * from this extension (src/codex-tabs.js newPanelFragment).
+ * Codex's own New Codex Agent opens every new conversation tab on one URI, and VS Code keeps one Codex editor per
+ * resource, so without the patch a second press brings the first tab forward with whatever conversation it now shows.
+ * The New chat button on a Codex page shown in a tab runs the same command. The host edit "new conversation tabs"
+ * (src/host.js) gives that URI a fragment from this extension (src/codex-tabs.js newPanelFragment).
  *
- * The method is run, not only matched: as each build in src/supported-versions.json ships it, cut out of that build
- * below, and as each pristine Codex installed here has it. It runs in a context of its own with the names that build
- * gives what it calls, and a stand-in openWith that keeps one editor per resource as VS Code does
- * (test/parts/39-new-tab-twice.js says where VS Code does that).
+ * Each copy of createNewPanel runs in a context of its own, with a stand-in openWith that keeps to that rule
+ * (test/parts/39-new-tab-twice.js says where VS Code does it).
  */
 const fs = require('fs');
 const os = require('os');
@@ -24,7 +21,6 @@ const fixture = require('../fixture');
 const { uriParser } = require('../codex-uri-parser');
 
 const EDIT = 'new conversation tabs';
-/* createNewPanel as each recorded build ships it. A build the record says this edit was checked on needs its own here. */
 const SHIPPED = {
   '26.1021.22027': 'async createNewPanel(){let e=F1("/extension/panel/new"),r=Be.window.activeTextEditor?.viewColumn??Be.ViewColumn.Active;await Be.commands.executeCommand("vscode.openWith",e,t.customEditorViewType,{viewColumn:r,preserveFocus:!1,preview:!1})}',
   '26.1111.21308': 'async createNewPanel(){let e=yL("/extension/panel/new"),r=ze.window.activeTextEditor?.viewColumn??ze.ViewColumn.Active;await ze.commands.executeCommand("vscode.openWith",e,t.customEditorViewType,{viewColumn:r,preserveFocus:!1,preview:!1})}',
@@ -44,7 +40,7 @@ function codexInstalls() {
   return out;
 }
 
-/* The bytes of a file as Codex shipped it: its backup when the patch is in, else the file. */
+/* The bytes of a file as Codex shipped it. */
 const pristine = (file, suffix) => fs.readFileSync(fs.existsSync(file + suffix) ? file + suffix : file);
 
 /* createNewPanel out of a whole bundle, by its braces; strings are skipped so a brace in one is not counted. */
@@ -61,11 +57,6 @@ function methodText(src) {
   return null;
 }
 
-/*
- * Runs a createNewPanel with `vscode` standing for Codex's import of it, under the names the method itself uses for
- * that import, for the function that builds a route's URI and for the class that holds the view type. `hook` is what
- * __codexExtrasNewPanelFragment is in its context, none when undefined. Null when the method's names are not found.
- */
 function runner(method, viewType) {
   const builder = (/([\w$]+)\("\/extension\/panel\/new"\)/.exec(method) || [])[1];
   const ns = (/([\w$]+)\.window\.activeTextEditor/.exec(method) || [])[1];
@@ -86,7 +77,6 @@ function runner(method, viewType) {
   };
 }
 
-/* The first installed Codex's URI parser, or one that reads the path and query the way it does. */
 function codexParser(installs) {
   for (const dir of installs) {
     const p = uriParser(pristine(path.join(dir, 'out', 'extension.js'), '.codex-extras-host.bak').toString('utf8'));
@@ -107,7 +97,6 @@ module.exports = async ({ ok, bad, eq, note, tmp, root }) => {
   eq([!!edit.optional, typeof (edit.optional || {}).sign, typeof (edit.optional || {}).lost], [true, 'string', 'string'],
     'the edit is optional, and says what it puts in and what is lost without it');
 
-  /* One editor per resource, as VS Code keeps Codex's: a URI already open brings its tab forward. */
   const key = (u) => `${u.scheme}://${u.authority}${u.path}?${u.query || ''}#${u.fragment || ''}`;
   let opens = [];
   control.state.openWith = (uri, viewType, options) => {
@@ -132,7 +121,6 @@ module.exports = async ({ ok, bad, eq, note, tmp, root }) => {
   };
   const codexTabs = () => control.groups.flatMap((g) => g.tabs.filter((t) => tabs.isCodexTab(vscode, t)));
 
-  /* What two presses leave, with `hook` as the hook. */
   const twice = async (run, hook) => {
     fresh();
     let threw = '';
@@ -143,7 +131,6 @@ module.exports = async ({ ok, bad, eq, note, tmp, root }) => {
   const optionsWant = JSON.stringify({ viewColumn: vscode.ViewColumn.Active, preserveFocus: false, preview: false });
   const parser = codexParser(codexInstalls());
 
-  /* Checks the edit on one shape of the method: `label` names where the method came from. */
   const checkMethod = async (label, method) => {
     const r = applyEdits(method, [edit], 'Codex');
     if (r.error) { bad(`${label}: ${r.error}`); return; }
@@ -172,12 +159,10 @@ module.exports = async ({ ok, bad, eq, note, tmp, root }) => {
       `${label}: with no hook, an empty answer, an answer that is not text or a hook that throws, the patched method opens Codex's own URI and throws nothing`);
   };
 
-  /* ── every recorded build, from the method as it shipped ── */
   const record = supported.read();
   const recorded = supported.versions(record).filter((v) => (supported.entry(v, record).hostEdits || []).includes(EDIT));
   eq(recorded.filter((v) => !SHIPPED[v]), [], 'every Codex build the record says this edit was checked on has its createNewPanel here');
   for (const v of recorded) if (SHIPPED[v]) await checkMethod(`Codex ${v}`, SHIPPED[v]);
-  /* Names Codex could give the function that builds the URI, the import of vscode and the class, other than those it has. */
   const newest = SHIPPED[recorded[recorded.length - 1]];
   if (newest) {
     for (const [b, n, c] of [['n', 'a', 'o'], ['_e', '$', 'i'], ['cx', 'vs', 'K']]) {
@@ -187,7 +172,6 @@ module.exports = async ({ ok, bad, eq, note, tmp, root }) => {
     }
   }
 
-  /* ── every pristine Codex installed here, the whole bundle ── */
   const installs = codexInstalls();
   if (!installs.length) note('no Codex extension installed here: the edit was not checked on a whole bundle');
   for (const dir of installs) {
@@ -205,7 +189,6 @@ module.exports = async ({ ok, bad, eq, note, tmp, root }) => {
       `${name}: the patched bundle's own createNewPanel, run twice, opens two tabs with fragments of this extension's shape`);
   }
 
-  /* ── applied to a copy and taken out again, and a build the edit does not fit ── */
   const targets = require('../../src/adapters');
   const page = require('../../src/webview-inject');
   const manifest = require('../../src/manifest');
@@ -234,7 +217,6 @@ module.exports = async ({ ok, bad, eq, note, tmp, root }) => {
   if (installs.length) {
     const dir = installs[installs.length - 1];
     const orig = pristine(host.targetFile(dir), host.BACKUP_SUFFIX).toString('utf8');
-    /* A build whose createNewPanel no longer opens with a let: the same code, in a shape the edit does not know. */
     const strange = orig.replace('async createNewPanel(){let ', 'async createNewPanel(){var ');
     const r = host.patchSource(strange);
     eq([r.error || '', (r.skipped || []).map((s) => s.name), host.EDITS.filter((e) => !e.optional).every((e) => (r.chosen || []).some((c) => c.name === e.name)),
@@ -247,7 +229,6 @@ module.exports = async ({ ok, bad, eq, note, tmp, root }) => {
       'and the patched file reads as patched, with the edit it went without named');
   }
 
-  /* ── the extension's side: the hook, the main switch, and what the log and Show Status say ── */
   for (const k of Object.keys(require.cache)) if (k.startsWith(root + path.sep) && !k.includes(`${path.sep}test${path.sep}`)) delete require.cache[k];
   const live = fake.create();
   fake.install(live.vscode);

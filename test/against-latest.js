@@ -83,7 +83,7 @@ async function newest() {
     const h = host.patchSource(hostText);
     if (h.error) { failed++; console.log(`FAIL  host: ${h.error}`); }
     else if (!h.skipped.length) console.log(`ok    host: every edit matches once (${h.chosen.map((c) => c.name).join(', ')}) and parses`);
-    /* An optional edit that does not fit is left out of the patch everyone gets, quietly but for a line in the log. */
+    /* Users would get the patch without an optional edit that does not fit, with only a line in the log to say so. */
     for (const s of (h.skipped || [])) { failed++; console.log(`FAIL  host: the optional edit ${s.error}, so it would be left out`); }
     const taken = [...new Set([...hostText.matchAll(new RegExp(`(?:^|[^\\w$])(${host.LOCAL_PREFIX}[A-Z][\\w$]*)`, 'g'))].map((x) => x[1]))];
     if (taken.length) { failed++; console.log(`FAIL  names: this build has its own ${taken.join(', ')}, which the host edits' prefix ${host.LOCAL_PREFIX} was to keep clear of`); }
