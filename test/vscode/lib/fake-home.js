@@ -27,7 +27,7 @@ const THREADS = [
 ];
 /* Two more, left out of THREADS so that no step counts them: a run of `codex exec` in the window's folder, which the
    session list leaves out while codexPlus.hideBackgroundSessions is on, and a conversation in a folder the window does
-   not open (elsewhereFolder), which Agent Plus still gives to an extension that links to conversations. */
+   not open (elsewhereFolder), which Agent Plus still gives to extensions that link to conversations. */
 const BACKGROUND = { id: '0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a71', title: 'Import the nightly feed (run by codex exec)' };
 const ELSEWHERE = { id: '0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a72', title: 'Rename the staging bucket in the other project' };
 const elsewhereFolder = (folder) => path.join(path.dirname(folder), 'elsewhere');

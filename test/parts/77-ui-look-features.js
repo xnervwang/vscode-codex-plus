@@ -54,8 +54,8 @@ module.exports = async ({ eq, note, root }) => {
   eq(features.filter((f) => !f.notInWindow).flatMap((f) => f.settings.filter((s) => !changed.has(s)).map((s) => `${f.id}: ${s}`)), [],
     'every setting of a feature the window shows is given a value other than its default by some step of ui.js or ui-look.js');
 
-  /* Agent Plus's settings, commands and views, against the Agent Plus found: the copy installed beside this one
-     (VSCODE_EXTENSIONS), AGENT_WORK_PLAN_DIR, or its checkout beside this repository. */
+  /* Agent Plus's settings, commands and views, checked against the copy found: the one installed beside this extension
+     (VSCODE_EXTENSIONS), AGENT_WORK_PLAN_DIR, or the checkout beside this repository. */
   const { agentPlusGaps } = require(path.join(root, 'test', 'vscode', 'lib', 'feature-list'));
   const installed = (() => {
     try { const d = fs.readdirSync(process.env.VSCODE_EXTENSIONS || '').filter((n) => /^xnervwang\.agent-plus-\d/.test(n)).sort().pop(); return d ? path.join(process.env.VSCODE_EXTENSIONS, d) : ''; } catch (_) { return ''; }

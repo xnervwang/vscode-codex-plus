@@ -41,8 +41,8 @@
  *   the brief    a click on the conversation in Agent Plus's Conversations panel shows the brief its plan holds in the
  *                Answer view; the arrow on its row and the page's button each go back to the conversation's tab
  *   a question   Codex's asynchronous question answered while its turn still runs, on its card or by a message typed
- *                into the message box: once the turn has ended no red dot on the tab, on the list row or in Agent Plus's
- *                panel, and no count; left unanswered, the red dot on all three and the count
+ *                into the message box: once the turn has ended there is no red dot on the tab, the list row or Agent
+ *                Plus's panel, and no count. A question left unanswered gets the red dot in all three places, and the count
  *   the sidebar  a conversation resumed in Codex's sidebar: each reply's stamp inside its column
  *   archived     the conversation in the tab archived while open: the tab keeps its turns, read-only, and opening it
  *                from the list unarchives it and gives the tab its message box back
@@ -61,7 +61,8 @@
  *                reported as waiting until the turn ends
  *   elsewhere    a conversation in a folder the window does not open: in Agent Plus's list of every conversation, and,
  *                marked unread, archived and unarchived, not announced as finished
- *   installed    with this window's build taken for one installed over, the end of a detached command still told
+ *   installed    when the build this window runs counts as one a newer install has replaced, the conversation is still
+ *                told when a detached command it started ends
  *   token mode   what reaches the made-up model in each of Agent Plus's token modes, with the plugin's hooks trusted
  *
  * Every step saves a screenshot to <out>/shots, and crops of the parts this extension draws are compared with the
@@ -110,7 +111,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
      on (the patch, tab bar, session list) have to match too. */
   const only = process.env.CODEX_PLUS_UI_STEPS ? new RegExp(process.env.CODEX_PLUS_UI_STEPS) : null;
   /* A step's error in one line: its first lines and, for a Playwright timeout, the end of its call log, which says what
-     kept the action from happening (another element taking the click, an element never stable), and where it was thrown. */
+     kept the action from happening, and where it was thrown. */
   const failure = (e) => {
     const lines = String((e && e.stack) || e).split('\n');
     const said = lines.filter((l) => !/^\s+at /.test(l)), at = lines.filter((l) => /^\s+at /.test(l)).slice(0, 3);
@@ -121,8 +122,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
    * VS Code's webview service worker lets 32 resource responses of one webview origin be open at once, and the Codex tabs
    * of every window of this profile share one origin. A page closed while it still loads leaves its queued requests
    * behind, and each of them then holds a place for 30 s before it times out; on a slow machine a Codex page opened in
-   * the minutes after gets none of its files, and Codex puts "Codex could not start" in it. So before a step, and before a
-   * page is closed or a window reloaded or closed, each Codex origin is asked for one more file, queued behind the files
+   * the minutes after gets none of its files, and Codex puts "Codex could not start" in it. So before a step, and before any
+   * page or window closes or reloads, each Codex origin is asked for one more file, queued behind the files
    * already asked for, until one comes back within a second. Resolves to the seconds this waited.
    */
   const served = async (pages = [page], ms = 480000) => {
@@ -192,12 +193,12 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
   };
   const toasts = () => page.evaluate(() => [...document.querySelectorAll('.notification-list-item-message')].map((e) => e.innerText));
   /* Agent Plus's notice stays on screen while the pointer rests on it and the extension cannot close it, so it can cover
-     what sits near the bottom right: the message box's buttons, the meter, the Agent map pill, the status bar's end. */
+     the message box's buttons, the meter, the Agent map pill and the end of the status bar. */
   const clearToasts = () => exec('notifications.clearAll').catch(() => {});
   const focused = () => call('return vscode.window.state.focused;');
-  /* Whether this run's Agent Plus names what a waiting conversation waits for (its feature 'waitingFor'). That Agent Plus
-     also leaves out the notice of a conversation the focused window shows anywhere, a tab behind others included: there
-     the tab's dot and the count tell of it. */
+  /* Whether this run's Agent Plus has its 'waitingFor' feature, which says what a conversation needs from the user. That
+     Agent Plus also gives no notice for a conversation the focused window shows anywhere, even in a tab behind others,
+     since the tab's dot and the count already show it. */
   const apWaits = (() => {
     try {
       const dir = fs.readdirSync(profile.exts).find((n) => n.startsWith('xnervwang.agent-plus-'));
@@ -206,7 +207,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
   })();
   /* Under xvfb-run every window VS Code has once focused says it is focused for good, so a step says which window has the
      focus, to Agent Plus alone, through a global of that window's extension host. lib/window.js starts the windows with
-     AGENT_PLUS_TEST_FOCUS=1, without which Agent Plus does not read it; null gives the window back to VS Code's word. */
+     AGENT_PLUS_TEST_FOCUS=1, without which Agent Plus does not read it; null makes Agent Plus go by VS Code's focus again. */
   const testFocus = (on, folder) => call('if (arg === null) delete globalThis.__agentPlusTestFocused; else globalThis.__agentPlusTestFocused = arg; return true;',
     on, 60000, folder);
   /* What each window's Agent Plus reports of conversation `id` to the others (<shared home>/attention), as
@@ -219,8 +220,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       .filter((it) => it && it.sessionId === id).map((it) => ({ activity: it.activity, waitingFor: it.waitingFor || null }));
   };
   const waitsOn = (id, why) => attentionOf(id).some((x) => x.activity === 'waiting' && JSON.stringify(x.waitingFor) === JSON.stringify(why));
-  /* Every toast window `p` has shown since its log was started, as { text, at } in the page's clock: a notice can come and
-     go between two reads. */
+  /* Every toast window `p` has shown since its log was started, as { text, at } in the page's clock, so a notice that came
+     and went between two reads is still there. */
   const toastLogOf = (p) => p.evaluate(() => {
     if (!window.__cxpToastLog) {
       const log = window.__cxpToastLog = [], now = new Set();
@@ -257,8 +258,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     const n = [...document.querySelectorAll('.notification-toast')].find((e) => e.innerText.includes(`"${want}" ${w}`));
     return n ? n.innerText : '';
   }, [t, words]);
-  /* Every toast the window has shown since it was last loaded, as { text, at } in the page's clock. Agent Plus's notice
-     leaves the screen by itself after some ten seconds, so one that came and went between two reads still counts. */
+  /* The same for this window, since it was last loaded. Agent Plus's notice leaves the screen by itself after some ten
+     seconds. */
   const toastLog = () => page.evaluate(() => {
     if (!window.__cxpToastLog) {
       const log = window.__cxpToastLog = [], now = new Set();
@@ -279,7 +280,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
   /* Waits for a toast since `mark` saying `"<t>" <words>`. */
   const toastSaid = (t, words, mark, ms = 20000) => until(async () => (await toastsAbout(t, mark))
     .find((x) => x.includes(`"${t}" ${words}`)) || '', ms, 300);
-  /* Clicks Open on the notification about `t`: a button of it, or a link in its text in an older Agent Plus. A toast left
+  /* Clicks Open on the notification about `t`: its Open button, or in an older Agent Plus the Open link in its text. A toast left
      alone moves into VS Code's notification list after some ten seconds, where it is clicked instead. */
   const openFromToast = async (t) => {
     let n = page.locator('.notification-toast').filter({ hasText: `"${t}"` }).first(), where = 'toast';
@@ -309,7 +310,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       if (!r) return null;
       const icon = r.querySelector('.custom-view-tree-node-item-icon');
       const label = r.querySelector('.monaco-icon-label');
-      /* A selected row draws its icon in the selection's colour, so the theme colour the icon was given comes first. */
+      /* A selected row draws its icon in the selection's colour, so the colour set on the icon is read before the computed one. */
       const colour = icon ? getComputedStyle(icon).color : '', declared = icon ? icon.style.color : '';
       const badge = label ? getComputedStyle(label, '::after').content : '';
       const rgb = (/(\d+),\s*(\d+),\s*(\d+)/.exec(declared || colour) || []).slice(1).map(Number);
@@ -331,8 +332,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     return '';
   };
   const menuWith = (item) => until(async () => { const t = await vsMenu(); return t.includes(item) && t; }, 5000, 200);
-  /* For a failure's detail: VS Code's context views and what is in them, shadow roots included, the menu and title bar
-     styles VS Code was left at, and the last right-clicks the window itself received. */
+  /* What a failure reports: VS Code's context views and their contents, including shadow roots, the menu and title bar
+     styles VS Code was left at, and the window's last right-clicks. */
   const menuTrace = async () => ({
     views: await page.evaluate(() => [...document.querySelectorAll('.context-view')].map((v) => ({ cls: v.className, shown: !!v.offsetParent, kids: v.childElementCount,
       text: v.innerText.slice(0, 120), shadows: [...v.querySelectorAll('*')].filter((e) => e.shadowRoot).map((e) => e.shadowRoot.textContent.slice(0, 120)) }))).catch((e) => String(e)),
@@ -340,7 +341,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     rightClicks: await page.evaluate(() => (window.__cxpRightClicks || []).slice(-4)).catch(() => []),
   });
   /*
-   * Right-clicks the tab titled `name`, or with `onPage` the newest turn of the conversation page it shows, and clicks
+   * Right-clicks the tab titled `name` (with `onPage`, the newest turn on the conversation page it shows) and clicks
    * `item` in the menu that opens. The tab is clicked first unless `select` is false, which leaves a tab in the
    * background there, its reply unread. Resolves to the menu's text, and throws with menuTrace() when no menu offered
    * `item`. A right-click on a tab has opened no menu now and then on Linux runs too, so it is tried a few times.
@@ -380,7 +381,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
   const PANEL = { working: ['codicon-circle-filled', 'green'], background: ['codicon-circle', 'green'], waiting: ['codicon-circle-filled', 'red'], stopped: ['codicon-blank', ''] };
   const panelShows = (r, activity, unseen) => !!r && r.icons.includes(PANEL[activity][0]) && r.tone === PANEL[activity][1]
     && (unseen === null || envelopes(r.badge) === (unseen ? 1 : 0));
-  /* Waits for the panel's row of `t` to show `activity`, and the envelope when `unseen` (either, when it is null); then
+  /* Waits for the panel's row of `t` to show `activity`, with the envelope if `unseen` and without it if not (null takes either); then
      the panel is closed, so the editor keeps the height the crops were made at. */
   const panelSays = async (t, activity, unseen, ms = 20000) => {
     const got = await until(async () => { const r = await panelRow(t); return panelShows(r, activity, unseen) && r; }, ms, 700);
@@ -492,7 +493,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       }
       return null;
     }, 90000, 500);
-    /* On CI this has failed with nothing to say why, so what the window held is kept. */
+    /* On CI this has failed without saying why, so a screenshot and the list of the window's frames are kept. */
     if (!fresh) {
       await shot('new-tab-page-missing');
       const frames = [];
@@ -633,8 +634,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
   try {
     await w.hostUp();
 
-    /* The look run's list of the Agent Plus settings, commands and views each feature uses, against the Agent Plus this
-       window has installed. */
+    /* Checks the look run's list of the Agent Plus settings, commands and views each feature uses against the Agent Plus
+       this window has installed. */
     await step('the feature list against the Agent Plus installed', async () => {
       const featureList = require('./lib/feature-list');
       const dir = fs.readdirSync(profile.exts).filter((n) => /^xnervwang\.agent-plus-\d/.test(n)).sort().pop();
@@ -726,7 +727,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     let list = null;
     const row = (t) => list.locator(`.cp-group .cp-row[data-id="${t.id}"]`).first();
     /* The dot on `id`'s first row under `where`: the word the page was given, the dot's class, and what its computed
-       style draws, 'green', a green 'ring', 'red' or 'none', so a word the page has and does not draw is caught. */
+       style draws ('green', a green 'ring', 'red' or 'none'), so a state the page knows but does not draw is caught. */
     const listDot = (id, where = '') => list.evaluate(([want, sel]) => {
       const r = document.querySelector(`${sel} .cp-row[data-id="${want}"]`);
       const d = r && r.querySelector('.cp-dot');
@@ -983,9 +984,9 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       if (Math.abs(back - narrow) > 1) note(`the side bar went back to ${back} px, not the ${narrow} px it had`);
     });
 
-    /* A run of codex exec in the window's folder (lib/fake-home.js BACKGROUND). codexPlus.hideBackgroundSessions, on by
-       default, leaves it out of the session list; turned off, without a reload, the list shows it, and turned on again
-       leaves it out. */
+    /* A run of codex exec in the window's folder (lib/fake-home.js BACKGROUND). With codexPlus.hideBackgroundSessions on,
+       the default, the session list leaves it out; turning the setting off shows it without a reload, and turning it on
+       again hides it. */
     await step('background sessions in the session list', async () => {
       if (!await showList()) throw new Error('the session list did not open');
       const bg = fakeHome.BACKGROUND;
@@ -1005,8 +1006,9 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       check(!!gone, 'and turned back on, it leaves it out again', await listed());
     });
 
-    /* The sweep run.js set up for (prepare below), which runs a minute after the window started: the conversation archived
-       25 days ago goes, and the one archived 10 days ago stays, codexPlus.deleteArchivedAfterDays being 20. */
+    /* The archive sweep run.js sets up (prepare below) runs a minute after the window starts. With
+       codexPlus.deleteArchivedAfterDays at 20, it deletes the conversation archived 25 days ago and keeps the one archived
+       10 days ago. */
     await step('conversations archived long ago are deleted', async () => {
       const rolloutOf = (id) => { try { return fs.readdirSync(path.join(profile.codexHome, 'archived_sessions'), { recursive: true }).some((n) => String(n).includes(id)); } catch (_) { return false; } };
       const [old, recent] = ARCHIVED;
@@ -1172,8 +1174,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       }), 5000, 200);
       check(!!map && map.wakeups && map.remove && /every 45 min/.test(map.text) && /nightly export/.test(map.prompt),
         'the pill opens the Agent map, with the wake-up\'s interval, its prompt and Remove', map);
-      /* As Claude Code Plus lays out Claude Code's map: the conversation's own row first under a heading of its own, then
-         each section under a heading in capitals with its count and a line above it. */
+      /* Laid out as Claude Code Plus lays out Claude Code's map: first the conversation's row under its own heading, then
+         each section under a heading in capitals, with its count and a line above it. */
       const laid = await codex.evaluate(() => {
         const d = document.querySelector('[data-codex-extras="map-dialog"]');
         if (!d) return null;
@@ -1248,8 +1250,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
          which reaches up over the middle of it. */
       const talk = await codex.locator('[data-app-action-timeline-scroll]').first().boundingBox();
       await page.mouse.move(talk ? talk.x + 30 : 0, talk ? talk.y + 15 : 0);
-      /* For a hover left open: whether the page still takes the pointer for being on the meter or the hover, and what is
-         under the point the pointer went to. */
+      /* For a hover left open: whether the page still thinks the pointer is over the meter or the hover, and what is
+         under the point the pointer moved to. */
       const hoverState = () => codex.evaluate(() => {
         const b = document.querySelector('[data-codex-extras="context"]'), m = document.querySelector('[data-codex-extras="meter"]');
         const t = document.querySelector('[data-app-action-timeline-scroll]'), tr = t && t.getBoundingClientRect();
@@ -1394,7 +1396,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       check(!!inList && inList.shown.length === 1 && inList.shown[0] === ENVELOPE && !inList.inTitle && inList.afterTitle,
         'and its row in the session list has one envelope, outside the title and after it', inList || await rowNow());
       await shot('renamed-with-envelope');
-      /* Wherever the envelope is typed into the new name, and in either form, the name saved has none and the tab one, last. */
+      /* Wherever the envelope is typed into the new name, and in either form, the saved name has no envelope and the tab's title has one, at the end. */
       for (const [how, typed, want] of [['in the middle', `${title} ${ENVELOPE} (middle)`, `${title} (middle)`],
         ['at the start', `${ENVELOPE} ${title} (start)`, `${title} (start)`], ['twice', `${title} (twice) ${ENVELOPE}${ENVELOPE}`, `${title} (twice)`],
         ['in its text form', `${title} (text form) ${TEXT_ENVELOPE}`, `${title} (text form)`], ['taken out', `${title} (none typed)`, `${title} (none typed)`]]) {
@@ -1490,7 +1492,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
           'when the reply lands with the tab in front of the focused window, the tab gets no envelope and Agent Plus neither announces nor counts it',
           { before: counted, ...after });
       } else {
-        /* Requirement 6 spares the conversation in front of the focused window; with no window focused, nobody is looking. */
+        /* Requirement 6 spares the conversation in front of the focused window; while no window has the focus, it spares none. */
         check(after.ended && after.label === `${title} ${ENVELOPE}` && after.counted > counted && !after.notifications.length,
           `without the system's focus on ${process.platform}, the reply landing in the tab in front is not taken as seen: the tab gets the envelope and Agent Plus counts it, `
           + 'but shows no notification while no window has the focus', { before: counted, ...after });
@@ -1500,7 +1502,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     });
 
     /* A question the work plan puts to the user makes the conversation wait for them on every platform, with no command
-       to approve (src/codex-source.js conversationOf); one put before the user's last message does not. */
+       to approve (src/codex-source.js conversationOf); a question put before the user's last message does not. */
     const PLANS_DIR = path.join(profile.codexHome, 'plugins', 'data', 'agent-work-plan-codex-extras');
     const askInPlan = (id, at) => {
       fs.mkdirSync(PLANS_DIR, { recursive: true });
@@ -1528,8 +1530,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     };
     const readBack = async () => { await tabNamed(title).click(); return !!await until(async () => (await labelOf(title)) === title, 20000, 500); };
 
-    /* Requirement 8: "finished" and "waiting" can each be turned off, which leaves the count as it is (requirement 11),
-       and agentPlus.notifications.enabled turns off both and the count. */
+    /* Requirement 8: "finished" and "waiting" can each be turned off without changing the count (requirement 11);
+       agentPlus.notifications.enabled turns off both and the count. */
     await step('the notification settings', async () => {
       if (!codex) throw new Error('the conversation did not open');
       const id = threads[0].id;
@@ -1588,8 +1590,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await exec('notifications.clearAll');
     });
 
-    /* Requirement 11: an envelope turning up on a conversation that had stopped is not announced, and requirement 12: a
-       turn followed at once by another, as a queued message makes it, is not announced in the moment between them. */
+    /* Requirement 11: an envelope turning up on a conversation that had stopped is not announced. Requirement 12: when one
+       turn follows another at once, as with a queued message, the moment between them is not announced. */
     await step('what Agent Plus does not announce', async () => {
       if (!codex) throw new Error('the conversation did not open');
       const id = threads[0].id;
@@ -1618,7 +1620,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await page.keyboard.type('Draft the summary of the failures.');
       await page.keyboard.press('Enter');
       if (!await until(() => model.turns() > turns, 20000, 300)) throw new Error('the message reached no model');
-      /* Codex sends what its queue holds as soon as the turn running ends (src/wakeup.js uses the same queue). */
+      /* Codex sends a queued message as soon as the running turn ends (src/wakeup.js uses the same queue). */
       const queued = await call(`${OWN} return own('patching').hostRequest('thread/queue/add', arg);`, { threadId: id, clientUserMessageId: `cxp-test-${Date.now()}`,
         input: [{ type: 'text', text: 'And then the release notes.', text_elements: [] }] }).catch((e) => ({ outcome: 'failed', reason: String(e) }));
       check(!!queued && (queued.outcome === 'done' || queued.outcome === 'sent'), 'Codex takes a second message into its queue while the turn runs', queued);
@@ -1651,8 +1653,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await exec('notifications.clearAll');
     });
 
-    /* Each setting of what the patch adds to the conversation's page, turned off and back to its default, with what goes
-       and what comes back (viewOf in src/patching.js, which src/page/codex-extras-page.js draws from). The turns sent
+    /* Each setting of what the patch adds to the conversation's page is turned off and back to its default, checking what
+       goes and what comes back (viewOf in src/patching.js, which src/page/codex-extras-page.js draws from). The turns sent
        above give the replies a duration and figures to show. */
     await step('settings that Codex\'s page follows', async () => {
       if (!codex) throw new Error('the conversation did not open');
@@ -1679,7 +1681,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         + 'the user\'s messages, both buttons, and the meter', on);
       const same = (x) => ['userStamps', 'replyStamps', 'timed', 'figures', 'durations', 'rail', 'edges', 'info', 'mute', 'muted', 'meter', 'codexMeterHidden']
         .every((k) => x[k] === on[k]);
-      /* Turns `key` off, checks with `gone` that `what` went, and checks the page is as it was once it is back at its default. */
+      /* Turns `key` off and checks with `gone` that `what` has left the page, then that the page is as it was once `key` is
+         back at its default. */
       const pageSetting = async (key, what, gone) => {
         await setting(key, false);
         const off = await until(async () => { const x = await read(); return gone(x) && x; }, 15000, 500);
@@ -1702,15 +1705,15 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     });
 
     /* What reaches the plugin's hooks: the settings file under CODEX_HOME that they read on every message (writeHookSettings
-       in extension.js), and the skills entries Codex keeps in config.toml (src/skills-config.js). The settings that are
-       used only in the Custom token mode are set in that mode. */
+       in extension.js), and the skills entries Codex keeps in config.toml (src/skills-config.js). Settings that only the
+       Custom token mode reads are set with the mode at Custom. */
     await step('settings the hooks are given', async () => {
       const file = path.join(profile.codexHome, 'plugins', 'data', 'agent-work-plan-codex-extras', 'config.json');
       const hooks = () => { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch (_) { return null; } };
       const toml = () => { try { return fs.readFileSync(path.join(profile.codexHome, 'config.toml'), 'utf8'); } catch (_) { return ''; } };
       await agentSetting('tokenMode', 'custom');
       const set = [];
-      /* Sets `key` to `value` and checks with `given` that the hooks' settings file says so at once. */
+      /* Sets `key` to `value` and checks with `given` that the hooks' settings file has the new value right away. */
       const hookSetting = async (key, value, given) => {
         set.push(key);
         await setting(key, value);
@@ -1891,8 +1894,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         const gone = await until(async () => { const g = await now(); return g.green === 0 && !/^(working|background)$/.test(g.rowDot || '') && !g.running.includes(words) && g; }, ms, 1000);
         check(!!gone, `${name}: once that has finished, the green leaves both`, gone || { ...await now(), ...await why() });
         if (notice) {
-          /* A message of its own after the last reply: every request carries the conversation's earlier notices and the
-             command itself in its history. */
+          /* The notice has to be a message of its own after the last reply, since every request carries the conversation's
+             earlier notices and the command itself in its history. */
           const told = () => model.seen.slice(from).find((x) => x.context && x.context.said.some((t) => t.includes('Codex Plus notice') && t.includes(notice)));
           const got = await until(told, 60000, 1000);
           check(!!got && got.context.said.some((t) => /exit code cannot be known/.test(t)), `${name}: and the conversation is sent a notice that it is no longer running, `
@@ -1949,9 +1952,9 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
             map: { text: /\b1 codex exec\b/, listed: (r) => r.work.some((x) => x.kind === 'codexExec' && green(x) && /codex exec/.test(x.text)) } });
         }
         /* The stand-ins write the session record Claude Code keeps for a running process, which is what Codex Plus
-           reads, under this window's own HOME. The --bg one returns only once its session has written its record, as
-           claude --bg prints its hint once the session is up: by then the session has left the command's process group,
-           which Codex can kill the moment the command exits. */
+           reads, under this window's own HOME. The --bg one returns after its session has written that record, as
+           claude --bg prints its hint only when the session is up; by then the session is out of the command's process
+           group, which Codex can kill the moment the command exits. */
         const fakeBin = path.join(profile.home, 'fake-claude');
         fs.mkdirSync(fakeBin, { recursive: true });
         const fakeClaude = path.join(fakeBin, 'claude'), fakeSession = path.join(fakeBin, 'claude-bg-session');
@@ -1979,7 +1982,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
           map: { text: /\b1 claude --bg\b/, listed: (r) => r.work.some((x) => x.kind === 'claudeBg' && green(x) && /window test session/.test(x.text) && /job 1a2b3c4d/.test(x.text)) } });
 
         /* Every window on a build installed over: this copy's manifest gets an install stamp other than the one it was
-           loaded with (src/installed-copies.js replacedSince), as when the same version is installed again over it. With
+           loaded with (src/installed-copies.js replacedSince), which reinstalling the same version also does. With
            no window running the installed build, this one still notes the end of a command left running detached and
            tells the conversation (src/uninstall-plan.js keepsShared). */
         const selfDir = path.join(profile.exts, fs.readdirSync(profile.exts).find((d) => d.startsWith('xnervwang.codex-plus-')));
@@ -2047,7 +2050,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         await until(() => codex.evaluate(() => !document.querySelector('[data-codex-extras="map-dialog"]')).catch(() => true), 3000, 200);
         return rows;
       };
-      /* The launch command's output and the outputs of the write_stdin calls on its session, from the rollout. */
+      /* The output of the launch command and of each write_stdin call on its session, read from the rollout. */
       const polled = () => {
         let rows;
         try {
@@ -2066,7 +2069,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         const polls = session ? rows.filter((p) => p.type === 'function_call' && p.name === 'write_stdin' && String(args(p).session_id) === session) : [];
         return { first, session, polls: polls.map((p) => outOf(p.call_id)) };
       };
-      /* The last session exec_command reported still running, which is this turn's: the body holds the whole conversation. */
+      /* The last session exec_command reported as still running is this turn's, since the body holds the whole conversation. */
       const sessionIn = (body) => {
         const all = [...String(body).matchAll(/Process running with session ID (\d+)/g)];
         return all.length ? Number(all[all.length - 1][1]) : 0;
@@ -2087,7 +2090,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
           'i=0; while [ ! -s "$sessions/$!.json" ] && [ $i -lt 100 ]; do sleep 0.05; i=$((i+1)); done',
           `printf 'backgrounded · ${job}\\n  claude attach ${job}   open in this terminal\\n  claude logs ${job}     show recent output\\n'`,
           `printf '  claude stop ${job}     stop this session\\n'`, ''].join('\n'), { mode: 0o755 });
-        /* The session lasts while its record does, so the step ends it by removing the record. */
+        /* Removing the record ends the stand-in session. */
         fs.writeFileSync(session, [
           '#!/bin/sh',
           `printf '${record('%s').replace('"%s"', '%s')}\\n' $$ > "$1/$$.json"`,
@@ -2157,7 +2160,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       check(!!gone, 'polled claude --bg: once its record is gone, the green leaves the tab and the row', gone || await now());
     });
 
-    /* The news of a claude --bg session the conversation launched (src/bg-ends.js). The launch is a command whose
+    /* Notices about a claude --bg session the conversation launched (src/bg-ends.js). The launch is a command whose
        output has the hint line claude --bg prints, and the session is its record under this window's HOME, so no Claude
        Code runs, and the check runs where there is no /proc too. */
     await step('news of a claude --bg session', async () => {
@@ -2295,8 +2298,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       model.script(null);
     });
 
-    /* codexPlus.conversationLinks: another conversation a reply names, by its title in corner brackets and by its id,
-       is a link, and a click on it brings that conversation's tab to the front. */
+    /* codexPlus.conversationLinks: when a reply names another conversation by its title in corner brackets or by its id,
+       the name is a link, and clicking it brings that conversation's tab to the front. */
     await step('links to other conversations in a reply', async () => {
       if (!codex) throw new Error('the conversation did not open');
       const id = threads[0].id, other = threads[1];
@@ -2348,8 +2351,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await closeTabsOf(other.id);
     });
 
-    /* The links to other conversations in a reply of the conversation in `codex`, for the two steps below: `want` is
-       "<agent>:<id>" as the page marks a link. */
+    /* For the two steps below: the links to other conversations in a reply of the conversation in `codex`. `want` is
+       "<agent>:<id>", the way the page marks a link. */
     const mentionLinks = (want) => codex.evaluate((w) => [...document.querySelectorAll('[data-codex-extras="convo-link"]')]
       .filter((a) => a.getAttribute('data-agent-plus-mention') === w).map((a) => a.textContent), want).catch((e) => ({ error: String(e) }));
     const replyNaming = async (text) => {
@@ -2424,7 +2427,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         const focusBefore = { here: await focusedIn(profile.folder), there: await focusedIn(folderC) };
         await codex.locator(`[data-codex-extras="convo-link"][data-agent-plus-mention="codex:${T.id}"]`).first().click();
         const fronted = await until(async () => { const t = await tabOfT(folderC); return t && t.active && t; }, 20000, 500);
-        /* The window that takes the request brings the tab forward before it records that it did. */
+        /* The window that takes the request records it only after bringing the tab forward. */
         const took = await until(() => taken().slice(requests).find((r) => r.session === T.id) || null, 15000, 300);
         check(!!fronted && !!took && !!took.by && took.by !== took.from && took.shown === true,
           'a click on it is taken by the second window, which brings the conversation\'s tab to the front there', { fronted, took, c: await tabsIn(folderC) });
@@ -2433,8 +2436,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         check(here.length === tabsHere && !here.some((x) => x.uri.includes(T.id) || bare(x.label) === T.title),
           'and this window opens no tab, of that conversation or any other', { before: tabsHere, here });
         /* Agent Plus brings the second window to the front with VS Code's command line, which only the window system can
-           be asked about. Each window's vscode.window.state.focused says which one it gives the focus to, where that
-           reading tells the two apart before the click. */
+           be asked about. Each window's vscode.window.state.focused says whether the window system gave it the focus,
+           and this is checked only where that reading tells the two windows apart before the click. */
         if (focusBefore.here === true && focusBefore.there === false) {
           const moved = await until(async () => (await focusedIn(folderC)) === true && (await focusedIn(profile.folder)) === false, 15000, 500);
           check(!!moved, 'and the second window takes the focus from this one', { before: focusBefore, after: { here: await focusedIn(profile.folder), there: await focusedIn(folderC) } });
@@ -2446,14 +2449,14 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       } finally {
         model.script(null);
         watching = false;
-        /* The conversation's tab first, and then the window, waited for until its extension host has exited: the
-           second window of a later step loads this conversation, and Codex's app-server there refuses it while another
+        /* Closes the conversation's tab first and then the window, and waits until the window's extension host has exited:
+           the second window of a later step loads this conversation, and Codex's app-server there refuses it while another
            one still has it ("already has an active writer"). */
         await served([page, pageC]);
         await inC(`const mine = vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((t) => t.input && t.input.uri && String(t.input.uri).includes(arg));
           if (mine.length) await vscode.window.tabGroups.close(mine); return mine.length;`, T.id, 15000).catch(() => {});
         await sleep(1500);
-        /* Again, as closing the window's last Codex tab can start a page of Codex's there. */
+        /* Again, since closing the window's last Codex tab can make Codex open a page of its own there. */
         await served([page, pageC]);
         await inC('setTimeout(() => vscode.commands.executeCommand("workbench.action.closeWindow"), 200); return true;', undefined, 15000).catch(() => {});
         await until(() => pageC.isClosed(), 30000, 500);
@@ -2542,8 +2545,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       check(!!again, 'and so does the button at the top of the brief', await tabs());
     });
 
-    /* Requirement 10: the red dot stands also for a question the work plan put to the user after the user's last message;
-       one left over from before that message does not count. */
+    /* Requirement 10: the red dot also means a question the work plan put to the user after their last message; a
+       question from before that message does not count. */
     await step('a question the work plan put to the user', async () => {
       if (!codex || !list) throw new Error('the conversation or the session list did not open');
       const id = threads[0].id;
@@ -2589,9 +2592,9 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await exec('notifications.clearAll');
     });
 
-    /* A question the work plan puts while a turn still runs reaches the user in the reply that turn ends with, so until
-       the turn ends the conversation is not waiting for them: its tab's dot stays green, and Agent Plus neither counts it
-       nor tells the other windows it waits, nor shows a notification. Once the turn ends, the dot turns red, Agent Plus
+    /* A question the work plan puts while a turn still runs reaches the user only with the turn's last reply, so until
+       then the conversation is not waiting for them: its tab's dot stays green, and Agent Plus does not count it, tell the
+       other windows it waits, or show a notification. Once the turn ends, the dot turns red, Agent Plus
        counts it, and tells the other windows it waits on a question in its plan, which is the notice another window
        shows; this window, which has its tab, shows none. */
     await step('a question the work plan put while the turn runs', async () => {
@@ -2617,7 +2620,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         await sleep(1500);
         askInPlan(id, Date.now());
         await exec('agentPlus.refreshWorkPlan');
-        /* Agent Plus has read the question once its Conversations entry counts one more to decide. */
+        /* Agent Plus has read the question once its Conversations entry has one more question to decide than before. */
         const read = await until(async () => (await toDecide()) > decided, 20000, 500);
         await sleep(7000);
         mid = { read: !!read, dot: await dotsOn(title), row: (await showList()) ? await listDot(id, '.cp-group') : null, count: [counted, await agentCount()],
@@ -2660,7 +2663,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         } catch (_) { return []; }
       };
       /* The turn of the rollout that asked `question`: whether it has ended, and the texts of the user messages between
-         the question and that end, which is where an answer given while the turn runs lands. */
+         the question and the turn's end, where an answer given during the turn lands. */
       const turnAsking = (question) => {
         const rows = rolloutRows();
         const at = rows.findIndex((r) => r.type === 'response_item' && (r.payload || {}).type === 'function_call'
@@ -2686,7 +2689,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
          one message, sent nothing in this window. */
       const followUps = (mode) => call(`await vscode.workspace.getConfiguration('chatgpt').update('followUpQueueMode', arg, vscode.ConfigurationTarget.Global); return true;`,
         mode);
-      /* Agent Plus's count follows its list pass, which a source's change or its 30 s tick brings; Refresh brings one now.
+      /* Agent Plus's count changes on its list pass, which runs on a source's change or every 30 s; Refresh runs one now.
          Read once three readings agree. */
       const countNow = async () => {
         await exec('agentPlus.refreshWorkPlan');
@@ -2706,7 +2709,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         await page.keyboard.type(`Ask me which cache size to use (${name}), and go on.`);
         await page.keyboard.press('Enter');
         if (!await until(() => model.turns() > turns, 20000, 300)) throw new Error(`${name}: the message reached no model`);
-        /* Counted while its turn runs, which Agent Plus never counts, so what is counted is the other conversations. */
+        /* The count before the question, taken while the turn runs, when Agent Plus leaves this conversation out of it. */
         const counted = await countNow();
         /* The question goes out and the model's next answer is held: once Codex has made that call, the turn waits on the
            model and is still running while the user answers. */
@@ -2735,7 +2738,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
           check(!!sent && !sent.ended, `${name}: with chatgpt.followUpQueueMode "steer", a message typed into the message box, the card left alone, goes into the running turn as a plain user message`,
             { turn: turnAsking(question), card: await card.isVisible().catch(() => false), ...lastRows() });
         }
-        /* Behind notes.txt when the turn ends, so that Agent Plus does not spare the count of the conversation in front. */
+        /* Behind notes.txt when the turn ends, since Agent Plus does not count the conversation in front. */
         await openNotes();
         await sleep(800);
         model.release();
@@ -2768,7 +2771,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         await askCase({ name: 'answered on the card', question: 'Which cache size, picked on the card?', answer: 'card' });
         await askCase({ name: 'answered by typing', question: 'Which cache size, answered in the message box?', answer: 'typed' });
         await askCase({ name: 'left unanswered', question: 'Which cache size, left unanswered?', answer: null });
-        /* The card of a turn that has ended is gone from the page; the user's next message is what answers it. */
+        /* Once the turn has ended its card is gone from the page, and the user's next message answers the question. */
         model.script(null);
         await tabNamed(title).click();
         await until(async () => (await frontPage()) === codex, 10000, 300);
@@ -2790,8 +2793,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       }
     });
 
-    /* Agent Plus gives an extension that links to conversations every conversation of every source (allConversations),
-       through the Codex source's listAllConversations: also one in a folder this window does not open
+    /* Agent Plus's allConversations, which extensions that link to conversations use, has every conversation of every
+       source, the Codex ones through listAllConversations: also one in a folder this window does not open
        (lib/fake-home.js ELSEWHERE), which the session list does not show. */
     await step('a conversation in another folder, in Agent Plus\'s list of every conversation', async () => {
       const other = fakeHome.ELSEWHERE;
@@ -2815,8 +2818,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
 
     /* Opening a conversation, setting its goal or unarchiving it writes to it without a reply, and Codex Plus gives Agent
        Plus the end of its latest turn (lastReplyAt), so that this does not pass for a turn that ran between two reads.
-       The conversation in another folder ended two days ago; marked unread, archived and unarchived, it is running again
-       by its last activity, with a reply not seen, and is not announced as finished. */
+       The conversation in another folder ended two days ago. Marked unread, archived and unarchived, it has a newer last
+       activity and a reply not seen, and is not announced as finished. */
     await step('a conversation unarchived with a reply not seen', async () => {
       const other = fakeHome.ELSEWHERE;
       const reported = () => attentionOf(other.id);
@@ -3119,7 +3122,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     }, 90000, 500);
 
     /* A click on a row opens its conversation and chooses the row. Once the tab is closed while in front, no row of the
-       conversation is left looking chosen: current, selected, or highlighted with its buttons shown. */
+       conversation is left drawn as current, selected, or highlighted with its buttons shown. */
     await step('a conversation opened from its row in the session list and closed', async () => {
       const t = threads[1];
       const closeIt = () => call(`const mine = vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((x) => x.input && x.input.uri && String(x.input.uri).includes(arg));
@@ -3361,8 +3364,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       if (shownPage) restored = { page: shownPage, label: bare(begun.label) };
 
       /* The other tabs whose URI does not name the conversation they showed, each brought to the front by its URI. */
-      /* On macOS the tab on Codex's own New URI that the New chat button opened has drawn no conversation within a minute
-         after the reload in some runs, and the restored tabs brought forward after it drew nothing either. */
+      /* In some macOS runs, the tab the New chat button opened (on Codex's own New URI) has drawn no conversation within a
+         minute of the reload, and the restored tabs brought forward after it drew nothing either. */
       const newChatHere = process.platform !== 'darwin';
       const others = [agentNew && { what: 'the tab New Codex Agent opened', made: agentNew },
         inTabNew && newChatHere && { what: 'the tab of the conversation begun from Codex\'s New chat button', made: inTabNew }].filter(Boolean);
@@ -3424,7 +3427,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await tabNamed(title).click();
       /* The reload two steps up restored this tab behind others, and where the steps since took more than the 30 s Codex
          gives a page to start, Codex has put "Codex could not start" in it, as the step on a tab restored behind another
-         checks. A closed conversation is brought back from a tab that shows it, so this one is opened again first. */
+         checks. Bringing a closed conversation back needs a tab that shows it, so this tab's conversation is opened again first. */
       if (await until(async () => (await gaveUpInFront()) || ((await frontPage()) && 'page'), 10000, 500) === true) {
         note(`the tab of "${title}", restored behind others at the reload and not shown within 30 s of it, has Codex's "Codex could not start", so it is opened again`);
         await call(`const mine = vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((x) => x.input && x.input.uri && String(x.input.uri).includes(arg));
@@ -3433,7 +3436,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       }
       const shown = await until(newestInFront, 30000, 1000);
       if (!shown) throw new Error(`the tab of "${title}" did not come to the front with its turns`);
-      /* The newest turn the rollout says started, by the key the page gives a turn. The page just brought to the front can
+      /* The newest turn that the rollout says has started, as the key the page gives a turn. The page just brought to the front can
          still be drawing its last turn, as one queued behind another, so what it shows first is not taken for the newest. */
       const newestStarted = (id) => {
         const rollout = walk(path.join(profile.codexHome, 'sessions')).find((f) => f.endsWith('.jsonl') && path.basename(f).includes(id));
@@ -3494,7 +3497,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     /* codexPlus.recentClosedSessions: how many rows Recently closed lists, and none at all at 0. */
     await step('how many conversations Recently closed lists', async () => {
       if (!await showList()) throw new Error('the session list did not open');
-      /* Every Codex tab but the first conversation's is closed, which leaves the others in Recently closed. */
+      /* Closes every Codex tab except the first conversation's, so the others go into Recently closed. */
       for (const x of (await codexTabsNow()).filter((y) => bare(y.label) !== title)) {
         await call(`await vscode.commands.executeCommand('vscode.openWith', vscode.Uri.from({ scheme: 'openai-codex', authority: 'route', path: arg.route,
           fragment: arg.fragment }), 'chatgpt.conversationEditor', { viewColumn: arg.column, preview: false }); return true;`, x).catch(() => {});
@@ -3523,10 +3526,10 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
 
     /* A conversation that stops to ask the user something while its tab is in the background. A command asked to run
        outside the sandbox waits for approval on every platform. Codex itself shows no VS Code notification of a request
-       for approval (its extension host has no notice of one, its page uses no browser notification), so Codex Plus has
-       none of Codex's to leave out when Agent Plus announces waits: with this Agent Plus, a first request is made with
-       agentPlus.notifications.waiting off and a second with it on, and neither brings any notification, whether the
-       conversation's page is hidden behind another tab or in front. */
+       for approval (its extension host has no notice of one, its page uses no browser notification), so there is no
+       notification of Codex's for Codex Plus to suppress when Agent Plus announces waits. With this Agent Plus, one request is
+       made with agentPlus.notifications.waiting off and one with it on; neither brings a notification, with the
+       conversation's page hidden behind another tab or in front. */
     await step('a conversation waiting for you in the background', async () => {
       const t = threads[0];
       const inFocus = await focused();
@@ -3687,7 +3690,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         check(!!unread, `Mark as Unread in ${how} puts the envelope after the tab's title, though the tab is in front`, await labelOf(named));
         await openNotes();
         await tabNamed(named).click();
-        /* Codex Plus counts nothing as read while the window has no focus, so whether it had is in the detail. */
+        /* Codex Plus counts nothing as read while the window has no focus, so the detail records whether it had the focus. */
         check(!!await until(async () => (await labelOf(named)) === named, 20000, 500), `and going to it again after leaving it takes the envelope away (${how})`,
           { label: await labelOf(named), front: await frontTab(), focused: await focused().catch(() => null) });
       }
@@ -3719,10 +3722,10 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
 
     /*
      * A second window of the same VS Code on a folder of its own, holding a conversation in a tab (Claude Code Plus's
-     * ui.js has the same two-window step). While its turn runs there, an approval Codex asks for there is shown here by
-     * the mark the plugin's PermissionRequest hook leaves. This window does not trust the plugin's hooks, so the hook
-     * script is run here with the JSON Codex sends it (the input schema Codex 26.1117 embeds); on Linux a real request
-     * to run a command outside the sandbox is asked for there as well, and approved there. Then the conversation,
+     * ui.js has the same two-window step). An approval Codex asks for during its turn in that window
+     * shows in this one through the mark the plugin's PermissionRequest hook leaves. This window does not trust the plugin's hooks, so the hook
+     * script is run here with the JSON Codex sends it (the input schema Codex 26.1117 embeds). On Linux Codex also asks
+     * there for a real approval to run a command outside the sandbox, which is given there. Then the conversation,
      * archived in the other window and kept open there read-only, is neither deleted here nor taken by the daily pass,
      * until that window closes. It is archived there because this window's app-server refuses to archive a conversation
      * another app-server has loaded ("already has an active writer").
@@ -3743,7 +3746,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         return names.map((n) => { try { return JSON.parse(fs.readFileSync(path.join(dir, n), 'utf8')); } catch (_) { return null; } }).filter(Boolean);
       };
       const entryOf = (folder) => entries().find((e) => Array.isArray(e.folders) && e.folders.some((f) => sameFolder(f, folder)) && alive(e.pid));
-      /* Earlier steps can leave the conversation in a tab here too, and this window would then keep it for itself. */
+      /* Earlier steps can leave the conversation in a tab here too, and then this window would take the request itself. */
       await call(`const mine = vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((t) => (t.input && t.input.uri && String(t.input.uri).includes(arg[0]))
         || String(t.label || '').replace(/\u2709[\uFE0E\uFE0F]?/g, '').trim() === arg[1]);
         if (mine.length) await vscode.window.tabGroups.close(mine); return mine.length;`, [T.id, T.title]);
@@ -3756,7 +3759,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       check(!!pageB && !!hostB, 'a second window of the same VS Code opens on another folder, with the test helper in it',
         { pageB: !!pageB, hosts: fs.readdirSync(profile.control).filter((n) => /^host-/.test(n)) });
       if (!pageB || !hostB) {
-        /* Its helper would otherwise take the requests of the steps after this one. */
+        /* The second window is closed, or its helper would take the requests of later steps. */
         if (pageB) await pageB.keyboard.press(process.platform === 'darwin' ? 'Meta+Shift+W' : 'Control+Shift+W').catch(() => {});
         return;
       }
@@ -3786,7 +3789,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       };
       const rolloutOf = (id) => [...walk(path.join(profile.codexHome, 'sessions')), ...walk(path.join(profile.codexHome, 'archived_sessions'))]
         .find((f) => f.endsWith('.jsonl') && path.basename(f).includes(id)) || '';
-      /* The newest turn the rollout says started, as Codex's own hooks are told it in turn_id. */
+      /* The id of the newest turn the rollout says has started, which is what Codex gives its hooks as turn_id. */
       const turnOf = (id) => {
         const f = rolloutOf(id);
         let turn = '';
@@ -3826,7 +3829,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         const k = Object.keys(require.cache).find((x) => x.toLowerCase() === file.toLowerCase());
         const ext = k ? require.cache[k].exports : null;`;
       const held = () => call(`${EXT} const r = ext && await ext._holdArchived([arg]); return r ? [...r] : null;`, T.id);
-      /* The conversation's tab in the second window, put behind notes-b.txt. Agent Plus neither announces nor counts the
+      /* Puts the conversation's tab in the second window behind notes-b.txt. Agent Plus neither announces nor counts the
          conversation the focused window shows in front, and in this run the window opened last counts as focused, under
          xvfb-run and on the CI runners alike. */
       const tabOfT = () => inB('return vscode.window.tabGroups.all.flatMap((g) => g.tabs.map((t) => ({ column: g.viewColumn, '
@@ -3851,7 +3854,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       const openFromB = (t) => inB('await vscode.commands.executeCommand("agentPlus.openConversation", arg); return true;',
         { sourceId: 'codex', sessionId: t.id, title: t.title, cwd: profile.folder }, 30000).catch((e) => e.message);
       const OPENS = path.join(profile.home, '.agent-work-plan', 'open');
-      /* What every window's Agent Plus reports of a conversation to the others (<shared home>/attention): its activities. */
+      /* The activities every window's Agent Plus reports to the others for a conversation (<shared home>/attention). */
       const reported = (id) => {
         const dir = path.join(profile.home, '.agent-work-plan', 'attention');
         let names = [];
@@ -3870,7 +3873,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         });
         return ended > started;
       };
-      /* Each request another window took: who asked, who took it, and whether it was brought forward. */
+      /* Lists the requests another window took, with who asked, who took each and whether it was brought forward. */
       const taken = () => {
         let names = [];
         try { names = fs.readdirSync(OPENS).filter((n) => n.endsWith('.done')); } catch (_) { return []; }
@@ -3886,7 +3889,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       });
       try {
         await until(() => inB('const mine = vscode.extensions.getExtension("xnervwang.codex-plus"); return !!(mine && mine.isActive);'), 60000, 1000);
-        /* ── Go to the conversation, for one no window shows ── */
+        /* ── Go to the conversation when no window shows it ── */
         const said = await openFromB(T);
         const nowhere = `"${T.title}" is not open in any VS Code window on this machine.`;
         const offered = await until(async () => (await toastsIn(pageB)).find((x) => x.includes(nowhere) && x.includes('Open it here')), 20000, 500);
@@ -3905,7 +3908,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
           { entry: entryOf(folderB), entries: entries() });
         const nameB = (shownB && shownB.name) || path.basename(folderB);
 
-        /* ── Go to the conversation, for one this window shows in a tab ── */
+        /* ── Go to the conversation when this window shows it in a tab ── */
         const X = threads[0];
         await exec('codexPlus.openThreadInTab', X.id);
         await until(() => tabOf(profile.folder, X), 30000, 500);
@@ -3914,7 +3917,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         const before1 = taken().length;
         await openFromB(X);
         const fronted = await until(async () => { const t = await tabOf(profile.folder, X); return t && t.active && t; }, 20000, 500);
-        /* As above, the record that this window took the request comes after the tab is forward. */
+        /* As above, this window records that it took the request only once the tab is in front. */
         const took = await until(() => (taken().length > before1 && taken().filter((r) => r.session === X.id).pop()) || null, 15000, 300);
         const notOpen = (await toastsIn(pageB)).filter((x) => /is not open/.test(x));
         check(!!fronted && taken().length > before1 && !!took && !!took.by && took.by !== took.from && took.shown === true,
@@ -3924,7 +3927,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
           { b: await tabsIn(folderB), notOpen });
         await shot('open-elsewhere-brought-forward');
 
-        /* ── the same, for one this window shows only in Codex's sidebar ── */
+        /* ── the same, when this window shows it only in Codex's sidebar ── */
         try {
           const tab = await call('return vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((t) => t.input && t.input.uri && String(t.input.uri).includes(arg)).length;', X.id);
           await served([page, pageB]);
@@ -3973,7 +3976,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
           const green = await until(async () => (await rowDot()) === 'working', 30000, 500);
           check(!!green, 'this window\'s session list shows it working, from its rollout', await rowDot());
           const counted = await agentCount();
-          /* This window has the focus and the second one not, as Agent Plus is told: under xvfb-run both say they have it. */
+          /* Agent Plus is told that this window has the focus and the second one does not, since under xvfb-run both say they have it. */
           if (apWaits) { await testFocus(true); await testFocus(false, folderB); }
           const markA = (await toastLogOf(page)).now, markB = (await toastLogOf(pageB)).now, askedAt = Date.now();
           const r = hook({ ...asCodex(turn), hook_event_name: 'PermissionRequest', tool_name: 'Bash',
@@ -3983,12 +3986,12 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
             { status: r.status, stdout: r.stdout, stderr: r.stderr, marks: marks() });
           const red = await until(async () => (await rowDot()) === 'waiting', 20000, 500);
           check(!!red, 'this window\'s session list then shows the conversation the second window runs with the red dot', await rowDot());
-          /* A conversation already counted for an unread reply stays one item when it comes to wait. */
+          /* A conversation already counted for an unread reply is still counted once when it starts waiting. */
           const countedNow = await until(async () => (await agentCount()) > counted
             || (counted > 0 && reported(T.id).includes('waiting')), 15000, 500);
           check(!!countedNow, 'and Agent Plus counts it in the status bar', { before: counted, now: await agentCount(), reported: reported(T.id) });
           /* Agent Plus shows its notification in the focused window. In this run both windows can count as focused, under
-             xvfb-run and on the CI runners alike, and then which one shows it, and whether only one does, tests nothing. */
+             xvfb-run and on the CI runners alike, so which window shows it, or whether only one does, tells nothing. */
           const focusA = await focused(), focusB = await inB('return vscode.window.state.focused;').catch(() => null);
           const wantNotice = `"${T.title}" is waiting for you to approve Bash.`;
           if (apWaits) {
@@ -4030,7 +4033,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
 
           /* ── a wait that begins while no window has the focus ── */
           /* Its tab in the second window is closed, so that neither window shows the conversation and either would announce
-             it; its turn goes on in that window's app-server, held by the made-up model. */
+             it; its turn goes on in that window's app-server, where the made-up model holds it. */
           if (apWaits) {
             await served([page, pageB]);
             const closedT = await inB('const mine = vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((t) => t.input && t.input.uri && String(t.input.uri).includes(arg));'
@@ -4085,7 +4088,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
             note(`the request to run a command outside the sandbox is made only on Linux in this run, so an approval given in the second window was not checked on ${process.platform}`);
           } else {
             await exec('notifications.clearAll');
-            /* The approval card is clicked in the tab's page, which has to be the one in front. */
+            /* The tab's page has to be in front for its approval card to be clicked. */
             await inB('await vscode.commands.executeCommand("codexPlus.openThreadInTab", arg); return true;', T.id);
             model.script(T.id, [{ call: 'exec_command', args: { cmd: 'true', yield_time_ms: 1000, sandbox_permissions: 'require_escalated',
               justification: 'Check the export outside the sandbox.' } }, { reply: 'Checked.' }]);
@@ -4094,7 +4097,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
             const askedB = await until(() => inB(`${OWN} return own('patching').approvalsOf(arg).decide;`, T.id), 30000, 500);
             const turn2 = turnOf(T.id);
             check(!!askedB && turn2 !== was2, 'on Linux the second window\'s conversation asks for approval to run a command outside the sandbox', { askedB, turn: turn2 });
-            /* No mark is left yet, so only the second window, whose app-server asked, can name the tool. */
+            /* Until the mark is left, only the second window can name the tool: its app-server made the request. */
             if (apWaits) {
               const from = Date.now();
               const named = await until(() => waitsOn(T.id, { kind: 'permission', tool: 'Bash' }), 30000, 250);
@@ -4107,7 +4110,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
             hook({ ...asCodex(turn2), hook_event_name: 'PermissionRequest', tool_name: 'Bash', tool_input: { command: 'true', description: 'Check the export outside the sandbox.' } });
             check(!!await until(async () => (await rowDot()) === 'waiting', 20000, 500), 'this window shows it waiting', await rowDot());
             await sleep(4000);
-            /* The reply after the command is held, so the turn is still running when the dot is read. Agent Plus's notice sits
+            /* The reply after the command is held back, keeping the turn running while the dot is read. Agent Plus's notice sits
                over the bottom right of the window, where the approval's buttons are. */
             model.hold();
             await inB('await vscode.commands.executeCommand("notifications.clearAll"); return true;').catch(() => {});
@@ -4172,7 +4175,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
           await page.locator('.monaco-dialog-box .dialog-buttons .monaco-button').filter({ hasText: 'Cancel' }).first().click({ timeout: 5000 });
           await until(async () => !await dialog(), 5000, 200);
         }
-        /* The last two steps open this conversation again; deleting one is checked in "archive and delete". */
+        /* The last two steps open this conversation again; deleting a conversation is checked in "archive and delete". */
         await call('vscode.commands.executeCommand("codexPlus.unarchiveThread", arg, [arg.threadId]); return true;', ctx);
         check(!!await until(() => !!rolloutOf(T.id) && !archivedOnDisk(), 30000, 500),
           'kept instead, and unarchived, its rollout is back under sessions/', { rollout: rolloutOf(T.id), toasts: await toasts() });
@@ -4184,14 +4187,22 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
 
     /*
      * The session list's rows as each way of opening and closing conversations leaves them, read as a person sees them
-     * (Claude Code Plus's ui.js has the same step): no row of a conversation open nowhere is drawn current, selected, as
-     * the row the arrow keys are on, or other than plain, and the rows of the conversation in front are the current ones.
-     * The ways: a row clicked and its tab closed in front; two opened and the first closed behind the second; one
-     * brought forward from Open sessions and closed; one resumed in Codex's sidebar, which then starts a new
-     * conversation; one opened with the arrow keys and Enter; a row picked with a modifier click before another is
-     * opened; a row's menu closed with nothing picked; one opened from its menu; a row dragged and let go over no group.
-     * Tabs are closed by their close buttons, as a person closes them. Before the pointer leaves the list it is moved to
-     * a spot of the list that is no row, since a page is told the pointer left a row only by a move within the page.
+     * (Claude Code Plus's ui.js has the same step): no row of a conversation that is not open anywhere is drawn current,
+     * selected, as the row the arrow keys are on, or other than plain, and the rows of the conversation in front are the
+     * current ones. The ways:
+     *
+     *   - a row clicked, and its tab closed while in front
+     *   - two opened, and the first closed behind the second
+     *   - one brought forward from Open sessions and closed
+     *   - one resumed in Codex's sidebar, which then starts a new conversation
+     *   - one opened with the arrow keys and Enter
+     *   - a row picked with a modifier click before another is opened
+     *   - a row's menu closed with nothing picked
+     *   - one opened from its menu
+     *   - a row dragged and let go over no group
+     *
+     * Tabs are closed with their close buttons. Before the pointer leaves the list it is moved to a part of the list that
+     * is not a row, since a page learns that the pointer left a row only from a move within the page.
      */
     await step('rows of conversations no longer open', async () => {
       if (!list) throw new Error('the session list did not open');
@@ -4203,7 +4214,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       const opened = async (t, how) => {
         if (!await until(async () => { const x = await tabOf(t); return !!x && x.active; }, 30000, 300)) throw new Error(`${how} did not bring "${t.title}" to the front in a tab`);
       };
-      /* Every row as a person sees it: the list's classes for the current row, the rows picked for an action on several
+      /* Every row as a person sees it: the list's classes for the current row, the rows in a multiple selection
          and the row the arrow keys or a right-click are on, the background and outline its styles draw, whether its
          buttons show, and where the keyboard focus is. */
       const rowLooks = () => list.evaluate(() => {
@@ -4221,11 +4232,11 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         });
       }).catch(() => []);
       const drawnRow = (r) => r.background !== 'rgba(0, 0, 0, 0)' || !!r.outline || r.buttons;
-      /* A row of a conversation open nowhere drawn current, selected, highlighted or other than plain; and a row drawn
-         current for another conversation than the one in front, or not drawn so for that one. */
+      /* A row of a conversation that is not open anywhere drawn current, selected, highlighted or other than plain; a row
+         of another conversation than the one in front drawn current; and a row of the one in front not drawn current. */
       const misdrawn = (looks, open, front) => looks.filter((r) => (!open.includes(r.id) && (r.current || r.selected || r.highlighted || drawnRow(r)))
         || r.current !== (r.id === front));
-      /* The pointer onto a spot of the list that is no row: a section's or a group's header found in the page, or a
+      /* Moves the pointer to a part of the list that is not a row: a section or group header found in the page, or a
          corner. */
       const pointerOffRows = async () => {
         const box = await (await list.frameElement()).boundingBox();
@@ -4274,7 +4285,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         check(!!ok, `${what}: no row is drawn for a conversation open nowhere, and only ${front ? `"${front.title}"` : 'no conversation'} is drawn as current`,
           misdrawn(looks, ids, f).map((r) => ({ ...r, open: ids.includes(r.id) })));
       };
-      /* A way that fails is cleaned up after, so that what it left open is not read as left behind by the ways after it:
+      /* After a way fails, what it left open is cleaned up, so that a later way is not blamed for it:
          menus closed, every Codex tab closed and the sidebar shut, with the text file in front again. */
       const way = async (name, fn) => {
         try { await fn(); } catch (e) {
@@ -4300,7 +4311,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         await served(); await exec('workbench.action.closeAllEditors');
         await openNotes();
         if (!await showList()) throw new Error('the session list did not open');
-        /* A selection an earlier step left: Escape in the list ends it, as it does for a person. */
+        /* Escape in the list clears a selection an earlier step left. */
         await list.locator('.cp-root').first().focus();
         await page.keyboard.press('Escape');
         await page.keyboard.press('Escape');
@@ -4338,8 +4349,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         await way('the sidebar', async () => {
           try {
             await openNotes();
-            /* The sidebar's page is the narrow one drawing turns, headed by the conversation's title or, as Codex heads
-               it now and then, by "New chat" while Codex Plus has the sidebar on that conversation. */
+            /* The sidebar's page is the narrow one that draws turns. Its heading is the conversation's title, or now and
+               then "New chat" while Codex Plus has the sidebar on that conversation. */
             const sidebarOn = () => call(`${OWN} return own('patching').sidebarShowing();`).catch(() => '');
             const shown = () => until(async () => {
               const onB = (await sidebarOn()) === B.id;
@@ -4364,7 +4375,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
               if (side && tries > 1) note('the sidebar: Codex\'s sidebar drew the conversation once it was resumed there a second time');
             }
             if (!side) throw new Error('Codex\'s sidebar did not show the conversation, resumed there twice');
-            /* With a text file in front, Codex Plus counts the sidebar's conversation as the one in front. */
+            /* With a text file as the active editor, Codex Plus counts the sidebar's conversation as the one in front. */
             await after('one resumed in Codex\'s sidebar from its row\'s menu', [B], B);
             await list.locator('.cp-new[data-send="newInSidebar"]').first().click();
             await allowUri();
@@ -4404,8 +4415,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         });
         /*
          * The list's menu closes when its page loses the focus, as VS Code's own menus do, and the page of the tab the
-         * click opened takes the focus once it has drawn; so the page is waited for, and a menu that closed at once is
-         * opened again. Esc closes an open submenu before the menu, and in a short window the menu can open over the
+         * click opened takes the focus once it has drawn. The step therefore waits for that page, and opens the menu
+         * again if it closed at once. Esc closes an open submenu before the menu, and in a short window the menu can open over the
          * pointer and open the submenu under it, so Esc is pressed until the menu has gone.
          */
         await way('a menu closed', async () => {
@@ -4442,8 +4453,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
           await closeTab(A);
           await after('one opened from its menu, its tab closed in front', [], null);
         });
-        /* Let go on another row of the list, which takes no drop, two rows away: let go outside the list's page, the page
-           is never told the drag ended. The page draws its drag image (.cp-drag) only once a drag has started. */
+        /* Let go on a row two rows away, which takes no drop: let go outside the list's page, the page is never told the
+           drag ended. The page draws its drag image (.cp-drag) only once a drag has started. */
         await way('a drag', async () => {
           let dragged = null, during = null;
           const box = await (await list.frameElement()).boundingBox();
@@ -4487,13 +4498,13 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     /*
      * A notice for a conversation whose tab VS Code restored behind another at a reload. VS Code builds a restored
      * webview tab's page only once it is shown, and notices go only to the conversations this window's app-server has
-     * loaded (thread/loaded/list). A detached command's end is written down for the conversation behind and, to show
+     * loaded (thread/loaded/list). The end of a detached command is recorded for the conversation behind and, to show
      * that this window sends notices at all, for the one in front. Codex gives up on a page not shown within 30 seconds
      * and puts "Codex could not start" in it, so a click after that loads nothing until the conversation is opened
      * again. With codexPlus.loadRestoredTabs on, the tab behind is shown for a moment at the start, so it gets its
-     * notice unclicked and draws when clicked later. Near the end, since each reload leaves the pages the steps above hold,
-     * and before the extension host restarts for the last step: after that restart on Linux, the conversation in front was
-     * not loaded again after the reload.
+     * notice before anyone clicks it, and draws when clicked later. It runs near the end, since each reload leaves behind
+     * the pages the steps above hold, but before the extension host restarts for the last step: once that restart had run,
+     * on Linux the conversation in front was not loaded again after the reload.
      */
     await step('a notice for a tab restored behind another', async () => {
       const pair = [threads[0], threads[1]];
@@ -4508,7 +4519,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       };
       /* By URI, since a step above may have left a conversation renamed. */
       const tabOf = async (t) => (await codexTabsNow()).find((x) => x.route === `/local/${t.id}`);
-      /* Clicked, as a person would. A click while the dialog asking to trust the hooks shows goes to the dialog, so it is
+      /* Clicked, as a person would. While the dialog asking to trust the hooks is up, it takes the click, so the click is
          tried again. */
       const toFront = async (t) => {
         for (let i = 0; i < 3; i++) {
@@ -4547,8 +4558,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         check(!!await until(async () => (await tabOf(pair[0])) && (await tabOf(pair[1])), 60000, 500), `${what}: after the reload VS Code restores both tabs`, await tabs());
       };
       /* The conversations in front and behind as the window came back, which has not always been the order before; after
-         all the steps above another Codex tab came back in front. With neither in front, the first is clicked forward
-         while Codex still draws a page shown that late. */
+         all the steps above another Codex tab came back in front. When neither came back in front, the first one's
+         tab is clicked while Codex still draws a page shown that late. */
       const roles = async (what) => {
         const a = await tabOf(pair[0]), b = await tabOf(pair[1]);
         let front = b && b.active ? pair[1] : pair[0];
@@ -4595,7 +4606,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await setting('loadRestoredTabs', true);
       pid.behind += 10;
       await reload('codexPlus.loadRestoredTabs on');
-      /* Who is in front is read once the tabs have been loaded, since each is in front for a moment meanwhile. */
+      /* Which tab is in front is read only after the tabs have loaded, since the loader brings each to the front for a moment. */
       const done = await until(() => (/loaded \d+ Codex tab\(s\) VS Code restored behind another, and put tab (\d+) of editor group (\d+) in front again/
         .exec(codexLog()) || null), 90000, 1000);
       check(!!done, 'codexPlus.loadRestoredTabs on: Codex Plus says it has loaded the tabs behind', codexLog().split('\n').slice(-12));
@@ -4624,14 +4635,14 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
      * moment, and a conversation in front of the user counts as read. Whether a moment is long enough to clear a mark
      * depends on how quickly the window reports the change, so the new extension host's loader is made to keep each tab
      * in front until the envelope has gone from its title, or 15 s (holdInFront). A conversation marked unread before
-     * the reload keeps its envelope on its tab and on its rows in the session list once the tabs are loaded, and goes
-     * on keeping it. Before the extension host restarts for the last step, as the step above.
+     * the reload keeps its envelope on its tab and on its rows in the session list once the tabs are loaded, and still
+     * has it a while later. Like the step above, it runs before the extension host restarts for the last step.
      */
     await step('restored tabs keep their envelopes', async () => {
       const pair = [threads[0], threads[1]];
       const tabOf = async (t) => (await codexTabsNow()).find((x) => x.route === `/local/${t.id}`);
       /* Run in the new extension host right after the reload: it wraps load-tabs.js's loadAll once Codex Plus has
-         loaded it. Each hold and when the loader finished go into globalThis.__cxpHolds. */
+         loaded it, and records each hold, and the time the loader finished, in globalThis.__cxpHolds. */
       const holdInFront = () => call(`
         const path = require('path'), fs = require('fs');
         const mine = vscode.extensions.getExtension('xnervwang.codex-plus');
@@ -4698,7 +4709,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       if (ran) console.log(`        holds: ${JSON.stringify(ran.holds)}, wrapped at ${ran.wrapped} ms, loader finished at ${ran.loaded} ms`);
       const cleared = ran ? ran.holds.filter((h) => h.cleared) : [];
       check(!cleared.length, 'and no tab held in front loses its envelope while it is there', cleared);
-      /* A mark lost would be gone once a page reports, which goes on after the loader has finished. */
+      /* A lost mark shows only after a page reports, and pages go on reporting after the loader has finished. */
       const kept = behind.length ? await until(async () => { const e = await Promise.all(behind.map(envelopesOf)); return e.every(everywhere) && e; }, 10000, 500) : null;
       const lost = kept ? await until(async () => { const e = await Promise.all(behind.map(envelopesOf)); return e.some((x) => !everywhere(x)) && e; }, 15000, 500) : null;
       check(!!kept && !lost, 'once the tabs are loaded, each conversation behind has the envelope on its tab and on its rows in the session list, and keeps it',
@@ -4715,7 +4726,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     await step('a tab closed while the extension host was away', async () => {
       const t = threads[1];
       const tabUp = () => page.evaluate((want) => [...document.querySelectorAll('.tabs-container .tab')].some((e) => e.textContent.includes(want)), t.title);
-      /* The tab is closed the moment the extension host is told to restart, while nothing in it is left to record that.
+      /* The tab is closed the moment the extension host is told to restart, when nothing in the host is left to record it.
          Killing the host instead closes a window started for extension development, as this one is. */
       const dropOnce = async () => {
         await exec('codexPlus.openThreadInTab', t.id);
@@ -4727,7 +4738,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         const at = Date.now();
         await served();
         call('setTimeout(() => vscode.commands.executeCommand("workbench.action.restartExtensionHost"), 50); return true;', null, 3000).catch(() => {});
-        /* The moment no host answers, between the old one going and the new one coming up. */
+        /* Watches for a moment when no host answers: the old host gone and the new one not yet up. */
         let gap = false;
         await until(async () => { const p = await pidNow(); if (!p) { gap = true; return true; } return p !== was; }, 20000, 100);
         await page.keyboard.press(process.platform === 'darwin' ? 'Meta+W' : 'Control+W');
@@ -4741,7 +4752,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         await until(async () => { const s = await patchState().catch(() => null); return s && s.active; }, 60000, 1000);
         return { closed: !!closed, back, gap, closedAfterMs: Date.now() - at };
       };
-      /* Without a moment with no host, the close may have been recorded, and what follows says nothing. */
+      /* If no moment without a host was seen, the close may have been recorded, and the check after it proves nothing. */
       const unmet = (r) => { if (r.gap) return false; note(`no moment without an extension host was seen on ${process.platform} while it restarted (${JSON.stringify(r)}), so the tab may have been closed under a host that recorded it; not checked`); return true; };
       const first = await dropOnce();
       check(first.closed && first.back, 'the tab is closed as the extension host restarts, and a new host starts', first);
@@ -4761,7 +4772,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     });
 
     /*
-     * Agent Plus's token mode in each mode in turn, without a reload, by what reaches the made-up model: All, Essential,
+     * Each of Agent Plus's token modes in turn, without a reload, checked by what reaches the made-up model: All, Essential,
      * Interface, Custom with the time-zone note and the brief off, and All again. In each, a turn of a conversation
      * already running and the first turn of a new one. Last of all, since it trusts the work plan plugin's hooks, which
      * no step before it runs with.
@@ -4784,8 +4795,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         let n = model.seen.length, at = Date.now();
         await until(() => { if (model.seen.length !== n) { n = model.seen.length; at = Date.now(); } return Date.now() - at > 4000; }, 90000, 300);
       };
-      /* Types `text` into `frame` and resolves to what the request of the turn that carried it held, once the turn is over;
-         a side request such as the one for a title offers no tools. */
+      /* Types `text` into `frame` and, once the turn is over, resolves to the context of that turn's request; a side request
+         such as the one for a title offers no tools. */
       const turnIn = async (frame, text, zone) => {
         const before = model.seen.length;
         await frame.locator(COMPOSER).first().click();
@@ -4795,11 +4806,11 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         const got = await until(() => model.seen.slice(before).find((x) => x.context && x.context.tools > 0 && x.context.said.includes(text)), 60000, 300);
         await quiet();
         const file = path.join(out, `token-mode-${text.replace(/\W+/g, '-').toLowerCase().slice(0, 60)}.json`);
-        /* The request itself, or with none found the last few, for a reader to see what Codex sent. */
+        /* Saves the request itself, or the last few when none matched, so a reader can see what Codex sent. */
         fs.writeFileSync(file, got ? model.bodyWith(text) : JSON.stringify(model.lastBodies(6).map((b) => { try { return JSON.parse(b); } catch (_) { return b; } }), null, 1));
         return got ? got.context : null;
       };
-      /* A new conversation's page once VS Code shows it in front, opened again once if it does not come to the front:
+      /* Opens a new conversation's page and waits until VS Code shows it in front, trying once more if it does not:
          on Windows the page found has stayed hidden, its message box never visible. */
       const freshPage = async () => {
         for (let attempt = 1; attempt <= 2; attempt++) {
@@ -4834,7 +4845,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         { mode: 'custom', zone: 'Asia/Kolkata', own: { tellCodexYourTimeZone: false, conversationBrief: false }, on: { plan: true, zone: false, brief: false } },
         { mode: 'all', zone: 'Australia/Sydney', again: true, on: { plan: true, zone: true, brief: true } },
       ];
-      /* The hooks are told that replies show images only for a Codex build src/supported-versions.json records
+      /* The hooks are told that replies show images only for a Codex build listed in src/supported-versions.json
          (extension.js writeHookSettings), and the window installs the newest Codex. */
       const codexVersion = await call("return String(vscode.extensions.getExtension('openai.chatgpt').packageJSON.version || '');");
       const imagesTold = require('../../src/supported').verified(codexVersion);
@@ -4847,8 +4858,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       const zones = process.platform !== 'win32';
       if (!zones) note('Python on Windows has no time.tzset, so the time-zone note is checked to be absent in every mode');
       /* On Windows no request has yet carried any note of the plugin's hooks, with the hooks trusted and the plugin loaded
-         (CI run 45289112401). What arrives is said there rather than checked, and the conversation's rollout and Codex's
-         own logs are kept for a reader. */
+         (CI run 45289112401). There the step only notes what the requests carried, and keeps the conversation's rollout and
+         Codex's own logs for a reader. */
       const hooksSeen = process.platform !== 'win32';
       const judge = (ok, what, detail) => (hooksSeen ? check(ok, what, detail)
         : note(`${what}: not checked on Windows, where the hooks have added nothing so far; it carried ${JSON.stringify(detail)}`));
@@ -4862,7 +4873,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
           for (const [k, v] of Object.entries(m.own || {})) await setting(k, v);
           const want = [m.on.plan, m.on.zone, m.on.brief];
           const given = await until(() => { const h = hooksNow(); return JSON.stringify(h) === JSON.stringify(want) && h; }, 15000, 300) || hooksNow();
-          /* Interface features unloads the plugin, so its hooks' settings say nothing there. */
+          /* Interface features unloads the plugin, so the hooks' settings file is not checked in that mode. */
           if (m.mode !== 'interface') check(JSON.stringify(given) === JSON.stringify(want), `${name}: the hooks' settings say work plan ${m.on.plan}, time zone ${m.on.zone}, brief ${m.on.brief}`, given);
           /* Interface features has Codex skip the plugin and leaves a mark beside the plans; the next mode loads it again and
              takes the mark away (src/plugin-install.js followTokenMode). */
@@ -4874,9 +4885,9 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
           const r = { mode: name };
           const f = await running();
           r.running = f ? await turnIn(f, `Token mode check, ${name}, a running conversation.`, m.zone) : null;
-          /* Codex reads which plugins a conversation it has loaded runs when a conversation starts (extension.js
-             followTokenMode), so the one already running gets the plugin back from Interface features only once a new
-             one has started, which the turn after the new conversation below checks. */
+          /* Codex decides which plugins its loaded conversations run when a conversation starts (extension.js
+             followTokenMode), so after Interface features the conversation already running gets the plugin back only once
+             a new one has started; the turn after the new conversation below checks that. */
           if (i > 0 && MODES[i - 1].mode === 'interface') {
             note(`${name}: the first turn of the conversation already running after Interface features carried ${JSON.stringify(r.running)}`);
           } else {
@@ -4897,7 +4908,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
           } else check(false, `${name}: a new conversation opens`, await tabs());
           const f2 = await running();
           r.runningAgain = f2 ? await turnIn(f2, `Token mode check, ${name}, the running conversation again.`, m.zone) : null;
-          /* The time-zone note is said again only when something has made the last one stale (tell-time-zone.py). */
+          /* The time-zone note is repeated only when the last one has gone stale (tell-time-zone.py). */
           judge(!!r.runningAgain && r.runningAgain.plan === m.on.plan && r.runningAgain.brief === m.on.brief && !r.runningAgain.zone && !r.runningAgain.images,
             `${name}: after a new conversation has started, a turn of the one already running carries the work plan: ${m.on.plan}, the brief's request `
             + 'for a status: ' + m.on.brief + ', and neither the time-zone note it was given a turn before nor a note on images', r.runningAgain);
@@ -4931,9 +4942,10 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
 }
 
 /*
- * Before the window starts (run.js): two conversations Codex archived some time ago, with the times the archive sweep
- * counts from (src/archive-sweep.js keeps when it first saw one archived), and codexPlus.deleteArchivedAfterDays below
- * its default, so the sweep a minute after the start deletes the one archived longer ago than that and keeps the other.
+ * Set up before the window starts (run.js): two conversations Codex archived some time ago, each with the time the
+ * archive sweep counts from (src/archive-sweep.js records when it first saw a conversation archived), and
+ * codexPlus.deleteArchivedAfterDays lowered from its default. The sweep a minute after the start then deletes the
+ * conversation archived longer ago than that and keeps the other.
  */
 const ARCHIVED = [{ id: '0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a6a', title: 'Clean up the old export buckets', days: 25 },
   { id: '0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a6b', title: 'Rotate the staging keys', days: 10 }];

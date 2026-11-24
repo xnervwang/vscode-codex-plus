@@ -4,10 +4,10 @@
 
 'use strict';
 /*
- * The look run's feature list, ui-look-features.json, and what it names of Agent Plus: under each feature that works
- * through Agent Plus the settings, commands and views of Agent Plus's package.json it uses, and in agentPlusOther the
- * rest, each with why it is not this extension's. test/parts/77-ui-look-features.js holds that against the Agent Plus
- * the suite finds, and the window test against the one it installed.
+ * The look run's feature list, ui-look-features.json, and what it names of Agent Plus. A feature that works through
+ * Agent Plus lists the settings, commands and views of Agent Plus's package.json that it uses, and agentPlusOther lists
+ * the rest, each with why it is not this extension's. test/parts/77-ui-look-features.js checks that against the Agent
+ * Plus the suite finds, and the window test against the one it installed.
  */
 const fs = require('fs');
 const path = require('path');

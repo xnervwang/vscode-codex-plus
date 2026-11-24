@@ -1184,7 +1184,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     });
     const kept = `${title} (kept short)`;
     await look('rename-envelope-anywhere', {
-      expect: `Renamed, while the reply is unread, to "✉️ ✉️ ${title} ✉️ (kept short)", with envelopes typed at the start and in the middle, the tab's title reads "${kept} ✉️": `
+      expect: `Renamed, while the reply is unread, to "✉️ ✉️ ${title} ✉️ (kept short)", the tab's title reads "${kept} ✉️": `
         + `none of the typed envelopes is kept, and one envelope is drawn last. The conversation's rows in the session list, their titles cut short in the narrowed side bar, `
         + 'each end in one envelope after the title and none inside it. (The window test checks the rows\' whole titles.)',
     }, async () => {
@@ -1349,8 +1349,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     });
     model.script(null);
     await look('detached-end-notice-off', {
-      expect: 'With codexPlus.detachedEndNotices off, in the Custom token mode where it is used, a second detached command, "setsid sleep 8", approved and left running, ends with no notice: '
-        + 'the conversation ends with Codex\'s reply that it started the short job, and no Codex Plus notice after it.',
+      expect: 'In the Custom token mode with codexPlus.detachedEndNotices off, a second detached command, "setsid sleep 8", approved and left running, ends with no notice: '
+        + 'the conversation ends with Codex\'s reply that it started the short job.',
     }, async () => {
       await setting('tokenMode', 'custom', 'agentPlus');
       await setting('detachedEndNotices', false);
@@ -1360,7 +1360,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await approve();
       await until(() => model.left() === 0, 20000, 500);
       await sleep(45000);
-      /* Every request quotes the notices sent before, so the rollout is asked whether one named this command. */
+      /* Every request quotes the notices sent before, so the check reads the rollout for a notice naming this command. */
       const told = lastUserText(t0.id, 'sleep 8');
       tell(told ? `a notice naming "sleep 8" was sent: ${told.slice(0, 200)}` : 'no message naming "sleep 8" was sent into the conversation while codexPlus.detachedEndNotices was off');
       await toBottom();
@@ -1371,7 +1371,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     model.script(null);
     await look('subagent-agent-map', {
       expect: 'After a turn that started a sub-agent, the pill has a green dot and counts it ("1 agent"), and the Agent map has a SUB-AGENTS section with a count badge 1, right '
-        + 'after the conversation\'s own card: a card of the sub-agent by its name with a solid green dot, since it is still running, and when it was last active under it.',
+        + 'after the conversation\'s own card: a card with the sub-agent\'s name and a solid green dot (it is still running), and under them the time it was last active.',
     }, async () => {
       model.script(t0.id, [{ call: 'spawn_agent', namespace: 'collaboration', args: { task_name: 'job', message: 'Wait for the job.', fork_turns: 'none' } }, { reply: 'Started a helper.' }]);
       await type('Start a helper and come back.');
@@ -1442,7 +1442,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await look('background-work-agent-map', {
         expect: `The Agent map in the dark theme. ${MAP_SECTIONS}`,
       }, async () => {
-        /* A paused goal as well, which starts no turn, so the map has every section at once. */
+        /* Also a paused goal, which starts no turn: the map then has every section at once. */
         const r = await hostRequest('thread/goal/set', { threadId: t0.id, objective: 'Make the nightly export include archived rows', status: 'paused', origin: 'user' });
         if (r && r.error) throw new Error(`thread/goal/set: ${JSON.stringify(r.error)}`);
         if (!await until(async () => /goal/.test(await pillText()), 15000, 500)) tell(`the pill read ${JSON.stringify(await pillText())} with the goal set`);
@@ -1519,7 +1519,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
 
     /* ═══ links to other conversations in a reply ═══ */
     {
-      /* By t1 alone: t2 is deleted by an earlier step, and a conversation that is gone is not linked. */
+      /* By t1 alone, since an earlier step deletes t2 and a deleted conversation gets no link. */
       const reply = `That was 「${t1.title}」, whose thread ${t1.id} has the details.\n\nNext time, open ${t1.title} first.`;
       const links = () => codex.evaluate(() => document.querySelectorAll('[data-codex-extras="convo-link"]').length).catch(() => 0);
       await look('conversation-links', {
@@ -1539,7 +1539,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
 
     /* ═══ a wake-up ═══ */
     await look('wake-ups-off', {
-      expect: 'With codexPlus.wakeUps off, in the Custom token mode where it is used, a wake-up that falls due is not sent: after a minute and a half the conversation still ends as it did, '
+      expect: 'In the Custom token mode with codexPlus.wakeUps off, a wake-up that falls due is not sent: after a minute and a half the conversation still ends as it did, '
         + 'with no message beginning "[Wake-up set in this conversation".',
     }, async () => {
       await setting('tokenMode', 'custom', 'agentPlus');
@@ -1685,7 +1685,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       return union([await tabsBox(), await part(PARTS.editor)]);
     });
     await look('reopen-shortcut-off', {
-      expect: `With codexPlus.reopenClosedSessionShortcut off, Ctrl+Shift+T after "${freshTitle}" is closed again is VS Code's own Reopen Closed Editor: the tab closed last comes back, in front, on the address it had.`,
+      expect: `With codexPlus.reopenClosedSessionShortcut off, "${freshTitle}" is closed again, and Ctrl+Shift+T runs VS Code's own Reopen Closed Editor: the tab closed last comes back in front, with the address it had.`,
     }, async () => {
       await setting('reopenClosedSessionShortcut', false);
       await tab(freshTitle).click();
@@ -1823,8 +1823,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       const wake1 = path.join(plans, `${t1.id}.wakeup`);
       await look('agent-map-sidebar', {
         expect: 'In Codex\'s sidebar on the right, which is narrow, the Agent map of "Why does the nightly export skip archived rows?", opened from the pill by its message box: '
-          + 'THIS CONVERSATION over a card titled by the conversation (cut short with an ellipsis if the sidebar is too narrow), with the model and tokens in context under it; '
-          + 'then WAKE-UPS 1 with a card of "Look at the export logs again." over "every 30 min" and its times, and a Remove button; then GOAL 1 with a card of '
+          + 'THIS CONVERSATION over a card with the conversation\'s title (cut short with an ellipsis if the sidebar is too narrow), with the model and tokens in context under it. '
+          + 'Below it, WAKE-UPS 1: a card of "Look at the export logs again." over "every 30 min" and its times, with a Remove button. Then GOAL 1: a card of '
           + '"Find out why archived rows are skipped" over "paused" and its tokens, with Resume and Clear. The dialog fits inside the sidebar; the cards are no wider than '
           + 'it, and a second line too long for it ends in an ellipsis rather than running past the edge; the headings, badges and lines are as in the editor tab.',
       }, async () => {

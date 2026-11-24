@@ -87,7 +87,7 @@ module.exports = async ({ eq, note, tmp, root }) => {
       'the Codex conversation in this workspace is drawn, needing an answer; the other folder\'s is not');
     eq(!!control.state.views['codexPlus.sessions'], true, 'the Codex session list is there too');
 
-    /* What a dependent that links to conversations (Claude Code Plus) is given: the Codex conversations of every folder. */
+    /* Claude Code Plus, which links to conversations, is given the Codex conversations of every folder. */
     const listening = exported.agentPlus.onDidChangeAllConversations(() => {});
     const codexAll = async () => {
       for (let i = 0; i < 50; i++) {

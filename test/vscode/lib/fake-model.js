@@ -19,7 +19,7 @@
  * the requests whose body held `text`, among the last BODIES_KEPT.
  *
  * Each entry of `seen` also says what the request's input carries after the conversation's last reply (`context`): the
- * text the user typed, and which of the notes the work plan plugin's hooks add are there.
+ * text the user typed, and which notes from the work plan plugin's hooks it holds.
  */
 const http = require('http');
 
@@ -40,7 +40,7 @@ const BODIES_KEPT = 40;
 
 /* The notes of the work plan plugin's hooks, by what each starts with or asks for: the plan (inject-work-plan.py), the
    brief's request for a status (plan_agent.py status_ahead), the time zone (tell-time-zone.py) and the images in replies
-   (tell-reply-images.py). `skill` is the work plan skill in Codex's list of skills, anywhere in the request. */
+   (tell-reply-images.py). `skill` looks for the work plan's entry in Codex's skill list anywhere in the request. */
 const CONTEXT = { plan: /This conversation's work plan/, brief: /call set_status/, zone: /The user is in [A-Za-z_]+\/[A-Za-z_]+ \(/,
   images: /This panel shows images in your replies/ };
 const SKILL = /Keep this conversation's work plan up to date/;
@@ -58,7 +58,7 @@ function contextOf(body) {
     + input.filter((it) => it && it.type === 'additional_tools' && Array.isArray(it.tools)).reduce((n, it) => n + it.tools.length, 0);
   const out = { tools,
     typed: textsOf(after.filter((it) => it && it.role === 'user')).join('\n').slice(-4000), skill: SKILL.test(body),
-    /* Each user message on its own: a request for a title quotes the message inside a prompt of its own. */
+    /* Each user message separately, since a request for a title quotes the message inside a prompt of its own. */
     said: after.filter((it) => it && it.role === 'user').map((it) => textsOf([it]).join('\n').trim().slice(0, 2000)) };
   for (const [k, re] of Object.entries(CONTEXT)) out[k] = re.test(text);
   return out;
@@ -127,7 +127,7 @@ async function start({ reply = 'Done. The cap is configurable.' } = {}) {
   return { port: server.address().port, url: `http://127.0.0.1:${server.address().port}/v1`, seen, hold, release, close, script, releaseOthers,
     left: () => (scripted ? scripted.steps.length : 0),
     sent: (text) => bodies.filter((b) => b.includes(text)).length,
-    /* The newest kept body that holds `text`, for a failure's detail. */
+    /* The newest kept body that holds `text`, to show in a failure. */
     bodyWith: (text) => bodies.slice().reverse().find((b) => b.includes(text)) || '',
     lastBodies: (n) => bodies.slice(-n),
     turns: () => seen.filter((s) => s.method === 'POST' && /\/responses/.test(s.url)).length };

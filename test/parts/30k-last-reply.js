@@ -56,7 +56,7 @@ module.exports = async ({ eq, note, tmp, root }) => {
     await feed(before);
     await wait(20);
 
-    /* What Codex writes when the conversation is opened and when its goal is set, then its row as unarchiving leaves it. */
+    /* The lines Codex writes on opening the conversation and on setting its goal, then the row unarchiving leaves. */
     const now = Date.now();
     fs.appendFileSync(t.rollout, [
       { timestamp: new Date(now).toISOString(), type: 'event_msg', payload: { type: 'thread_settings_applied', thread_id: t.id,
@@ -80,7 +80,7 @@ module.exports = async ({ eq, note, tmp, root }) => {
     await feed(after);
     eq(shown, [], 'Agent Plus does not announce it as finished');
 
-    /* Read, and then a turn that does run between two reads. */
+    /* Then a real turn, run between two reads. */
     await feed(read(t, false));
     await wait(20);
     const at = Date.now();
