@@ -653,8 +653,11 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
   }, sel || '').catch(() => null) : null);
   /* With a plan bar drawn, checks that it is clear of what `sel` selects; says so in a note when there is no bar. */
   const planBarClear = async (f, sel, what) => {
-    const at = await planBarAgainst(f, sel);
+    /* The bar follows the message box on the box's next resize, so a card that has just grown the box can have the bar
+       over it for a moment. */
+    let at = await planBarAgainst(f, sel);
     if (!at) { note(`${what}: no plan bar was drawn, so whether it would cover it was not checked`); return; }
+    if (at.over.length) at = await until(async () => { const x = await planBarAgainst(f, sel); return x && !x.over.length && x; }, 5000, 250) || await planBarAgainst(f, sel) || at;
     check(!at.over.length, `${what}: the plan bar above the message box covers none of it`, at);
   };
 

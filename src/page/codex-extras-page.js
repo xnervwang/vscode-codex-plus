@@ -550,9 +550,14 @@
     pickerWatch = new MutationObserver(againSoon);
     try { pickerWatch.observe(slot, { childList: true, subtree: true, characterData: true }); } catch (e) { pickerWatch = null; }
   }
+  /* The controls first: going to their own line inside the message box, or leaving it, changes the box's height, which
+     the row below the box and the plan bar above it are placed by. */
   function placeBar() {
+    placeControls();
     placeStrip();
     placePlanBar();
+  }
+  function placeControls() {
     var on = view.buttons !== false;
     var wantInfo = on && view.infoButton !== false, wantMute = on && view.chimeButton !== false;
     var wantMeter = on && view.contextMeter !== false && !!usage;
