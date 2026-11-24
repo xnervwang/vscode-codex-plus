@@ -15,7 +15,9 @@
 - The last three times a Codex page opened and how long each took.
 - At the end, what the page script found in the Codex page in front, explained in [docs/codex-page.md](codex-page.md#checking-what-the-page-found).
 
-`Codex Plus: Show How Long Opening a Codex Page Took` shows how long each Codex page, in the sidebar or a tab, took to open. It shows how long it took to run Codex's page script, show the first screen, show the conversation or home page, and restore the conversation. It also shows which pages gave up. Codex logs these stages only when a setting it fetches from OpenAI allows it. When it does not, for example with no network or with a model provider other than OpenAI, the command shows only how long each page took to start. This command reads Codex's own log, `Codex.log`, in every window's log folder. It needs nothing else.
+`Codex Plus: Show How Long Opening a Codex Page Took` shows how long each Codex page, in the sidebar or a tab, took to open. It shows how long it took to run Codex's page script, show the first screen, show the conversation or home page, and restore the conversation. It also shows which pages gave up.
+
+Codex logs these stages only when a setting it fetches from OpenAI allows it. When it does not, for example with no network or with a model provider other than OpenAI, the command shows only how long each page took to start. This command reads Codex's own log, `Codex.log`, in every window's log folder. It needs nothing else.
 
 ## CPU and disk
 
