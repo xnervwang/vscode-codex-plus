@@ -4274,11 +4274,25 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         await page.mouse.move(box.x + at[0], box.y + at[1], { steps: 4 });
         await sleep(200);
       };
+      /* Each way opens a conversation and closes it a moment later. On a slow machine its page is still fetching most of
+         its code then, and what it leaves queued holds up every Codex page for minutes, so the page is let draw the
+         conversation and go 2 s with no file reaching it before its tab is closed; and again when VS Code was still
+         behind with Codex's files, as the page's own may have been among them. */
+      const letFinish = async (t) => {
+        const f = await frameWhere((want) => !!document.querySelector('[data-codex-composer-root]') && document.body.innerText.includes(want), 60000, t.title.slice(0, 30));
+        if (!f) { note(`rows of conversations no longer open: the page of "${t.title}" had not drawn it in 60 s when its tab was to be closed`); return; }
+        await f.evaluate(() => { const g = globalThis; if (g.__cxpLastFile !== undefined) return; g.__cxpLastFile = performance.now();
+          try { new PerformanceObserver(() => { g.__cxpLastFile = performance.now(); }).observe({ type: 'resource' }); } catch (_) { /* none */ } }).catch(() => {});
+        await until(() => f.evaluate(() => performance.now() - globalThis.__cxpLastFile > 2000).catch(() => true), 60000, 500);
+      };
       /* The tab in the tab bar is found by its label, as the API has it or as the conversation is titled: Codex first
          labels a tab with the title cut short, and the tab bar can show the whole title while the API still has the
          short one, or the other way round. */
       const closeTab = async (t) => {
-        await served();
+        for (let tries = 0; tries < 3; tries++) {
+          await letFinish(t);
+          if (await served() < 2) break;
+        }
         const x = await tabOf(t);
         if (!x) throw new Error(`no tab shows "${t.title}"`);
         await pointerOffRows();
