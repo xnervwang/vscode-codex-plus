@@ -48,9 +48,16 @@ const VERSION = 1;
 const ANY_MARK = '/* CODEX-EXTRAS-HOST v';
 const BACKUP_SUFFIX = '.codex-extras-host.bak';
 const TMP_SUFFIX = '.codex-extras-host.tmp';
+/*
+ * Every name the edits below declare inside Codex's code (a let, a parameter, a catch binding) starts with this and an
+ * upper-case letter. The edits sit among Codex's minified names, which are one to three characters and change with
+ * every build, so a short name of ours would sooner or later hide one of Codex's that the edit itself refers to, and
+ * the hook would quietly stop working. test/parts/50c-patch-local-names.js holds the edits to it.
+ */
+const LOCAL_PREFIX = 'cxp';
 
 /* A call into this extension that can never throw into Codex: `name` is a function this extension puts on globalThis. */
-const call = (name, args) => `(()=>{try{globalThis.${name}&&globalThis.${name}(${args})}catch(_cx){}})()`;
+const call = (name, args) => `(()=>{try{globalThis.${name}&&globalThis.${name}(${args})}catch(cxpErr){}})()`;
 
 const EDITS = [
   {
@@ -70,7 +77,7 @@ const EDITS = [
   {
     name: 'conversation panel URIs',
     re: /async resolveCustomEditor\(([\w$]+),([\w$]+),[\w$]+\)\{/g,
-    to: (m, doc, panel) => `${m}(()=>{try{(globalThis.__codexExtrasPanelUris||(globalThis.__codexExtrasPanelUris=new WeakMap)).set(${panel},String(${doc}.uri))}catch(_cx){}})();`,
+    to: (m, doc, panel) => `${m}(()=>{try{(globalThis.__codexExtrasPanelUris||(globalThis.__codexExtrasPanelUris=new WeakMap)).set(${panel},String(${doc}.uri))}catch(cxpErr){}})();`,
   },
   {
     name: 'other panels',
@@ -105,8 +112,8 @@ const EDITS = [
       {
         re: /retainActiveConversation\(([\w$]+),([\w$]+)\)\{/g,
         to: (m, id, cb) => `${m}${call('__codexExtrasBroadcast', `"thread-stream-following-changed",{conversationId:${id},following:!0}`)};`
-          + `if(typeof ${cb}==="function"){let cxKeep=${cb};${cb}=(cxOn)=>{if(cxOn===!1)`
-          + `${call('__codexExtrasBroadcast', `"thread-stream-following-changed",{conversationId:${id},following:!1}`)};return cxKeep(cxOn)}}`,
+          + `if(typeof ${cb}==="function"){let cxpKeep=${cb};${cb}=(cxpOn)=>{if(cxpOn===!1)`
+          + `${call('__codexExtrasBroadcast', `"thread-stream-following-changed",{conversationId:${id},following:!1}`)};return cxpKeep(cxpOn)}}`,
         note: 'a page retaining a conversation in the host\'s store (26.1117 on)',
       },
       {
@@ -150,7 +157,8 @@ const EDITS = [
     name: 'tab bar button',
     re: /registerCommand\("chatgpt\.openSidebar",([\w$]+)\)/g,
     to: (m, fn) => 'registerCommand("chatgpt.openSidebar",'
-      + `(...a)=>{let _cx=!1;try{_cx=!!(globalThis.__codexExtrasTabBar&&globalThis.__codexExtrasTabBar(a))}catch(_e){}return _cx?void 0:${fn}(...a)})`,
+      + `(...cxpArgs)=>{let cxpTaken=!1;try{cxpTaken=!!(globalThis.__codexExtrasTabBar&&globalThis.__codexExtrasTabBar(cxpArgs))}`
+      + `catch(cxpErr){}return cxpTaken?void 0:${fn}(...cxpArgs)})`,
   },
 ];
 
@@ -189,6 +197,6 @@ const target = patchTarget({
 });
 
 module.exports = {
-  id: 'openai.chatgpt', name: 'Codex host', VERSION, MARK, ANY_MARK, BACKUP_SUFFIX, EDITS,
+  id: 'openai.chatgpt', name: 'Codex host', VERSION, MARK, ANY_MARK, BACKUP_SUFFIX, LOCAL_PREFIX, EDITS,
   patchSource, status: target.status, apply: target.apply, restore: target.restore, targetFile: hostFile,
 };

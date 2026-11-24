@@ -12,9 +12,10 @@
  *   node test/against-latest.js            the newest release
  *   CODEX_EXTRAS_PRERELEASE=1 node ...     the newest version, pre-releases included
  *
- * Exits 1 when an edit does not match exactly once, the result does not parse, or a request or a question tool name is
- * not in its list. The codex program is run only when PLATFORM below is this machine's own. It cannot check what the
- * page script relies on at run time: that is messages, with no text in the files to match them against.
+ * Exits 1 when an edit does not match exactly once, the result does not parse, the build has a name of its own with the
+ * prefix the host edits give theirs, or a request or a question tool name is not in its list. The codex program is run
+ * only when PLATFORM below is this machine's own. It cannot check what the page script relies on at run time: that is
+ * messages, with no text in the files to match them against.
  */
 const fs = require('fs');
 const os = require('os');
@@ -77,8 +78,13 @@ async function newest() {
     fs.writeFileSync(vsix, Buffer.from(await res.arrayBuffer()));
     execFileSync('unzip', ['-q', vsix, 'extension/out/extension.js', 'extension/webview/index.html', 'extension/package.json', '-d', work], { stdio: 'ignore' });
     const dir = path.join(work, 'extension');
-    const h = host.patchSource(fs.readFileSync(host.targetFile(dir), 'utf8'));
+    const hostText = fs.readFileSync(host.targetFile(dir), 'utf8');
+    const h = host.patchSource(hostText);
     if (h.error) { failed++; console.log(`FAIL  host: ${h.error}`); } else console.log(`ok    host: every edit matches once (${h.chosen.map((c) => c.name).join(', ')}) and parses`);
+    /* The names the host edits declare carry a prefix so that they cannot hide one of Codex's (src/host.js LOCAL_PREFIX). */
+    const taken = [...new Set([...hostText.matchAll(new RegExp(`(?:^|[^\\w$])(${host.LOCAL_PREFIX}[A-Z][\\w$]*)`, 'g'))].map((x) => x[1]))];
+    if (taken.length) { failed++; console.log(`FAIL  names: this build has its own ${taken.join(', ')}, which the host edits' prefix ${host.LOCAL_PREFIX} was to keep clear of`); }
+    else console.log(`ok    names: no name in this build starts with ${host.LOCAL_PREFIX}, the prefix of the names the host edits declare`);
     const p = page.patchSource(fs.readFileSync(page.targetFile(dir), 'utf8'));
     if (p.error) { failed++; console.log(`FAIL  page: ${p.error}`); } else console.log('ok    page: the script tag goes in ahead of the entry script');
     const m = manifest.patchSource(fs.readFileSync(manifest.targetFile(dir), 'utf8'));

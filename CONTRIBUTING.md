@@ -137,3 +137,4 @@ What a change must not break:
 - Code, comments and commit messages are English; every source file starts with the BSD 3-Clause header.
 - The page script never puts a node inside one Codex draws.
 - Every patch edit matches exactly once on a pristine Codex build, or nothing is written.
+- Every name a host edit declares inside Codex's code starts with `cxp` and an upper-case letter (`LOCAL_PREFIX` in `src/host.js`), so that it cannot hide one of Codex's minified names; `test/parts/50c-patch-local-names.js` checks it.
