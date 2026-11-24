@@ -42,7 +42,7 @@ Clicking a link opens the conversation through Agent Plus. A VS Code window alre
 
 ## The row below the message box
 
-Codex Plus adds a row below the message box. At its right end, it shows the tool call running now, such as `exec_command running for 2m55s (since 11:11:18)`, while Codex's row for that call is out of view. When Codex's row is in view, it already says this. The same place counts commands Codex started that are still running, such as a build or a `sleep` left in the background, until Codex reports that the process ended. The row normally holds only the current tool call and the count of commands still running. The controls described in [The message box's toolbar](message-box-toolbar.md) appear here only when they leave the toolbar and the message box has no footer grid for a second line.
+Codex Plus adds a row below the message box. At its right end, it shows the tool call running now, such as `exec_command running for 2m55s (since 11:11:18)`, while Codex's row for that call is out of view. When Codex's row is in view, it already says this. The same place counts commands Codex started that are still running, such as a build or a `sleep` left in the background, until Codex reports that the process ended. The controls described in [The message box's toolbar](message-box-toolbar.md) appear in this row only when the toolbar has no room for them and the message box cannot hold a line of their own.
 
 `Codex Plus: Show Status` lists each still-running command, when it started and which conversation it belongs to. Codex Plus sees only this window's Codex. If you reload the window while a command runs, it learns of that command only when it ends. `codexPlus.turnFigures` turns off the tool-call display and command count too.
 
