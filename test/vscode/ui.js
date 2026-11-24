@@ -1464,6 +1464,10 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       const theirs = await until(async () => { const r = await planViewRows(); return r && r.some((x) => x.includes('Look at the export logs')) && r; }, 15000, 500);
       check(!!theirs && !theirs.some((x) => x.includes('Read the sync job')), 'a click on the sidebar\'s bar shows that conversation\'s plan in the Work plan view, not the plan of the tab in front',
         theirs || await planViewRows());
+      /* The sidebar goes back to Codex's home before it is closed, as it was before this step: a later step opens the
+         second conversation there and expects the sidebar to start showing it. */
+      await exec('codexPlus.newInSidebar');
+      await until(() => side.evaluate(() => !document.querySelector('[data-turn-key]')).catch(() => true), 15000, 500);
       await exec('workbench.action.closeAuxiliaryBar');
       await showList();
       await tabNamed(title).click();
@@ -1882,7 +1886,13 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
           muted: mute ? mute.getAttribute('data-codex-extras-muted') : '', meter: !!document.querySelector('[data-codex-extras="meter"]'),
           codexMeterHidden: document.querySelectorAll('.codex-extras-ctx-hidden').length };
       }).catch((e) => ({ error: String(e) }));
-      const on = await until(async () => { const x = await read(); return x.replyStamps > 0 && x.meter && x; }, 15000, 500) || await read();
+      /* Taken once two readings in a row agree, so a page still drawing its stamps is not taken as what it should go back to. */
+      let last = '';
+      const on = await until(async () => {
+        const x = await read(), seen = JSON.stringify(x), again = seen === last;
+        last = seen;
+        return x.replyStamps > 0 && x.meter && again && x;
+      }, 20000, 700) || await read();
       check(on.userStamps > 0 && on.timed > 0 && on.figures > 0 && on.durations > 0 && on.rail && on.edges > 0 && on.info && on.mute && on.muted === 'false'
         && on.meter, 'with the defaults the page has the times, each reply\'s figures and how long its turn took, the rail, the bar down '
         + 'the user\'s messages, both buttons, and the meter', on);
