@@ -48,13 +48,22 @@ Codex Plus adds a row below the message box. At its right end, it shows the tool
 
 ## The plan bar
 
-The plan bar shows the conversation's [work plan](work-plan.md), a list of numbered rows that Codex keeps through the work plan plugin. The bar updates as the plan changes. It sits on one line just above the message box and matches its width. It takes 32 px of height from the conversation without covering it or Codex's question or approval cards. Conversations without a work plan have no bar.
+The plan bar shows the conversation's [work plan](work-plan.md), a list of numbered rows, some nested under others, that Codex maintains using the work plan plugin's tools. The bar updates as the plan changes. It sits on one line just above the message box and matches its width. The bar leaves 32 px less space for the conversation above it without covering the conversation or Codex's question or approval cards. Conversations without a work plan have no bar.
 
-From left to right, the bar shows a list icon, "Plan", a short track with one segment per open row coloured by state, "N open", and the current row with its number and state icon. If any rows need your answer, "N to decide" appears in red. An arrow sits at the right end. The open count excludes done and dropped rows. Below 400 px wide, for example in Codex's sidebar, the bar shows only "Plan", the open count, the question count and the arrow.
+The bar's current row is the most deeply nested doing row. If no row is doing, the bar shows the first row in the highest-priority available state: waiting, discussing or todo, in that order. If only parked rows remain open (not done or dropped), the first parked row appears dimmed. When all rows are done, the bar shows a green tick and "All rows done".
 
-The bar shows the deepest doing row. If none is doing, it looks for a waiting row, then a discussing row, then a todo row, and shows the first row in the first state it finds. If only parked rows remain open, the first parked row appears dimmed. When all rows are done, the bar shows a green tick and "All rows done".
+From left to right, the bar shows:
 
-Rest the pointer on the bar for 350 ms to see the current row's full title and a list of up to 30 open rows. Click the bar to open this conversation's plan in the Work plan view of Agent Plus, the companion extension. Click "N to decide" to open its Answer view at the first question. The bar requires the Codex Plus patch to Codex's page and a window reload. It appears only if Agent Plus provides the plan summary. The bar is on by default. Turn off `codexPlus.planBar` to hide it, or `codexPlus.enabled` to turn off Codex Plus.
+- A list icon and "Plan".
+- A short track with one segment per open row, coloured by state.
+- "N open".
+- The current row, with its number and state icon.
+- "N to decide" in red: the number of the [plan's questions](work-plan.md#answering-a-plan-question) waiting for your answer.
+- An arrow.
+
+Below 400 px wide, for example in Codex's sidebar, the bar shows only "Plan", the open count, the question count and the arrow.
+
+Rest the pointer on the bar for 350 ms to see the current row's full title and a list of up to 30 open rows. Click the bar to open this conversation's plan in the Work plan view of Agent Plus, the companion extension. Click "N to decide" to open Agent Plus's Answer view at the first question. The bar uses the plan summary from Agent Plus and stays hidden if your release of Agent Plus does not provide plan summaries. The bar is on by default. Turn off `codexPlus.planBar` to hide it, or `codexPlus.enabled` to turn off Codex Plus.
 
 ## Images in replies
 
