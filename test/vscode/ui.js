@@ -157,9 +157,10 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
    * message box, and the turns too on a page opened on a conversation) and go 2 s with no file reaching them, and this is
    * done again when served() then still had to wait, since the files it waited for may have been theirs. A tab's page is
    * told by the initial-route tag Codex puts in it, or by the webview origin such pages share: the page of Codex's hidden
-   * sidebar has a message box and the titles of conversations in its text too. A page in Codex's "Something went wrong"
-   * fetches nothing more and counts as drawn. Resolves to false, with a note, when fewer than `least` such pages were
-   * there or one had not drawn within 60 s.
+   * sidebar has a message box and the titles of conversations in its text too. A page showing Codex's recovery page
+   * ("ChatGPT hit a snag") fetches nothing more and counts as drawn, and so does a page up for 15 s, by when Codex has
+   * asked for its route's code: the page of the sub-agent the Agent map opens has drawn no turns within a minute.
+   * Resolves to false, with a note, when fewer than `least` such pages were there or one had not drawn within 60 s.
    */
   let tabsHost = '';
   const tabPages = async () => {
@@ -169,13 +170,15 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         if (!/\/openai\.chatgpt[^/]*\/webview\/$/.test(document.baseURI)) return null;
         const m = document.querySelector('meta[name="initial-route"]');
         return { host: location.host, route: m ? m.content : null, composer: !!document.querySelector('[data-codex-composer-root]'),
-          turns: !!document.querySelector('[data-turn-key]'), broke: /Something went wrong/.test(document.body ? document.body.innerText : '') };
+          turns: !!document.querySelector('[data-turn-key]'), broke: /hit a snag|Something went wrong/.test(document.body ? document.body.innerText : ''),
+          up: Math.round(performance.now() / 1000) };
       }).catch(() => null);
       if (st) seen.push({ f, ...st });
     }
     for (const x of seen) if (x.route !== null) tabsHost = x.host;
-    return seen.filter((x) => x.route !== null || (tabsHost && x.host === tabsHost))
-      .map((x) => ({ f: x.f, drawn: x.broke || (x.composer && (!/^\/local\//.test(x.route || '') || x.turns)) }));
+    return seen.filter((x) => x.route !== null || (tabsHost && x.host === tabsHost)).map((x) => ({ f: x.f,
+      drawn: x.broke || x.up >= 15 || (x.composer && (!/^\/local\//.test(x.route || '') || x.turns)),
+      says: { route: x.route, composer: x.composer, turns: x.turns, up: x.up } }));
   };
   const quietFor = (f, ms) => f.evaluate((gap) => {
     const g = globalThis;
@@ -189,7 +192,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     for (let tries = 0; tries < 3; tries++) {
       const pages = await until(async () => { const ps = await tabPages(); return ps.length >= least && ps.every((x) => x.drawn) && ps; }, 60000, 500);
       if (!pages) {
-        note(`${what}: ${(await tabPages()).length} page(s) of Codex's tabs were there, and not all of them had drawn within 60 s`);
+        const ps = await tabPages();
+        note(`${what}: ${ps.length} page(s) of Codex's tabs were there, and not all of them had drawn within 60 s: ${JSON.stringify(ps.filter((x) => !x.drawn).map((x) => x.says))}`);
         await served();
         return false;
       }
@@ -3510,8 +3514,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         return { found: !!hit, label: hit ? name(hit) : '', candidates: hits.map(where), labels: [...new Set(all.map(name).filter(Boolean))].slice(0, 40) };
       });
       if (!button.found) {
-        const why = `no new conversation button was found in Codex's page by its label; its labelled buttons: ${button.labels.join(' | ')}`;
-        if (process.platform === 'linux') check(false, why); else note(why);
+        check(false, `no new conversation button was found in Codex's page by its label; its labelled buttons: ${button.labels.join(' | ')}`);
         return;
       }
       let tabsBefore = [];
