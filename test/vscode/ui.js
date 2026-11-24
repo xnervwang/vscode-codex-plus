@@ -4799,9 +4799,21 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         fs.writeFileSync(file, got ? model.bodyWith(text) : JSON.stringify(model.lastBodies(6).map((b) => { try { return JSON.parse(b); } catch (_) { return b; } }), null, 1));
         return got ? got.context : null;
       };
+      /* A new conversation's page once VS Code shows it in front, opened again once if it does not come to the front:
+         on Windows the page found has stayed hidden, its message box never visible. */
+      const freshPage = async () => {
+        for (let attempt = 1; attempt <= 2; attempt++) {
+          await newTabPage();
+          const shown = await until(async () => { const f = await frontPage(); return f && await f.evaluate(() => !document.querySelector('[data-turn-key]')).catch(() => false) && f; }, 30000, 500);
+          if (shown) return shown;
+          note(`what the model is given: the new conversation's page was not in front within 30 s on try ${attempt}`);
+          await exec('workbench.action.closeActiveEditor').catch(() => {});
+        }
+        return null;
+      };
       await exec('workbench.action.closeAllEditors');
       const BEGIN = 'Token mode checks begin here.';
-      const first = await newTabPage();
+      const first = await freshPage();
       if (!first) throw new Error('no new conversation page opened');
       await emptyBox(first);
       await turnIn(first, BEGIN, 'UTC');
@@ -4864,7 +4876,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
               `${name}: a turn of a conversation already running carries the work plan: ${m.on.plan}, the time-zone note: ${zone}, `
               + `the brief's request for a status: ${m.on.brief}, and no note on images`, r.running || model.seen.slice(-3).map((x) => x.context));
           }
-          const fresh = await newTabPage();
+          const fresh = await freshPage();
           if (fresh) {
             await emptyBox(fresh);
             r.fresh = await turnIn(fresh, `Token mode check, ${name}, a new conversation.`, m.zone);
