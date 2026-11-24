@@ -179,8 +179,6 @@
   "agentPlusOther": [
     { "key": "agentPlus.webviewRequestLimit", "why": "VS Code's own limit on requests in flight for webview tabs, which Agent Plus edits in VS Code's files; nothing of this extension's" },
     { "key": "agentPlus.restoreWebviewRequestLimit", "why": "puts that limit back" },
-    { "key": "agentPlus.showWorkPlanOf", "why": "for a plan bar above the message box, which this extension does not draw yet" },
-    { "key": "agentPlus.answerQuestionOf", "why": "for the same plan bar" },
     { "key": "agentPlus.showStatus", "why": "Agent Plus's own state and the sources it has; what Codex Plus installed, patched and runs is in codexPlus.status" }
   ]
 }
