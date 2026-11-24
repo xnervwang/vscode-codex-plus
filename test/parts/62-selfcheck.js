@@ -335,7 +335,9 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
     constructor(...a) { super(...(a.length ? a : [clockMs])); }
     static now() { return clockMs; }
   };
-  pageFromSample(moved, renamed);
+  /* With its message box, as a conversation's page has one: a page with none and no element for one is a read-only page,
+     which is not looked at (below). */
+  pageFromSample(moved, renamed, { meter: 'Context usage: 10%' });
   const movedPage = pageUnder(root, moved);
   const told = () => movedPage.posted.filter((m) => m.kind === 'anchorsMissing');
   movedPage.view(); movedPage.view(); movedPage.view();
@@ -367,10 +369,11 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
    * ── a page Codex draws with no message box on purpose ──
    *
    * Codex shows a sub-agent's conversation, opened from the Agent map, and a conversation archived while its tab is
-   * open, read-only: the messages are there, the message box is not, and neither is the element Codex puts it in
+   * open, read-only: the message box is not there, and neither is the element Codex puts it in
    * (data-thread-find-composer), as a live 26.1120 page of each showed. Such a page is not one whose box this script no
-   * longer finds, however long it stays that way. A page that has that element and no box this script recognises in it
-   * still says so.
+   * longer finds, however long it stays that way, and neither are its messages looked for: a sub-agent's turn can hold
+   * no message yet, as a restored sub-agent's tab on Windows showed. A page that has that element and no box this script
+   * recognises in it still says so.
    */
   {
     const clocked = () => {
@@ -395,6 +398,13 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
     const roSaid = held(ro.d, ro.clock, roPage);
     eq([roSaid.told.length, roSaid.warn], [0, false],
       'a read-only page, with its messages and no message box or element for one, is not told to the host however long it stays, and shows no "!"');
+    const bare = clocked();
+    const bareTree = JSON.parse(JSON.stringify(renamed));
+    pageFromSample(bare.d, bareTree);
+    const barePage = pageUnder(root, bare.d);
+    const bareSaid = held(bare.d, bare.clock, barePage);
+    eq([bareSaid.told.length, bareSaid.warn], [0, false],
+      'nor is one whose turns hold no message this script recognises, as a sub-agent\'s turn with nothing said in it yet');
     const roCheck = roPage.ask().report.buttons;
     eq([roCheck.composerFound, roCheck.withheld], [false, true], 'its self-check says the box is withheld rather than not found');
     const roLine = require('../../src/patching').selfCheckLines(roPage.ask()).find((l) => /Message box controls/.test(l)) || '';

@@ -3283,9 +3283,9 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       if (await allow.waitFor({ state: 'visible', timeout: 15000 }).then(() => true, () => false)) {
         await allow.locator('.dialog-buttons .monaco-button').filter({ hasText: 'Open' }).first().click({ timeout: 5000 });
       }
-      /* Codex draws a conversation's turns as they come into view and keeps them drawn. In a short sidebar, as on Windows
-         with Codex's setup banner above the message box, it starts with fewer than all of them, so the conversation is
-         scrolled to its top and back to its end before every reply's stamp is looked for. */
+      /* Codex draws a conversation's turns as they come into view. In a short sidebar, as on Windows with Codex's setup
+         banner above the message box, it draws fewer than all of them, even after the conversation is scrolled to its top
+         and back to its end, so the stamps looked for are those of the turns it drew: one on each, and at least two. */
       const shownSide = await frameWhere((want) => innerWidth < 800 && document.body.innerText.includes(want)
         && document.querySelectorAll('.codex-extras-stamp-assistant').length >= 1, 90000, t.title);
       if (shownSide) {
@@ -3294,8 +3294,10 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
           await sleep(1500);
         }
       }
-      const side = shownSide && await until(() => shownSide.evaluate(() => document.querySelectorAll('.codex-extras-stamp-assistant').length >= 4).catch(() => false), 30000, 500)
-        ? shownSide : null;
+      const side = shownSide && await until(() => shownSide.evaluate(() => {
+        const turns = document.querySelectorAll('[data-turn-key]').length;
+        return turns >= 2 && document.querySelectorAll('.codex-extras-stamp-assistant').length >= turns;
+      }).catch(() => false), 30000, 500) ? shownSide : null;
       /* For a failure's detail: each page narrower than 800 px, its turns, its stamps on replies and whether it names the
          conversation. */
       const narrowPages = async () => {
@@ -3316,7 +3318,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         return { width: Math.round(r.width), column: Math.round(p.width), past: e.scrollWidth - e.clientWidth, over: Math.round(r.right - p.right),
           lines: Math.round(r.height / (parseFloat(st.fontSize) * 1.4)) };
       }));
-      check(fit.length >= 4 && fit.every((x) => x.past <= 0 && x.over <= 1), 'in Codex\'s sidebar every reply\'s stamp stays inside its column', fit);
+      check(fit.length >= 2 && fit.every((x) => x.past <= 0 && x.over <= 1), 'in Codex\'s sidebar every reply\'s stamp stays inside its column', fit);
       if (fit.length && !fit.some((x) => x.lines >= 2)) note('Codex\'s sidebar was wide enough for every stamp, so none had to wrap');
 
       const how = 'with Codex\'s sidebar showing the conversation and a text file in front';

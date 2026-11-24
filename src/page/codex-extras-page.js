@@ -2717,8 +2717,9 @@
   }
 
   /*
-   * Codex's page has turns and this script recognised none of the messages in them, or no message box where Codex keeps
-   * one (boxWithheld): a Codex release has most likely changed an attribute it selects by. Told to the host once MISS_PASSES passes in a row have seen it and at least
+   * Codex's page has turns and this script recognised none of the messages in them, or no message box: a Codex release
+   * has most likely changed an attribute it selects by. A page Codex draws with no message box on purpose (boxWithheld)
+   * is left out: a sub-agent's conversation there can hold a turn with no message in it yet. Told to the host once MISS_PASSES passes in a row have seen it and at least
    * MISS_MS has gone by since the first, so a conversation still being drawn does not count, and told again only after
    * the messages have been found in between. The message holds counts, flags and this script's version, nothing else.
    */
@@ -2726,7 +2727,7 @@
   function noteMisses(list) {
     var turns = list ? lastTurns : all(document, SEL.turn).length;
     var composer = !!composerRoot();
-    if (!turns || (list && list.length && (composer || boxWithheld()))) { missRun = 0; missSince = 0; missTold = false; showWarn(false); return; }
+    if (!turns || boxWithheld() || (list && list.length && composer)) { missRun = 0; missSince = 0; missTold = false; showWarn(false); return; }
     if (!missRun) missSince = Date.now();
     missRun++;
     if (missTold) { showWarn(true); return; }
