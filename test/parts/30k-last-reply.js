@@ -4,12 +4,12 @@
 
 'use strict';
 /*
- * lastReplyAt, the end of a conversation's latest turn. Codex 26.1117 writes to a conversation without a reply when it
- * is opened (thread/resume appends a thread_settings_applied event to the rollout), when its goal is set (a
- * codex_internal_context message) and when it is unarchived (the row's updated_at). Each makes lastActiveAt the time
+ * lastReplyAt is the end of a conversation's latest turn. Codex 26.1117 writes to a conversation without a reply in
+ * three cases: opening it (thread/resume) appends a thread_settings_applied event to the rollout, setting its goal adds
+ * a codex_internal_context message, and unarchiving it changes the row's updated_at. Each makes lastActiveAt the time
  * now and the conversation running again, and Agent Plus took that for a turn that ran between two of its reads: a
- * conversation with a reply not seen for a day was announced as finished. With lastReplyAt it is not, and a turn that
- * did run still is.
+ * conversation with a reply not seen for a day was announced as finished. With lastReplyAt such a conversation is not
+ * announced, and one whose turn did run still is.
  */
 const fs = require('fs');
 const path = require('path');
@@ -37,8 +37,8 @@ module.exports = async ({ eq, note, tmp, root }) => {
     'a conversation whose turn ended a day ago gives that end as lastReplyAt, and is not running');
   eq('lastReplyAt' in read(fresh), false, 'one with no turn ended yet gives none');
 
-  /* Agent Plus's notices, from its own checkout, read the conversation before and after; without a checkout only the
-     fields are checked. */
+  /* Agent Plus's notice code, taken from its checkout, reads the conversation before and after; without a checkout
+     only the fields are checked. */
   const core = process.env.AGENT_WORK_PLAN_DIR || path.join(root, '..', 'vscode-agent-plus');
   const attention = fs.existsSync(path.join(core, 'src', 'attention.js')) ? require(path.join(core, 'src', 'attention.js')) : null;
   if (!attention) note(`no Agent Plus checkout at ${core}: its notices were not checked against lastReplyAt`);
@@ -56,7 +56,6 @@ module.exports = async ({ eq, note, tmp, root }) => {
     await feed(before);
     await wait(20);
 
-    /* The lines Codex writes on opening the conversation and on setting its goal, then the row unarchiving leaves. */
     const now = Date.now();
     fs.appendFileSync(t.rollout, [
       { timestamp: new Date(now).toISOString(), type: 'event_msg', payload: { type: 'thread_settings_applied', thread_id: t.id,
@@ -80,7 +79,6 @@ module.exports = async ({ eq, note, tmp, root }) => {
     await feed(after);
     eq(shown, [], 'Agent Plus does not announce it as finished');
 
-    /* Then a real turn, run between two reads. */
     await feed(read(t, false));
     await wait(20);
     const at = Date.now();

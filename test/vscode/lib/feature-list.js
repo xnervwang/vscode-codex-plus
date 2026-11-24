@@ -4,7 +4,7 @@
 
 'use strict';
 /*
- * The look run's feature list, ui-look-features.json, and what it names of Agent Plus. A feature that works through
+ * The look run's feature list, ui-look-features.json. A feature that works through
  * Agent Plus lists the settings, commands and views of Agent Plus's package.json that it uses, and agentPlusOther lists
  * the rest, each with why it is not this extension's. test/parts/77-ui-look-features.js checks that against the Agent
  * Plus the suite finds, and the window test against the one it installed.
@@ -29,9 +29,9 @@ function contributed(pkg) {
 }
 
 /*
- * Why the list does not match Agent Plus's package.json `pkg`, one line each, [] when it does: a name listed twice, an
- * entry of agentPlusOther with no why, a name Agent Plus does not have (or not of that kind), and one of Agent Plus's
- * that is listed nowhere.
+ * Lists, one line per problem, why the list does not match Agent Plus's package.json `pkg`, and returns [] when it
+ * matches. The problems: a name listed twice, an entry of agentPlusOther with no why, a name Agent Plus does not have
+ * (or not of that kind), and one of Agent Plus's that is listed nowhere.
  */
 function agentPlusGaps({ features, agentPlusOther }, pkg) {
   const used = { settings: [], commands: [], views: [] };

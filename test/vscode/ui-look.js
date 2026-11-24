@@ -1015,7 +1015,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     }
     await look('agent-map', {
       expect: 'The pill opens the Agent map. At the top THIS CONVERSATION, with no count and no line above it, over a card titled by the conversation (cut short with an ellipsis), '
-        + 'its dot the one its tab has, and the model and the tokens in context under the title. Below, after a thin line, WAKE-UPS with a count badge 1 over the wake-up\'s card: '
+        + 'with the same dot as its tab and, under the title, the model and the tokens in context. Below, after a thin line, WAKE-UPS with a count badge 1 over the wake-up\'s card: '
         + 'its prompt\'s first line over "every 45 min", the next time and when it ends, and a Remove button under the card. The card, clicked open, shows the whole prompt '
         + '"Check whether the nightly export has finished." under it, and its arrow points down.',
     }, async () => {
@@ -1200,21 +1200,21 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     });
     const kept = `${title} (kept short)`;
     await look('rename-envelope-anywhere', {
-      expect: `Renamed, while the reply is unread, to "📩 📩 ${title} 📩 (kept short)", the tab's title reads "${kept} 📩": `
-        + `none of the typed envelopes is kept, and one envelope is drawn last. The conversation's rows in the session list, their titles cut short in the narrowed side bar, `
+      expect: `When the conversation is renamed to "📩 📩 ${title} 📩 (kept short)" while its reply is unread, the tab's title reads "${kept} 📩". `
+        + `The conversation's rows in the session list, their titles cut short in the narrowed side bar, `
         + 'each end in one envelope after the title and none inside it. (The window test checks the rows\' whole titles.)',
     }, async () => {
       await renameTo(`${ENVELOPE} ${ENVELOPE} ${title} ${ENVELOPE} (kept short)`);
       if (!await until(async () => (await labelOf(kept)) === `${kept} ${ENVELOPE}`, 20000, 500)) throw new Error(`the tab read ${JSON.stringify(await labelOf(kept))}`);
       await showList();
-      /* Narrowed from the step before, so the editor has room for the whole title on its tab. */
+      /* The side bar is still narrowed from the step before, which leaves the editor room for the whole title on its tab. */
       await sideTo(420);
       await away();
       await sleep(800);
       return union([await tab(kept).boundingBox().catch(() => null), await rowBox(t0.id, '.cp-section[data-key="open"]'), await rowBox(t0.id)]);
     });
     await look('rename-unread-pencil', {
-      expect: `The pencil on the conversation's row in the session list, while the reply is unread, turns the title into an edit field holding "${kept}" alone, selected, with no envelope inside the field; the envelope stays drawn after it.`,
+      expect: `The pencil on the conversation's row in the session list, while the reply is unread, turns the title into an edit field holding only "${kept}", selected; the envelope stays drawn after the field.`,
     }, async () => {
       await showList();
       await away();
@@ -1466,7 +1466,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         return mapBox();
       });
       await look('agent-map-light', {
-        expect: `The same Agent map in the Default Light Modern theme: the headings, their count badges, the thin lines above them and the cards all readable against the light background, the dots visible. ${MAP_SECTIONS}`,
+        expect: `The same Agent map in the Default Light Modern theme: the headings, their count badges, the thin lines above them and the cards are all readable against the light background, and the dots are visible. ${MAP_SECTIONS}`,
         unchanged: 'The conversation behind the map is the same, now in the light theme.',
       }, async () => {
         await closeMap();
@@ -1566,7 +1566,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
 
     /* ═══ a wake-up ═══ */
     await look('wake-ups-off', {
-      expect: 'In the Custom token mode with codexPlus.wakeUps off, a wake-up that falls due is not sent: after a minute and a half the conversation still ends as it did, '
+      expect: 'In the Custom token mode with codexPlus.wakeUps off, a wake-up that falls due is not sent: a minute and a half later the conversation still ends '
         + 'with no message beginning "[Wake-up set in this conversation".',
     }, async () => {
       await setting('tokenMode', 'custom', 'agentPlus');
@@ -1844,16 +1844,16 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await sleep(1500);
       return union([await part(PARTS.auxiliary), await part(PARTS.sidebar)]);
     });
-    /* The same conversation's Agent map in Codex's sidebar, which is narrow: a paused goal and a wake-up of its own give
+    /* The same conversation's Agent map in Codex's narrow sidebar: a paused goal and a wake-up of its own give
        it a pill and two sections. */
     {
       const wake1 = path.join(plans, `${t1.id}.wakeup`);
       await look('agent-map-sidebar', {
-        expect: 'In Codex\'s sidebar on the right, which is narrow, the Agent map of "Why does the nightly export skip archived rows?", opened from the pill by its message box: '
+        expect: 'In Codex\'s narrow sidebar on the right, the Agent map of "Why does the nightly export skip archived rows?", opened from the pill by its message box: '
           + 'THIS CONVERSATION over a card with the conversation\'s title (cut short with an ellipsis if the sidebar is too narrow), with the model and tokens in context under it. '
           + 'Below it, WAKE-UPS 1: a card of "Look at the export logs again." over "every 30 min" and its times, with a Remove button. Then GOAL 1: a card of '
           + '"Find out why archived rows are skipped" over "paused" and its tokens, with Resume and Clear. The dialog fits inside the sidebar; the cards are no wider than '
-          + 'it, and a second line too long for it ends in an ellipsis rather than running past the edge; the headings, badges and lines are as in the editor tab.',
+          + 'it, and a second line too long for it ends in an ellipsis; the headings, badges and lines are as in the editor tab.',
       }, async () => {
         const w0 = JSON.parse(fs.readFileSync(wakeupFile, 'utf8'));
         const at = Math.floor(Date.now() / 1000);

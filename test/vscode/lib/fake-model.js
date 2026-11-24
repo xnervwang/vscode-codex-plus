@@ -18,7 +18,7 @@
  * counts the steps not yet sent; script(null) goes back to the usual reply for every conversation. sent(text) counts
  * the requests whose body held `text`, among the last BODIES_KEPT.
  *
- * Each entry of `seen` also says what the request's input carries after the conversation's last reply (`context`): the
+ * Each entry of `seen` also has `context`, what the request's input holds after the conversation's last reply: the
  * text the user typed, and which notes from the work plan plugin's hooks it holds.
  */
 const http = require('http');
@@ -38,7 +38,7 @@ function threadOf(body) {
 
 const BODIES_KEPT = 40;
 
-/* The notes of the work plan plugin's hooks, by what each starts with or asks for: the plan (inject-work-plan.py), the
+/* Patterns for the notes the work plan plugin's hooks add, matched by how each starts or what it asks for: the plan (inject-work-plan.py), the
    brief's request for a status (plan_agent.py status_ahead), the time zone (tell-time-zone.py) and the images in replies
    (tell-reply-images.py). `skill` looks for the work plan's entry in Codex's skill list anywhere in the request. */
 const CONTEXT = { plan: /This conversation's work plan/, brief: /call set_status/, zone: /The user is in [A-Za-z_]+\/[A-Za-z_]+ \(/,
@@ -127,7 +127,6 @@ async function start({ reply = 'Done. The cap is configurable.' } = {}) {
   return { port: server.address().port, url: `http://127.0.0.1:${server.address().port}/v1`, seen, hold, release, close, script, releaseOthers,
     left: () => (scripted ? scripted.steps.length : 0),
     sent: (text) => bodies.filter((b) => b.includes(text)).length,
-    /* The newest kept body that holds `text`, to show in a failure. */
     bodyWith: (text) => bodies.slice().reverse().find((b) => b.includes(text)) || '',
     lastBodies: (n) => bodies.slice(-n),
     turns: () => seen.filter((s) => s.method === 'POST' && /\/responses/.test(s.url)).length };
