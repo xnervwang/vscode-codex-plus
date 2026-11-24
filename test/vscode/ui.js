@@ -1004,14 +1004,19 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         await list.evaluate(() => { window.__landed = []; });
         await row(t).click({ button: 'right' });
         await until(() => list.evaluate(() => !!document.querySelector('.cp-ctx')), 5000, 100);
-        /* A row low in a short window has its menu opened above the pointer, which can then rest on an item with a
-           submenu; that submenu opens at once, over the items beside it. Esc closes the submenu alone. */
-        if (await until(() => list.evaluate(() => !!document.querySelector('.cp-ctx-sub')), 500, 100)) {
-          await page.keyboard.press('Escape');
-          const shut = await until(() => list.evaluate(() => !document.querySelector('.cp-ctx-sub')), 2000, 100);
-          note(`a row's menu opened with the pointer on an item with a submenu, which opened over the others; Esc ${shut ? 'closed it' : 'left it open'} before "${labels[0]}" was clicked`);
-        }
         const main = list.locator('.cp-ctx:not(.cp-ctx-sub) .cp-ctx-item').filter({ hasText: labels[0] }).first();
+        /* A row low in a short window has its menu opened above the pointer, which can then rest on an item with a
+           submenu; that submenu opens at once, over the items beside it. Esc alone does not hold: with the pointer
+           still on that item, the submenu opens again. Resting on an item with no submenu closes it a moment later
+           (sessions-page.js hoverItem), so the pointer goes first to the left edge of the item to click, which the
+           submenu leaves clear, and Esc is the fallback. */
+        const noSub = () => until(() => list.evaluate(() => !document.querySelector('.cp-ctx-sub')), 2000, 100);
+        if (await until(() => list.evaluate(() => !!document.querySelector('.cp-ctx-sub')), 500, 100)) {
+          await main.hover({ position: { x: 6, y: 6 }, timeout: 5000 }).catch(() => {});
+          let how = 'moving the pointer onto it';
+          if (!await noSub()) { await page.keyboard.press('Escape'); how = await noSub() ? 'Esc' : ''; }
+          note(`a row's menu opened with the pointer on an item with a submenu, which opened over the others; ${how ? `${how} closed it` : 'it stayed open'} before "${labels[0]}" was clicked`);
+        }
         const lostFocus = () => list.evaluate(() => window.__landed.includes('the page lost the focus'));
         try {
           if (labels.length > 1) {
