@@ -13,7 +13,7 @@
 - `src/workplan.js`: plan files: the states and limits they share with the plugin and Agent Plus, and the sweep of plans whose conversation is gone.
 - `src/logo-dot.js`: Codex's logo with an activity dot or ring, for the tab icons.
 - `src/title-marks.js` (from Agent Plus): the envelope for a reply not seen, kept out of a conversation's name and drawn once after its title; `src/envelope.js` (from Agent Plus) picks its form for the colour theme.
-- `src/plan-bars.js`: the plan bar above the message box: each conversation's plan summary from Agent Plus, kept until Agent Plus says it changed, and Agent Plus's two commands for the bar's clicks; `src/page/plan-bar.js` (from Agent Plus) draws the bar in the page script.
+- `src/plan-bars.js`: the host side of the plan bar above the message box. It asks Agent Plus for each conversation's plan summary, keeps it until Agent Plus reports a change, and runs the two commands behind the bar's clicks (`agentPlus.showWorkPlanOf` and `agentPlus.answerQuestionOf`); `src/page/plan-bar.js` (from Agent Plus) draws the bar in Codex's page.
 - `src/sessions-view.js`, `src/tab-memory.js`, `src/session-info.js`, `src/session-groups.js`: the Codex sessions view (its model and the webview view), recently closed and dropped tabs, session information, the groups (Codex's sections) and their order; `src/account-usage.js`: Account & usage.
 - `src/archive-sweep.js`: deleting the conversations archived longer than `codexPlus.deleteArchivedAfterDays`, by one window a day, with its state file and lock folder in this extension's global storage.
 - `src/agent-map.js`: each conversation's Agent map (its wake-up, goal and sub-agents) from the snapshot, which the page script draws as Claude Code's pill and dialog; `src/wakeup.js` lists the wake-ups for the worker and removes one.
@@ -23,7 +23,7 @@
 - `codex-plugin/`: the companion Codex plugin (marketplace `codex-extras`, plugin `agent-work-plan`): hooks, skill, MCP server.
 - `src/edits.js`, `src/host.js`, `src/webview-inject.js`, `src/manifest.js`, `src/adapters.js`, `src/patching.js`, `uninstall.js`, `src/uninstall-plan.js`: the patch to Codex and its use, and which editors' Codex an uninstall puts back.
 - `src/page/codex-extras-page.js`: the script added to Codex's page; it also takes the layout sample (the structure of the conversation's DOM, with none of its text) for the render check, since the page is where Codex's run-time structure exists at all.
-- `docs/codex-page.md`: how the script this extension adds to Codex's page finds what it draws on, and how to see what it found.
+- `docs/codex-page.md`: what the page script looks for in Codex's page before it draws there, and how to see what it found.
 - `test/render/`: the render check ([The render check](#the-render-check)): stand-ins for VS Code and Codex's host in the page, an offline app-server, a made-up conversation, and the measurements.
 - `test/vscode/`: what the `.github/workflows/vscode.yml` workflow runs: `run.js` (the runner), `ui.js` (the window, driven through Playwright), `suite/` (checks inside VS Code), `helper/` (the vscode API for `ui.js`), `lib/`, `baseline/<platform>/` (the approved crops) and `update-baseline.js`; `readme-shots.js`, which takes the README's screenshots and is not run by the workflow.
 - `src/open-times.js`: how long Codex's pages took to open, from the `app_start` spans Codex writes to its own `Codex.log`, or from its `app routes mounted` line in a log with no span.
@@ -138,4 +138,4 @@ What a change must not break:
 - Code, comments and commit messages are English; every source file starts with the BSD 3-Clause header.
 - The page script never puts a node inside one Codex draws.
 - Every patch edit matches exactly once on a pristine Codex build, or nothing is written.
-- Every name a host edit declares inside Codex's code starts with `cxp` and an upper-case letter (`LOCAL_PREFIX` in `src/host.js`), so that it cannot hide one of Codex's minified names; `test/parts/50c-patch-local-names.js` checks it.
+- Every name the edits in `src/host.js` declare inside Codex's code starts with `cxp` and an upper-case letter (`LOCAL_PREFIX`), so that it cannot hide one of Codex's minified names. `test/parts/50c-patch-local-names.js` checks this rule.
