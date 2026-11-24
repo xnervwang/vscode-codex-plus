@@ -4275,23 +4275,40 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         await sleep(200);
       };
       /* Each way opens a conversation and closes it a moment later. On a slow machine its page is still fetching most of
-         its code then, and what it leaves queued holds up every Codex page for minutes, so the page is let draw the
-         conversation and go 2 s with no file reaching it before its tab is closed; and again when VS Code was still
-         behind with Codex's files, as the page's own may have been among them. The page is looked for among those of
-         Codex's tabs, which share one webview origin, learnt from the page in front: the page of Codex's hidden sidebar,
-         left on a conversation by an earlier step, has a composer too and the titles of the conversations in its text. */
+         its code then, and what it leaves queued holds up every Codex page for minutes, so before a tab is closed the
+         pages of Codex's tabs are let draw their conversations and go 2 s with no file reaching them; and again when VS
+         Code was still behind with Codex's files, as theirs may have been among them. They are told by the webview origin
+         Codex's tabs share, learnt from the page in front, and not by the conversation's title: Codex heads a page "New
+         chat" now and then, and the page of its hidden sidebar has a composer and the titles in its text too. */
       let tabsHost = '';
+      const tabPages = async () => {
+        const out = [];
+        for (const f of page.frames()) {
+          const drawn = await f.evaluate((host) => (location.host === host && /\/openai\.chatgpt[^/]*\/webview\/$/.test(document.baseURI)
+            ? !!document.querySelector('[data-codex-composer-root]') && !!document.querySelector('[data-turn-key]') : null), tabsHost).catch(() => null);
+          if (drawn !== null) out.push({ f, drawn });
+        }
+        return out;
+      };
       const letFinish = async (t) => {
         if (!tabsHost) {
           const fp = await until(frontPage, 60000, 500);
           tabsHost = fp ? await fp.evaluate(() => location.host).catch(() => '') : '';
         }
-        const f = tabsHost ? await frameWhere(([want, host]) => location.host === host && !!document.querySelector('[data-codex-composer-root]')
-          && document.body.innerText.includes(want), 60000, [t.title.slice(0, 30), tabsHost]) : null;
-        if (!f) { note(`rows of conversations no longer open: the page of "${t.title}" had not drawn it in 60 s when its tab was to be closed`); return; }
-        await f.evaluate(() => { const g = globalThis; if (g.__cxpLastFile !== undefined) return; g.__cxpLastFile = performance.now();
-          try { new PerformanceObserver(() => { g.__cxpLastFile = performance.now(); }).observe({ type: 'resource' }); } catch (_) { /* none */ } }).catch(() => {});
-        await until(() => f.evaluate(() => performance.now() - globalThis.__cxpLastFile > 2000).catch(() => true), 60000, 500);
+        const pages = tabsHost ? await until(async () => { const ps = await tabPages(); return ps.length && ps.every((x) => x.drawn) && ps; }, 60000, 500) : null;
+        if (!pages) {
+          note(`rows of conversations no longer open: a page of Codex's tabs had not drawn its conversation in 60 s when the tab of "${t.title}" was to be closed`);
+          return;
+        }
+        const quiet = (f) => f.evaluate(() => {
+          const g = globalThis;
+          if (g.__cxpLastFile === undefined) {
+            g.__cxpLastFile = performance.now();
+            try { new PerformanceObserver(() => { g.__cxpLastFile = performance.now(); }).observe({ type: 'resource' }); } catch (_) { /* none */ }
+          }
+          return performance.now() - g.__cxpLastFile > 2000;
+        }).catch(() => true);
+        await until(async () => (await Promise.all(pages.map((x) => quiet(x.f)))).every(Boolean), 60000, 500);
       };
       /* The tab in the tab bar is found by its label, as the API has it or as the conversation is titled: Codex first
          labels a tab with the title cut short, and the tab bar can show the whole title while the API still has the
