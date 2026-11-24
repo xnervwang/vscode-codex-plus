@@ -1,5 +1,5 @@
 {
-  "core": "48d1c6c5417bb605e6074aa3b369d1346909dc96",
+  "core": "15096576d7ec55e35ce1362cdaead1ab2591fc2b",
   "files": [
     {
       "path": "build/sync-shared.js",
@@ -34,7 +34,7 @@
     {
       "path": "src/files.js",
       "from": "src/files.js",
-      "sha256": "42003eedc979c6a80411939e433da1118133b5d53df6df0528e8be0a9d00baf2"
+      "sha256": "f1063a61d41b9a9f37384edf43ee9e098820232071ae28151092cbc726bb0fa3"
     },
     {
       "path": "src/edits.js",
@@ -59,12 +59,12 @@
     {
       "path": "src/core-link.js",
       "from": "shared/host/core-link.js",
-      "sha256": "8de0028c51be2fc548fd35f21440c939fd6595faaa9b49ce225e847ee7b816cb"
+      "sha256": "16e3f891918db8525ae339f8063d616643a02ff0c9fc69ec3e1ab56c4593905c"
     },
     {
       "path": "src/window-entries.js",
       "from": "shared/host/window-entries.js",
-      "sha256": "cd0e1f9c56bcacd26b80cb10c593b699aa1f875425fc4ee8070f8afd8a179aad"
+      "sha256": "2e12b5781b4b5c233765f4f90ab7d730fdb77761d1778d1d6f6e73ba428f4fcf"
     },
     {
       "path": "src/folders.js",
@@ -89,7 +89,7 @@
     {
       "path": "src/page/kit.js",
       "from": "shared/page/kit.js",
-      "sha256": "afc6010976825e73a6b96c77b1a8614afa8c3fdcebe1a2ca8853b3b8a3c86c00"
+      "sha256": "ee200722f346cb5720b62f1b862f04d74ce953b259c06c74ea1071e542464eb7"
     },
     {
       "path": "src/python-runtime.js",
@@ -99,7 +99,7 @@
     {
       "path": "src/load-tabs.js",
       "from": "shared/host/load-tabs.js",
-      "sha256": "99475c0ba31eeaf4ad0f2c3d91a639967d96a82e760a5a9735e55dd5122861a1"
+      "sha256": "82611d16e2aa1fde553a27dc6ffaeb2b548fb6baf3c830143e324144d850ed29"
     },
     {
       "path": "src/python-offer.js",
