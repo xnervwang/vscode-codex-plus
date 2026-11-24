@@ -4,15 +4,11 @@
 
 'use strict';
 /*
- * A write that lands while the worker reads the thread list. The worker answers "nothing moved" whenever its change
- * stamp is the same as last time (src/codex-worker.js snapshot), so the stamp of the files the list comes from has to
- * be taken before the list is read: taken after, it already covers a write the list missed, and every later read
- * answers "nothing moved" with that list until something else is written. Codex names a new conversation in the same
- * moment its first turn starts, and when nothing else writes for a while, as with a model that has not answered yet,
- * the tab kept the name "Codex".
- *
- * The write is made from inside the list read, after the list has been read; the Codex home has only
- * session_index.jsonl, as in 13-index-stamp.js.
+ * A write that lands while the worker reads the thread list. The worker answers "nothing moved" when its change stamp
+ * equals the previous one (src/codex-worker.js snapshot), so it has to stat the database and index files before it
+ * reads the list. If it stats them after, the stamp already includes a write the list missed, and every later read
+ * keeps that list. Codex writes a new conversation's name as its first turn starts. Until
+ * the model replies nothing else is written, and the tab kept the name "Codex".
  */
 const fs = require('fs');
 const path = require('path');

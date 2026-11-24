@@ -39,10 +39,9 @@ function at(h) {
   return files.codexHome();
 }
 
-/* The part of the stamp taken before the thread list is read: the state database's and its write-ahead log's sizes
-   and times, session_index.jsonl's, which is the whole list when the database cannot be read and whose threads name
-   no rollout, and the plans' folder's time. Taken after the list, it would already cover a write the list missed, and
-   every read after it would answer that nothing moved. */
+/* The first part of the stamp, taken before the thread list is read. session_index.jsonl is the whole list when the
+   database cannot be read, and its threads name no rollout. Taken after the list, this part would include a write the
+   list missed, and later reads would find the stamp unchanged and keep the old list. */
 function filesStampOf(dir) {
   const db = files.stateDbPath(dir), goals = files.goalsDbPath(dir);
   const parts = [];
@@ -53,8 +52,9 @@ function filesStampOf(dir) {
   return parts;
 }
 
-/* Cheap: `filesPart` (filesStampOf), then the size of every rollout touched in the last day and the time of each of
-   those conversations' plans, taken before any of them is read. Only when the stamp moves is the rest read again. */
+/* `filesPart` (filesStampOf), then the size of every rollout touched in the last day and the time of each of those
+   conversations' plans, all taken before any of them is read. The snapshot reads the rest only when the stamp has
+   changed. */
 function stampOf(dir, threads, filesPart = filesStampOf(dir)) {
   const parts = filesPart.slice();
   const day = Date.now() - STAMP_WINDOW_MS, subs = Date.now() - SUBAGENT_WINDOW_MS;
