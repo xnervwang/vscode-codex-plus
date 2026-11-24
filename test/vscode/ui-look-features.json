@@ -162,7 +162,7 @@
       "steps": ["show-status"], "settings": [], "commands": ["codexPlus.status"] },
     { "id": "open-times", "what": "Show How Long Opening a Codex Page Took, from Codex's own log",
       "steps": ["open-times"], "settings": [], "commands": ["codexPlus.showOpenTimes"] },
-    { "id": "master-switch", "what": "Turn Off, Turn On and Toggle On/Off over everything Codex Plus draws in Codex's page and tabs",
+    { "id": "main-switch", "what": "Turn Off, Turn On and Toggle On/Off over everything Codex Plus draws in Codex's page and tabs",
       "steps": ["turned-off", "turned-on", "toggled-off"], "settings": ["codexPlus.enabled"], "commands": ["codexPlus.turnOff", "codexPlus.turnOn", "codexPlus.toggle"] },
     { "id": "settings-page", "what": "Codex Plus: Settings, opening VS Code's settings filtered to this extension",
       "steps": ["settings-page"], "settings": [], "commands": ["codexPlus.openSettings"] },

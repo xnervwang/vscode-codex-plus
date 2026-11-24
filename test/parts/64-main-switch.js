@@ -53,7 +53,7 @@ async function windowWith(root, tmp, config) {
 module.exports = async ({ ok, bad, eq, tmp, root }) => {
   const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
 
-  /* ── the master switch is a setting of its own, which every part reads through ── */
+  /* ── the main switch is a setting of its own, which every part reads through ── */
   eq(pkg.contributes.configuration.properties['codexPlus.enabled'].default, true,
     'the additions are on until somebody turns them off');
   const described = pkg.contributes.configuration.properties['codexPlus.enabled'].markdownDescription;

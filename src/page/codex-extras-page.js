@@ -130,7 +130,7 @@
    * right edge, so adding to either group leaves Codex's buttons where they are, as long as the gap between the groups
    * is wide enough (rowFits). When it does not, all three go to a row of this script's own on <body>,
    * just below the box's frame, placed by measuring the box; that row takes no pointer events, only its buttons do.
-   * Codex's redraws can drop or move what was added, and each pass of either observer puts it back. With the master
+   * Codex's redraws can drop or move what was added, and each pass of either observer puts it back. With the main
    * switch off, or with no box recognised, nothing is drawn.
    *
    * The information comes from the host. Clicking a value sends back only its position in the list, and the host copies

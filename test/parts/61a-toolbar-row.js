@@ -116,7 +116,7 @@ module.exports = async ({ eq, root }) => {
     p.view({ infoButton: false, chimeButton: false, contextMeter: false });
     eq(p.q('[data-codex-extras="tools"]').length + p.q('[data-codex-extras="bar-button"]').length, 0, 'both off, neither is drawn');
     p.view({ buttons: false });
-    eq(p.q('[data-codex-extras="tools"]').length + p.q('[data-codex-extras="bar"]').length, 0, 'and the master switch off draws neither');
+    eq(p.q('[data-codex-extras="tools"]').length + p.q('[data-codex-extras="bar"]').length, 0, 'and the main switch off draws neither');
   }
   {
     const p = page(root, (dom) => toolbar(dom, { build: '26.1021' }));

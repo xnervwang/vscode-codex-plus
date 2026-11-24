@@ -1036,7 +1036,7 @@ async function refreshPanels() {
     }
   }
   const logo = source.logo;
-  /* The dot on a tab's logo is one of the things the master switch covers, so with it off a tab gets Codex's own logo
+  /* The dot on a tab's logo is one of the things the main switch covers, so with it off a tab gets Codex's own logo
      back rather than keeping whichever dot it had when the switch was thrown. */
   const dots = deps.settings().enabled !== false;
   const icons = logo && dots ? iconsFor({ light: logo.light.fsPath, dark: logo.dark.fsPath }, path.join(context.globalStorageUri.fsPath, 'tab-icons'),
@@ -1375,7 +1375,7 @@ function sayNotSupported(vscode, dir) {
 }
 
 /*
- * `mode` is 'on' or 'off' (extension.js settings): off while the master switch is off or after "Remove the Patch from
+ * `mode` is 'on' or 'off' (extension.js settings): off while the main switch is off or after "Remove the Patch from
  * Codex", on otherwise. A Codex that carries an older copy of the patch gets this build's (`refresh`), and a clean one
  * gets the patch, both without asking.
  */

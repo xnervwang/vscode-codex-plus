@@ -103,7 +103,7 @@ async function offerReloadForStale() {
 }
 
 /*
- * The settings, with the master switch (codexPlus.enabled) already applied to the ones it covers.
+ * The settings, with the main switch (codexPlus.enabled) already applied to the ones it covers.
  *
  * The switch is a setting of its own rather than a command that writes `false` over each of the settings below, so that
  * turning everything off and on again gives back the choices the user had made rather than every default. Everything
@@ -769,7 +769,7 @@ function registerCommands(context, { source, memory, sessionsModel, sessionsView
     log.show(true);
   });
   /*
-   * The master switch for all the additions. Like Claude Code Plus's, it shows no message.
+   * The main switch for all the additions. Like Claude Code Plus's, it shows no message.
    *
    * It writes only codexPlus.enabled, which settings() applies on top of the other settings, so each of those keeps the
    * value the user chose and has it again when the switch comes back on. Turning it off leaves the patch in Codex's
@@ -1545,7 +1545,7 @@ function deactivate() {
   try { uninstallPlan.finishUninstall(selfPath, [ID, ...uninstallPlan.FORMER_IDS]); } catch (_) { /* VS Code runs the hook later */ }
 }
 
-/* `_settings` is for the tests: the master switch only works if every part reads its settings from settings(), with the
+/* `_settings` is for the tests: the main switch only works if every part reads its settings from settings(), with the
    switch already applied, and the tests check that table directly.
    `_ensurePlugin` (the start-up install of the plugin), `_reopenDropped` (reopening dropped tabs) and `_loadRestored`
    (codexPlus.loadRestoredTabs) run after a delay during activation, so the tests call them directly. `_tokenModeLine`

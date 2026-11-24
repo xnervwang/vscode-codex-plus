@@ -78,7 +78,7 @@ module.exports = async ({ eq, tmp, root }) => {
     p.view();
     eq(p.q('[data-codex-extras="bar"]').length, 1, 'a row taken out of the page is put back on the next pass');
     p.view({ buttons: false });
-    eq(p.q('[data-codex-extras="bar"]').length + p.q('[data-codex-extras="info"]').length, 0, 'with the master switch off nothing of it is drawn');
+    eq(p.q('[data-codex-extras="bar"]').length + p.q('[data-codex-extras="info"]').length, 0, 'with the main switch off nothing of it is drawn');
   }
   {
     const p = page(root, { box: false });

@@ -120,7 +120,7 @@ module.exports = async ({ eq, tmp, root }) => {
     + 'this extension\'s only when the loaded manifest carries the change, its hover saying what it opens; without the change Codex\'s own '
     + 'button keeps its title and, set to tab, opens a tab through the host patch until the reload that loads the change');
 
-  /* ── the key follows the master switch and the loaded manifest while the window runs ── */
+  /* ── the key follows the main switch and the loaded manifest while the window runs ── */
   const w = await activated(root, tmp, { loaded: JSON.parse(patched || original), config: {} });
   try {
     const seen = [w.control.state.context[KEY]];
@@ -137,7 +137,7 @@ module.exports = async ({ eq, tmp, root }) => {
     w.control.fireExtensions();
     seen.push(w.control.state.context[KEY]);
     eq(seen, [true, false, true, false, false],
-      'the key goes with the master switch, and with a Codex whose loaded manifest lacks the change, or no Codex at all, it is off');
+      'the key goes with the main switch, and with a Codex whose loaded manifest lacks the change, or no Codex at all, it is off');
     eq(w.control.state.commands.some((c) => c[0] === 'setContext' && c[1] === 'codexPlus.tabBarHooked'), false,
       'and nothing sets codexPlus.tabBarHooked, which no menu reads');
   } finally { w.close(); }
