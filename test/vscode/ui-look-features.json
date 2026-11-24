@@ -96,6 +96,8 @@
       "steps": ["hook-prompt-folded", "hook-prompt-unfolded"], "settings": [], "commands": [] },
     { "id": "toolbar-controls", "what": "The four controls Codex Plus puts in the message box's toolbar: information button, note button, context meter and Agent map",
       "steps": ["composer-toolbar"], "settings": [], "commands": [] },
+    { "id": "narrow-message-box", "what": "Codex Plus's controls in a message box too narrow for them in Codex's toolbar row, as in Codex's sidebar: a line of their own inside the box, below Codex's row, rather than outside it",
+      "steps": ["sidebar-narrow-box"], "checks": ["a conversation in Codex's sidebar"], "settings": [], "commands": [] },
     { "id": "info-button", "what": "The information button opening the conversation's thread ID, app-server, folder, rollout, context, tokens, account and token mode",
       "steps": ["info-box"], "checks": ["settings that Codex's page follows"],
       "settings": ["codexPlus.infoButton"], "commands": [] },

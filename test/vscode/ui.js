@@ -42,8 +42,16 @@
  *                Answer view; the arrow on its row and the page's button each go back to the conversation's tab
  *   a question   Codex's asynchronous question answered while its turn still runs, on its card or by a message typed
  *                into the message box: once the turn has ended there is no red dot on the tab, the list row or Agent
- *                Plus's panel, and no count. A question left unanswered gets the red dot in all three places, and the count
- *   the sidebar  a conversation resumed in Codex's sidebar: each reply's stamp inside its column
+ *                Plus's panel, and no count. A question left unanswered gets the red dot in all three places, and the count,
+ *                and its page the question chime. The model's blocking question (request_user_input, in Plan mode): the
+ *                red dot on the tab and the list row, the question chime and the count, all gone once it is answered
+ *   the sidebar  a conversation resumed in Codex's sidebar: each reply's stamp inside its column, and, with the sidebar
+ *                too narrow for them in Codex's toolbar row, this extension's controls in a line of their own inside the
+ *                message box
+ *   side and tab Codex's sidebar opened on one conversation with the tab of another in front: the session list's
+ *                current row, Agent Plus's front and its work plan view follow the same one, whichever came forward last
+ *   recent chats another conversation opened from Codex's Recent chats in a tab, which Codex opens in an editor tab of
+ *                its own: titled by it, in front for Agent Plus and drawn as current in the list, also after a message
  *   archived     the conversation in the tab archived while open: the tab keeps its turns, read-only, and opening it
  *                from the list unarchives it and gives the tab its message box back
  *   a New tab    a first message typed into a tab the tab bar button opened: the tab is titled by the conversation, and
@@ -471,6 +479,17 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     }
     return false;
   };
+  /* The chimes the host asks a Codex page to play from now on (its codex-extras-chime messages, src/patching.js), as
+     the page receives them: the sound itself cannot be heard here. */
+  const hearChimes = (f) => (f ? f.evaluate(() => {
+    if (!window.__cxpTestChimes) {
+      window.__cxpTestChimes = [];
+      window.addEventListener('message', (e) => { const d = e && e.data; if (d && d.type === 'codex-extras-chime') window.__cxpTestChimes.push(String(d.kind)); });
+    }
+    window.__cxpTestChimes.length = 0;
+    return true;
+  }).catch(() => false) : false);
+  const chimesHeard = (f) => (f ? f.evaluate(() => (window.__cxpTestChimes || []).slice()).catch(() => null) : null);
   const pageSays = (f) => (f ? f.evaluate(() => ({ turns: document.querySelectorAll('[data-turn-key]').length, text: document.body.innerText.slice(0, 200) }))
     .catch((e) => ({ error: String(e) })) : null);
   /* "Codex could not start" when the page got none of its files within 30 s, or "ChatGPT hit a snag", its recovery
@@ -528,6 +547,11 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
   /* The conversation Agent Plus last said is in front, as its output channel has it: "codex <id>",
      "codex (no session yet)", "(none)", or '' before it said any. */
   const walk = (d) => { try { return fs.readdirSync(d, { withFileTypes: true }).flatMap((n) => (n.isDirectory() ? walk(path.join(d, n.name)) : [path.join(d, n.name)])); } catch (_) { return []; } };
+  /* Everything Codex Plus's output channel has written in this run, across reloads, and its line for a page whose
+     message box or messages the page script did not recognise (src/patching.js anchorsMissingLine). */
+  const ownLog = () => walk(path.join(profile.user, 'logs')).filter((f) => /Codex Plus\.log$/.test(f)).map((f) => fs.readFileSync(f, 'utf8')).join('\n');
+  const NO_ANCHORS = /the page script recognised none of [^\n]*/g;
+  const noAnchors = () => ownLog().match(NO_ANCHORS) || [];
   const agentFront = () => {
     const logs = walk(path.join(profile.user, 'logs')).filter((f) => /Agent Plus\.log$/.test(f))
       .map((f) => ({ f, at: fs.statSync(f).mtimeMs })).sort((a, b) => b.at - a.at);
@@ -628,8 +652,11 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
   }, sel || '').catch(() => null) : null);
   /* Checks that a drawn plan bar covers nothing `sel` selects. */
   const planBarClear = async (f, sel, what) => {
-    const at = await planBarAgainst(f, sel);
+    /* The bar follows the message box on the box's next resize, so a card that has just grown the box can have the bar
+       over it for a moment. */
+    let at = await planBarAgainst(f, sel);
     if (!at) { note(`${what}: no plan bar was drawn, so whether it would cover it was not checked`); return; }
+    if (at.over.length) at = await until(async () => { const x = await planBarAgainst(f, sel); return x && !x.over.length && x; }, 5000, 250) || await planBarAgainst(f, sel) || at;
     check(!at.over.length, `${what}: the plan bar above the message box covers none of it`, at);
   };
 
@@ -3043,10 +3070,15 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         /* Behind notes.txt when the turn ends, since Agent Plus does not count the conversation in front. */
         await openNotes();
         await sleep(800);
+        await hearChimes(codex);
         model.release();
         const over = await until(() => { const t = turnAsking(question); return t && t.ended && t; }, 30000, 500);
         check(!!over, `${name}: the turn ends`, { turn: turnAsking(question), ...lastRows() });
         const waits = !answer;
+        /* The chime for a turn that ends on a question still open is the question one (src/patching.js turnEndChime). */
+        const rang = await until(async () => { const h = await chimesHeard(codex); return h && h.length && h; }, 15000, 500) || await chimesHeard(codex);
+        check(waits ? !!rang && rang.includes('question') : !!rang && rang.includes('done') && !rang.includes('question'),
+          `${name}: the conversation's page is asked to play ${waits ? 'the question chime' : 'the finished-turn chime, not the question one'} as the turn ends`, rang);
         const lit = await until(async () => { const d = await dotsOn(title); return red(d) && d; }, waits ? 20000 : 15000, 500);
         const dots = lit || await dotsOn(title);
         if (waits) check(!!lit, `${name}: once the turn has ended, the tab's logo carries the red dot`, dots);
@@ -3087,11 +3119,102 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         }, 30000, 500);
         check(!!answered && !!await until(async () => { const d = await dotsOn(title); return d && !red(d) && d.working === 0 && d; }, 15000, 500),
           'left unanswered: the user\'s next message, once its turn has ended, takes the red dot away', { answered: !!answered, dots: await dotsOn(title), ...lastRows() });
+        if (await showList()) {
+          const l = await until(async () => { const x = await listDot(id, '.cp-group'); return !!x && x.word !== 'waiting' && x.look !== 'red' && x; }, 15000, 500);
+          check(!!l, 'and from its row in the session list', await listDot(id, '.cp-group'));
+        }
       } finally {
         model.script(null);
         model.release();
         await followUps(undefined).catch(() => {});
         await exec('notifications.clearAll');
+      }
+    });
+
+    /*
+     * The model's blocking question, request_user_input. Codex offers that tool in Plan mode, which its /plan command
+     * turns on, and asks this window with item/tool/requestUserInput, isBlocking set: Codex runs no countdown on it, so
+     * it waits for the user (src/approvals.js). Asked with the tab behind a text file, it gives the tab and the list row
+     * the red dot, has the page play the question chime and is counted by Agent Plus; answered on its card, the red dots
+     * go and the turn goes on to its reply.
+     */
+    await step('a blocking question from the model', async () => {
+      if (!codex || !list) throw new Error('the conversation or the session list did not open');
+      const id = threads[0].id;
+      const QUESTION = 'Which cache size should the sync use, asked in Plan mode?';
+      const OPTIONS = ['64 MB', '128 MB'];
+      const card = () => codex.locator('[data-codex-composer-request-navigation]').filter({ hasText: QUESTION }).first();
+      const box = () => codex.locator(`${COMPOSER}:not([data-codex-composer-request-navigation] *)`).first();
+      const placeholder = () => codex.evaluate(() => { const p = document.querySelector('[data-codex-composer-root] [data-placeholder]'); return p ? p.getAttribute('data-placeholder') : ''; }).catch(() => '');
+      const owed = () => call(`${OWN} return own('patching').approvalsOf(arg);`, id).catch((e) => String(e));
+      const red = (d) => !!d && d.waiting >= 6;
+      /* Codex's /plan offers "Turn plan mode on" or "Turn plan mode off", whichever applies. */
+      const planMode = async (on) => {
+        await box().click();
+        await page.keyboard.type('/plan');
+        const item = codex.locator('[role="option"]').filter({ hasText: on ? /Turn plan mode on/ : /Turn plan mode off/ }).first();
+        const shown = await item.waitFor({ state: 'visible', timeout: 10000 }).then(() => true, () => false);
+        if (shown) await item.click();
+        else for (let i = 0; i < 5; i++) await page.keyboard.press('Backspace');
+        return shown;
+      };
+      await tabNamed(title).click();
+      await until(async () => (await frontPage()) === codex, 10000, 300);
+      await exec('notifications.clearAll');
+      const planOn = await planMode(true);
+      const said = await until(async () => { const p = await placeholder(); return /plan/i.test(p) && p; }, 5000, 300);
+      check(planOn && !!said, 'Codex\'s /plan turns Plan mode on in the conversation\'s message box', { offered: planOn, placeholder: await placeholder() });
+      if (!planOn) return;
+      try {
+        const counted = await agentCount();
+        model.script(id, [{ call: 'request_user_input', args: { questions: [{ id: 'cache_size', header: 'Cache', question: QUESTION,
+          options: OPTIONS.map((label, i) => ({ label, description: i ? 'Larger' : 'Smaller' })) }] } }, { reply: 'Noted the cache size.' }]);
+        model.hold();
+        const turns = model.turns();
+        await box().click();
+        await page.keyboard.type('Ask me which cache size to use, and wait for the answer.');
+        await page.keyboard.press('Enter');
+        check(!!await until(() => model.turns() > turns, 20000, 300), 'a message sent in Plan mode reaches the made-up model', model.seen.slice(-3));
+        await openNotes();
+        await sleep(800);
+        await hearChimes(codex);
+        model.release();
+        const lit = await until(async () => { const d = await dotsOn(title); return red(d) && d; }, 30000, 500);
+        check(!!lit, 'with the tab behind a text file, the model\'s blocking question gives the tab\'s logo the red dot', await dotsOn(title));
+        const waits = await until(async () => { const o = await owed(); return o && o.decide === 1 && o; }, 10000, 500);
+        check(!!waits, 'Codex Plus takes it as an answer the user owes: Codex runs no countdown on a blocking question', await owed());
+        const rang = await until(async () => { const h = await chimesHeard(codex); return h && h.includes('question') && h; }, 15000, 500);
+        check(!!rang, 'the conversation\'s page is asked to play the question chime', await chimesHeard(codex));
+        if (await showList()) {
+          const l = await until(async () => { const x = await listDot(id, '.cp-group'); return listDotIs(x, 'waiting') && x; }, 15000, 500);
+          check(!!l, 'its row in the session list carries the red dot', await listDot(id, '.cp-group'));
+        }
+        check(!!await until(async () => (await agentCount()) > counted, 15000, 500), 'Agent Plus counts it in the status bar', { before: counted, now: await agentCount() });
+        const p = await panelSays(title, 'waiting', null);
+        check(p.ok, 'and its row in Agent Plus\'s Conversations panel a red circle', p.row);
+        await shot('blocking-question-waiting');
+        await tabNamed(title).click();
+        await until(async () => (await frontPage()) === codex, 10000, 300);
+        await clearToasts();
+        const shown = await card().waitFor({ state: 'visible', timeout: 15000 }).then(() => true, () => false);
+        check(shown, 'in the tab, Codex\'s page shows the question\'s card above the message box', await pageSays(codex));
+        if (shown) {
+          await planBarClear(codex, '[data-codex-composer-request-navigation]', 'the blocking question\'s card');
+          await card().locator(`button[role="radio"][aria-label="${OPTIONS[1]}"]`).first().click({ timeout: 5000 });
+          const off = await until(async () => { const d = await dotsOn(title); return d && d.waiting === 0 && model.left() === 0 && d; }, 30000, 500);
+          check(!!off, `answered on its card with ${OPTIONS[1]}, the red dot leaves the tab and the turn goes on to its reply`, { dots: await dotsOn(title), left: model.left(), owed: await owed() });
+          check(((await owed()) || {}).decide === 0, 'and Codex Plus no longer counts an answer owed', await owed());
+          if (await showList()) {
+            const l = await until(async () => { const x = await listDot(id, '.cp-group'); return !!x && x.word !== 'waiting' && x.look !== 'red' && x; }, 15000, 500);
+            check(!!l, 'and the red dot leaves its row in the session list', await listDot(id, '.cp-group'));
+          }
+          await shot('blocking-question-answered');
+        }
+      } finally {
+        model.script(null);
+        model.release();
+        await tabNamed(title).click().catch(() => {});
+        if (!await planMode(false).catch(() => false)) note('Plan mode could not be turned off again with /plan after the blocking question');
       }
     });
 
@@ -3158,10 +3281,23 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       if (await allow.waitFor({ state: 'visible', timeout: 15000 }).then(() => true, () => false)) {
         await allow.locator('.dialog-buttons .monaco-button').filter({ hasText: 'Open' }).first().click({ timeout: 5000 });
       }
-      const side = await frameWhere((want) => innerWidth < 800 && document.body.innerText.includes(want)
-        && document.querySelectorAll('.codex-extras-stamp-assistant').length >= 4, 90000, t.title);
-      /* Reported when the check below fails: each page narrower than 800 px that has a message box, with its size,
-         how many turns and reply stamps it has, and whether it names the conversation. */
+      /* Codex draws a conversation's turns as they come into view. In a short sidebar, as on Windows with Codex's setup
+         banner above the message box, it draws fewer than all of them, even after the conversation is scrolled to its top
+         and back to its end, so the stamps looked for are those of the turns it drew: one on each, and at least two. */
+      const shownSide = await frameWhere((want) => innerWidth < 800 && document.body.innerText.includes(want)
+        && document.querySelectorAll('.codex-extras-stamp-assistant').length >= 1, 90000, t.title);
+      if (shownSide) {
+        for (const up of [true, false]) {
+          await shownSide.evaluate((u) => { const sc = document.querySelector('[data-app-action-timeline-scroll]'); if (sc) sc.scrollTop = u ? 0 : sc.scrollHeight; }, up).catch(() => {});
+          await sleep(1500);
+        }
+      }
+      const side = shownSide && await until(() => shownSide.evaluate(() => {
+        const turns = document.querySelectorAll('[data-turn-key]').length;
+        return turns >= 2 && document.querySelectorAll('.codex-extras-stamp-assistant').length >= turns;
+      }).catch(() => false), 30000, 500) ? shownSide : null;
+      /* For a failure's detail: each page narrower than 800 px, its turns, its stamps on replies and whether it names the
+         conversation. */
       const narrowPages = async () => {
         const out = [];
         for (const f of page.frames()) {
@@ -3180,7 +3316,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         return { width: Math.round(r.width), column: Math.round(p.width), past: e.scrollWidth - e.clientWidth, over: Math.round(r.right - p.right),
           lines: Math.round(r.height / (parseFloat(st.fontSize) * 1.4)) };
       }));
-      check(fit.length >= 4 && fit.every((x) => x.past <= 0 && x.over <= 1), 'in Codex\'s sidebar every reply\'s stamp stays inside its column', fit);
+      check(fit.length >= 2 && fit.every((x) => x.past <= 0 && x.over <= 1), 'in Codex\'s sidebar every reply\'s stamp stays inside its column', fit);
       if (fit.length && !fit.some((x) => x.lines >= 2)) note('Codex\'s sidebar was wide enough for every stamp, so none had to wrap');
 
       const how = 'with Codex\'s sidebar showing the conversation and a text file in front';
@@ -3240,10 +3376,65 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       const sideNow = await frameWhere(() => innerWidth < 800 && !!document.querySelector('[data-codex-composer-root]'), 10000);
       check(!!read, 'opening Codex\'s sidebar on it again takes the envelope away', { row: await unseen(), sidebar: await auxiliaryShowsCodex(),
         sidebarPage: await pageSays(sideNow), patch: await call(`${OWN} const p = own('patching'); return { showing: p.sidebarShowing(), last: p.sidebarThread() };`).catch((e) => String(e)) });
-      /* Codex's narrow sidebar uses the compact bar; clicking it opens the Agent Plus Work plan view for the
-         conversation shown in the sidebar, even when the tab in front shows a different conversation. Last in this
-         step, since a sidebar page that has shown the conversation once draws fewer of its turns when it shows it
-         again. */
+      /* This extension's controls by the message box, in Codex's sidebar narrowed until Codex's toolbar row has no room for
+         them: they stay inside the box, in a line of their own below Codex's row, as Claude Code's footer wraps its buttons
+         onto another line, and with the sidebar wide enough they go back into that row. Either way each is inside Codex's
+         footer grid, which the box's border encloses, and covers none of Codex's buttons. */
+      {
+        const box = await frameWhere((want) => innerWidth < 800 && document.body.innerText.includes(want) && !!document.querySelector('[data-codex-composer-root]'), 30000, t.title);
+        const auxWidth = () => page.evaluate(() => { const b = document.getElementById('workbench.parts.auxiliarybar'); return b ? Math.round(b.getBoundingClientRect().width) : 0; });
+        const auxTo = async (to) => {
+          const edge = await page.evaluate(() => {
+            const b = document.getElementById('workbench.parts.auxiliarybar').getBoundingClientRect();
+            const e = [...document.querySelectorAll('.monaco-sash.vertical')].map((x) => x.getBoundingClientRect()).find((r) => r.height > 100 && Math.abs((r.left + r.right) / 2 - b.left) < 4);
+            return e && { x: (e.left + e.right) / 2, y: b.top + b.height / 2, width: b.width };
+          });
+          if (!edge) return;
+          await page.mouse.move(edge.x, edge.y);
+          await page.mouse.down();
+          await page.mouse.move(edge.x + (edge.width - to), edge.y, { steps: 10 });
+          await page.mouse.up();
+          await sleep(1000);
+        };
+        const placed = () => box.evaluate(() => {
+          const root = document.querySelector('[data-codex-composer-root]');
+          if (!root) return null;
+          const rect = (e) => { const r = e.getBoundingClientRect(); return { l: r.left, t: r.top, r: r.right, b: r.bottom }; };
+          const anchor = root.querySelector('[data-composer-navigation-target="permissions"]') || root.querySelector('[data-composer-navigation-target="add-context"]');
+          let grid = null;
+          for (let n = anchor && anchor.parentElement; n && n !== root && !grid; n = n.parentElement) if (getComputedStyle(n).display === 'grid') grid = n;
+          const ours = [...document.querySelectorAll('[data-codex-extras="bar-button"], [data-codex-extras="meter"], [data-codex-extras="agents"]')]
+            .filter((e) => e.getClientRects().length && e.getBoundingClientRect().width > 0);
+          const theirs = [...root.querySelectorAll('button')].filter((b) => !b.closest('[data-codex-extras]') && b.getBoundingClientRect().width > 0);
+          const g = grid && rect(grid);
+          const inside = (x) => !!g && x.l >= g.l - 0.5 && x.r <= g.r + 0.5 && x.t >= g.t - 0.5 && x.b <= g.b + 0.5;
+          const meets = (x, y) => x.l < y.r - 0.5 && y.l < x.r - 0.5 && x.t < y.b - 0.5 && y.t < x.b - 0.5;
+          return { page: innerWidth, grid: !!grid,
+            place: document.querySelector('[data-codex-extras="bar"]') ? 'below the box' : document.querySelector('[data-codex-extras="line"]') ? 'line'
+              : ours.length && ours.every((e) => grid && grid.contains(e)) ? 'row' : 'none',
+            controls: ours.map((e) => ({ what: e.getAttribute('data-codex-extras'), inside: inside(rect(e)),
+              covers: theirs.filter((b) => meets(rect(e), rect(b))).map((b) => b.getAttribute('aria-label') || b.textContent.trim().slice(0, 20)) })) };
+        }).catch((e) => ({ error: String(e) }));
+        const fine = (x) => !!x && x.grid && x.controls.length >= 2 && x.controls.every((c) => c.inside && !c.covers.length);
+        if (!box) check(false, 'Codex\'s sidebar still shows the conversation for its message box to be checked', await narrowPages());
+        else {
+          const was = await auxWidth();
+          await auxTo(300);
+          const tight = await until(async () => { const x = await placed(); return x && x.place === 'line' && fine(x) && x; }, 15000, 500) || await placed();
+          check(!!tight && tight.place === 'line' && fine(tight), 'in Codex\'s sidebar dragged to 300 px, whose toolbar row has no room for this extension\'s controls, '
+            + 'they are in a line of their own inside the message box, each inside the box and covering none of Codex\'s buttons, and none is below the box', tight);
+          await shot('sidebar-narrow-box');
+          await auxTo(460);
+          const roomy = await until(async () => { const x = await placed(); return x && x.place === 'row' && fine(x) && x; }, 15000, 500) || await placed();
+          check(!!roomy && (roomy.place === 'row' || roomy.place === 'line') && fine(roomy), 'with the sidebar widened again, they are inside the box too, covering none of Codex\'s buttons', roomy);
+          if (roomy && roomy.place === 'line') note(`at a ${roomy.page} px sidebar Codex's toolbar row still had no room for this extension's controls on ${process.platform}, so they stayed in their own line`);
+          if (was) await auxTo(was);
+        }
+      }
+      /* The plan bar in Codex's sidebar, which is narrow: compact, and a click on it shows the sidebar's conversation's plan
+         in the Work plan view though the tab in front shows another. Last in this step, so that the checks above see the
+         sidebar as they would with no plan bar step before them: a sidebar page that has shown the conversation once draws
+         fewer of its turns when it shows it again. */
       {
         const { since, asked, writeRows, barIn, barSays, placed, planViewRows } = planBarTools;
         writeRows(t.id, [{ title: 'Look at the export logs', state: 'doing', since },
@@ -3286,6 +3477,111 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         await exec('agentPlus.refreshWorkPlan');
       }
       await exec('workbench.action.closeAuxiliaryBar');
+    });
+
+    /*
+     * Codex's sidebar opened on one conversation while the tab of another stays in front. The session list's current
+     * conversation and Agent Plus's work plan view follow the same one: whichever came to the front last, the sidebar
+     * or the active tab (src/codex-source.js front), as Claude Code Plus's both follow Claude Code's activeSessionId.
+     * Closing the sidebar while it was in front gives both back to the tab.
+     */
+    await step('Codex\'s sidebar and a Codex tab both open', async () => {
+      if (!codex) throw new Error('the conversation did not open in a tab');
+      const t = threads[0], s1 = threads[1];
+      const same = async (id, how) => {
+        check(!!await until(() => agentFront() === `codex ${id}`, 15000, 500), `${how}, Agent Plus has that conversation in front`, { want: id, agentPlus: agentFront() });
+        await checkCurrent(id, how);
+        await checkPlan(planTitle(id), how);
+      };
+      /* Agent Plus logs the conversation in front only when a tab change or a focus report moves it, not when it reads
+         the plans again after they changed (its refreshPlans), so the plans are written well before the first click. */
+      for (const id of [t.id, s1.id]) planFor(id, planTitle(id));
+      await exec('agentPlus.refreshWorkPlan');
+      await sleep(3000);
+      await openNotes();
+      await sleep(800);
+      await tabNamed(title).click();
+      await same(t.id, 'with the tab of a conversation in front and Codex\'s sidebar closed');
+      await call('vscode.commands.executeCommand("codexPlus.openThreadInSidebar", arg); return true;', s1.id);
+      const allow = page.locator('.monaco-dialog-box').filter({ hasText: 'open this URI' }).first();
+      if (await allow.waitFor({ state: 'visible', timeout: 15000 }).then(() => true, () => false)) {
+        await allow.locator('.dialog-buttons .monaco-button').filter({ hasText: 'Open' }).first().click({ timeout: 5000 });
+      }
+      const side = await frameWhere((want) => innerWidth < 800 && document.body.innerText.includes(want) && !!document.querySelector('[data-codex-composer-root]'), 90000, s1.title);
+      check(!!side, 'Resume in Sidebar on another conversation draws it in Codex\'s sidebar');
+      if (!side) { await exec('workbench.action.closeAuxiliaryBar'); return; }
+      const tabStill = await frontTab();
+      check(!!tabStill && bare(tabStill.label) === bare(title), 'and the tab stays the active one', tabStill);
+      await same(s1.id, 'with Codex\'s sidebar opened on another conversation and that tab still in front');
+      await shot('sidebar-and-tab');
+      await exec('workbench.action.closeAuxiliaryBar');
+      await same(t.id, 'with Codex\'s sidebar closed again, the tab still in front');
+      await exec('chatgpt.openSidebar');
+      const back = await frameWhere((want) => innerWidth < 800 && document.body.innerText.includes(want) && !!document.querySelector('[data-codex-composer-root]'), 30000, s1.title);
+      if (back) await same(s1.id, 'with Codex\'s sidebar shown again on its conversation');
+      else note('Codex\'s sidebar, shown again, did not draw its conversation within 30 s, so that case was not checked');
+      await openNotes();
+      await tabNamed(title).click();
+      await same(t.id, 'with a click on the tab after a text file, the sidebar still open');
+      await exec('workbench.action.closeAuxiliaryBar');
+    });
+
+    /*
+     * A conversation opened from Codex's Recent chats in a conversation's tab. A Codex page in an editor tab opens another
+     * conversation in an editor tab of its own: it sends navigate-in-new-editor-tab, and Codex's host runs vscode.open on
+     * that conversation's URI, which does not go through Codex Plus's codexGroup. Codex's sidebar page has no route of its
+     * own (Codex gives initial-route only to an editor panel's page), so there the same click shows the conversation in
+     * the sidebar itself. The new tab is titled by the conversation, Agent Plus has it in front and the list draws its two
+     * rows as current, and so after a message sent in it.
+     */
+    await step('a conversation opened in a new tab from Codex\'s Recent chats', async () => {
+      if (!codex || !list) throw new Error('the conversation or the session list did not open');
+      const t = threads[1];
+      const mine = (x) => x.route === `/local/${t.id}`;
+      for (const x of (await codexTabsNow()).filter(mine)) {
+        await page.locator('.tabs-container .tab').filter({ hasText: bare(x.label) }).first().click();
+        await exec('workbench.action.closeActiveEditor');
+      }
+      await exec('workbench.action.closeAuxiliaryBar');
+      await tabNamed(title).click();
+      await until(async () => (await frontPage()) === codex, 10000, 300);
+      const columns = (await tabs()).length;
+      await codex.locator('button[aria-label^="Recent chats"]').first().click({ timeout: 10000 });
+      const menu = codex.locator('[role="menu"]').filter({ hasText: /Search recent chats/ }).first();
+      if (!await menu.waitFor({ state: 'visible', timeout: 10000 }).then(() => true, () => false)) throw new Error('Codex\'s Recent chats did not open');
+      const entry = menu.getByText(t.title.slice(0, 30)).first();
+      if (!await entry.waitFor({ state: 'visible', timeout: 5000 }).then(() => true, () => false)) {
+        note(`Codex's Recent chats does not list "${t.title}", so opening it from there was not tried`);
+        await page.keyboard.press('Escape');
+        return;
+      }
+      await entry.click();
+      const opened = await until(async () => { const x = (await codexTabsNow()).find((y) => y.active); return x && mine(x) && x; }, 20000, 500);
+      check(!!opened, 'a click on another conversation in Codex\'s Recent chats, in a conversation\'s tab, opens it in an editor tab of its own, in front',
+        { want: t.id, tabs: await codexTabsNow() });
+      if (!opened) return;
+      const now = await tabs();
+      if (now.length !== columns) note(`Codex opened that tab with vscode.open, which made ${now.length} editor groups of ${columns}`);
+      const titled = await until(async () => { const x = (await codexTabsNow()).find(mine); return x && bare(x.label) === bare(t.title) && x; }, 20000, 500);
+      check(!!titled, 'that tab is titled by the conversation', (await codexTabsNow()).find(mine));
+      check((await codexTabsNow()).filter(mine).length === 1, 'and it is the only tab on that conversation', await codexTabsNow());
+      const how = 'with the tab Codex\'s Recent chats opened in front';
+      check(!!await until(() => agentFront() === `codex ${t.id}`, 15000, 500), `${how}, Agent Plus has that conversation in front`, { want: t.id, agentPlus: agentFront() });
+      await checkCurrent(t.id, how);
+      await shot('recent-chats-tab');
+      const f = await until(async () => { const x = await frontPage(); const st = await pageSays(x); return st && st.text.includes(t.title.slice(0, 30)) && x; }, 30000, 1000);
+      if (!f) { check(false, 'that tab\'s page draws the conversation', await pageSays(await frontPage())); return; }
+      const turns = model.turns();
+      await f.locator(COMPOSER).first().click();
+      await page.keyboard.type('One more check from this tab.');
+      await page.keyboard.press('Enter');
+      check(!!await until(() => model.turns() > turns, 20000, 300), 'a message sent from that tab reaches the made-up model', model.seen.slice(-3));
+      await until(() => model.turns() > turns && !model.left(), 20000, 500);
+      await sleep(3000);
+      const after = (await codexTabsNow()).find(mine);
+      check(!!after && bare(after.label) === bare(t.title), 'after a message sent from it, the tab is still titled by the conversation', after);
+      await checkCurrent(t.id, `${how}, after a message sent from it`);
+      await exec('workbench.action.closeActiveEditor');
     });
 
     await step('the token mode', async () => {
@@ -3337,8 +3633,13 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await page.locator('.tabs-container .tab').filter({ hasText: title }).first().click();
       await exec('codexPlus.archiveThread', { webviewSection: 'thread', threadId: t.id, webview: 'codexPlus.sessions' }, [t.id]);
       check(!!await until(shelvedOnDisk, 30000, 500), 'Archive moves the rollout of the conversation open in the tab to archived_sessions/');
+      const unrecognised = noAnchors().length;
       check(!!await drawn(false), 'the tab still shows the conversation\'s turns, read-only, with no message box');
       await shot('archived-while-open');
+      /* The page script reports a miss that has held for 5 s. */
+      await sleep(8000);
+      const archivedSays = { warned: await codex.evaluate(() => !!document.querySelector('[data-codex-extras="warn"]')).catch(() => null), logged: noAnchors().slice(unrecognised) };
+      check(archivedSays.warned === false && !archivedSays.logged.length, 'and that page is not taken for one whose message box Codex Plus no longer finds: no "!" on it and no such line in Codex Plus\'s log', archivedSays);
       await exec('codexPlus.openThreadInTab', t.id);
       check(!!await until(() => !shelvedOnDisk(), 30000, 500), 'opening it from the list unarchives it');
       check(!!await drawn(true), 'and the tab has its message box again');
@@ -3650,6 +3951,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     });
 
     /* The Agent map's row of a sub-agent opens the sub-agent's own conversation in a tab. */
+    let subAgent = '';
     await step('a sub-agent opened in a tab from the Agent map', async () => {
       const parent = threads[0];
       await page.locator('.tabs-container .tab').filter({ hasText: title }).first().click();
@@ -3664,6 +3966,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await f.locator('[data-codex-extras="map-agent"]').first().click();
       const opened = await until(async () => { const x = (await codexTabsNow()).find((y) => y.active); return x && x.route === `/local/${agent}` && x; }, 20000, 500);
       check(!!opened, 'a click on a sub-agent in the Agent map opens its conversation in a tab, in front', { agent, tabs: await codexTabsNow() });
+      if (opened) subAgent = agent;
       check(!!await until(() => agentFront() === `codex ${agent}`, 15000, 500), 'and Agent Plus has the sub-agent in front', { agent, agentPlus: agentFront(), parent: parent.id });
       await shot('sub-agent-tab');
     });
@@ -3687,6 +3990,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       if (!mine || mine.route !== '/extension/panel/new') throw new Error(`the tab in front is not the New tab: ${JSON.stringify(before)}`);
       await exec('notifications.clearAll');
       await settle('tabs restored at a reload: before the reload');
+      const unrecognisedBefore = noAnchors().length;
       await w.reload();
       await until(async () => { const s = await patchState(); return s && s.active; }, 60000, 1000);
       const same = (x) => x.route === mine.route && x.fragment === mine.fragment;
@@ -3755,6 +4059,30 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
           await checkCurrent(o.made.id, `${o.what}, restored, in front`);
         }
       }
+      /* The sub-agent's tab the step before opened is restored too. Codex shows a sub-agent's conversation read-only, with
+         no message box, which is not a page whose message box the page script has stopped recognising. */
+      const subTab = subAgent && (await codexTabsNow()).find((x) => x.route === `/local/${subAgent}`);
+      if (subTab) {
+        await revealTab(subTab);
+        const sub = await until(async () => {
+          for (const f of page.frames()) {
+            try {
+              if (!await f.evaluate(() => innerWidth > 600 && document.querySelectorAll('[data-turn-key]').length > 0 && !document.querySelector('[data-codex-composer-root]'))) continue;
+              const host = f.parentFrame() && await f.parentFrame().frameElement();
+              if (host && await host.isVisible()) return f;
+            } catch (_) { /* gone */ }
+          }
+          return null;
+        }, 60000, 1000);
+        /* The page script reports a miss that has held for 5 s. */
+        await sleep(8000);
+        const warned = sub ? await sub.evaluate(() => !!document.querySelector('[data-codex-extras="warn"]')).catch(() => null) : null;
+        const logged = noAnchors().slice(unrecognisedBefore);
+        check(!!sub && warned === false && !logged.length, 'the restored tab of the sub-agent, read-only with no message box, is not taken for a page whose '
+          + 'message box Codex Plus no longer finds: no "!" on its page and no such line in Codex Plus\'s log since the reload', { sub: !!sub, warned, logged, tab: subTab });
+        const home = (await codexTabsNow()).find(same);
+        if (home) await revealTab(home);
+      } else note('the step before opened no sub-agent\'s tab, so its page after the reload was not looked at');
       const final = await codexTabsNow();
       check(final.length === before.length, 'after all that the window still has the Codex tabs it had before the reload, and no more', { before, after: final });
     });

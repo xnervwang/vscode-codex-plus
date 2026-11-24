@@ -333,6 +333,7 @@
         "data-markdown-text-tone",
         "data-request-input-activity-root",
         "data-response-annotation-target",
+        "data-thread-find-composer",
         "data-turn-key",
         "data-user-message-bubble"
       ]

@@ -433,6 +433,26 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     await sleep(500);
   };
 
+  /* Drags the left edge of the secondary side bar, where Codex's sidebar is, so the bar is `to` CSS pixels wide; resolves
+     to its width before. */
+  const auxTo = async (to) => {
+    const ab = await part(PARTS.auxiliary);
+    if (!ab || Math.abs(ab.width - to) < 4) return ab ? ab.width : 0;
+    const sash = await page.evaluate((edge) => {
+      const b = [...document.querySelectorAll('.monaco-sash.vertical')].map((e) => e.getBoundingClientRect())
+        .find((r) => r.height > 200 && Math.abs(r.left + r.width / 2 - edge) < 6);
+      return b ? { x: b.left + b.width / 2, y: b.top + b.height / 2 } : null;
+    }, ab.x);
+    if (!sash) return ab.width;
+    await page.mouse.move(sash.x, sash.y);
+    await sleep(200);
+    await page.mouse.down();
+    await page.mouse.move(sash.x + (ab.width - to), sash.y, { steps: 10 });
+    await page.mouse.up();
+    await sleep(800);
+    return ab.width;
+  };
+
   /* VS Code asks once before an extension opens a vscode:// link, which Codex Plus's sidebar actions use. */
   const allowUri = async () => {
     const allow = page.locator('.monaco-dialog-box').filter({ hasText: 'open this URI' }).first();
@@ -1842,6 +1862,32 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await sleep(1500);
       return union([await part(PARTS.auxiliary), await part(PARTS.sidebar)]);
     });
+    /* The same conversation's message box with Codex's sidebar narrower than Codex's toolbar row needs for the controls
+       Codex Plus adds to it. */
+    {
+      let auxBefore = 0;
+      await look('sidebar-narrow-box', {
+        expect: 'Codex\'s sidebar on the right dragged narrow, about 280 px wide, at the bottom of "Why does the nightly export skip archived rows?": its message box. '
+          + 'Inside the box\'s rounded border, below Codex\'s own row of buttons (the + button, the hand, the model picker with its name or its icon, the send button and the others Codex shows), '
+          + 'a line of its own holds Codex Plus\'s information button (i) and note button (♪) at its left and the context ring with its percentage at its right, '
+          + 'drawn in the same size and colour as Codex\'s own buttons. None of them is outside the box\'s border or below it against the window\'s edge, '
+          + 'none covers or touches one of Codex\'s buttons, and none is cut off at the box\'s edge.',
+        unchanged: 'The sidebar shows the same conversation as before, at about 280 px.',
+      }, async () => {
+        auxBefore = await auxTo(280);
+        const side = await frameWhere((want) => innerWidth < 800 && document.body.innerText.includes(want) && !!document.querySelector('[data-codex-composer-root]'), 30000, t1.title.slice(0, 30));
+        if (!side) throw new Error('Codex\'s sidebar no longer shows the conversation');
+        const placed = await until(() => side.evaluate(() => (document.querySelector('[data-codex-extras="line"]') ? 'line'
+          : document.querySelector('[data-codex-extras="bar"]') ? 'bar' : '')).catch(() => ''), 15000, 300);
+        if (placed !== 'line') tell(`at about 280 px Codex Plus's controls are ${placed === 'bar' ? 'in the row below the message box' : 'not in a line of their own'}`);
+        await sleep(800);
+        const box = await boxIn(side, '[data-codex-composer-root]'), ab = await part(PARTS.auxiliary);
+        if (!box || !ab) return ab;
+        const top = Math.max(ab.y, box.y - 30);
+        return { x: ab.x, y: top, width: ab.width, height: Math.min(ab.y + ab.height, box.y + box.height + 30) - top };
+      });
+      if (auxBefore) await auxTo(auxBefore);
+    }
     /* The same conversation's Agent map in Codex's narrow sidebar: a paused goal and a wake-up of its own give
        it a pill and two sections. */
     {
@@ -1887,6 +1933,17 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         }), 20000, 500);
         if (!drawn) tell('the sidebar\'s plan bar did not say "3 open" within 20 s');
         else if (!drawn.compact) tell(`the sidebar's page is ${drawn.page} px wide, so its plan bar is the full one`);
+        /* The pointer rests where the step before clicked the Agent map pill; with the pill gone or shorter now, the meter
+           next to it can have moved under the pointer and opened its hover box. It is moved first to an empty spot near the
+           top of the sidebar's page, so the page sees it leave whatever it was over (a pointer that leaves the page on its
+           way across can leave a hover box or a tooltip open there), and then in one move onto the editor beside it. */
+        const bar = await part(PARTS.auxiliary);
+        if (bar) {
+          await page.mouse.move(bar.x + 24, bar.y + 115, { steps: 4 });
+          await sleep(400);
+          await page.mouse.move(Math.max(3, bar.x - 200), bar.y + 300);
+          await sleep(800);
+        }
         return union([await planBarBox(side), await part(PARTS.auxiliary)]);
       });
       try { fs.unlinkSync(plan1); } catch (_) { /* never written */ }

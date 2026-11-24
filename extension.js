@@ -451,12 +451,8 @@ async function activate(context) {
   let sessionsModel = null;
   const account = accountUsage.createAccountUsage({ ask: askAppServer, onChange: () => { if (sessionsModel) sessionsModel.refresh(); } });
   context.subscriptions.push(patching.onAccountNotification((method, params) => account.heard(method, params)));
-  /* The conversation in front: the active tab's when it is Codex's, else the one Codex's sidebar shows. */
-  const frontNow = () => {
-    const tab = (vscode.window.tabGroups.activeTabGroup || {}).activeTab;
-    const id = tab ? source.sessionForTab(tab) : null;
-    return typeof id === 'string' ? id : patching.sidebarShowing();
-  };
+  /* The conversation in front, by the same signal Agent Plus's work plan view follows (src/codex-source.js front). */
+  const frontNow = () => source.front();
   sessionsModel = new SessionsModel(vscode, { memory, memento: context.globalState, settings, reader,
     stateOf: (id) => lastConversations.get(id), threadState: (id) => source.threadState(id), wantState: (ids) => source.wantState(ids),
     sidebarShowing: () => patching.sidebarShowing(), sections: () => new Map(groups.list()),
