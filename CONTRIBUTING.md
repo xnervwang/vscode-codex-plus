@@ -50,7 +50,7 @@ Three workflows in `.github/workflows/`. **None has ever run: this repository ha
 | | |
 | --- | --- |
 | `check.yml` | The suite, on every push to main, every pull request and once a day, on Node 22 and Node 24, with Agent Plus checked out beside this repository so `test/parts/45-core.js` runs; the daily run brings a change to Agent Plus's main that breaks this one to light within a day. Both, because `node:sqlite` is behind a flag in one and not the other and `test/check.js` re-execs itself with the flag only when it has to. A runner has no Codex installed, so three checks report themselves as not run; the suite's last line counts those separately and the rest still pass. |
-| `against-latest.yml` | `test/against-latest.js` once a day, and on demand. This is the check that can go red with nothing here having changed: Codex ships a build an edit no longer fits, and the patch then quietly does nothing for everyone who updates. |
+| `against-latest.yml` | `test/against-latest.js` once a day, and on demand. This is the check that can go red with nothing here having changed: Codex ships a build a required edit no longer fits (see [Verified Codex builds](#verified-codex-builds)), and the patch then quietly does nothing for everyone who updates. |
 | `vscode.yml` | `test/vscode/run.js` on Linux, macOS and Windows, on every push to main or to a `ci/` branch, every pull request, once a day and on demand, with the results folder of each platform kept as an artifact. Only the Linux crops have approved copies so far, made on a development machine; macOS and Windows runs save their crops without comparing them until someone approves a set from a CI run. On Linux the window runs in a namespace with loopback only; macOS and Windows get only a proxy that does not exist. |
 
 - The step of `against-latest.yml` is red for exit 1 (an edit no longer fits, or a patched file no longer parses) **and** for any other non-zero code (the check did not run), with a different annotation for each. A step that passes whatever happened reads the same as one that keeps working, and a scheduled check is the kind nobody looks at until it matters.
@@ -62,14 +62,14 @@ Everything this extension adds to Codex depends on the exact shape of one build,
 
 - The builds each release was checked against are recorded in `src/supported-versions.json`, with the date and what was checked on each.
 - `Codex Plus: Show Status` says whether the installed build is one of them. An unrecorded build is also noted in one line of the Codex Plus output channel; it does not open a dialog.
-- An unrecorded build is still patched if every place the patch requires is found in it. If one is not, the patch leaves Codex untouched and says so in the status. If only the optional `new conversation tabs` edit does not fit, the patch applies the other edits and `test/against-latest.js` reports the build as a failure.
+- An unrecorded build is still patched if every place the patch requires is found in it. If one is not, the patch leaves Codex untouched and says so in the status. The optional `new conversation tabs` edit (each tab Codex's New Codex Agent command opens gets an address of its own) is the exception: a build that has every required place but not this one is patched with the other edits, and `test/against-latest.js` reports that build as a failure.
 
 Add an entry after checking a build; the suite then keeps that entry in step with the code.
 
 - `test/parts/70-supported.js` compares each entry's three lists against the places they are read from: the patch's own rule names, the columns `src/codex-files.js` queries, and the `data-*` attributes `src/page/codex-extras-page.js` looks for. So a new column or a new attribute fails the suite until some build with it has been checked and recorded.
 - It also fails when the Codex installed here is not in the record, which is how an upgrade gets noticed.
 - Drop a build once it is no longer installed, rather than carrying it forward. `git log -S<version> -- src/supported-versions.json` finds the commits that claimed it. Keep the build that the layout sample in `test/fixtures/` was taken from, though: `test/parts/70-supported.js` fails if the record does not name it.
-- When you add a build to `src/supported-versions.json` with `new conversation tabs` among its host edits, copy that build's `createNewPanel` source exactly as shipped into `SHIPPED` in `test/parts/39b-codex-new-panel.js`. The test fails if any such build has no entry in `SHIPPED`.
+- When you add a build to `src/supported-versions.json` with `new conversation tabs` in its `hostEdits`, the list of host edits checked on it, copy that build's `createNewPanel` method from its `out/extension.js`, exactly as shipped, into `SHIPPED` (one entry per build, keyed by its version) in `test/parts/39b-codex-new-panel.js`, which fails until you do.
 
 ## The render check
 
@@ -138,5 +138,5 @@ What a change must not break:
 - `package.json` `version` changes only for a release.
 - Code, comments and commit messages are English; every source file starts with the BSD 3-Clause header.
 - The page script never puts a node inside one Codex draws.
-- Every required patch edit matches exactly once on a pristine Codex build, or nothing is written. The patch tries the optional `new conversation tabs` edit only after all the required edits fit.
+- Every required patch edit matches exactly once on a pristine Codex build, or nothing is written. The optional `new conversation tabs` edit is tried only once all of them match.
 - Every name the edits in `src/host.js` declare inside Codex's code starts with `cxp` and an upper-case letter (`LOCAL_PREFIX`), so that it cannot hide one of Codex's minified names. `test/parts/50c-patch-local-names.js` checks this rule.

@@ -8,7 +8,7 @@
 - The token mode and which of the five features that add to Codex's context run (the five are listed under [What it costs in tokens](token-costs.md)).
 - Whether the additions are turned off, the patch was removed, or the plugin is installed but not loaded.
 - Whether this release was checked against the installed Codex build.
-- If Codex Plus leaves out part of the patch because it does not recognize the code in a Codex build, `Codex Plus: Show Status` and the Codex Plus output channel show which part is missing and what stops working without it.
+- Any part of the patch that Codex Plus left out because it did not recognize the code it edits in this Codex build, and what stops working without it. Codex Plus also writes this to the output channel when it starts.
 - Whether Python is missing, and which commands were tried to find it (see [Python](install.md#python)).
 - The wake-ups that are set.
 - Commands Codex started that are still running, when each started, and which conversation it belongs to.
