@@ -1,5 +1,5 @@
 {
-  "core": "9bcbfdd86a4e6956aece04cec107477498c8efae",
+  "core": "a0b2aa216a844503e03b621990fefce32b0f29f8",
   "files": [
     {
       "path": "build/sync-shared.js",
@@ -84,7 +84,7 @@
     {
       "path": "src/token-mode.js",
       "from": "src/token-mode.js",
-      "sha256": "e330e82078bdada9056d3e194637769ad9708d3b46732b22bd81037792f45410"
+      "sha256": "9a2ec42ab35d229a7203ba8ddc1fccce6b4fc69c9ef007db5d6853cbecbfbe33"
     },
     {
       "path": "src/page/kit.js",
@@ -134,17 +134,17 @@
     {
       "path": "codex-plugin/agent-work-plan/hooks/resume-work-plan.py",
       "from": "shared/plugin/hooks/resume-work-plan.py",
-      "sha256": "c9cc41d558dae6c779766054fc39fe78b575bfe88878c580514b00802c54f18c"
+      "sha256": "cdfd230eb78c0b211e98bcb3be604b159ecf9f2b723fb966bdf4bd8033adaac7"
     },
     {
       "path": "codex-plugin/agent-work-plan/hooks/tell-time-zone.py",
       "from": "shared/plugin/hooks/tell-time-zone.py",
-      "sha256": "5742f560cd7585ba3b747115a216ef4db51a60a3beabe0d2e8f4ccc598ac1cb6"
+      "sha256": "67bf56532b919f2c5085508f6bf172f25010fac805af571a6ab7d9334ebee655"
     },
     {
       "path": "codex-plugin/agent-work-plan/hooks/tell-reply-images.py",
       "from": "shared/plugin/hooks/tell-reply-images.py",
-      "sha256": "627411cf038a108671440a0dd1e53ed73e88c6291e6fe9becbaaacc329842fd9"
+      "sha256": "f2a9799555c53cc3f59ec08833eee12c916ac06a31b4ff162ebb23e2e68ae8a6"
     },
     {
       "path": "codex-plugin/agent-work-plan/hooks/nudge-work-plan.py",
@@ -159,7 +159,7 @@
     {
       "path": "codex-plugin/agent-work-plan/hooks/plan_agent.py",
       "from": "shared/plugin/codex/plan_agent.py",
-      "sha256": "d1a7cf9eb0cedb31df893e962b63b70f12fef463a64c21adf70db83e9939ba75"
+      "sha256": "869579e12694acedd96169c5146cbf2bf213773455b5ededa4cf5d986027305f"
     },
     {
       "path": "codex-plugin/agent-work-plan/skills/maintain/SKILL.md",
