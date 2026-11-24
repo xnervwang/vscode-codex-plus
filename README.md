@@ -1,6 +1,6 @@
 # Codex Plus
 
-Codex Plus is a VS Code extension that adds a work plan for each conversation to Agent Plus's views, a sidebar list of conversations laid out like Claude Code's list, and times, a rail of your own messages, a context meter, chimes and tab dots to the conversation page, message box and tabs in Codex, OpenAI's VS Code extension (`openai.chatgpt`).
+Codex Plus is a VS Code extension that adds a [work plan](#work-plan) for each conversation to the views of Agent Plus (its companion extension), a [sidebar list of conversations](#the-session-list) laid out like Claude Code's list, and [times](#times-and-turn-figures), a [rail of your own messages](#the-rail-of-your-messages), a [context meter](#the-context-meter), [chimes](#chimes-and-waiting-for-your-permission) and [tab dots](#tabs) to the conversation page, message box and tabs in Codex, OpenAI's VS Code extension (`openai.chatgpt`).
 
 ![A Codex conversation beside its work plan in Agent Plus](images/codex-plus-work-plan.png)
 
@@ -19,13 +19,13 @@ Most of what Codex Plus draws in Codex's page, message box and tabs needs the pa
 
 ### Work plan
 
-Agent Plus's Work plan view shows a conversation's [work plan](docs/work-plan.md) as numbered rows with states such as `todo`, `doing`, `waiting` and `done`. Codex receives the plan with every message and updates it with the work plan plugin's tools; the plugin reminds Codex to update it at the end of a turn and around compaction.
+Agent Plus's Work plan view shows a conversation's [work plan](docs/work-plan.md) as numbered rows with states such as `todo`, `doing`, `waiting` and `done`. Codex receives the plan with every message. The work plan plugin gives Codex tools to update the plan and reminds it to do so at the end of a turn and around compaction.
 
 ![Agent Plus's Work plan view for a Codex conversation, with done, to-do and parked rows](images/shots/work-plan.png)
 
 ### The brief and plan questions
 
-Click a conversation in Agent Plus's Conversations view to see its [brief](docs/work-plan.md#the-brief) in the Answer view: a summary and status written by Codex. Use the Answer view to [answer a question](docs/work-plan.md#answering-a-plan-question) Codex has put on a plan row; when the conversation's message box is empty, your answer goes into the box and is sent as if you had pressed Enter.
+Codex writes a [brief](docs/work-plan.md#the-brief) for each conversation with a summary and status. Click a conversation in Agent Plus's Conversations view to see its brief in the Answer view. Use the Answer view to [answer a question](docs/work-plan.md#answering-a-plan-question) Codex has put on a plan row; when the conversation's message box is empty, your answer goes into the box and is sent as if you had pressed Enter.
 
 ![Agent Plus's Conversations view with a plan question, and the conversation's brief in the Answer view](images/shots/answer-view.png)
 
@@ -37,51 +37,53 @@ The [plan bar](docs/conversation.md#the-plan-bar) above Codex's message box show
 
 ### Wake-ups
 
-When you ask for a [wake-up](docs/work-plan.md#wake-ups) or before a long stretch of work, the model can set one with the work plan plugin's `set_wakeup` tool, and Codex Plus then sends its prompt to the idle conversation at the interval the model chose (every 5 minutes by default), so unfinished work can continue without you. A conversation can have one wake-up and receives its prompts only while open in this VS Code window; the wake-up is removed seven days after it was set, or you can remove it sooner with the Remove button in the Agent map.
+The model can set a [wake-up](docs/work-plan.md#wake-ups) with the work plan plugin's `set_wakeup` tool when you ask for one or before a long stretch of work. While the conversation is idle, Codex Plus sends the wake-up's prompt at the interval the model chose (every 5 minutes by default). Each conversation can have at most one wake-up and receives its prompts only while open in this VS Code window. The wake-up expires seven days after it was set. To remove it sooner, click the Remove button in the [Agent map](#the-agent-map).
 
 ![The Agent map with a wake-up's card opened to its whole prompt](images/shots/wake-up.png)
 
 ### Your time zone
 
-When Codex runs on another machine, the work plan plugin tells Codex [your time zone](docs/work-plan.md#your-time-zone), the other machine's time zone and the current time, unless Codex's own page has already supplied the same zone since the last compaction. You can turn this off with `codexPlus.tellCodexYourTimeZone`.
+When Codex runs on another machine, the work plan plugin tells Codex [your time zone](docs/work-plan.md#your-time-zone), that machine's time zone and the current time. The plugin skips this message if Codex's own page has already told Codex your time zone since the last compaction. You can turn the time zone message off with `codexPlus.tellCodexYourTimeZone`.
 
 ### The session list
 
-The [Codex sessions view](docs/session-list.md) in the Codex Plus sidebar lists your conversations using the layout of Claude Code's list in Claude Code Plus and your theme's colours. Each row shows status, unread replies and time since last use; you can filter by status or search by title, branch or four hex characters of the conversation ID.
+The [Codex sessions view](docs/session-list.md) lists your conversations in the Codex Plus sidebar. It uses your theme's colours and the row layout of Claude Code Plus, this extension's counterpart for Claude Code. Each row shows the conversation's status, whether it has unread replies and how long ago you last used it. Filter by status or search by title, branch or four hex characters of the conversation ID.
 
 ![The Codex sessions list](images/codex-plus-sessions.png)
 
 ### Menus, groups, archive and goals
 
-Use a row's [right-click menu](docs/session-list.md#menus-and-groups) to rename or colour a conversation, move it into or out of a group, mark it as read or unread, [archive it](docs/session-list.md#archive-and-delete), or pause, resume or clear a [goal](docs/session-list.md#goals) that Codex works toward on its own. In Archived sessions, Delete asks before deleting a conversation's log; once a day, Codex Plus deletes conversations archived at least `codexPlus.deleteArchivedAfterDays` days ago (30 by default) without asking.
+Open a row's [right-click menu](docs/session-list.md#menus-and-groups) to rename the conversation, set its colour or move it into or out of a group. You can also mark the conversation as read or unread, or [archive it](docs/session-list.md#archive-and-delete). If Codex is working toward a [goal](docs/session-list.md#goals) on its own, you can pause or clear the goal from the menu. You can resume a paused goal there too. In the Archived sessions group, Delete asks before deleting a conversation's log; once a day, Codex Plus deletes conversations archived at least `codexPlus.deleteArchivedAfterDays` days ago (30 by default) without asking.
 
 ![The right-click menu of a row in the Codex sessions view](images/shots/session-menu.png)
 
 ### Tabs
 
-With the patch, [Codex Plus's tab bar button](docs/tabs.md) replaces Codex's and opens a new conversation in a tab, or opens Codex's sidebar if `codexPlus.tabBarButton` is set to `sidebar`. Each Codex tab shows the conversation's status dot on its logo, as its row in the session list does, uses the conversation name as its title and adds an envelope to the title for an unread reply; Codex Plus reopens tabs that VS Code missed after a reconnect, and Ctrl+Shift+T (Cmd+Shift+T on a Mac) reopens the conversation from the last Codex tab you closed.
+With the patch, [Codex Plus's tab bar button](docs/tabs.md) replaces Codex's and opens a new conversation in a tab, or opens Codex's sidebar if `codexPlus.tabBarButton` is set to `sidebar`. Each Codex tab uses the conversation name as its title and adds an envelope to the title when there is an unread reply. The tab's logo shows the same status dot as the conversation's row in the session list. After a reconnect, Codex Plus reopens tabs that VS Code missed. Ctrl+Shift+T (Cmd+Shift+T on a Mac) reopens the conversation from the last Codex tab you closed.
 
 ![A Codex tab with its dot and title, and the hover of Codex Plus's tab bar button](images/shots/tabs.png)
 
 ### Times and turn figures
 
-[Times above messages and replies](docs/conversation.md#times-above-messages-and-replies) use your time zone; each reply also shows the turn's share of the context window, model and effort, plus its duration if Codex shows no "Worked for" time. The [row below the message box](docs/conversation.md#the-row-below-the-message-box) shows the current tool call while Codex's row for it is out of view and counts the commands Codex started that are still running.
+[Times above messages and replies](docs/conversation.md#times-above-messages-and-replies) use your time zone. Beside each reply's time, you see the turn's share of the context window, the model and the effort. If Codex shows no "Worked for" time for the turn, its duration appears there too. When Codex's own row for the current tool call is out of view, the [row below the message box](docs/conversation.md#the-row-below-the-message-box) shows the call. It also shows how many commands Codex started are still running.
 
 ![A time above each message, and above a reply its context share, model and effort](images/shots/reply-figures.png)
 
 ### The rail of your messages
 
-The [rail at the right edge of the conversation](docs/conversation.md#the-rail-of-your-messages) lists your messages by time and opening words and marks where Codex compacted the context; you can filter the list, click a row to scroll to it or step through it with the arrow keys or `,` and `.`. [Your messages](docs/conversation.md#your-messages-and-hook-prompts) have a bar in the theme's focus colour along their leading edge, and Codex Plus folds a Stop hook's prompt to continue a turn into one dim line.
+The [rail at the right edge of the conversation](docs/conversation.md#the-rail-of-your-messages) shows each of your messages by its time and opening words. It also marks where Codex compacted the context. You can filter the list or step through it with the arrow keys or `,` and `.`. Click a row to scroll to that message. [Your messages](docs/conversation.md#your-messages-and-hook-prompts) have a bar along their leading edge in the theme's focus colour. When a Stop hook sends a prompt to continue a turn, Codex Plus folds the prompt into one dim line.
 
 ![The rail's list of your messages, with one row's time and text in a box beside it](images/shots/navigation.png)
 
 ### Links to your other conversations
 
-When a reply names another conversation by its whole title, a title between `「` and `」`, or its ID, Codex Plus turns the name into a [link to that conversation](docs/conversation.md#links-to-your-other-conversations). Hover to see the title, agent, first 8 characters of the ID and how long ago the conversation was active, or click to open it through Agent Plus, which lists conversations from every agent it knows, including Claude Code.
+Codex Plus turns a reply's mention of another of your conversations into a [link to that conversation](docs/conversation.md#links-to-your-other-conversations). It recognises the whole title, written plainly or between `「` and `」`, and the conversation's ID. Hover over the link to see the title, agent, first 8 characters of the ID and how long ago the conversation was active. Click to open the conversation through Agent Plus. Agent Plus supplies the conversations that replies can link to, from every agent it knows, including Claude Code.
 
 ### Images in replies
 
-Codex's VS Code panel shows [images in replies](docs/conversation.md#images-in-replies) from absolute local paths, `file://` URLs and `data:` URLs; with `codexPlus.replyImages` on (the default), the work plan plugin tells the model the panel can show images and asks it to save a PNG or SVG in the conversation's folder and link to the absolute path. The patch replaces Codex's thumbnails (up to 10rem high) with images at their own size, scaled down as needed to fit within 640 by 480 pixels and 70% of the panel's height; it shows web images as plain links without fetching them.
+Codex's VS Code panel shows [images in replies](docs/conversation.md#images-in-replies) when the reply links to an image using an absolute local path, a `file://` URL or a `data:` URL. With `codexPlus.replyImages` on (the default), the work plan plugin tells the model that the panel can show images. It asks the model to save a PNG or SVG in the conversation's folder and link to its absolute path.
+
+The patch replaces Codex's thumbnails (up to 10rem high) with images at their own size. It scales them down as needed to fit within 640 by 480 pixels and 70% of the panel's height. The patch shows web images as plain links without fetching them.
 
 ![A Codex reply showing a bar chart the model saved as a PNG file](images/shots/images-in-replies.png)
 
@@ -93,13 +95,15 @@ The [information button](docs/message-box-toolbar.md#the-information-button) in 
 
 ### The context meter
 
-The [context meter](docs/message-box-toolbar.md#the-context-meter) to the left of the model picker shows a ring and the share of the context window in use; Codex's own meter stays hidden while this one is visible. Hover to see which context window the meter uses, how many tokens are in use and free, the compaction threshold and how far away it is, the conversation's token counts and how much the work plan has added since the last compaction; click to compact as `/compact` does, without changing your draft.
+The [context meter](docs/message-box-toolbar.md#the-context-meter) to the left of the model picker shows a ring and the share of the context window in use; Codex's own meter stays hidden while this one is visible.
+
+Hover over the meter to see which context window it uses, how many tokens are in use and how many are free. The tooltip also shows the compaction threshold, how far you are from it, the conversation's token counts and how many tokens the work plan has added since the last compaction. Click the meter to compact the conversation as `/compact` does. Your draft stays unchanged in the message box.
 
 ![The context meter's hover: the window, what is in it, where Codex compacts, the conversation's tokens and the work plan's share](images/shots/context-meter.png)
 
 ### The Agent map
 
-The [Agent map](docs/message-box-toolbar.md#the-agent-map) is a pill like Claude Code's that appears when a conversation has sub-agents, a wake-up or a goal, or while work it started is still running. Click the pill to see the conversation, its sub-agents, work it left running, its wake-up and its goal in a dialog where you can open a sub-agent in a tab, remove the wake-up or pause, resume or clear the goal.
+The [Agent map](docs/message-box-toolbar.md#the-agent-map) is a pill in the message box's toolbar, like Claude Code's, that appears when a conversation has sub-agents, a wake-up or a goal, or while work it started is still running. Click the pill to open a dialog listing the conversation and any work it left running. The dialog also shows any sub-agents, wake-up or goal: you can open a sub-agent in a tab, remove the wake-up or pause, resume or clear the goal.
 
 ![The Agent map with the conversation's own row, a detached command left running and a wake-up](images/shots/agent-map.png)
 
@@ -109,21 +113,23 @@ Codex Plus plays Claude Code Plus's three [chimes](docs/waiting-and-chimes.md#ch
 
 ### Token mode
 
-Agent Plus's [token mode](docs/token-costs.md) (`agentPlus.tokenMode`) controls which features may add text to what Codex sends the model: the work plan, the time zone note, the conversation brief, wake-ups and notices when a detached command or a `claude --bg` session ends. The modes are Interface features, Essential features, All features (the default) and Custom; what Codex Plus draws in VS Code sends nothing to the model, and the work plan adds about 90 tokens when it has not changed since the previous message (about half of all messages) or a median of about 520 tokens when it has changed.
+Agent Plus's [token mode](docs/token-costs.md) (`agentPlus.tokenMode`) controls which features may add text to what Codex sends the model: the work plan, the time zone note, the conversation brief, wake-ups and notices when a detached command or a background Claude Code session (`claude --bg`) ends. The four modes are Interface features, Essential features, All features (the default) and Custom.
+
+What Codex Plus draws in VS Code sends nothing to the model. For about half of all messages, the work plan is unchanged since the previous message and adds about 90 tokens. When the plan has changed, it adds a median of about 520 tokens.
 
 ![Agent Plus's list of the four token modes](images/shots/token-mode.png)
 
 ### Codex's own list of skills
 
-On each turn, Codex puts a [list of installed skills](docs/token-costs.md#codexs-own-list-of-skills) in the model's context, with a budget of 2% of the context window unless `skills.max_context_tokens` in Codex's `config.toml` sets a different budget, up to 10k tokens. Codex Plus writes `codexPlus.skillsListBudget` to `skills.max_context_tokens` when nonzero and leaves it alone at the default of 0; Codex leaves skills named in `codexPlus.disabledSkills` out of the list and does not run them.
+On each turn, Codex puts a [list of installed skills](docs/token-costs.md#codexs-own-list-of-skills) in the model's context. The default budget for the list is 2% of the model's context window. If `skills.max_context_tokens` is set in Codex's `config.toml`, Codex uses that value up to a maximum of 10k tokens. When `codexPlus.skillsListBudget` is nonzero, Codex Plus writes its value to `skills.max_context_tokens`. When `codexPlus.skillsListBudget` is 0 (the default), Codex Plus leaves `skills.max_context_tokens` unchanged. Codex leaves the skills named in `codexPlus.disabledSkills` out of the list and does not run them.
 
 ### Show Status
 
-[`Codex Plus: Show Status`](docs/status-and-load.md#show-status) writes to the Codex Plus output channel what is installed, what is patched and what is registered with Agent Plus. It also shows the token mode, whether this Codex Plus release was checked against the installed Codex build, whether Python was found, which wake-ups are set, which commands Codex started are still running and how long the last three Codex pages took to open.
+[`Codex Plus: Show Status`](docs/status-and-load.md#show-status) writes a report to the Codex Plus output channel. The report shows what is installed, what is patched and what is registered with Agent Plus. It also reports the token mode, configured wake-ups and any commands Codex started that are still running.
 
 ### CPU and disk
 
-Codex Plus [checks Codex's files for changes](docs/status-and-load.md#cpu-and-disk) every 3 seconds; when no files had changed, the median check took 0.23 ms across 12 runs on one machine. On Linux, VS Code windows on the same machine share a scan of `/proc` about every 12 seconds to find processes a conversation started that are still running after its turn; a scan took 38.5 ms, and turning `codexPlus.enabled` off stops the scan.
+Codex Plus [checks Codex's files for changes](docs/status-and-load.md#cpu-and-disk) every 3 seconds; when no files had changed, the median check took 0.23 ms across 12 runs on one machine. On Linux, VS Code windows on the same machine share a scan of `/proc` about every 12 seconds. The scan looks for processes that a conversation started during a turn and that are still running after that turn. A scan took 38.5 ms. Turning `codexPlus.enabled` off stops the scan.
 
 ## For developers
 
