@@ -4834,6 +4834,14 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         { mode: 'custom', zone: 'Asia/Kolkata', own: { tellCodexYourTimeZone: false, conversationBrief: false }, on: { plan: true, zone: false, brief: false } },
         { mode: 'all', zone: 'Australia/Sydney', again: true, on: { plan: true, zone: true, brief: true } },
       ];
+      /* The hooks are told that replies show images only for a Codex build src/supported-versions.json records
+         (extension.js writeHookSettings), and the window installs the newest Codex. */
+      const codexVersion = await call("return String(vscode.extensions.getExtension('openai.chatgpt').packageJSON.version || '');");
+      const imagesTold = require('../../src/supported').verified(codexVersion);
+      if (!imagesTold) note(`Codex ${codexVersion} is not among the builds src/supported-versions.json records, so the note on images is checked to be absent`);
+      const imagesSetting = () => { try { return JSON.parse(fs.readFileSync(hooksFile, 'utf8')).replyImages; } catch (_) { return null; } };
+      check(await until(() => imagesSetting() === imagesTold, 15000, 300) === true,
+        `the hooks' settings say replies show images: ${imagesTold}, as Codex ${codexVersion} is ${imagesTold ? '' : 'not '}a recorded build`, imagesSetting());
       /* The hook works out the user's time with the C library through TZ (tell-time-zone.py clock_in), which Python on
          Windows cannot do, so there it never says the zone. */
       const zones = process.platform !== 'win32';
@@ -4881,9 +4889,9 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
             await emptyBox(fresh);
             r.fresh = await turnIn(fresh, `Token mode check, ${name}, a new conversation.`, m.zone);
             const plugin = m.mode !== 'interface';
-            judge(!!r.fresh && r.fresh.images === plugin && r.fresh.skill === plugin && r.fresh.zone === zone && !r.fresh.plan,
-              `${name}: the first turn of a new conversation carries the note on images and the work plan skill in Codex's list of skills: ${plugin}, `
-              + `the time-zone note: ${zone}, and no work plan, it having none`,
+            judge(!!r.fresh && r.fresh.images === (plugin && imagesTold) && r.fresh.skill === plugin && r.fresh.zone === zone && !r.fresh.plan,
+              `${name}: the first turn of a new conversation carries the note on images: ${plugin && imagesTold}, the work plan skill in Codex's list of `
+              + `skills: ${plugin}, the time-zone note: ${zone}, and no work plan, it having none`,
               r.fresh || model.seen.slice(-3).map((x) => x.context));
             await exec('workbench.action.closeActiveEditor');
           } else check(false, `${name}: a new conversation opens`, await tabs());
