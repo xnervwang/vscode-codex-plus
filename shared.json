@@ -92,6 +92,11 @@
       "sha256": "610e342637df9df91e69525cd787f34c2f2ed380b557363eed9dc513c741820c"
     },
     {
+      "path": "src/page/plan-bar.js",
+      "from": "shared/page/plan-bar.js",
+      "sha256": "d671cb5e0d37ba15303546ff404daf26158a24570b540316232fcad887aaf87a"
+    },
+    {
       "path": "src/python-runtime.js",
       "from": "shared/host/python-runtime.js",
       "sha256": "63d443e330f002aeefde6daad66a7fe63ff9abc8ad280bd99fa1ce2006ba3753"

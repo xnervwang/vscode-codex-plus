@@ -8,9 +8,9 @@
  * fills in with its base and content-security tags.
  *
  * The page's policy runs scripts from the extension's own folder and no inline ones, so the addition is a file,
- * webview/codex-extras-page.js, made from src/page/ (Agent Plus's shared page code, kit.js, then this extension's
- * script), and one module script tag for it placed ahead of Codex's own entry script, so it runs first. The tag carries
- * the digest of the whole file, so a page patched by an older version is recognised as outdated.
+ * webview/codex-extras-page.js, made from src/page/ (Agent Plus's shared page code, kit.js and plan-bar.js, then this
+ * extension's script), and one module script tag for it placed ahead of Codex's own entry script, so it runs first.
+ * The tag carries the digest of the whole file, so a page patched by an older version is recognised as outdated.
  */
 const crypto = require('crypto');
 const fs = require('fs');
@@ -23,11 +23,12 @@ const { patchTarget } = require('./patch-target');
 const PAGE_FILE = 'codex-extras-page.js';
 const PAGE_SOURCE = path.join(__dirname, 'page', PAGE_FILE);
 const KIT_SOURCE = path.join(__dirname, 'page', 'kit.js');
+const PLAN_BAR_SOURCE = path.join(__dirname, 'page', 'plan-bar.js');
 const ANY_MARK = '<!-- CODEX-EXTRAS-PAGE v';
 const BACKUP_SUFFIX = '.codex-extras-page.bak';
 const VERSION = 1;
 
-const pageScript = () => fs.readFileSync(KIT_SOURCE, 'utf8') + '\n' + fs.readFileSync(PAGE_SOURCE, 'utf8');
+const pageScript = () => [KIT_SOURCE, PLAN_BAR_SOURCE, PAGE_SOURCE].map((f) => fs.readFileSync(f, 'utf8')).join('\n');
 const mark = () => `${ANY_MARK}${VERSION}-${crypto.createHash('sha256').update(pageScript()).digest('hex').slice(0, 12)} -->`;
 
 const EDITS = [{
