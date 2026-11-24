@@ -84,8 +84,8 @@ const DOTS = { working: [0x22, 0xc5, 0x5e], waiting: [0xef, 0x44, 0x44] };
 const ENVELOPE = '\u{1F4E9}';
 /* The form src/envelope.js draws in the light themes. */
 const TEXT_ENVELOPE = '\u2709\uFE0E';
-const envelopes = (text) => (String(text || '').match(/\u2709[\uFE0E\uFE0F]?/g) || []).length;
-const bare = (text) => String(text || '').replace(/\u2709[\uFE0E\uFE0F]?/g, ' ').replace(/\s+/g, ' ').trim();
+const envelopes = (text) => (String(text || '').match(/(?:\uD83D\uDCE9|\u2709)[\uFE0E\uFE0F]?/g) || []).length;
+const bare = (text) => String(text || '').replace(/(?:\uD83D\uDCE9|\u2709)[\uFE0E\uFE0F]?/g, ' ').replace(/\s+/g, ' ').trim();
 const COMPOSER = '[data-codex-composer-root] [contenteditable="true"]';
 /* What lib/fake-model.js answers a turn with when no script is set. */
 const REPLY = 'Done. The cap is configurable.';
@@ -3772,7 +3772,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       const entryOf = (folder) => entries().find((e) => Array.isArray(e.folders) && e.folders.some((f) => sameFolder(f, folder)) && alive(e.pid));
       /* Earlier steps can leave the conversation in a tab here too, and then this window would take the request itself. */
       await call(`const mine = vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((t) => (t.input && t.input.uri && String(t.input.uri).includes(arg[0]))
-        || String(t.label || '').replace(/\u2709[\uFE0E\uFE0F]?/g, '').trim() === arg[1]);
+        || String(t.label || '').replace(/(?:\uD83D\uDCE9|\u2709)[\uFE0E\uFE0F]?/g, '').trim() === arg[1]);
         if (mine.length) await vscode.window.tabGroups.close(mine); return mine.length;`, [T.id, T.title]);
       check(!!await until(() => { const e = entryOf(profile.folder); return e && !e.sessions.includes(T.id); }, 20000, 500),
         'with the conversation in no tab here, this window\'s own entry among the windows does not list it', entryOf(profile.folder));
@@ -3956,7 +3956,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
           const tab = await call('return vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((t) => t.input && t.input.uri && String(t.input.uri).includes(arg)).length;', X.id);
           await served([page, pageB]);
           await call('const mine = vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((t) => (t.input && t.input.uri && String(t.input.uri).includes(arg[0])) '
-            + '|| String(t.label || "").replace(/\u2709[\uFE0E\uFE0F]?/g, "").trim() === arg[1]); if (mine.length) await vscode.window.tabGroups.close(mine); return mine.length;', [X.id, X.title]);
+            + '|| String(t.label || "").replace(/(?:\uD83D\uDCE9|\u2709)[\uFE0E\uFE0F]?/g, "").trim() === arg[1]); if (mine.length) await vscode.window.tabGroups.close(mine); return mine.length;', [X.id, X.title]);
           /* Through the patch rather than Resume in Sidebar, whose vscode:// link VS Code hands to the window it last saw
              focused: under xvfb-run that was the second window, which then asked whether to open it. */
           await call(`${OWN} return own('patching').openInSidebar(arg);`, X.id).catch(() => false);
@@ -4323,7 +4323,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         await pointerOffRows();
         const find = () => page.evaluate((names) => [...document.querySelectorAll('.tabs-container .tab')].findIndex((e) => {
           const n = e.querySelector('.label-name');
-          const text = String((n ? n.textContent : e.innerText) || '').replace(/\u2709[\uFE0E\uFE0F]?/g, ' ').replace(/\s+/g, ' ').trim();
+          const text = String((n ? n.textContent : e.innerText) || '').replace(/(?:\uD83D\uDCE9|\u2709)[\uFE0E\uFE0F]?/g, ' ').replace(/\s+/g, ' ').trim();
           const cut = (v) => (v.endsWith('…') ? v.slice(0, -1) : null);
           return names.some((w) => text === w || (cut(w) !== null && text.startsWith(cut(w))) || (cut(text) !== null && w.startsWith(cut(text))));
         }), [bare(x.label), t.title]).catch(() => -1);
@@ -4591,7 +4591,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
           if (!x) return false;
           const at = await page.evaluate((want) => [...document.querySelectorAll('.tabs-container .tab')].findIndex((e) => {
             const n = e.querySelector('.label-name');
-            return String((n ? n.textContent : e.innerText) || '').replace(/\u2709[\uFE0E\uFE0F]?/g, ' ').replace(/\s+/g, ' ').trim() === want;
+            return String((n ? n.textContent : e.innerText) || '').replace(/(?:\uD83D\uDCE9|\u2709)[\uFE0E\uFE0F]?/g, ' ').replace(/\s+/g, ' ').trim() === want;
           }), bare(x.label));
           if (at >= 0) await page.locator('.tabs-container .tab').nth(at).click().catch(() => {});
           if (await until(async () => { const y = await tabOf(t); return y && y.active; }, 5000, 250)) return true;
@@ -4716,7 +4716,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         const same = (a, b) => (process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b);
         const rec = globalThis.__cxpHolds = { t0: Date.now(), holds: [], wrapped: 0, loaded: null };
         const frontLabel = () => { const g = vscode.window.tabGroups.activeTabGroup, t = g && g.activeTab; return t ? String(t.label || '') : ''; };
-        const marked = (l) => l.includes('\\u2709');
+        const marked = (l) => l.includes('\\u2709') || l.includes('\\uD83D\\uDCE9');
         const wrap = () => {
           const key = Object.keys(require.cache).find((k) => same(k, file) || same(k, real));
           if (!key) return false;

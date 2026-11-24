@@ -51,7 +51,7 @@ const LOOK_SETTINGS = { 'window.newWindowDimensions': 'maximized', 'workbench.se
 const DOTS = { working: [0x22, 0xc5, 0x5e], waiting: [0xef, 0x44, 0x44] };
 /* The unread envelope in the Dark Modern theme that run.js sets (src/envelope.js). */
 const ENVELOPE = '\u{1F4E9}';
-const bare = (text) => String(text || '').replace(/\u2709[\uFE0E\uFE0F]?/g, ' ').replace(/\s+/g, ' ').trim();
+const bare = (text) => String(text || '').replace(/(?:\uD83D\uDCE9|\u2709)[\uFE0E\uFE0F]?/g, ' ').replace(/\s+/g, ' ').trim();
 const PLAN_DIR = path.join('plugins', 'data', 'agent-work-plan-codex-extras');
 const TRUST = 'Trust the work plan hooks in Codex?';
 const WAKEUP_LINE = 'Wake-up set in this conversation';
