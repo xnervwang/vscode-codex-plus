@@ -150,6 +150,54 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     }));
     return Math.round((Date.now() - t0) / 1000);
   };
+  /*
+   * served() knows only that VS Code has caught up with what Codex's pages have asked for so far; a page opened a moment
+   * ago has yet to ask for most of its code, and closing it or reloading the window then leaves that queued. So where a
+   * page is closed or the window reloaded soon after pages were opened, the pages of Codex's tabs are first let draw (a
+   * message box, and the turns too on a page opened on a conversation) and go 2 s with no file reaching them, and this is
+   * done again when served() then still had to wait, since the files it waited for may have been theirs. A tab's page is
+   * told by the initial-route tag Codex puts in it, or by the webview origin such pages share: the page of Codex's hidden
+   * sidebar has a message box and the titles of conversations in its text too. A page in Codex's "Something went wrong"
+   * fetches nothing more and counts as drawn. Resolves to false, with a note, when fewer than `least` such pages were
+   * there or one had not drawn within 60 s.
+   */
+  let tabsHost = '';
+  const tabPages = async () => {
+    const seen = [];
+    for (const f of page.frames()) {
+      const st = await f.evaluate(() => {
+        if (!/\/openai\.chatgpt[^/]*\/webview\/$/.test(document.baseURI)) return null;
+        const m = document.querySelector('meta[name="initial-route"]');
+        return { host: location.host, route: m ? m.content : null, composer: !!document.querySelector('[data-codex-composer-root]'),
+          turns: !!document.querySelector('[data-turn-key]'), broke: /Something went wrong/.test(document.body ? document.body.innerText : '') };
+      }).catch(() => null);
+      if (st) seen.push({ f, ...st });
+    }
+    for (const x of seen) if (x.route !== null) tabsHost = x.host;
+    return seen.filter((x) => x.route !== null || (tabsHost && x.host === tabsHost))
+      .map((x) => ({ f: x.f, drawn: x.broke || (x.composer && (!/^\/local\//.test(x.route || '') || x.turns)) }));
+  };
+  const quietFor = (f, ms) => f.evaluate((gap) => {
+    const g = globalThis;
+    if (g.__cxpLastFile === undefined) {
+      g.__cxpLastFile = performance.now();
+      try { new PerformanceObserver(() => { g.__cxpLastFile = performance.now(); }).observe({ type: 'resource' }); } catch (_) { /* none */ }
+    }
+    return performance.now() - g.__cxpLastFile > gap;
+  }, ms).catch(() => true);
+  const settle = async (what, least = 1) => {
+    for (let tries = 0; tries < 3; tries++) {
+      const pages = await until(async () => { const ps = await tabPages(); return ps.length >= least && ps.every((x) => x.drawn) && ps; }, 60000, 500);
+      if (!pages) {
+        note(`${what}: ${(await tabPages()).length} page(s) of Codex's tabs were there, and not all of them had drawn within 60 s`);
+        await served();
+        return false;
+      }
+      await until(async () => (await Promise.all(pages.map((x) => quietFor(x.f, 2000)))).every(Boolean), 60000, 500);
+      if (await served() < 2) return true;
+    }
+    return true;
+  };
   const step = async (name, fn) => {
     if (only && !only.test(name)) { note(`${name}: not run, as CODEX_PLUS_UI_STEPS leaves it out`); return; }
     console.log(`\n── ${name}`);
@@ -422,6 +470,22 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
   };
   const pageSays = (f) => (f ? f.evaluate(() => ({ turns: document.querySelectorAll('[data-turn-key]').length, text: document.body.innerText.slice(0, 200) }))
     .catch((e) => ({ error: String(e) })) : null);
+  /* Opens conversation `t` in a tab with Codex Plus's command and resolves to the page VS Code shows in that tab once it
+     has drawn turns, or to null after 90 s. Looking for any page with the conversation's title finds the page of Codex's
+     hidden sidebar at once, which lists recent conversations by title, while the tab's own page has not started. When
+     the tab is not in front within 10 s the command is run again, which brings it there. */
+  const openShown = async (t) => {
+    const mine = async () => (await codexTabsNow()).find((x) => x.route === `/local/${t.id}`);
+    await exec('codexPlus.openThreadInTab', t.id);
+    if (!await until(async () => { const x = await mine(); return x && x.active; }, 10000, 250)) await exec('codexPlus.openThreadInTab', t.id);
+    return until(async () => {
+      const x = await mine();
+      if (!x || !x.active) return null;
+      const f = await frontPage();
+      const s = await pageSays(f);
+      return s && s.turns >= 1 && f;
+    }, 90000, 500);
+  };
   const tabNamed = (label) => page.locator('.tabs-container .tab').filter({ hasText: label }).first();
   /* The conversation Agent Plus last said is in front, as its output channel has it: "codex <id>",
      "codex (no session yet)", "(none)", or '' before it said any. */
@@ -681,7 +745,9 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
 
     await step('tab bar', async () => {
       await exec('notifications.clearAll');
-      await served(); await w.reload();
+      /* Codex can have opened a tab of its own on its first start. */
+      await settle('tab bar: before the reload', 0);
+      await w.reload();
       await until(async () => { const s = await patchState(); return s && s.active; }, 60000, 1000);
       await openNotes();
       const ours = await until(async () => { const b = await codexButtons(); return b.length === 1 && b[0] === TITLES.tab && b; }, 30000, 500);
@@ -701,7 +767,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       }, 20000, 500);
       check(!!opened && opened.t.length === groups, 'a click opens a new Codex conversation in a tab titled Codex, in the group already there rather than a new split',
         opened || await tabs());
-      const loaded = await frameWhere(() => !!document.querySelector('[data-codex-composer-root]'), 90000);
+      const loaded = await until(frontPage, 90000, 500);
       check(!!loaded, 'and Codex draws its message box in that tab');
       await shot('tab-bar-new-tab');
 
@@ -730,7 +796,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await exec('codexPlus.openCodex');
       const newTab = await until(async () => { const f = await frontTab(); return (await codexTabs()) === hadTabs + 1 && f && f.view === 'chatgpt.conversationEditor' && f.label === 'Codex' && f; }, 20000, 500);
       check(!!newTab, 'and with "tab", it opens a new Codex conversation in a tab, as the button does', await tabs());
-      if (newTab) await served(); await exec('workbench.action.closeActiveEditor');
+      if (newTab) await settle('tab bar: before the tab Codex Plus: Open Codex opened was closed');
+      await exec('workbench.action.closeActiveEditor');
 
       await setting('enabled', false);
       const off = await until(async () => { const b = await codexButtons(); return b.length === 1 && b[0] === TITLES.codex && b; }, 15000, 500);
@@ -3383,7 +3450,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       check(!!await until(() => agentFront() === `codex ${t.id}`, 30000, 500), 'a click on a conversation\'s row in the session list opens it in front',
         { agentPlus: agentFront(), tabs: await tabs() });
       await checkCurrent(t.id, 'the conversation opened from its row');
-      await served();
+      await settle('a conversation opened from its row in the session list and closed: before its tab was closed');
       check(await closeIt() > 0, 'its tab is closed while in front', await tabs());
       await showList();
       const clear = await until(async () => { const c = await chosen(); return Array.isArray(c) && !c.length; }, 15000, 500);
@@ -3572,17 +3639,27 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       const mine = before.find((x) => x.active);
       if (!mine || mine.route !== '/extension/panel/new') throw new Error(`the tab in front is not the New tab: ${JSON.stringify(before)}`);
       await exec('notifications.clearAll');
-      await served(); await w.reload();
+      /* The step above has just opened a sub-agent's conversation in a tab. */
+      await settle('tabs restored at a reload: before the reload');
+      await w.reload();
       await until(async () => { const s = await patchState(); return s && s.active; }, 60000, 1000);
       const same = (x) => x.route === mine.route && x.fragment === mine.fragment;
       check(!!await until(async () => (await codexTabsNow()).some(same), 60000, 500), 'after the reload VS Code restores the New tab, on the same URI', await codexTabsNow());
+      /* Opening a tab's own URI again brings that tab to the front. */
+      const revealTab = (x) => call(`await vscode.commands.executeCommand('vscode.openWith', vscode.Uri.from({ scheme: 'openai-codex', authority: 'route',
+        path: arg.route, fragment: arg.fragment }), 'chatgpt.conversationEditor', { viewColumn: arg.column, preview: false }); return true;`, x);
+      /* Codex gives the page of a tab VS Code restored behind others 30 s to start and then puts "Codex could not start"
+         in it, as the step on a notice for a tab restored behind another checks, and on a slow machine the checks below
+         come to the last of the tabs they bring forward later than that. So each of those tabs is shown for a moment now,
+         which builds its page, as codexPlus.loadRestoredTabs does, and the New tab is put in front again. */
+      const later = [before.find((x) => x.route === `/local/${t.id}`),
+        ...[agentNew, inTabNew].filter(Boolean).map((m) => before.find((x) => bare(x.label) === bare(m.label)))].filter((x) => x && !same(x));
+      for (const x of later) { await revealTab(x).catch(() => {}); await sleep(500); }
+      if (later.length) { const back = (await codexTabsNow()).find(same); if (back) await revealTab(back).catch(() => {}); }
       /* Long enough for the extension to have reopened any conversation it took to be dropped (src/tab-memory.js). */
       await sleep(10000);
       const after = await codexTabsNow();
       const own = after.find(same);
-      /* Opening a tab's own URI again brings that tab to the front. */
-      const revealTab = (x) => call(`await vscode.commands.executeCommand('vscode.openWith', vscode.Uri.from({ scheme: 'openai-codex', authority: 'route',
-        path: arg.route, fragment: arg.fragment }), 'chatgpt.conversationEditor', { viewColumn: arg.column, preview: false }); return true;`, x);
       if (own && !own.active) await revealTab(own);
       const shownPage = await until(async () => { const f = await frontPage(); const s = await pageSays(f); return s && s.turns >= 1 && s.text.includes(begun.text) && f; }, 60000, 1000);
       check(!!shownPage, 'the restored New tab shows its conversation again, with its message box', { tab: own, inFrontBeforeTheCheck: own && own.active, page: await pageSays(await frontPage()) });
@@ -3612,12 +3689,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       if (shownPage) restored = { page: shownPage, label: bare(begun.label) };
 
       /* The other tabs whose URI does not name the conversation they showed, each brought to the front by its URI. */
-      /* In some macOS runs, the tab the New chat button opened (on Codex's own New URI) has drawn no conversation within a
-         minute of the reload, and the restored tabs brought forward after it drew nothing either. */
-      const newChatHere = process.platform !== 'darwin';
       const others = [agentNew && { what: 'the tab New Codex Agent opened', made: agentNew },
-        inTabNew && newChatHere && { what: 'the tab of the conversation begun from Codex\'s New chat button', made: inTabNew }].filter(Boolean);
-      if (inTabNew && !newChatHere) note('on darwin the restored tab of Codex\'s New chat conversation has drawn nothing within a minute in some runs, and the tabs brought forward after it drew nothing either, so it is checked on Linux and Windows');
+        inTabNew && { what: 'the tab of the conversation begun from Codex\'s New chat button', made: inTabNew }].filter(Boolean);
       for (const o of others) {
         const was = before.find((x) => bare(x.label) === bare(o.made.label));
         if (!was) { check(false, `${o.what} was open before the reload`, before); continue; }
@@ -3681,14 +3754,6 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         await call(`const mine = vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((x) => x.input && x.input.uri && String(x.input.uri).includes(arg));
           if (mine.length) await vscode.window.tabGroups.close(mine); return mine.length;`, t.id);
         await exec('codexPlus.openThreadInTab', t.id);
-        /* This page is closed below while it may still be fetching the rest of its code, so it is let finish first: no file
-           reaches it for 3 s. */
-        const fresh = await until(frontPage, 60000, 500);
-        if (fresh) {
-          await fresh.evaluate(() => { const g = globalThis; g.__cxpLastFile = performance.now();
-            try { new PerformanceObserver(() => { g.__cxpLastFile = performance.now(); }).observe({ type: 'resource' }); } catch (_) { /* none */ } }).catch(() => {});
-          await until(() => fresh.evaluate(() => performance.now() - globalThis.__cxpLastFile > 3000).catch(() => true), 60000, 500);
-        }
       }
       const shown = await until(newestInFront, 30000, 1000);
       if (!shown) throw new Error(`the tab of "${title}" did not come to the front with its turns`);
@@ -3708,7 +3773,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       const closedIds = () => list.evaluate(() => [...document.querySelectorAll('.cp-section[data-key="closed"] .cp-row')].map((r) => r.dataset.id)).catch(() => null);
       const firstClosed = (id) => until(async () => { if (!await showList()) return null; const r = await closedIds(); return r && r[0] === id && r; }, 20000, 500);
       const cameBack = (label, turn) => until(async () => { const x = await frontTab(); return x && bare(x.label) === label && (await newestInFront()) === turn && x; }, 60000, 1000);
-      await served(); await exec('workbench.action.closeActiveEditor');
+      await settle('a closed conversation brought back: before its tab was closed');
+      await exec('workbench.action.closeActiveEditor');
       check(!!await firstClosed(t.id), 'closing the tab of a conversation puts it first in Recently closed', await closedIds());
       if (!await list.evaluate(() => document.querySelector('.cp-section[data-key="closed"]').classList.contains('cp-open'))) {
         await list.locator('.cp-section[data-key="closed"] .cp-section-head').first().click();
@@ -3718,7 +3784,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         { tab: await frontTab(), newest: await newestInFront(), had });
       await checkCurrent(t.id, 'the conversation opened again from Recently closed');
       await shot('reopened-from-recently-closed');
-      await served(); await exec('workbench.action.closeActiveEditor');
+      await settle('a closed conversation brought back: before the tab opened again from Recently closed was closed');
+      await exec('workbench.action.closeActiveEditor');
       await firstClosed(t.id);
       /* The keys go to the editor area, where a user's would, rather than to the session list. */
       await exec('workbench.action.focusActiveEditorGroup');
@@ -3729,7 +3796,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         /* The New tab's URI names no conversation, so what it showed comes from its panel (src/tab-memory.js). */
         await tabNamed(restored.label).click();
         const turn = newestStarted(begun.id) || await until(newestInFront, 30000, 1000);
-        await served(); await exec('workbench.action.closeActiveEditor');
+        await settle('a closed conversation brought back: before the New tab was closed');
+        await exec('workbench.action.closeActiveEditor');
         check(!!await firstClosed(begun.id), 'closing the New tab a conversation was begun in puts that conversation first in Recently closed', await closedIds());
         await exec('workbench.action.focusActiveEditorGroup');
         await page.keyboard.press(REOPEN);
@@ -3758,7 +3826,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         await call(`await vscode.commands.executeCommand('vscode.openWith', vscode.Uri.from({ scheme: 'openai-codex', authority: 'route', path: arg.route,
           fragment: arg.fragment }), 'chatgpt.conversationEditor', { viewColumn: arg.column, preview: false }); return true;`, x).catch(() => {});
         await sleep(500);
-        await served(); await exec('workbench.action.closeActiveEditor');
+        await settle('how many conversations Recently closed lists: before a tab was closed', 0);
+        await exec('workbench.action.closeActiveEditor');
         await sleep(500);
       }
       const closed = () => list.evaluate(() => { const s = document.querySelector('.cp-section[data-key="closed"]');
@@ -3980,8 +4049,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
      * A second window of the same VS Code on a folder of its own, holding a conversation in a tab (Claude Code Plus's
      * ui.js has the same two-window step). An approval Codex asks for during its turn in that window
      * shows in this one through the mark the plugin's PermissionRequest hook leaves. This window does not trust the plugin's hooks, so the hook
-     * script is run here with the JSON Codex sends it (the input schema Codex 26.1117 embeds). On Linux Codex also asks
-     * there for a real approval to run a command outside the sandbox, which is given there. Then the conversation,
+     * script is run here with the JSON Codex sends it (the input schema Codex 26.1117 embeds). Codex also asks there for
+     * a real approval to run a command outside the sandbox, which is given there. Then the conversation,
      * archived in the other window and kept open there read-only, is neither deleted here nor taken by the daily pass,
      * until that window closes. It is archived there because this window's app-server refuses to archive a conversation
      * another app-server has loaded ("already has an active writer").
@@ -4340,19 +4409,18 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
           model.release();
           await until(async () => (await rowDot()) !== 'working', 30000, 500);
 
-          if (process.platform !== 'linux') {
-            note(`the request to run a command outside the sandbox is made only on Linux in this run, so an approval given in the second window was not checked on ${process.platform}`);
-          } else {
+          {
             await exec('notifications.clearAll');
             /* The tab's page has to be in front for its approval card to be clicked. */
             await inB('await vscode.commands.executeCommand("codexPlus.openThreadInTab", arg); return true;', T.id);
-            model.script(T.id, [{ call: 'exec_command', args: { cmd: 'true', yield_time_ms: 1000, sandbox_permissions: 'require_escalated',
+            const checkCmd = process.platform === 'win32' ? 'Write-Output checked' : 'true';
+            model.script(T.id, [{ call: 'exec_command', args: { cmd: checkCmd, yield_time_ms: 1000, sandbox_permissions: 'require_escalated',
               justification: 'Check the export outside the sandbox.' } }, { reply: 'Checked.' }]);
             const was2 = turnOf(T.id);
             await startTurn('Check the export outside the sandbox.');
             const askedB = await until(() => inB(`${OWN} return own('patching').approvalsOf(arg).decide;`, T.id), 30000, 500);
             const turn2 = turnOf(T.id);
-            check(!!askedB && turn2 !== was2, 'on Linux the second window\'s conversation asks for approval to run a command outside the sandbox', { askedB, turn: turn2 });
+            check(!!askedB && turn2 !== was2, 'the second window\'s conversation asks for approval to run a command outside the sandbox', { askedB, turn: turn2 });
             /* Until the mark is left, only the second window can name the tool: its app-server made the request. */
             if (apWaits) {
               const from = Date.now();
@@ -4363,7 +4431,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
             }
             /* Codex runs the hook just before it asks; here it runs just after, and the second window's next poll (every
                three seconds) sees the mark while the request is outstanding. */
-            hook({ ...asCodex(turn2), hook_event_name: 'PermissionRequest', tool_name: 'Bash', tool_input: { command: 'true', description: 'Check the export outside the sandbox.' } });
+            hook({ ...asCodex(turn2), hook_event_name: 'PermissionRequest', tool_name: 'Bash', tool_input: { command: checkCmd, description: 'Check the export outside the sandbox.' } });
             check(!!await until(async () => (await rowDot()) === 'waiting', 20000, 500), 'this window shows it waiting', await rowDot());
             await sleep(4000);
             /* The reply after the command is held back, keeping the turn running while the dot is read. Agent Plus's notice sits
@@ -4506,50 +4574,12 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         await page.mouse.move(box.x + at[0], box.y + at[1], { steps: 4 });
         await sleep(200);
       };
-      /* Each way opens a conversation and closes it a moment later. On a slow machine its page is still fetching most of
-         its code then, and what it leaves queued holds up every Codex page for minutes, so before a tab is closed the
-         pages of Codex's tabs are let draw their conversations and go 2 s with no file reaching them; and again when VS
-         Code was still behind with Codex's files, as theirs may have been among them. They are told by the webview origin
-         Codex's tabs share, learnt from the page in front, and not by the conversation's title: Codex heads a page "New
-         chat" now and then, and the page of its hidden sidebar has a composer and the titles in its text too. */
-      let tabsHost = '';
-      const tabPages = async () => {
-        const out = [];
-        for (const f of page.frames()) {
-          const drawn = await f.evaluate((host) => (location.host === host && /\/openai\.chatgpt[^/]*\/webview\/$/.test(document.baseURI)
-            ? !!document.querySelector('[data-codex-composer-root]') && !!document.querySelector('[data-turn-key]') : null), tabsHost).catch(() => null);
-          if (drawn !== null) out.push({ f, drawn });
-        }
-        return out;
-      };
-      const letFinish = async (t) => {
-        if (!tabsHost) {
-          const fp = await until(frontPage, 60000, 500);
-          tabsHost = fp ? await fp.evaluate(() => location.host).catch(() => '') : '';
-        }
-        const pages = tabsHost ? await until(async () => { const ps = await tabPages(); return ps.length && ps.every((x) => x.drawn) && ps; }, 60000, 500) : null;
-        if (!pages) {
-          note(`rows of conversations no longer open: a page of Codex's tabs had not drawn its conversation in 60 s when the tab of "${t.title}" was to be closed`);
-          return;
-        }
-        const quiet = (f) => f.evaluate(() => {
-          const g = globalThis;
-          if (g.__cxpLastFile === undefined) {
-            g.__cxpLastFile = performance.now();
-            try { new PerformanceObserver(() => { g.__cxpLastFile = performance.now(); }).observe({ type: 'resource' }); } catch (_) { /* none */ }
-          }
-          return performance.now() - g.__cxpLastFile > 2000;
-        }).catch(() => true);
-        await until(async () => (await Promise.all(pages.map((x) => quiet(x.f)))).every(Boolean), 60000, 500);
-      };
-      /* The tab in the tab bar is found by its label, as the API has it or as the conversation is titled: Codex first
-         labels a tab with the title cut short, and the tab bar can show the whole title while the API still has the
-         short one, or the other way round. */
+      /* Each way opens a conversation and closes it a moment later, while on a slow machine its page is still fetching
+         most of its code, so the pages of Codex's tabs are let finish first. The tab in the tab bar is found by its
+         label, as the API has it or as the conversation is titled: Codex first labels a tab with the title cut short,
+         and the tab bar can show the whole title while the API still has the short one, or the other way round. */
       const closeTab = async (t) => {
-        for (let tries = 0; tries < 3; tries++) {
-          await letFinish(t);
-          if (await served() < 2) break;
-        }
+        await settle(`rows of conversations no longer open: before the tab of "${t.title}" was closed`);
         const x = await tabOf(t);
         if (!x) throw new Error(`no tab shows "${t.title}"`);
         await pointerOffRows();
@@ -4603,7 +4633,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
 
       try {
         await exec('workbench.action.closeAuxiliaryBar');
-        await served(); await exec('workbench.action.closeAllEditors');
+        await settle('rows of conversations no longer open: before the tabs left open were closed', 0);
+        await exec('workbench.action.closeAllEditors');
         await openNotes();
         if (!await showList()) throw new Error('the session list did not open');
         /* Escape in the list clears a selection an earlier step left. */
@@ -4786,7 +4817,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         fs.writeFileSync(path.join(out, 'rows-no-longer-open.json'), JSON.stringify(looked, null, 1));
       } finally {
         await exec('workbench.action.closeAuxiliaryBar');
-        await served(); await exec('workbench.action.closeAllEditors');
+        await settle('rows of conversations no longer open: before the tabs left open at its end were closed', 0);
+        await exec('workbench.action.closeAllEditors');
       }
     });
 
@@ -4837,17 +4869,16 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       };
       await exec('workbench.action.closeAuxiliaryBar');
       await exec('workbench.action.joinAllGroups');
-      for (const t of [pair[1], pair[0]]) {
-        await exec('codexPlus.openThreadInTab', t.id);
-        await frameWhere((want) => !!document.querySelector('[data-codex-composer-root]') && document.body.innerText.includes(want), 90000, t.title.slice(0, 30));
-      }
+      for (const t of [pair[1], pair[0]]) await openShown(t);
       check(await toFront(pair[0]), 'two conversations are open in tabs of one group, one in front of the other', await tabs());
       note(`before the reload, this window's app-server has loaded ${JSON.stringify(await loadedNow())}`);
 
       let restoredAt = 0;
+      /* Both tabs' pages have just been opened, and one of them was opened again before the second reload. */
       const reload = async (what) => {
         await exec('notifications.clearAll');
-        await served(); await w.reload();
+        await settle(`${what}: before the reload`, 2);
+        await w.reload();
         restoredAt = Date.now();
         await until(async () => { const st = await patchState(); return st && st.active; }, 60000, 1000);
         check(!!await until(async () => (await tabOf(pair[0])) && (await tabOf(pair[1])), 60000, 500), `${what}: after the reload VS Code restores both tabs`, await tabs());
@@ -4981,12 +5012,11 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       const everywhere = (e) => e.tab === true && e.rows.length > 0 && e.rows.every((r) => r.unseen);
 
       await exec('workbench.action.closeAuxiliaryBar');
-      await served(); await exec('workbench.action.closeAllEditors');
+      /* The step above ends on a page it has just drawn. */
+      await settle('restored tabs keep their envelopes: before the tabs left open were closed');
+      await exec('workbench.action.closeAllEditors');
       await exec('workbench.action.joinAllGroups');
-      for (const t of [pair[1], pair[0]]) {
-        await exec('codexPlus.openThreadInTab', t.id);
-        await frameWhere((want) => !!document.querySelector('[data-codex-composer-root]') && document.body.innerText.includes(want), 90000, t.title.slice(0, 30));
-      }
+      for (const t of [pair[1], pair[0]]) await openShown(t);
       check(!!await until(async () => { const a = await tabOf(pair[0]), b = await tabOf(pair[1]); return a && b && a.active && !b.active; }, 15000, 300),
         'two conversations are open in tabs of one group, one in front of the other', await codexTabsNow());
       for (const t of pair) await call('await vscode.commands.executeCommand("codexPlus.markThreadUnread", arg); return true;', t.id);
@@ -4996,7 +5026,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
 
       await setting('loadRestoredTabs', true);
       await exec('notifications.clearAll');
-      await served(); await w.reload();
+      await settle('restored tabs keep their envelopes: before the reload', 2);
+      await w.reload();
       await holdInFront();
       await until(async () => { const st = await patchState(); return st && st.active; }, 60000, 1000);
       const ran = await until(async () => { const r = await holds(); return r && r.loaded !== null && r; }, 120000, 1000);
@@ -5035,7 +5066,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         const pidNow = () => call('return process.pid;', null, 300).catch(() => 0);
         const was = await pidNow();
         const at = Date.now();
-        await served();
+        await settle('a tab closed while the extension host was away: before the extension host restarted');
         call('setTimeout(() => vscode.commands.executeCommand("workbench.action.restartExtensionHost"), 50); return true;', null, 3000).catch(() => {});
         /* Watches for a moment when no host answers: the old host gone and the new one not yet up. */
         let gap = false;
