@@ -1328,25 +1328,13 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await page.mouse.move(talk ? talk.x + 30 : 0, talk ? talk.y + 15 : 0, { steps: 6 });
     });
 
-    /* The plan bar above the message box (codexPlus.planBar, src/plan-bars.js and the page script's placePlanBar): the
-       summary Agent Plus gives of a conversation's plan, drawn by Agent Plus's fragment just above the box and as wide as
-       it, compact in Codex's narrow sidebar, following the plan as it changes, and opening Agent Plus's views. */
-    await step('the plan bar', async () => {
-      if (!codex) throw new Error('the conversation did not open');
-      const id = threads[0].id, other = threads[1];
-      await clearToasts();
-      await tabNamed(title).click();
-      await until(async () => (await frontPage()) === codex, 10000, 300);
+    /* What the plan bar's checks share: the step of its own and the one on Codex's sidebar, which checks the compact bar
+       there. */
+    const planBarTools = (() => {
       const since = new Date().toISOString().replace(/\.\d+Z$/, '+00:00');
       /* Asked days before the user's last message, so the question counts in the bar but gives the tab no red dot, which
          the steps after this one do not expect. */
       const asked = new Date(Date.now() - 3 * 86400e3).toISOString().replace(/\.\d+Z$/, '+00:00');
-      const QUESTION = 'Should the retry delay stay at 30 seconds?';
-      const ROWS = [
-        { title: 'Find the retry delay', state: 'done', since, closed: since },
-        { title: 'Change the retry delay', state: 'doing', since, children: [{ title: 'Read the sync job', state: 'doing', since }] },
-        { title: 'Decide the default delay', state: 'waiting', waitingOn: 'user', question: QUESTION, asked, since: asked },
-        { title: 'Update the docs', state: 'todo', since }];
       const writeRows = (thread, nodes) => { fs.mkdirSync(PLANS, { recursive: true }); fs.writeFileSync(path.join(PLANS, `${thread}.json`), JSON.stringify({ nodes })); };
       /* What the bar in frame `f` shows, part by part, and where it is against the message box. */
       const barIn = (f) => (f ? f.evaluate(() => {
@@ -1368,6 +1356,26 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         const bar = document.getElementById('workbench.parts.sidebar');
         return bar ? [...bar.querySelectorAll('.monaco-list-row')].filter((r) => r.offsetParent).map((r) => r.innerText.trim()) : [];
       }).catch(() => null);
+      return { since, asked, writeRows, barIn, barSays, noBar, placed, planViewRows };
+    })();
+
+    /* The plan bar above the message box (codexPlus.planBar, src/plan-bars.js and the page script's placePlanBar): the
+       summary Agent Plus gives of a conversation's plan, drawn by Agent Plus's fragment just above the box and as wide as
+       it, following the plan as it changes, and opening Agent Plus's views. The compact bar in Codex's narrow sidebar is
+       checked at the end of the sidebar's own step. */
+    await step('the plan bar', async () => {
+      if (!codex) throw new Error('the conversation did not open');
+      const id = threads[0].id;
+      const { since, asked, writeRows, barIn, barSays, noBar, placed, planViewRows } = planBarTools;
+      await clearToasts();
+      await tabNamed(title).click();
+      await until(async () => (await frontPage()) === codex, 10000, 300);
+      const QUESTION = 'Should the retry delay stay at 30 seconds?';
+      const ROWS = [
+        { title: 'Find the retry delay', state: 'done', since, closed: since },
+        { title: 'Change the retry delay', state: 'doing', since, children: [{ title: 'Read the sync job', state: 'doing', since }] },
+        { title: 'Decide the default delay', state: 'waiting', waitingOn: 'user', question: QUESTION, asked, since: asked },
+        { title: 'Update the docs', state: 'todo', since }];
 
       writeRows(id, ROWS);
       const full = await barSays(codex, (b) => b.count === '4 open' && /2\.1 Read the sync job/.test(b.row || '') && b.red === '1 to decide');
@@ -1427,52 +1435,6 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await exec('workbench.action.closePanel');
       await showList();
 
-      /* In Codex's sidebar, which is narrow, the compact bar; a click there shows that conversation's plan, though the
-         tab in front shows another. */
-      writeRows(other.id, [{ title: 'Look at the export logs', state: 'doing', since },
-        { title: 'Choose what to log', state: 'waiting', waitingOn: 'user', question: 'Log every skipped row, or a count?', asked, since: asked },
-        { title: 'Fix the archive filter', state: 'todo', since }]);
-      await call('vscode.commands.executeCommand("codexPlus.openThreadInSidebar", arg); return true;', other.id);
-      const allow = page.locator('.monaco-dialog-box').filter({ hasText: 'open this URI' }).first();
-      if (await allow.waitFor({ state: 'visible', timeout: 10000 }).then(() => true, () => false)) {
-        await allow.locator('.dialog-buttons .monaco-button').filter({ hasText: 'Open' }).first().click({ timeout: 5000 });
-      }
-      const side = await frameWhere((want) => innerWidth < 800 && document.body.innerText.includes(want) && !!document.querySelector('[data-codex-composer-root]'), 60000, other.title);
-      if (!side) throw new Error('Codex\'s sidebar did not show the second conversation');
-      let narrow = await barSays(side, (b) => b.count === '3 open', 30000);
-      if (narrow && !narrow.compact) {
-        /* The sidebar opened wider than the compact width; its edge is dragged in. */
-        const edge = await page.evaluate(() => {
-          const b = document.getElementById('workbench.parts.auxiliarybar').getBoundingClientRect();
-          const s = [...document.querySelectorAll('.monaco-sash.vertical')].map((e) => e.getBoundingClientRect()).find((r) => r.height > 100 && Math.abs((r.left + r.right) / 2 - b.left) < 4);
-          return s && { x: (s.left + s.right) / 2, y: b.top + b.height / 2, width: b.width };
-        });
-        if (edge) {
-          await page.mouse.move(edge.x, edge.y);
-          await page.mouse.down();
-          await page.mouse.move(edge.x + Math.max(0, edge.width - 340), edge.y, { steps: 10 });
-          await page.mouse.up();
-          await sleep(800);
-        }
-        narrow = await barSays(side, (b) => b.compact, 10000) || await barIn(side);
-      }
-      check(!!narrow && narrow.compact && narrow.count === '3 open' && narrow.red === '1' && !narrow.row && placed(narrow),
-        'in Codex\'s sidebar, narrower than 400 px, the bar is compact: the open count and the number of questions, as wide as the box and just above it', narrow);
-      await shot('plan-bar-sidebar');
-      await showList();
-      await side.locator('[data-codex-extras="plan-bar"] .apb-name').first().click({ timeout: 10000 });
-      const theirs = await until(async () => { const r = await planViewRows(); return r && r.some((x) => x.includes('Look at the export logs')) && r; }, 15000, 500);
-      check(!!theirs && !theirs.some((x) => x.includes('Read the sync job')), 'a click on the sidebar\'s bar shows that conversation\'s plan in the Work plan view, not the plan of the tab in front',
-        theirs || await planViewRows());
-      /* The sidebar goes back to Codex's home before it is closed, as it was before this step: a later step opens the
-         second conversation there and expects the sidebar to start showing it. */
-      await exec('codexPlus.newInSidebar');
-      await until(() => side.evaluate(() => !document.querySelector('[data-turn-key]')).catch(() => true), 15000, 500);
-      await exec('workbench.action.closeAuxiliaryBar');
-      await showList();
-      await tabNamed(title).click();
-      await until(async () => (await frontPage()) === codex, 10000, 300);
-
       /* No plan, no bar; the setting turns it off and on. */
       fs.rmSync(path.join(PLANS, `${id}.json`), { force: true });
       check(!!await noBar(codex), 'a conversation whose plan is gone has no bar, and the message box no room for one', await barIn(codex));
@@ -1485,7 +1447,6 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       check(placed(back), 'and turned on again it is back, in its place', back || await barIn(codex));
       await shot('plan-bar-back');
       planFor(id, planTitle(id));
-      fs.rmSync(path.join(PLANS, `${other.id}.json`), { force: true });
       await exec('agentPlus.refreshWorkPlan');
       /* The steps after this one start from a tab with no dot. */
       if (!await until(async () => { const d = await dotsOn(title); return d && d.waiting === 0 && d.working === 0; }, 20000, 500)) {
@@ -1907,7 +1868,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         await shot(`page-setting-${key}`);
         await setting(key, undefined);
         const back = await until(async () => { const x = await read(); return same(x) && x; }, 15000, 500);
-        check(!!back, `and with codexPlus.${key} back at its default, the page is as it was`, back || await read());
+        check(!!back, `and with codexPlus.${key} back at its default, the page is as it was`, { was: on, now: back || await read() });
       };
       await pageSetting('timestamps', 'the times above the messages and replies go, the replies\' figures staying', (x) => x.userStamps === 0 && x.timed === 0 && x.figures > 0);
       await pageSetting('turnFigures', 'the context share, model and effort beside each reply\'s time go', (x) => x.replyStamps > 0 && x.figures === 0);
@@ -3077,8 +3038,20 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       }
       const side = await frameWhere((want) => innerWidth < 800 && document.body.innerText.includes(want)
         && document.querySelectorAll('.codex-extras-stamp-assistant').length >= 4, 90000, t.title);
-      check(!!side, 'Resume in Sidebar draws the conversation in Codex\'s sidebar, with a stamp on each reply');
-      if (!side) return;
+      /* For a failure's detail: each page narrower than 800 px, its turns, its stamps on replies and whether it names the
+         conversation. */
+      const narrowPages = async () => {
+        const out = [];
+        for (const f of page.frames()) {
+          const x = await f.evaluate((want) => (innerWidth < 800 && document.querySelector('[data-codex-composer-root]')
+            ? { width: innerWidth, height: innerHeight, turns: document.querySelectorAll('[data-turn-key]').length,
+              stamps: document.querySelectorAll('.codex-extras-stamp-assistant').length, names: document.body.innerText.includes(want) } : null), t.title).catch(() => null);
+          if (x) out.push(x);
+        }
+        return out;
+      };
+      check(!!side, 'Resume in Sidebar draws the conversation in Codex\'s sidebar, with a stamp on each reply', side ? undefined : await narrowPages());
+      if (!side) { await exec('workbench.action.closeAuxiliaryBar'); return; }
       await shot('sidebar-conversation');
       const fit = await side.evaluate(() => [...document.querySelectorAll('.codex-extras-stamp-assistant')].filter((e) => e.getClientRects().length).map((e) => {
         const r = e.getBoundingClientRect(), p = e.parentElement.getBoundingClientRect(), st = getComputedStyle(e);
@@ -3145,6 +3118,51 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       const sideNow = await frameWhere(() => innerWidth < 800 && !!document.querySelector('[data-codex-composer-root]'), 10000);
       check(!!read, 'opening Codex\'s sidebar on it again takes the envelope away', { row: await unseen(), sidebar: await auxiliaryShowsCodex(),
         sidebarPage: await pageSays(sideNow), patch: await call(`${OWN} const p = own('patching'); return { showing: p.sidebarShowing(), last: p.sidebarThread() };`).catch((e) => String(e)) });
+      /* The plan bar in Codex's sidebar, which is narrow: compact, and a click on it shows the sidebar's conversation's plan
+         in the Work plan view though the tab in front shows another. Last in this step, so that the checks above see the
+         sidebar as they would with no plan bar step before them: a sidebar page that has shown the conversation once draws
+         fewer of its turns when it shows it again. */
+      {
+        const { since, asked, writeRows, barIn, barSays, placed, planViewRows } = planBarTools;
+        writeRows(t.id, [{ title: 'Look at the export logs', state: 'doing', since },
+          { title: 'Choose what to log', state: 'waiting', waitingOn: 'user', question: 'Log every skipped row, or a count?', asked, since: asked },
+          { title: 'Fix the archive filter', state: 'todo', since }]);
+        const sidePage = await frameWhere((want) => innerWidth < 800 && document.body.innerText.includes(want) && !!document.querySelector('[data-codex-composer-root]'), 30000, t.title);
+        if (!sidePage) check(false, 'Codex\'s sidebar still shows the conversation for its plan bar to be checked', await narrowPages());
+        else {
+          let narrow = await barSays(sidePage, (b) => b.count === '3 open', 30000);
+          if (narrow && !narrow.compact) {
+            /* The sidebar is wider than the compact width; its edge is dragged in. */
+            const edge = await page.evaluate(() => {
+              const b = document.getElementById('workbench.parts.auxiliarybar').getBoundingClientRect();
+              const e = [...document.querySelectorAll('.monaco-sash.vertical')].map((x) => x.getBoundingClientRect()).find((r) => r.height > 100 && Math.abs((r.left + r.right) / 2 - b.left) < 4);
+              return e && { x: (e.left + e.right) / 2, y: b.top + b.height / 2, width: b.width };
+            });
+            if (edge) {
+              await page.mouse.move(edge.x, edge.y);
+              await page.mouse.down();
+              await page.mouse.move(edge.x + Math.max(0, edge.width - 340), edge.y, { steps: 10 });
+              await page.mouse.up();
+              await sleep(800);
+            }
+            narrow = await barSays(sidePage, (b) => b.compact, 10000) || await barIn(sidePage);
+          }
+          check(!!narrow && narrow.compact && narrow.count === '3 open' && narrow.red === '1' && !narrow.row && placed(narrow),
+            'in Codex\'s sidebar, narrower than 400 px, the bar is compact: the open count and the number of questions, as wide as the box and just above it', narrow || await barIn(sidePage));
+          await shot('plan-bar-sidebar');
+          await tabNamed(title).click();
+          await until(async () => (await frontPage()) === codex, 10000, 300);
+          await showList();
+          await sidePage.locator('[data-codex-extras="plan-bar"] .apb-name').first().click({ timeout: 10000 });
+          const theirs = await until(async () => { const r = await planViewRows(); return r && r.some((x) => x.includes('Look at the export logs')) && r; }, 15000, 500);
+          check(!!theirs && !theirs.some((x) => x.includes(planTitle(threads[0].id))),
+            'a click on the sidebar\'s bar shows that conversation\'s plan in the Work plan view, not the plan of the tab in front', theirs || await planViewRows());
+          await showList();
+          await openNotes();
+        }
+        planFor(t.id, planTitle(t.id));
+        await exec('agentPlus.refreshWorkPlan');
+      }
       await exec('workbench.action.closeAuxiliaryBar');
     });
 
