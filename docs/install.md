@@ -1,7 +1,5 @@
 # Installing and turning off Codex Plus
 
-VS Code installs Agent Plus (`xnervwang.agent-plus`), a dependency of Codex Plus, from the marketplace along with Codex Plus. A new build of Codex Plus usually changes what the patch writes into Codex; Codex Plus writes the new copy and offers a reload.
-
 ## Install
 
 Agent Plus (`xnervwang.agent-plus`) is a dependency. VS Code installs it from the marketplace along with this extension; when it is not on the marketplace, install its `.vsix` first, then build this extension from a clone of this repository and install it:

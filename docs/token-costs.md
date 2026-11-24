@@ -1,7 +1,5 @@
 # What it costs in tokens
 
-Some Codex Plus features add text to what Codex sends the model, and token mode in Agent Plus decides which of those features run. Codex Plus can also set a budget for the list of skills that Codex sends.
-
 The plan adds about 90 tokens to a message when it has not changed since the previous message, which is about half of all messages, and about 520 tokens (the median) when it has changed. These figures count the text itself; how they were measured is under [Typical values](#typical-values).
 
 A request at the end of a turn (an end-of-turn reminder or one of the brief's requests, under [Added now and then](#added-now-and-then)) has a separate cost: Codex answers it with two more model calls that each send the whole context again, and those calls are not included above. The work plan's text, given at the start of the turn, asks for the status before the final reply, so Codex sends the `set_status` call with the turn's other tool calls.

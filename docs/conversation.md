@@ -1,8 +1,6 @@
 # In a conversation
 
-Codex Plus shows a time above each message and reply, puts figures beside each reply and displays images in replies at their own size. It also adds a rail of your messages, marks on your messages, links to your other conversations, a plan bar above the message box and a row below it.
-
-Codex Plus draws these additions into Codex's own page. Each needs the patch and a window reload, because the page keeps running the script it was built with.
+Codex Plus draws the additions described below into Codex's own page. Each needs the patch and a window reload, because the page keeps running the script it was built with.
 
 How the page script (the script Codex Plus adds to Codex's page) reads the times and what it changes there is in [docs/codex-page.md](codex-page.md#inside-a-codex-conversation).
 
