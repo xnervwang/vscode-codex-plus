@@ -298,6 +298,9 @@ async function run({ env, check, shots, out, results }) {
       await b.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'right', clickCount: 1 });
     };
     const rowAt = (sel) => b.evaluate(`(() => { const r = document.querySelector(${JSON.stringify(sel)}).getBoundingClientRect(); return [r.left + 60, r.top + r.height / 2]; })()`);
+    const ctrlClick = async ([x, y]) => {
+      for (const type of ['mousePressed', 'mouseReleased']) await b.send('Input.dispatchMouseEvent', { type, x, y, button: 'left', clickCount: 1, modifiers: 2 });
+    };
     const twice = await rowAt(`.cp-group[data-key="section:a"] .cp-row[data-id="${ID(1)}"]`);
     await b.evaluate('window.__posted.length = 0');
     await rightClick(twice[0], twice[1]);
@@ -472,10 +475,9 @@ async function run({ env, check, shots, out, results }) {
     const dOne = await b.evaluate(MEASURE_CTX);
     await esc();
     await sleep(100);
-    const alsoAt = await rowAt(`.cp-group[data-key="ungrouped"] .cp-row[data-id="${ID(3)}"]`);
-    for (const type of ['mousePressed', 'mouseReleased']) {
-      await b.send('Input.dispatchMouseEvent', { type, x: alsoAt[0], y: alsoAt[1], button: 'left', clickCount: 1, modifiers: 2 });
-    }
+    /* The menu let go of the row it selected for itself when it closed, so both rows are chosen with Ctrl. */
+    await ctrlClick(delAt);
+    await ctrlClick(await rowAt(`.cp-group[data-key="ungrouped"] .cp-row[data-id="${ID(3)}"]`));
     await sleep(100);
     await rightClick(delAt[0], delAt[1]);
     await sleep(200);
@@ -509,10 +511,8 @@ async function run({ env, check, shots, out, results }) {
     const aOne = await b.evaluate(MEASURE_CTX);
     await esc();
     await sleep(100);
-    const a2At = await rowAt(shelfSel(18));
-    for (const type of ['mousePressed', 'mouseReleased']) {
-      await b.send('Input.dispatchMouseEvent', { type, x: a2At[0], y: a2At[1], button: 'left', clickCount: 1, modifiers: 2 });
-    }
+    await ctrlClick(aAt);
+    await ctrlClick(await rowAt(shelfSel(18)));
     await sleep(100);
     await rightClick(aAt[0], aAt[1]);
     await sleep(200);
