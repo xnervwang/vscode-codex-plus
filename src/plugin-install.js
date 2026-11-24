@@ -242,8 +242,7 @@ const SHIPPED = 'python3';
 const SHIPPED_PYTHON = { launcher: [SHIPPED], executable: SHIPPED, version: '' };
 /* A hook command as the plugin ships it; the program is replaced and the rest of the line is left exactly as it was. */
 const HOOK_COMMAND = /^python3 (".+")$/;
-/* Codex runs a hook command as a line for the conversation's shell, so a program with a space in its path is quoted the
-   way the paths already in that line are. A Windows path cannot contain a double quote. */
+/* A Windows path cannot contain a double quote. */
 const quote = (w) => (/^[\w@%+=:,./\\-]+$/.test(w) ? w : `"${w.replace(/"/g, '')}"`);
 
 /**
@@ -256,17 +255,16 @@ const quote = (w) => (/^[\w@%+=:,./\\-]+$/.test(w) ? w : `"${w.replace(/"/g, '')
  *
  * Codex runs a hook command as a line for the conversation's own shell: sh, bash or zsh elsewhere, PowerShell on
  * Windows, or cmd there when it finds no PowerShell. The line names the plugin's folders as `${PLUGIN_ROOT}` and
- * `${PLUGIN_DATA}`, which Codex replaces with the paths itself before any shell reads it. A bare `$PLUGIN_ROOT` would be
- * left to the shell, and only a POSIX shell reads it as the environment variable: in PowerShell it is an unset variable
- * of PowerShell's own, so the script's path loses its folder, and cmd does not expand it at all. The paths go in as
- * text between the double quotes, so a folder whose name holds a `$` or a backquote would break the line.
+ * `${PLUGIN_DATA}`, which Codex replaces with the paths itself before any shell reads it. A bare `$PLUGIN_ROOT` reaches
+ * the shell unchanged: sh, bash and zsh expand the environment variable, PowerShell drops the folder from the script's
+ * path because its own variable is unset, and cmd leaves `$PLUGIN_ROOT` literal. Each path goes in as plain text
+ * between the double quotes, so a folder name containing `$` or a backquote breaks the line.
  *
- * The program gets the words a person would type (`py -3`, `python`) rather than the interpreter's path. A bare name
- * needs no quoting and runs under whichever shell Codex uses; a quoted path does not, because PowerShell needs `&` in
- * front of one, and no single spelling runs in both it and a POSIX shell. The shipped command already resolves
- * `python3` through PATH, and keeping to a bare name keeps it that way. The only launcher with no name to use is a
- * Python downloaded by this extension, which is a path and is quoted; plan_path.launcher_quoted marks that same case
- * for the row command.
+ * The program gets the words a person would type (`py -3`, `python`). A bare name needs no quoting and runs under
+ * whichever shell Codex uses; a quoted path does not, because PowerShell needs `&` in front of one, and no single
+ * spelling runs in both it and a POSIX shell. The shipped command already resolves `python3` through PATH, and keeping
+ * to a bare name keeps it that way. The only launcher with no name to use is a Python downloaded by this extension,
+ * which is a path and is quoted; plan_path.launcher_quoted marks that same case for the row command.
  *
  * The MCP server does get the full path, since Codex starts it as a program with its arguments rather than as a line
  * for a shell, and hooks/launcher.json gets the launcher words, which is what the model is told to type

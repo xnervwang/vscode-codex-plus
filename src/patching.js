@@ -456,8 +456,7 @@ function refreshConversationLinks() {
 
 /*
  * The plan bar above the message box (src/plan-bars.js): each page gets its own conversation's summary, only when it
- * differs from what that page was last sent. A page that loaded afresh (its time zone message) is sent it again, with
- * the summary asked of Agent Plus again.
+ * differs from the last one that page got.
  */
 const NO_PLAN_BAR = require('./plan-bars').NO_BAR;
 const planBarSent = new WeakMap();
@@ -480,8 +479,7 @@ function postPlanBarToSidebar(thread, fresh) {
   sidebarPlanBarSent = json;
   postToSidebar(m);
 }
-/* Sends the plan bar again to the pages showing `thread`, or to every conversation page and the sidebar with none;
-   called when Agent Plus says a summary changed, and when the bar is turned on or off. */
+/* Called when Agent Plus says a summary changed, and when the bar is turned on or off. */
 function refreshPlanBars(thread) {
   for (const [panel, rec] of registry) if (isConversationPanel(rec) && (!thread || rec.thread === thread)) postPlanBar(panel, rec.thread);
   const side = sidebarShowing();
@@ -1234,7 +1232,8 @@ function installHooks() {
         if (sidebar) postPlanBarToSidebar(sidebar, true);
       }
     }
-    /* A click on the plan bar ('open') or on its red part ('answer'), for the conversation the page shows. */
+    /* The page reports a click on the plan bar as 'open' and one on its red part as 'answer'; the command runs for
+       the conversation that page shows. */
     if (msg && msg.kind === 'planBar' && (msg.action === 'open' || msg.action === 'answer') && deps && typeof deps.planBarAct === 'function') {
       const rec = recordOfWebview(webview);
       const thread = rec ? rec.thread : sidebar;

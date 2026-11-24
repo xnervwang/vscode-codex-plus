@@ -49,10 +49,10 @@ const ANY_MARK = '/* CODEX-EXTRAS-HOST v';
 const BACKUP_SUFFIX = '.codex-extras-host.bak';
 const TMP_SUFFIX = '.codex-extras-host.tmp';
 /*
- * Every name the edits below declare inside Codex's code (a let, a parameter, a catch binding) starts with this and an
- * upper-case letter. The edits sit among Codex's minified names, which are one to three characters and change with
- * every build, so a short name of ours would sooner or later hide one of Codex's that the edit itself refers to, and
- * the hook would quietly stop working. test/parts/50c-patch-local-names.js holds the edits to it.
+ * Every name the edits below declare inside Codex's code starts with this and an upper-case letter; that includes
+ * parameters and catch bindings. The edits sit among Codex's minified names, which are one to three characters and
+ * change with every build, so a short name of ours could one day shadow a Codex name the edit uses, and the hook would
+ * stop working with no error. test/parts/50c-patch-local-names.js checks the edits against it.
  */
 const LOCAL_PREFIX = 'cxp';
 

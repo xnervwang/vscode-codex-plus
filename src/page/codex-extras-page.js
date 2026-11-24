@@ -541,18 +541,16 @@
   function restyleIfOn() { if (anythingOn() || view.buttons !== false) restyle(); }
 
   /*
-   * The plan bar: one line just above the message box, as wide as the box, saying where the conversation's work plan
-   * stands. Agent Plus's shared fragment draws it (agentPlusPlanBar, src/page/plan-bar.js, put in front of this script);
-   * the host sends the summary of this page's conversation (codex-extras-plan-bar, src/plan-bars.js), and a click sends
-   * back only which part was clicked.
+   * The plan bar: one line just above the message box, saying where the conversation's work plan stands. Agent Plus's
+   * shared fragment draws the bar. The host sends this page's conversation summary from src/plan-bars.js in a
+   * codex-extras-plan-bar message, and a click posts only 'open' for the bar or 'answer' for its red part.
    *
    * Like the row below the box it is this script's own element on <body>, placed by measuring the box, since nothing of
    * this script's goes inside an element Codex draws. While it is drawn the stylesheet gives the box PLAN_ROOM more top
-   * margin, which takes that much height from the conversation above it, so the bar covers neither the conversation
-   * nor anything Codex draws above the box. Each pass of either observer places it again and puts it back on <body> if
-   * a redraw of Codex's took it off, and a ResizeObserver on the box follows the box as it grows with what is typed. It
-   * sits on Codex's content and under every overlay Codex draws (Z_BELOW_CODEX), and with no box, no summary, or the bar
-   * turned off it is removed with its style.
+   * margin, so the bar covers neither the conversation nor anything Codex draws above the box. Each pass of either
+   * observer repositions the bar and reattaches it to <body> if a Codex redraw removed it; a ResizeObserver on the
+   * message box repositions the bar when the box changes size, including as it grows taller during typing. It sits on
+   * Codex's content and under every overlay Codex draws (Z_BELOW_CODEX).
    */
   var planBarApi = agentPlusPlanBar;
   var PLAN_H = 26, PLAN_GAP = 6, PLAN_ROOM = PLAN_H + PLAN_GAP;
@@ -582,12 +580,12 @@
       if (planRoomOn) restyleIfOn();
       return;
     }
-    /* A bar whose style a redraw took out of the page is made again, which puts the style back. */
+    /* If a redraw removed the bar's style element, the bar is made again, which adds the style back. */
     if (planBar && !one(document, 'style[' + planBarApi.MARK + '-style]')) dropPlanBar();
     if (!planBar) planBar = makePlanBar();
     if (!planBar.el.isConnected) document.body.appendChild(planBar.el);
     planBar.update(planBarMsg.summary);
-    /* The room goes in first and the box is measured after it, since a box that is not at the bottom of the page (a new
+    /* The room goes in before the box is measured, since a box that is not at the bottom of the page (a new
        conversation's) moves down by it. */
     if (planShown() !== planRoomOn) { restyleIfOn(); r = rectOf(root) || r; }
     var width = Math.round(r.width);
