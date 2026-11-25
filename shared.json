@@ -1,5 +1,5 @@
 {
-  "core": "dbc1ca5adfd648381274627a943aaeb84d533311",
+  "core": "fcc7f25657b6d65fb23b8cb650be6dab04b0b1a1",
   "files": [
     {
       "path": "build/sync-shared.js",
@@ -164,7 +164,7 @@
     {
       "path": "codex-plugin/agent-work-plan/hooks/plan_agent.py",
       "from": "shared/plugin/codex/plan_agent.py",
-      "sha256": "4f3b93276c4c01a96af619e04c3c38366672dd0796fe97a3f27d75523f85b986"
+      "sha256": "f6a61e35db88f4adaae0176e70d87f17c8f1d589083d81c9dfe716c2169e753d"
     },
     {
       "path": "codex-plugin/agent-work-plan/skills/maintain/SKILL.md",

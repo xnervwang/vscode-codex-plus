@@ -66,7 +66,7 @@ function rolloutLines({ id, cwd, source = 'vscode', turns = [], startMs }) {
         type: 'function_call_output', call_id: `call_${t.id}`, output: 'ok' } });
     }
     /* Shaped as Codex 0.164 writes it: the turn's own usage, the thread's total, and a rate_limits record whose
-       quota fields are null, which is what every record on this machine holds. */
+       quota fields are null. */
     out.push({ timestamp: iso(at + 4000), type: 'event_msg', payload: { type: 'token_count', info: {
       last_token_usage: { input_tokens: t.context || 1000, cached_input_tokens: 0, output_tokens: 10, reasoning_output_tokens: 4,
         total_tokens: (t.context || 1000) + 10 },

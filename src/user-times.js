@@ -45,9 +45,8 @@ const PER_TURN = 8;
 
 /*
  * A user-role message Codex wrote itself rather than one the user typed: its whole text is one XML-ish block, as in
- * <environment_context>. Every one of the 40 rollouts read while this was written held exactly one such message and no
- * other, while whether the row carries a `metadata` key does not tell the two apart. A message the user really did
- * begin with such a tag is counted out here. The counts then differ, and the page shows no times at all.
+ * <environment_context>. Whether the row carries a `metadata` key does not tell the two apart. A message the user
+ * really did begin with such a tag is counted out here. The counts then differ, and the page shows no times at all.
  * The tag may carry attributes, as a goal's <codex_internal_context source="goal"> does. A Stop hook's
  * <hook_prompt hook_run_id="..."> is the exception: Codex draws it on the user's side.
  */
