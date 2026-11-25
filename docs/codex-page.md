@@ -35,6 +35,15 @@ Timestamps, the rail and the colouring of your own messages are all drawn into C
 | How it finds the notice | By the message id of the notice's title, `localConversation.writerConflict.title`, in the props React keeps on the page's elements, so it is found whatever language Codex's interface is in |
 | What is logged | A line in the Codex Plus output channel when the clicks start, when the notice goes after some, and when they stop |
 
+## A page that could not load Codex's code
+
+| | |
+| --- | --- |
+| What happens | Codex loads parts of its page as it needs them. When one of them fails to load, Codex's error boundary replaces the whole page with "ChatGPT hit a snag". The browser keeps that failure for the rest of the page's life, so Codex's own button does not bring the conversation back, and neither does reloading the page, which leaves VS Code's empty placeholder |
+| What Codex Plus does | The page script finds that page by the props of the boundary's fallback, and only when the error is a module that failed to load. Two seconds later the host closes the tab and opens the conversation again in the same editor group, at the same position, in front only if it was in front. A conversation is opened again at most twice in ten minutes; after that it is left for you |
+| What it leaves alone | A New tab before its first message, which has no conversation to open again, and Codex's sidebar, which has no tab. Both are only logged |
+| What is logged | A line in the Codex Plus output channel when a page reports it, with the file Codex could not load, and when the tab has been opened again |
+
 ## Sampling a conversation's layout
 
 - The page script can take a sample of the conversation's layout: tag names, class names, attribute names, depth, child counts and rounded sizes, and for each text node its length with the shape of its first eight characters, never any text or attribute value.

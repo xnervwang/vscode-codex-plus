@@ -11,6 +11,8 @@
  *     is showing is seen as waiting even though it has no tab of its own.
  *   - When Codex says the conversation is open in another app, which after a window reload is usually the app-server
  *     of the window before still exiting, its Retry is clicked for the user every few seconds for two minutes.
+ *   - When Codex replaces the page with its recovery page because one of its own modules failed to load, the host is
+ *     told, and opens the tab again.
  *   - The id of the newest turn shown goes to the host, which is how a tab Codex opened for a new conversation is
  *     matched to the conversation it goes on to show.
  *   - A chime plays when the host says a turn finished, Codex stopped for permission, or the model asked something,
@@ -1456,6 +1458,36 @@
     if (conflictTries >= CONFLICT_TRIES) return;
     conflictTimer = setTimeout(conflictStep, conflictTries ? CONFLICT_EVERY_MS : CONFLICT_FIRST_MS);
   }
+  /*
+   * Codex's recovery page ("ChatGPT hit a snag"), which its error boundary draws in place of the whole page when one of
+   * its own modules fails to load. The browser keeps that failure for the rest of the page's life, so neither Codex's own
+   * button nor a reload of the page brings it back (a reload leaves VS Code's empty placeholder page); only a new page
+   * does. The page tells the host once, with the module's file name, and the host opens the tab again
+   * (src/broken-tabs.js). It is found by the props of the boundary's fallback in React's fibers above a heading: an
+   * `error` and a `resetError`; any other error is left alone.
+   */
+  var MODULE_FAILED = /dynamically imported module|Importing a module script failed|error loading dynamically imported module/i;
+  var brokenTold = false;
+  function lookForBroken() {
+    if (brokenTold) return;
+    var heads = [];
+    try { heads = document.querySelectorAll('h1, h2'); } catch (e) { return; }
+    for (var i = 0; i < heads.length; i++) {
+      var f = fiberOf(heads[i]);
+      for (var j = 0; f && j < ALERT_UP; j++, f = f.return) {
+        try {
+          var p = f.memoizedProps, err = p && typeof p === 'object' && typeof p.resetError === 'function' ? p.error : null;
+          if (!err) continue;
+          var said = String(err && err.message || err);
+          if (!MODULE_FAILED.test(said)) return;
+          var file = (/[\w.-]+\.m?js\b/.exec(said) || [''])[0].slice(0, 120);
+          brokenTold = true;
+          post({ kind: 'brokenPage', reason: 'module', file: file });
+          return;
+        } catch (e) { /* not ours to read */ }
+      }
+    }
+  }
   function conflictReady() {
     if (!document.body) {
       if (!conflictWaiting) { conflictWaiting = true; document.addEventListener('DOMContentLoaded', function () { conflictWaiting = false; conflictReady(); }); }
@@ -1464,10 +1496,11 @@
     if (conflictObserver || typeof MutationObserver !== 'function') return;
     conflictObserver = new MutationObserver(function () {
       if (conflictDue) return;
-      conflictDue = setTimeout(function () { conflictDue = 0; lookForConflict(); }, CONFLICT_DEBOUNCE_MS);
+      conflictDue = setTimeout(function () { conflictDue = 0; lookForConflict(); lookForBroken(); }, CONFLICT_DEBOUNCE_MS);
     });
     try { conflictObserver.observe(document.body, { childList: true, subtree: true }); } catch (e) { conflictObserver = null; return; }
     lookForConflict();
+    lookForBroken();
   }
 
   /*
