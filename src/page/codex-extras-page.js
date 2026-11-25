@@ -2210,21 +2210,20 @@
   }
 
   /*
-   * A conversation at its end stays at its end through this script's own changes to the page. The plan bar's room and
-   * the row's below the message box make Codex's scroller shorter, and the stamps and the rail's padding make the turns
-   * taller. Codex scrolls back to the end after such a change only while it is following the end: it stops following
-   * at the user's scroll up, and starts again at a scroll of the user's own back down or a click on its own arrow.
-   * Brought back to the end by this script's rail after a scroll up, the conversation is not followed: the room the
-   * plan bar takes leaves its end under the message box, and when the turns grow, Codex, which measures them on its
-   * next frame, keeps the passage at the top of the view where it was and moves the end down by what they grew.
+   * The room taken by the plan bar and by the row below the message box makes Codex's scroller shorter, and the stamps
+   * and the rail's padding make the turns taller. Codex scrolls back to the end after such a change only while it is
+   * following the end: it stops following when the user scrolls up, and starts again only when the user scrolls back
+   * down or clicks its arrow. When this script's rail brings the conversation back to the end after a scroll up, Codex
+   * is still not following the end: the room the plan bar takes leaves the end under the message box, and when the
+   * turns grow, Codex, which measures them on its next frame, keeps the passage at the top of the view where it was and
+   * moves the end down by what they grew.
    *
-   * So each pass reads how far the scroller is from its end before it changes anything. If that was within END_PX,
-   * the distance within which Codex itself counts a conversation as at its end, the scroller is brought back to that
-   * distance after the pass, and held there on each frame for END_HOLD_MS, which outlasts Codex's measuring. A wheel,
-   * touch, key or press anywhere in the page means the user is doing something and ends the hold, and so does the end
-   * moving away by more than the view is tall, which is Codex showing another part of the conversation or another
-   * conversation. A conversation further up is left where it is. Passes run inside one another, and only the
-   * outermost one measures.
+   * Each pass reads how far the scroller is from its end before it changes anything. Codex itself treats a
+   * conversation within END_PX of its end as being at its end, and if the scroller was that close, it is brought back
+   * to the same distance after the pass and held there on each frame for END_HOLD_MS, which outlasts Codex's
+   * measuring. A wheel, touch, key or press anywhere in the page ends the hold. The hold also ends when the end moves
+   * away by more than the height of the view, which means Codex is showing another part of the conversation or another
+   * conversation. Passes run inside one another, and only the outermost one measures.
    */
   var END_PX = 24, END_HOLD_MS = 500, END_INPUT = ['wheel', 'touchstart', 'pointerdown', 'keydown'];
   var endDepth = 0, endBefore = -1, endHold = null;
