@@ -54,7 +54,7 @@ The plan bar shows the conversation's [work plan](work-plan.md), a list of numbe
 
 If you're at or very near the conversation's end, Codex Plus briefly keeps you there when the bar appears, disappears, changes text or becomes compact in Codex's narrow sidebar (described below); switching Codex Plus off and on again has the same effect. If you're farther up, the conversation doesn't move. Using the scroll wheel, touching the page, pressing a key or clicking anywhere on the page ends the hold early.
 
-If the [rail of your messages](#the-rail-of-your-messages) would end too close to the plan bar, or under it, when centred vertically in Codex's panel, Codex Plus moves the rail up just enough to leave a small gap. It returns to the centre when the bar disappears.
+If the [rail of your messages](#the-rail-of-your-messages) would end too close to the plan bar, or under it, when centred vertically in Codex's panel, Codex Plus moves the rail up just enough to leave a small gap, but not into Codex's header at the top of the panel. In a panel too short for both, the rail stays just below the header and the bar covers its lower buttons. It returns to the centre when the bar disappears.
 
 The bar's current row is the most deeply nested doing row. If no row is doing, the bar shows the first row in the highest-priority available state: waiting, discussing or todo, in that order. If only parked rows remain open (not done or dropped), the first parked row appears dimmed. When all rows are done, the bar shows a green tick and "All rows done".
 
