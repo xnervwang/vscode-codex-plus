@@ -4790,6 +4790,17 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         if (mine.length) await vscode.window.tabGroups.close(mine); return mine.length;`, [T.id, T.title]);
       check(!!await until(() => { const e = entryOf(profile.folder); return e && !e.sessions.includes(T.id); }, 20000, 500),
         'with the conversation in no tab here, this window\'s own entry among the windows does not list it', entryOf(profile.folder));
+      /* This window's app-server can keep the conversation, and its writer lock, after the tab that showed it has closed,
+         and the second window's app-server is then refused it ("already has an active writer"). So it is asked to let
+         the conversation go first. */
+      const loadedHere = () => call(`${OWN} const r = await own('patching').hostRequest('thread/loaded/list', {});
+        return r && r.outcome === 'done' && r.result ? r.result.data : null;`).catch(() => null);
+      const heldHere = await loadedHere();
+      if (Array.isArray(heldHere) && heldHere.includes(T.id)) {
+        await call(`${OWN} return own('patching').hostRequest('thread/unsubscribe', { threadId: arg });`, T.id).catch(() => null);
+        const gone = await until(async () => { const l = await loadedHere(); return Array.isArray(l) && !l.includes(T.id); }, 30000, 1000);
+        note(`this window's app-server had the conversation loaded as the step began, and ${gone ? 'let it go when asked to' : 'still had it 30 s after being asked to let it go'}`);
+      }
       const before = Date.now();
       await call('await vscode.commands.executeCommand("vscode.openFolder", vscode.Uri.file(arg), { forceNewWindow: true }); return true;', folderB);
       const pageB = await w.pageOf(path.basename(folderB), 90000);
