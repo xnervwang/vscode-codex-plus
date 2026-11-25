@@ -27,6 +27,7 @@ const SHIPPED = {
   '26.1117.31558': 'async createNewPanel(){let t=gq("/extension/panel/new"),r=St.window.activeTextEditor?.viewColumn??St.ViewColumn.Active;await St.commands.executeCommand("vscode.openWith",t,e.customEditorViewType,{viewColumn:r,preserveFocus:!1,preview:!1})}',
   '26.1117.41037': 'async createNewPanel(){let t=gq("/extension/panel/new"),r=St.window.activeTextEditor?.viewColumn??St.ViewColumn.Active;await St.commands.executeCommand("vscode.openWith",t,e.customEditorViewType,{viewColumn:r,preserveFocus:!1,preview:!1})}',
   '26.1120.41243': 'async createNewPanel(){let t=Rq("/extension/panel/new"),r=yt.window.activeTextEditor?.viewColumn??yt.ViewColumn.Active;await yt.commands.executeCommand("vscode.openWith",t,e.customEditorViewType,{viewColumn:r,preserveFocus:!1,preview:!1})}',
+  '26.1120.50957': 'async createNewPanel(){let t=Rq("/extension/panel/new"),r=yt.window.activeTextEditor?.viewColumn??yt.ViewColumn.Active;await yt.commands.executeCommand("vscode.openWith",t,e.customEditorViewType,{viewColumn:r,preserveFocus:!1,preview:!1})}',
 };
 const FRAGMENT = /^new-[0-9a-z]+-[0-9a-z]+$/;
 
