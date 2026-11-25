@@ -74,7 +74,7 @@
  *   locked       a conversation whose writer lock another process holds: Codex says it is open in another app, Codex
  *                Plus clicks its Retry for the user, and once the lock is let go it opens without a click
  *   broken page  a page that could not load one of Codex's modules, which Codex replaces with its recovery page: the
- *                tab is opened again in its place and draws the conversation
+ *                tab is opened again in its place and draws the conversation (the conversation of the locked step)
  *   token mode   what reaches the made-up model in each of Agent Plus's token modes, with the plugin's hooks trusted
  *
  * Every step saves a screenshot to <out>/shots, and crops of the parts this extension draws are compared with the
@@ -5929,7 +5929,9 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
      * opened again draws the conversation, at the position the tab had.
      */
     await step('a page that could not load Codex\'s code', async () => {
-      const t = threads[2];
+      /* The conversation of the step before, which no other step touches; threads[2] is deleted by "archive and delete". */
+      const t = fakeHome.HELD;
+      if (!walk(path.join(profile.codexHome, 'sessions')).some((f) => f.includes(t.id))) fakeHome.held(profile.codexHome, { folder: profile.folder });
       const assets = path.join(await call('return vscode.extensions.getExtension("openai.chatgpt").extensionPath;'), 'webview', 'assets');
       /* The largest of them: Codex has a small module of that name that only imports the one with the code. */
       const name = fs.readdirSync(assets).filter((n) => /^local-conversation-page-[0-9a-f]+\.js$/.test(n))
