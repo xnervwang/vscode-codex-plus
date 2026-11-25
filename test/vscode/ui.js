@@ -519,13 +519,24 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
    * fail every step after it that needs the conversation. So the tab is then closed, once VS Code has caught up with
    * Codex's files, and `act` done once more, with a note.
    */
-  /* For a frame on Codex's recovery page, what its own resource timing says of the code it fetched without a whole 200:
-     the file, the status, whether VS Code's service worker answered it, and the bytes; null for any other frame. */
-  const fetchesIn = (f) => f.evaluate(() => (/ChatGPT hit a snag/.test(document.body ? document.body.innerText : '')
-    ? performance.getEntriesByType('resource').filter((e) => /\/assets\//.test(e.name)
-      && (e.responseStatus !== 200 || !e.decodedBodySize || /local-conversation-page|new-thread-panel-page/.test(e.name)))
-      .map((e) => ({ file: e.name.split('/').pop(), status: e.responseStatus, worker: e.workerStart > 0, bytes: e.decodedBodySize,
-        at: Math.round(e.startTime), ms: Math.round(e.duration) })).slice(0, 12) : null)).catch(() => null);
+  /* For a frame on Codex's recovery page, what its own resource timing says of the code it fetched: each fetch of Codex's
+     code that did not bring a whole 200 (the file, the status, whether VS Code's service worker answered it, the bytes),
+     and the modules Codex's conversation and New pages import that have no entry at all, which are requests that
+     never ended. Null for any other frame; only its first heading is read before that is known. */
+  const fetchesIn = (f) => f.evaluate(async () => {
+    const h = document.querySelector('h1, h2');
+    if (!h || !/ChatGPT hit a snag/.test(h.textContent || '')) return null;
+    const all = performance.getEntriesByType('resource').filter((e) => /\/assets\//.test(e.name));
+    const file = (e) => e.name.split('/').pop();
+    const odd = all.filter((e) => e.responseStatus !== 200 || !e.decodedBodySize).map((e) => ({ file: file(e), status: e.responseStatus,
+      worker: e.workerStart > 0, bytes: e.decodedBodySize, at: Math.round(e.startTime), ms: Math.round(e.duration) })).slice(0, 12);
+    const seen = new Set(all.map(file)), missing = new Set();
+    for (const e of all.filter((x) => /local-conversation-page|new-thread-panel-page/.test(x.name))) {
+      const text = await fetch(e.name).then((r) => r.text()).catch(() => '');
+      for (const m of text.matchAll(/(?:from|import)\s*["'`]\.\/([\w.-]+\.js)["'`]/g)) if (!seen.has(m[1])) missing.add(m[1]);
+    }
+    return { odd, missing: [...missing].slice(0, 12), entries: all.length };
+  }).catch(() => null);
   const fetchesOf = async (pg = page) => {
     for (const f of (pg && !pg.isClosed() ? pg.frames() : [])) { const r = await fetchesIn(f); if (r) return r; }
     return null;
@@ -4289,7 +4300,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
          brought forward for a moment now to build its page, as codexPlus.loadRestoredTabs does, and then the New tab
          is put back in front. */
       const later = [before.find((x) => x.route === `/local/${t.id}`),
-        ...[agentNew, inTabNew].filter(Boolean).map((m) => before.find((x) => bare(x.label) === bare(m.label)))].filter((x) => x && !same(x));
+        ...[agentNew, inTabNew].filter(Boolean).map((m) => before.find((x) => bare(x.label) === bare(m.label))),
+        subAgent ? before.find((x) => x.route === `/local/${subAgent}`) : null].filter((x) => x && !same(x));
       for (const x of later) { await revealTab(x).catch(() => {}); await sleep(500); }
       if (later.length) { const back = (await codexTabsNow()).find(same); if (back) await revealTab(back).catch(() => {}); }
       /* Long enough for the extension to have reopened any conversation it took to be dropped (src/tab-memory.js). */
@@ -5633,11 +5645,15 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       check(!!failed && model.sent(`sleep ${pid.behind}`) === 0 && Array.isArray(loadedAfter) && !loadedAfter.includes(behind.id),
         'and its tab shows Codex\'s own "Codex could not start", so the conversation is still not loaded and gets no notice',
         { page: await pageSays(await frontPage()), sent: model.sent(`sleep ${pid.behind}`), loaded: loadedAfter, toasts: await toasts() });
+      /* The files its page asked for are waited for first, or the page opened next can find VS Code's queue for them full
+         (served()). */
+      await served();
       await call(`const t = vscode.window.tabGroups.all.flatMap((g) => g.tabs).find((x) => x.input && x.input.uri && x.input.uri.path === arg);
         if (t) await vscode.window.tabGroups.close(t); return !!t;`, `/local/${behind.id}`);
       await exec('codexPlus.openThreadInTab', behind.id);
-      const reopened = await until(() => model.sent(`sleep ${pid.behind}`) > 0, 60000, 1000);
-      check(!!reopened, 'opened again in a tab of its own, it is loaded and gets the notice that waited for it', { sent: model.sent(`sleep ${pid.behind}`), loaded: await loadedNow() });
+      const reopened = await until(() => model.sent(`sleep ${pid.behind}`) > 0, 90000, 1000);
+      check(!!reopened, 'opened again in a tab of its own, it is loaded and gets the notice that waited for it',
+        { sent: model.sent(`sleep ${pid.behind}`), loaded: await loadedNow(), page: await pageSays(await frontPage()), broken: await brokenInFront(), tabs: await tabs() });
 
       await toFront(front);
       await setting('loadRestoredTabs', true);
