@@ -55,6 +55,10 @@ const STALE_WORKING_MS = 2 * 60 * 60 * 1000;
 /* A conversation counts as running while it is working, open in a tab of this window, or was active this recently. */
 const RECENT_MS = 15 * 60 * 1000;
 const POLL_MS = 3000;
+/* Agent Plus's pen: how long a conversation not shown here may take to open in a tab, and how long the whole of putting
+   the text in its message box may take, both short of the ten seconds Agent Plus waits. */
+const PREFILL_OPEN_MS = 4000;
+const PREFILL_MS = 9000;
 /* The protocol major this source implements; package.json repeats it under "agentPlus". */
 const PROTOCOL = 1;
 const EXTENSION_ID = 'xnervwang.codex-plus';
@@ -658,7 +662,7 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
   const source = {
     protocol: PROTOCOL,
     /* ['brief'] while the conversation brief and the work plan both run. */
-    get features() { return (enabled() && briefs() ? ['brief'] : []).concat(['openHere', 'shows']); },
+    get features() { return (enabled() && briefs() ? ['brief'] : []).concat(['openHere', 'shows', 'prefill']); },
     id: 'codex',
     label: 'Codex',
     extensionId: EXTENSION_ID,
@@ -767,6 +771,26 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
      * back which happened, so the outcome is uncertain. Asked again with a delivery id it has seen, it types nothing.
      */
     deliverAnswer(sessionId, text, opts) { return deliverOnce(sessionId, text, opts); },
+    /*
+     * Agent Plus's pen on a plan row: the conversation comes to the front here with `text` at the end of its message
+     * box, not sent (src/patching.js prefill). A conversation this window does not show is opened in a tab first, and
+     * the whole of it stays within PREFILL_MS, short of the ten seconds Agent Plus waits.
+     */
+    async prefill(sessionId, text) {
+      const started = Date.now();
+      if (!files.THREAD_ID.test(String(sessionId || '')) || typeof text !== 'string') return { outcome: 'notReceived', reason: 'not a Codex conversation' };
+      if (!patching || typeof patching.prefill !== 'function' || !patching.canType()) {
+        return { outcome: 'notReceived', reason: 'Codex Plus\'s patch to Codex is not in use in this window' };
+      }
+      if (!patching.canDeliver(sessionId)) {
+        let opened = false;
+        try { opened = await tabs.openInTab(vscode, sessionId); } catch (e) { log(`prefill ${sessionId}: ${e.message}`); }
+        if (!opened) return { outcome: 'notReceived', reason: 'it could not be opened in this window' };
+        while (!patching.canDeliver(sessionId) && Date.now() - started < PREFILL_OPEN_MS) await new Promise((r) => setTimeout(r, 200));
+        if (!patching.canDeliver(sessionId)) return { outcome: 'notReceived', reason: 'its tab did not open in time' };
+      }
+      return patching.prefill(sessionId, text, { waitMs: Math.max(1000, PREFILL_MS - (Date.now() - started)) });
+    },
     /* For the patch: a conversation came to the front outside an editor tab (Codex's sidebar). The user acted in the
        sidebar to make that happen, so this is where they are looking until a tab says otherwise. */
     _focus(sessionId) {

@@ -3088,6 +3088,37 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await exec('notifications.clearAll');
     });
 
+    /* Agent Plus's pen on a Work plan row: the conversation in front gets "About row 1 (title): " at the end of its message
+       box, and nothing is sent (src/codex-source.js prefill, src/page/codex-extras-page.js takePrefill). */
+    await step('the pen on a work plan row', async () => {
+      if (!codex) throw new Error('the conversation did not open');
+      const id = threads[0].id;
+      planFor(id, planTitle(id));
+      await exec('agentPlus.refreshWorkPlan');
+      await tabNamed(title).click();
+      await until(async () => (await frontPage()) === codex, 10000, 300);
+      const box = codex.locator(COMPOSER).first();
+      const boxText = () => box.innerText().then((t) => t.replace(/\s+/g, ' ').trim()).catch(() => null);
+      const clearBox = async () => {
+        await box.click();
+        await page.keyboard.press(process.platform === 'darwin' ? 'Meta+A' : 'Control+A');
+        await page.keyboard.press('Backspace');
+      };
+      await clearBox();
+      const turns = model.turns();
+      await exec('workbench.view.extension.agentPlus');
+      const row = page.locator('#workbench\\.parts\\.sidebar .monaco-list-row').filter({ hasText: planTitle(id) }).first();
+      await row.hover();
+      await row.locator('.action-label[aria-label="Agent Plus: Write About This Row in Its Conversation"]').click({ timeout: 10000 });
+      const want = `About row 1 (${planTitle(id)}):`;
+      const got = await until(async () => { const t = await boxText(); return t === want && t; }, 15000, 300);
+      check(!!got, 'the pen on its Work plan row puts About row 1 (title): in the conversation\'s message box', { want, have: await boxText() });
+      await sleep(1500);
+      check(model.turns() === turns, 'and sends nothing', { turns: model.turns(), before: turns });
+      await clearBox();
+      await showList();
+    });
+
     /* A question the work plan puts while a turn still runs reaches the user only with the turn's last reply, so until
        then the conversation is not waiting for them: its tab's dot stays green, and Agent Plus does not count it, tell the
        other windows it waits, or show a notification. Once the turn ends, the dot turns red, Agent Plus

@@ -560,6 +560,50 @@ async function deliver(thread, text, { waitMs = ANSWER_WAIT_MS } = {}) {
   return ANSWER_OUTCOMES[await seen] || { outcome: 'uncertain' };
 }
 
+/*
+ * Text for the message box of a conversation shown here, in a tab or in the sidebar, not to be sent (Agent Plus's pen on
+ * a plan row): the tab or the sidebar comes to the front and the page script adds the text at the end of the box
+ * (src/page/codex-extras-page.js takePrefill), which it reports on. A page with no such script cannot take it, and one
+ * that does not answer in time leaves the outcome uncertain. The message is posted again every PREFILL_AGAIN_MS until
+ * the page answers, since a tab opened for it may not be listening yet; the page takes each id once.
+ */
+const PREFILL_WAIT_MS = 8000;
+const PREFILL_AGAIN_MS = 1000;
+const prefilling = new Map();
+const PREFILL_OUTCOMES = {
+  drafted: { outcome: 'drafted' },
+  noComposer: { outcome: 'notReceived', reason: 'Codex\'s page shows no message box for it' },
+  changed: { outcome: 'uncertain' },
+};
+async function prefill(thread, text, { waitMs = PREFILL_WAIT_MS, againMs = PREFILL_AGAIN_MS } = {}) {
+  const panel = panelsOf(thread)[0];
+  const inSidebar = !panel && !!thread && sidebarShowing() === thread;
+  if (!canType() || (!panel && !inSidebar)) {
+    return { outcome: 'notReceived', reason: 'neither a Codex tab nor Codex\'s sidebar in this window shows the conversation' };
+  }
+  const page = pagePatchState();
+  if (page && page !== 'patched') return { outcome: 'notReceived', reason: 'Codex\'s page here was built without Codex Plus\'s script; reload the window' };
+  try {
+    if (panel) panel.reveal(undefined, false);
+    else await deps.vscode.commands.executeCommand('chatgpt.openSidebar');
+  } catch (_) { /* typed, just not brought forward */ }
+  const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const msg = { type: 'codex-extras-prefill', id, text };
+  const send = () => {
+    try {
+      if (panel) postTo(panel, msg);
+      else state.provider.postMessageToSidebar(msg);
+    } catch (_) { /* the timer answers */ }
+  };
+  const word = await new Promise((resolve) => {
+    const again = setInterval(send, againMs);
+    const timer = setTimeout(() => { clearInterval(again); prefilling.delete(id); resolve(''); }, waitMs);
+    prefilling.set(id, (w) => { clearTimeout(timer); clearInterval(again); prefilling.delete(id); resolve(w); });
+    send();
+  });
+  return PREFILL_OUTCOMES[word] || { outcome: 'uncertain' };
+}
+
 async function openSidebarRoute(route) {
   const p = state.provider;
   if (!state.active || !p || typeof p.navigateToRoute !== 'function') return false;
@@ -1295,6 +1339,8 @@ function installHooks() {
     }
     /* What a page saw of an answer it was asked to send: one word of its own vocabulary. */
     if (msg && msg.kind === 'answer' && answering.has(msg.id)) answering.get(msg.id)(String(msg.outcome || ''));
+    /* And of text it was asked to put in the message box without sending it. */
+    if (msg && msg.kind === 'prefill' && prefilling.has(msg.id)) prefilling.get(msg.id)(String(msg.outcome || ''));
     /* The buttons below the message box: the conversation's information, a value of it copied by its position in
        the list this side sent, and the chime switched. */
     if (msg && msg.kind === 'infoAsk' && deps && typeof deps.sessionInfo === 'function') {
@@ -1598,7 +1644,7 @@ function activate(context, opts) {
   return state;
 }
 
-module.exports = { activate, ensurePatched, statusLines, openInSidebar, openSidebarRoute, canType, canDeliver, deliver, sidebarThread, panelThreads, shownIn, newPanelThreadsTitled,
+module.exports = { activate, ensurePatched, statusLines, openInSidebar, openSidebarRoute, canType, canDeliver, deliver, prefill, sidebarThread, panelThreads, shownIn, newPanelThreadsTitled,
   nowShowing, revealPanel, threadOfTabUri, shownByTabs, SHOWN_KEY, removePatch, NOT_SUPPORTED_MESSAGE, SHOW_DETAILS,
   figuresOf, usageOf, compactThread, hostRequest, safeColor, viewOf, selfCheckPage, selfCheckLines, installHooks, refreshPanels, refreshConversationLinks, refreshPlanBars, approvalsOf,
   waitReasonOf, onApprovalsChanged, offerReloadIfStale, sidebarShowing, onSidebarChanged, onPanelClosed, onAccountNotification, onAppServerNotification, runningCommands, heardCommand, turnEndChime, turnHeard, _state: () => state, _registry: registry, _approvals: approvals,

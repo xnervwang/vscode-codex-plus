@@ -1559,6 +1559,42 @@
     look();
   }
 
+  /*
+   * Text from the host for the message box of the conversation this page shows (src/patching.js prefill), for the
+   * user to finish and send: it goes after whatever the box holds, after a space when that does not end in white
+   * space, with the cursor after it, and nothing is sent. Typed with insertText at the end of the box, so Codex's
+   * editor takes it as typing and keeps what was there. What goes back is 'drafted' once the box ends with it,
+   * 'noComposer' when no box turned up, and 'changed' when the box did not take it.
+   */
+  var PREFILL_TRIES = 50;
+  var prefillTaken = {};
+  function takePrefill(m) {
+    if (prefillTaken[m.id]) return;
+    prefillTaken[m.id] = true;
+    var tries = 0, want = squash(m.text);
+    var reply = function (outcome) { post({ kind: 'prefill', id: m.id, outcome: outcome }); };
+    var look = function () {
+      var el = composerEditor();
+      if (!el) { if (++tries >= PREFILL_TRIES) reply('noComposer'); else setTimeout(look, ANSWER_STEP_MS); return; }
+      var had = String(el.textContent || '');
+      var text = had && !/\s$/.test(had) ? ' ' + m.text : m.text;
+      try { if (typeof el.focus === 'function') el.focus(); } catch (e) { /* not focusable */ }
+      try {
+        var range = document.createRange(), sel = globalThis.getSelection();
+        range.selectNodeContents(el);
+        range.collapse(false);
+        sel.removeAllRanges();
+        sel.addRange(range);
+      } catch (e) { /* no selection here; insertText then types where the caret is */ }
+      try { document.execCommand('insertText', false, text); } catch (e) { /* checked below */ }
+      setTimeout(function () {
+        var now = composerEditor(), have = now ? squash(now.textContent) : '';
+        reply(want && have.length >= squash(had).length + want.length && have.slice(-want.length) === want ? 'drafted' : 'changed');
+      }, ANSWER_STEP_MS);
+    };
+    look();
+  }
+
   var strip = null, figures = null, timer = null;
   /* On the row, at its right end under the box's right edge; in the page's corner when there is no box to go by. */
   function placeStrip() {
@@ -3307,6 +3343,7 @@
     if (!m || typeof m.type !== 'string' || m.type.indexOf('codex-extras-') !== 0) return;
     if (m.type === 'codex-extras-chime') chime(m.kind);
     else if (m.type === 'codex-extras-answer' && typeof m.text === 'string' && m.id) takeAnswer(m);
+    else if (m.type === 'codex-extras-prefill' && typeof m.text === 'string' && m.id) takePrefill(m);
     else if (m.type === 'codex-extras-info') showInfo(m);
     else if (m.type === 'codex-extras-plan') tookPlan(m);
     else if (m.type === 'codex-extras-usage') { usage = usageFrom(m.usage); if (document.body) placeBar(); drawMap(); }
