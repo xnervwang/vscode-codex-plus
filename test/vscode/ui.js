@@ -3972,6 +3972,24 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         return v;
       }, 90000, 500);
     };
+    /* `press` and the new page it opens (newPageSince). A new page Codex replaced with its recovery page has no
+       conversation for Codex Plus to open again, and is Codex's page failing rather than what a step checks: that is
+       noted, its tab closed, and `press` done once more. */
+    const newPageAfter = async (what, press) => {
+      let before = new Set(page.frames()), wasFront = await frontPage();
+      await press();
+      let f = await newPageSince(before, wasFront);
+      const fetched = f ? null : await fetchesOf();
+      if (fetched) {
+        note(`${what}: the new page has Codex's recovery page, so its tab was closed and that was done again; its fetches of Codex's code: ${JSON.stringify(fetched)}`);
+        await exec('workbench.action.closeActiveEditor');
+        before = new Set(page.frames());
+        wasFront = await frontPage();
+        await press();
+        f = await newPageSince(before, wasFront);
+      }
+      return f;
+    };
 
     /* Clicking a row opens its conversation and chooses that row. Once the tab is closed while in front, no row of the
        conversation is left drawn as current, selected, or highlighted with its buttons shown. */
@@ -4006,9 +4024,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     await step('a conversation begun in a tab New Codex Agent opened', async () => {
       await openNotes();
       const groups = (await tabs()).length;
-      const before = new Set(page.frames()), wasFront = await frontPage();
-      await exec('chatgpt.newCodexPanel');
-      const f = await newPageSince(before, wasFront);
+      const f = await newPageAfter('New Codex Agent', () => exec('chatgpt.newCodexPanel'));
       check(!!f, 'New Codex Agent, run with notes.txt in front, opens a new conversation page in a tab');
       if (!f) return;
       const where = (await codexTabsNow()).find((x) => x.active);
@@ -4114,9 +4130,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       };
       const opened = [];
       const newTab = async (press) => {
-        const had = await codexTabsNow(), groups = (await tabs()).length, before = new Set(page.frames()), wasFront = await frontPage();
-        await press();
-        const f = await newPageSince(before, wasFront);
+        const had = await codexTabsNow(), groups = (await tabs()).length;
+        const f = await newPageAfter('a new conversation tab', press);
         const tab = f ? await until(async () => { const x = await front(); return x && !had.some((y) => sameTab(x, y)) && x; }, 15000, 500) : null;
         if (tab) opened.push(tab);
         return { f, tab, had, groups: [groups, (await tabs()).length] };
@@ -4212,9 +4227,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     /* The session list's New in tab, the same kind of tab as the tab bar button's. */
     await step('a conversation begun in a tab the session list\'s New in tab opened', async () => {
       if (!await showList()) throw new Error('the session list did not open');
-      const before = new Set(page.frames()), wasFront = await frontPage();
-      await list.locator('.cp-new[data-send="newInTab"]').first().click();
-      const f = await newPageSince(before, wasFront);
+      const f = await newPageAfter('New in tab', () => list.locator('.cp-new[data-send="newInTab"]').first().click());
       check(!!f, 'New in tab in the session list opens a new conversation page in a tab');
       if (!f) return;
       const where = (await codexTabsNow()).find((x) => x.active);
@@ -4227,10 +4240,10 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       if (!await showList()) throw new Error('the session list did not open');
       const head = list.locator('.cp-group-head').filter({ hasText: 'Release 1.2' }).first();
       if (!await head.count()) { note('there is no group Release 1.2, so Start New Session in This Group was not tried'); return; }
-      const before = new Set(page.frames()), wasFront = await frontPage();
-      await head.click({ button: 'right' });
-      await list.locator('.cp-ctx-item').filter({ hasText: 'Start New Session in This Group' }).first().click({ timeout: 5000 });
-      const f = await newPageSince(before, wasFront);
+      const f = await newPageAfter('Start New Session in This Group', async () => {
+        await head.click({ button: 'right' });
+        await list.locator('.cp-ctx-item').filter({ hasText: 'Start New Session in This Group' }).first().click({ timeout: 5000 });
+      });
       check(!!f, 'Start New Session in This Group opens a new conversation page in a tab');
       if (!f) return;
       const made = await firstMessage(f, 'List what the release still needs.', 'a conversation begun from Start New Session in This Group');
