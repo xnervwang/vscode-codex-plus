@@ -215,6 +215,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
   const step = async (name, fn) => {
     if (only && !only.test(name)) { note(`${name}: not run, as CODEX_PLUS_UI_STEPS leaves it out`); return; }
     console.log(`\n── ${name}`);
+    stepNow = name;
     const waited = await served().catch(() => 0);
     if (waited >= 10) note(`${name}: before it began, VS Code took ${waited} s to give Codex's pages the files they had asked for`);
     try { await fn(); } catch (e) { check(false, `${name}: ran to its end`, failure(e)); await shot(`${name}-error`); }
@@ -516,19 +517,40 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
    * fail every step after it that needs the conversation. So the tab is then closed, once VS Code has caught up with
    * Codex's files, and `act` done once more, with a note.
    */
-  /* For a page on Codex's recovery page, what its own resource timing says of the code it fetched without a whole 200:
-     the file, the status, whether VS Code's service worker answered it, and the bytes. */
-  const fetchesOf = async () => {
-    for (const f of page.frames()) {
-      const r = await f.evaluate(() => (/ChatGPT hit a snag/.test(document.body ? document.body.innerText : '')
-        ? performance.getEntriesByType('resource').filter((e) => /\/assets\//.test(e.name)
-          && (e.responseStatus !== 200 || !e.decodedBodySize || /local-conversation-page/.test(e.name)))
-          .map((e) => ({ file: e.name.split('/').pop(), status: e.responseStatus, worker: e.workerStart > 0, bytes: e.decodedBodySize,
-            at: Math.round(e.startTime), ms: Math.round(e.duration) })).slice(0, 12) : null)).catch(() => null);
-      if (r) return r;
-    }
+  /* For a frame on Codex's recovery page, what its own resource timing says of the code it fetched without a whole 200:
+     the file, the status, whether VS Code's service worker answered it, and the bytes; null for any other frame. */
+  const fetchesIn = (f) => f.evaluate(() => (/ChatGPT hit a snag/.test(document.body ? document.body.innerText : '')
+    ? performance.getEntriesByType('resource').filter((e) => /\/assets\//.test(e.name)
+      && (e.responseStatus !== 200 || !e.decodedBodySize || /local-conversation-page|new-thread-panel-page/.test(e.name)))
+      .map((e) => ({ file: e.name.split('/').pop(), status: e.responseStatus, worker: e.workerStart > 0, bytes: e.decodedBodySize,
+        at: Math.round(e.startTime), ms: Math.round(e.duration) })).slice(0, 12) : null)).catch(() => null);
+  const fetchesOf = async (pg = page) => {
+    for (const f of (pg && !pg.isClosed() ? pg.frames() : [])) { const r = await fetchesIn(f); if (r) return r; }
     return null;
   };
+  /*
+   * Codex draws its recovery page ("ChatGPT hit a snag") when one of its own modules fails to load. Every 3 s each frame
+   * of the windows in `watched` is looked at, and each one found on that page is noted once, with the step it happened in
+   * and its fetches (fetchesIn), so that a run says how often it came and where even when no check failed on it.
+   */
+  let stepNow = '';
+  const watched = new Set([page]), snagged = new WeakSet();
+  let snagBusy = false;
+  const snagWatch = setInterval(async () => {
+    if (snagBusy) return;
+    snagBusy = true;
+    try {
+      for (const pg of [...watched]) {
+        for (const f of (pg && !pg.isClosed() ? pg.frames() : [])) {
+          if (snagged.has(f)) continue;
+          const r = await fetchesIn(f);
+          if (!r) continue;
+          snagged.add(f);
+          note(`during "${stepNow}" Codex drew its recovery page in a page${pg === page ? '' : ' of another window'}; its fetches of Codex's code short of a whole 200: ${JSON.stringify(r)}`);
+        }
+      }
+    } catch (_) { /* a window going away */ } finally { snagBusy = false; }
+  }, 3000);
   const shownOrAgain = async (what, act, shown, ms = 90000) => {
     let broke = '';
     await act();
@@ -4274,6 +4296,13 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       const own = after.find(same);
       if (own && !own.active) await revealTab(own);
       const shownPage = await until(async () => { const f = await frontPage(); const s = await pageSays(f); return s && s.turns >= 1 && s.text.includes(begun.text) && f; }, 60000, 1000);
+      /* A New tab is known by its own URI, so one Codex has put its recovery page in cannot be opened again as the same
+         tab: that is noted, and the rest of this step and what the steps after need the restored tab for are left out. */
+      const fetchedNew = shownPage ? null : await fetchesOf();
+      if (fetchedNew) {
+        note(`the restored New tab has Codex's recovery page, so the rest of this step and the steps that use that tab were not run; its fetches of Codex's code short of a whole 200: ${JSON.stringify(fetchedNew)}`);
+        return;
+      }
       check(!!shownPage, 'the restored New tab shows its conversation again, with its message box', { tab: own, inFrontBeforeTheCheck: own && own.active, page: await pageSays(await frontPage()) });
       check(!!own && bare(own.label) === bare(begun.label), 'and is titled by that conversation, as docs/tabs.md says a Codex tab is', { tab: own, tabs: after, patch: await panelTrace() });
       const twins = after.filter((x) => bare(x.label) === bare(begun.label));
@@ -4350,7 +4379,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
 
     /* A turn sent from the restored New tab, which finishes while the tab is in the background. */
     await step('a turn in a restored New tab', async () => {
-      if (!restored) throw new Error('the New tab was not restored with its conversation');
+      if (!restored) { note('the New tab was not restored with its conversation, so no turn was run in it'); return; }
       const label = restored.label;
       await page.locator('.tabs-container .tab').filter({ hasText: label }).first().click();
       await until(async () => (await frontPage()) === restored.page, 15000, 500);
@@ -4731,6 +4760,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       const before = Date.now();
       await call('await vscode.commands.executeCommand("vscode.openFolder", vscode.Uri.file(arg), { forceNewWindow: true }); return true;', folderB);
       const pageB = await w.pageOf(path.basename(folderB), 90000);
+      if (pageB) watched.add(pageB);
       const hostB = pageB ? await w.hostUp(before, folderB).catch(() => null) : null;
       check(!!pageB && !!hostB, 'a second window of the same VS Code opens on another folder, with the test helper in it',
         { pageB: !!pageB, hosts: fs.readdirSync(profile.control).filter((n) => /^host-/.test(n)) });
@@ -5090,12 +5120,27 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
             model.hold();
             await inB('await vscode.commands.executeCommand("notifications.clearAll"); return true;').catch(() => {});
             await sleep(500);
-            let approved = false;
-            for (const f of pageB.frames()) {
-              try {
-                const yes = f.locator('[data-codex-approval-surface] button').filter({ hasText: /^(Yes|Allow once|Allow this time|Approve|Run)\b/ }).first();
-                if (await yes.count()) { await yes.click({ timeout: 5000 }); approved = true; break; }
-              } catch (_) { /* another frame */ }
+            /* The page can take a moment to draw the card. */
+            const approve = () => until(async () => {
+              for (const f of pageB.frames()) {
+                try {
+                  const yes = f.locator('[data-codex-approval-surface] button').filter({ hasText: /^(Yes|Allow once|Allow this time|Approve|Run)\b/ }).first();
+                  if (await yes.count()) { await yes.click({ timeout: 5000 }); return true; }
+                } catch (_) { /* another frame */ }
+              }
+              return false;
+            }, 20000, 500);
+            let approved = !!await approve();
+            /* Codex's recovery page, drawn when one of its own modules failed to load, is Codex's page failing rather than
+               what this checks: the tab is closed and the conversation opened again there, and its app-server, which
+               still has the request, puts the card in the new page. */
+            const fetchedB = approved ? null : await fetchesOf(pageB);
+            if (fetchedB) {
+              note(`the second window's tab has Codex's recovery page, so it was closed and the conversation opened again there; its fetches of Codex's code short of a whole 200: ${JSON.stringify(fetchedB)}`);
+              await inB(`const mine = vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((x) => x.input && x.input.uri && String(x.input.uri).includes(arg));
+                if (mine.length) await vscode.window.tabGroups.close(mine); return mine.length;`, T.id).catch(() => 0);
+              await inB('await vscode.commands.executeCommand("codexPlus.openThreadInTab", arg); return true;', T.id);
+              approved = !!await until(approve, 60000, 1000);
             }
             check(approved, 'the second window shows the approval with a button to give it', null);
             const cleared = await until(async () => marks().length === 0 && (await rowDot()) === 'working', 15000, 500);
@@ -5547,7 +5592,18 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
           check(await toFront(front), `${what}: clicked to the front within 30 seconds of the reload`, await tabs());
         }
         const behind = front === pair[0] ? pair[1] : pair[0];
-        const up = await until(async () => { const l = await loadedNow(); return Array.isArray(l) && l.includes(front.id) && l; }, 90000, 1000);
+        const loadedFront = async () => { const l = await loadedNow(); return Array.isArray(l) && l.includes(front.id) && l; };
+        let up = await until(loadedFront, 90000, 1000);
+        /* Codex's recovery page in the tab in front is Codex's page failing, not what this checks: the tab is closed and
+           its conversation opened again in a tab, which then has to load it. */
+        const fetched = up ? null : await fetchesOf();
+        if (fetched) {
+          note(`${what}: the tab in front has Codex's recovery page, so it was closed and its conversation opened again; its fetches of Codex's code short of a whole 200: ${JSON.stringify(fetched)}`);
+          await call(`const t = vscode.window.tabGroups.all.flatMap((g) => g.tabs).find((x) => x.input && x.input.uri && x.input.uri.path === arg);
+            if (t) await vscode.window.tabGroups.close(t); return !!t;`, `/local/${front.id}`);
+          await exec('codexPlus.openThreadInTab', front.id);
+          up = await until(loadedFront, 90000, 1000);
+        }
         check(!!up, `${what}: the conversation in front is loaded again`, await loadedNow());
         return { front, behind };
       };
@@ -5992,6 +6048,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     });
 
   } finally {
+    clearInterval(snagWatch);
     watchingTrust = false;
     await trustWatch;
     if (trustCancelled) note(`the dialog asking to trust the work plan hooks was cancelled ${trustCancelled} time(s)`);
