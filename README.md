@@ -59,7 +59,7 @@ Open a row's [right-click menu](docs/session-list.md#menus-and-groups) to rename
 
 ### Tabs
 
-With the patch, [Codex Plus's tab bar button](docs/tabs.md) replaces Codex's and opens a new conversation in a tab, or opens Codex's sidebar if `codexPlus.tabBarButton` is set to `sidebar`. Each Codex tab uses the conversation name as its title and adds an envelope to the title when there is an unread reply. The tab's logo shows the same status dot as the conversation's row in the session list. After a reconnect, Codex Plus reopens tabs that VS Code missed. Ctrl+Shift+T (Cmd+Shift+T on a Mac) reopens the conversation from the last Codex tab you closed.
+With the patch, [Codex Plus's tab bar button](docs/tabs.md) replaces Codex's and opens a new conversation in a tab, or opens Codex's sidebar if `codexPlus.tabBarButton` is set to `sidebar`. Each Codex tab uses the conversation name as its title and adds an envelope to the title when there is an unread reply. The tab's logo shows the same status dot as the conversation's row in the session list. After a reconnect, Codex Plus reopens tabs that VS Code missed. When Codex says a conversation is [open in another app](docs/codex-page.md#a-conversation-open-in-another-app), as it can after a window reload, Codex Plus clicks Retry for you for up to two minutes. Ctrl+Shift+T (Cmd+Shift+T on a Mac) reopens the conversation from the last Codex tab you closed.
 
 ![A Codex tab with its dot and title, and the hover of Codex Plus's tab bar button](images/shots/tabs.png)
 

@@ -9,6 +9,8 @@
  *   - The page's time zone goes to the extension host, since this is the one part that runs where the user is.
  *   - Whether an approval card is on screen goes to the host as a flag, which is how the conversation Codex's sidebar
  *     is showing is seen as waiting even though it has no tab of its own.
+ *   - When Codex says the conversation is open in another app, which after a window reload is usually the app-server
+ *     of the window before still exiting, its Retry is clicked for the user every few seconds for two minutes.
  *   - The id of the newest turn shown goes to the host, which is how a tab Codex opened for a new conversation is
  *     matched to the conversation it goes on to show.
  *   - A chime plays when the host says a turn finished, Codex stopped for permission, or the model asked something,
@@ -1362,6 +1364,110 @@
     }
     watchApproval();
     tellApproval();
+  }
+
+  /*
+   * Codex's notice that a conversation is open in another app, with its Retry button. Codex's app-server takes a
+   * conversation only while no other process holds its writer lock, and after a window reload the app-server of the
+   * window before can keep that lock for half a minute or more while it exits. The page asks once, shows the notice and
+   * waits for a click. This clicks Retry for the user CONFLICT_FIRST_MS after the notice appears and then every
+   * CONFLICT_EVERY_MS, up to CONFLICT_TRIES times, after which the notice is left as it is. A retry starts again once
+   * the notice has been gone for two steps in a row, or when it is about another conversation.
+   *
+   * The notice is told from Codex's other alerts by the message id of its title, in the props React keeps on its
+   * elements, so it is found whatever language Codex's interface is in. The host gets a line for its log when the
+   * retries start, when the notice goes after some, and when they stop.
+   */
+  var CONFLICT_TITLE = 'localConversation.writerConflict.title', HISTORY_FAILED = 'localConversation.historyLoadFailed', ALERT_UP = 30;
+  var CONFLICT_FIRST_MS = 3000, CONFLICT_EVERY_MS = 5000, CONFLICT_TRIES = 24, CONFLICT_DEBOUNCE_MS = 300, HISTORY_TRIES = 3;
+  var conflictObserver = null, conflictDue = 0, conflictTimer = 0, conflictWaiting = false;
+  var conflictFor = null, conflictTries = 0, conflictMissed = 0, historyTimer = 0, historyTries = 0;
+  /* The message id of a React element made with Codex's FormattedMessage, or ''. */
+  var messageId = function (el) { var p = el && typeof el === 'object' ? el.props : null; return p && typeof p.id === 'string' ? p.id : ''; };
+  /* { retry, disabled, thread } for the first alert on the page whose callout `match` accepts, or null. The callout is
+     the component above the alert element that was given onPrimaryCtaClick; thread is the forkConversationId of a
+     component above that, or ''. */
+  function alertWith(match) {
+    var alerts = [];
+    try { alerts = document.querySelectorAll('[role="alert"]'); } catch (e) { return null; }
+    for (var i = 0; i < alerts.length; i++) {
+      var f = fiberOf(alerts[i]), found = null;
+      for (var j = 0; f && j < ALERT_UP; j++, f = f.return) {
+        try {
+          var p = f.memoizedProps;
+          if (!p || typeof p !== 'object') continue;
+          if (!found) {
+            if (typeof p.onPrimaryCtaClick === 'function' && match(p)) found = { retry: p.onPrimaryCtaClick, disabled: p.isPrimaryCtaDisabled === true, thread: '' };
+          } else if (typeof p.forkConversationId === 'string') { found.thread = p.forkConversationId.slice(0, 200); break; }
+        } catch (e) { /* not ours to read */ }
+      }
+      if (found) return found;
+    }
+    return null;
+  }
+  function conflictNotice() { return alertWith(function (p) { return messageId(p.title) === CONFLICT_TITLE; }); }
+  /* "Couldn't load messages": its text is a span holding the message. */
+  function historyNotice() {
+    return alertWith(function (p) { var c = p.content && typeof p.content === 'object' ? p.content.props : null; return !!c && messageId(c.children) === HISTORY_FAILED; });
+  }
+  /* Codex also tries to load a conversation's earlier messages, and that fails the same way while the lock is held,
+     leaving "Couldn't load messages" with a Retry of its own after the conversation has opened. Once the conflict is
+     over, that Retry is clicked too, every CONFLICT_EVERY_MS while the notice stays, up to HISTORY_TRIES times. */
+  function retryHistory() {
+    historyTimer = 0;
+    var n = historyNotice();
+    if (!n || historyTries >= HISTORY_TRIES) { historyTries = 0; return; }
+    if (!n.disabled) { historyTries++; try { n.retry(); } catch (e) { /* Codex's own to handle */ } }
+    historyTimer = setTimeout(retryHistory, CONFLICT_EVERY_MS);
+  }
+  function tellConflict(event, thread, tries) { post({ kind: 'writerConflict', event: event, thread: thread || '', tries: tries }); }
+  function conflictStep() {
+    conflictTimer = 0;
+    var n = conflictNotice();
+    if (!n) {
+      if (++conflictMissed < 2) { conflictTimer = setTimeout(conflictStep, CONFLICT_EVERY_MS); return; }
+      if (conflictTries) {
+        tellConflict('cleared', conflictFor, conflictTries);
+        if (!historyTimer) { historyTries = 0; retryHistory(); }
+      }
+      conflictFor = null; conflictTries = 0; conflictMissed = 0;
+      return;
+    }
+    conflictMissed = 0;
+    if (n.thread !== conflictFor) { conflictFor = n.thread; conflictTries = 0; }
+    if (conflictTries >= CONFLICT_TRIES) return;
+    if (!n.disabled) {
+      if (!conflictTries) tellConflict('retrying', n.thread, 0);
+      conflictTries++;
+      try { n.retry(); } catch (e) { /* Codex's own to handle */ }
+      if (conflictTries >= CONFLICT_TRIES) { tellConflict('stopped', n.thread, conflictTries); return; }
+    }
+    conflictTimer = setTimeout(conflictStep, CONFLICT_EVERY_MS);
+  }
+  function lookForConflict() {
+    if (conflictTimer) return;
+    var n = conflictNotice();
+    if (!n) {
+      /* Gone after the retries stopped: whatever happened to it, a later notice starts afresh. */
+      if (conflictTries >= CONFLICT_TRIES) { conflictFor = null; conflictTries = 0; conflictMissed = 0; }
+      return;
+    }
+    if (n.thread !== conflictFor) { conflictFor = n.thread; conflictTries = 0; conflictMissed = 0; }
+    if (conflictTries >= CONFLICT_TRIES) return;
+    conflictTimer = setTimeout(conflictStep, conflictTries ? CONFLICT_EVERY_MS : CONFLICT_FIRST_MS);
+  }
+  function conflictReady() {
+    if (!document.body) {
+      if (!conflictWaiting) { conflictWaiting = true; document.addEventListener('DOMContentLoaded', function () { conflictWaiting = false; conflictReady(); }); }
+      return;
+    }
+    if (conflictObserver || typeof MutationObserver !== 'function') return;
+    conflictObserver = new MutationObserver(function () {
+      if (conflictDue) return;
+      conflictDue = setTimeout(function () { conflictDue = 0; lookForConflict(); }, CONFLICT_DEBOUNCE_MS);
+    });
+    try { conflictObserver.observe(document.body, { childList: true, subtree: true }); } catch (e) { conflictObserver = null; return; }
+    lookForConflict();
   }
 
   /*
@@ -3250,7 +3356,8 @@
     }
   });
 
-  /* The approval watcher starts with the page rather than waiting for the host to speak: it is not one of the marks,
-     it carries no setting of its own, and the host has nothing to tell it. */
+  /* The approval and conflict watchers start with the page rather than waiting for the host to speak: they are not
+     among the marks, they carry no setting of their own, and the host has nothing to tell them. */
   approvalReady();
+  conflictReady();
 })();

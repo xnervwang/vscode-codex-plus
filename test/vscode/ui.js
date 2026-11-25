@@ -71,6 +71,8 @@
  *                marked unread, archived and unarchived, not announced as finished
  *   installed    when the build this window runs counts as one a newer install has replaced, the conversation is still
  *                told when a detached command it started ends
+ *   locked       a conversation whose writer lock another process holds: Codex says it is open in another app, Codex
+ *                Plus clicks its Retry for the user, and once the lock is let go it opens without a click
  *   token mode   what reaches the made-up model in each of Agent Plus's token modes, with the plugin's hooks trusted
  *
  * Every step saves a screenshot to <out>/shots, and crops of the parts this extension draws are compared with the
@@ -5737,6 +5739,75 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await sleep(20000);
       if (!unmet(second)) check(!await tabUp(), 'and it is not reopened', await tabs());
       await setting('reopenDroppedTabs', undefined);
+    });
+
+    /*
+     * A conversation whose writer lock another process holds, as the app-server of the window before holds a
+     * conversation's lock after a reload until it exits. Codex's page shows its notice that the conversation is open in
+     * another app, and Codex Plus's page script clicks the notice's Retry every few seconds, so once the lock is let go
+     * the conversation opens with no click. The lock is held by a Python process with the kind of lock Codex takes, an
+     * exclusive flock or on Windows a byte-range lock, on the file Codex locks (codex-rs/rollout/src/writer_lock.rs).
+     * The conversation is one this window's app-server has not loaded before (lib/fake-home.js HELD).
+     */
+    await step('a conversation open in another app', async () => {
+      const cp = require('child_process');
+      const py = ['python3', 'python'].find((x) => (cp.spawnSync(x, ['-c', 'import sys; print(sys.version_info[:2] >= (3, 7))'], { encoding: 'utf8' }).stdout || '').trim() === 'True');
+      if (!py) { note('no Python 3.7 or later here, so no process held a conversation\'s writer lock'); return; }
+      const t = fakeHome.held(profile.codexHome, { folder: profile.folder });
+      const lockFile = path.join(profile.codexHome, 'thread-writer-locks', `${t.id}.lock`);
+      const HOLD = ['import os, sys', 'p = sys.argv[1]', 'os.makedirs(os.path.dirname(p), exist_ok=True)', "f = open(p, 'a+b')",
+        "if os.name == 'nt':", '    import msvcrt', '    f.seek(0)', '    msvcrt.locking(f.fileno(), msvcrt.LK_NBLCK, 1)',
+        'else:', '    import fcntl', '    fcntl.flock(f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)',
+        "print('held', flush=True)", 'sys.stdin.read()'].join('\n');
+      const holder = cp.spawn(py, ['-c', HOLD, lockFile], { stdio: ['pipe', 'pipe', 'pipe'] });
+      let heard = '';
+      holder.stdout.on('data', (d) => { heard += d; });
+      holder.stderr.on('data', (d) => { heard += d; });
+      const exited = new Promise((r) => holder.on('exit', r));
+      const letGo = async () => { try { holder.stdin.end(); } catch (_) { /* closed */ } await Promise.race([exited, sleep(5000)]); try { holder.kill(); } catch (_) { /* gone */ } };
+      /* The visible Codex page with an alert saying `words` on it, or null. */
+      const alertIn = async (words) => {
+        for (const f of page.frames()) {
+          try {
+            if (!await f.evaluate((w) => [...document.querySelectorAll('[role="alert"]')].some((e) => !!e.offsetParent && e.innerText.includes(w)), words)) continue;
+            const host = f.parentFrame() && await f.parentFrame().frameElement();
+            if (host && await host.isVisible()) return f;
+          } catch (_) { /* gone */ }
+        }
+        return null;
+      };
+      const noticeIn = () => alertIn('This is open in another app');
+      const loaded = () => call(`${OWN} const r = await own('patching').hostRequest('thread/loaded/list', {});
+        return r && r.outcome === 'done' && r.result ? r.result.data : r;`).catch((e) => String(e));
+      const from = ownLog().length;
+      const said = () => ownLog().slice(from).split('\n').filter((l) => /open in another app/.test(l));
+      try {
+        check(!!await until(() => /held/.test(heard), 15000, 200), 'another process holds the conversation\'s writer lock', heard);
+        await exec('codexPlus.openThreadInTab', t.id);
+        const shown = await until(noticeIn, 60000, 500);
+        check(!!shown, 'opened in a tab, its page says the conversation is open in another app', { tabs: await codexTabsNow(), loaded: await loaded() });
+        if (!shown) return;
+        const started = await until(() => said().some((l) => l.includes(`Codex says conversation ${t.id} is open in another app; clicking its Retry`)), 20000, 500);
+        check(!!started, 'Codex Plus starts clicking its Retry and says so in its log', said());
+        await sleep(6000);
+        check(!!await noticeIn() && !JSON.stringify(await loaded()).includes(t.id), 'while the other process holds the lock, the notice stays and this window has not loaded the conversation',
+          { notice: !!await noticeIn(), loaded: await loaded() });
+        await shot('writer-conflict-notice');
+        await letGo();
+        const opened = await until(async () => !await noticeIn() && JSON.stringify(await loaded()).includes(t.id), 30000, 500);
+        check(!!opened, 'once the lock is let go, the conversation opens with no click: the notice goes and this window\'s app-server has it loaded',
+          { notice: !!await noticeIn(), loaded: await loaded(), said: said() });
+        const cleared = await until(() => said().some((l) => new RegExp(`notice that conversation ${t.id} is open in another app went away after Retry was clicked \\d+ times?`).test(l)), 30000, 500);
+        check(!!cleared, 'and Codex Plus says in its log how many times it clicked Retry', said());
+        /* Codex's attempt to load the earlier messages meanwhile failed the same way, and leaves a notice of its own. */
+        const history = await until(async () => !await alertIn('Couldn\'t load messages'), 20000, 500);
+        check(!!history, 'and Codex\'s "Couldn\'t load messages", left by the same conflict, goes too', { history: !!await alertIn('Couldn\'t load messages') });
+        await shot('writer-conflict-opened');
+      } finally {
+        await letGo();
+        await call(`const mine = vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((x) => x.input && x.input.uri && String(x.input.uri).includes(arg));
+          if (mine.length) await vscode.window.tabGroups.close(mine); return mine.length;`, t.id).catch(() => 0);
+      }
     });
 
     /*

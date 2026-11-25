@@ -31,6 +31,9 @@ const THREADS = [
 const BACKGROUND = { id: '0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a71', title: 'Import the nightly feed (run by codex exec)' };
 const ELSEWHERE = { id: '0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a72', title: 'Rename the staging bucket in the other project' };
 const elsewhereFolder = (folder) => path.join(path.dirname(folder), 'elsewhere');
+/* Written only by the step that has another process hold its writer lock (held()), in the folder of ELSEWHERE, so that
+   this window's app-server has never loaded it before that step and no step before it lists it. */
+const HELD = { id: '0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a73', title: 'Check the lock timeout of the export job' };
 const PROVIDER = 'fake';
 const PLAN_DIR = path.join('plugins', 'data', 'agent-work-plan-codex-extras');
 const PLAN_BLOCK = "This conversation's work plan (1 doing). Only open rows are shown.\n\n> 1. Find the retry delay   [doing]";
@@ -97,6 +100,13 @@ function archived(home, { folder, threads }) {
   return files;
 }
 
+/* Writes HELD's rollout, dated two days back like ELSEWHERE's, and returns HELD. */
+function held(home, { folder }) {
+  const twoDaysAgo = new Date(Date.now() - 2 * 86400e3);
+  for (const f of rollouts(home, { folder: elsewhereFolder(folder), threads: [HELD], ago: () => 2 })) fs.utimesSync(f, twoDaysAgo, twoDaysAgo);
+  return HELD;
+}
+
 /* A wake-up of `thread`, as the work plan's set_wakeup tool writes one (src/wakeup.js), so the Agent map has a timer. */
 function wakeup(home, thread, { everyMinutes = 45, prompt = 'Check whether the nightly export has finished.' } = {}) {
   const dir = path.join(home, PLAN_DIR);
@@ -105,4 +115,4 @@ function wakeup(home, thread, { everyMinutes = 45, prompt = 'Check whether the n
   fs.writeFileSync(path.join(dir, `${thread}.wakeup`), JSON.stringify({ everyMinutes, prompt, setAt: now, expiresAt: now + 7 * 86400 }));
 }
 
-module.exports = { write, wakeup, archived, THREADS, BACKGROUND, ELSEWHERE, elsewhereFolder, PLAN_BLOCK };
+module.exports = { write, wakeup, archived, held, THREADS, BACKGROUND, ELSEWHERE, HELD, elsewhereFolder, PLAN_BLOCK };

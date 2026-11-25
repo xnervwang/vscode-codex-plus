@@ -113,6 +113,18 @@ function anchorsMissingLine(m) {
     + 'The page self-check at the end of "Codex Plus: Show Status" says which part was not found.';
 }
 
+/* The log line for a page's report on Codex's notice that a conversation is open in another app, or '' for a report
+   of a kind this does not know. Only an id of letters, digits and dashes is named. */
+function writerConflictLine(m) {
+  const thread = typeof m.thread === 'string' && /^[\w-]{1,200}$/.test(m.thread) ? `conversation ${m.thread}` : 'a conversation';
+  const tries = Math.max(0, Math.min(1000, Math.floor(+m.tries || 0)));
+  const times = `${tries} time${tries === 1 ? '' : 's'}`;
+  if (m.event === 'retrying') return `Codex says ${thread} is open in another app; clicking its Retry every 5 s for up to 2 minutes`;
+  if (m.event === 'cleared') return `Codex's notice that ${thread} is open in another app went away after Retry was clicked ${times}`;
+  if (m.event === 'stopped') return `Codex still says ${thread} is open in another app after Retry was clicked ${times}; left for the user to retry`;
+  return '';
+}
+
 /* The optional edits missing from the patched Codex in `dir` (src/host.js missingOptional). */
 const leftOut = (dir) => {
   const host = targets.find((t) => typeof t.missingOptional === 'function');
@@ -1330,6 +1342,12 @@ function installHooks() {
       const said = CHIME_STATES[msg.state] || 'the audio context is in a state this extension does not know, so nothing may have been heard';
       deps.log(`chime ${sound}: ${said}`);
     }
+    /* The page clicking Retry on Codex's notice that a conversation is open in another app (conflictNotice in the page
+       script): when it starts, when the notice goes after some retries, and when it stops trying. */
+    if (msg && msg.kind === 'writerConflict' && deps && deps.log) {
+      const line = writerConflictLine(msg);
+      if (line) deps.log(line);
+    }
     /* A page that has turns and recognised none of the messages in them, or no message box. Only numbers and flags
        come with it. */
     if (msg && msg.kind === 'anchorsMissing') {
@@ -1577,4 +1595,4 @@ module.exports = { activate, ensurePatched, statusLines, openInSidebar, openSide
   nowShowing, revealPanel, threadOfTabUri, shownByTabs, SHOWN_KEY, removePatch, NOT_SUPPORTED_MESSAGE, SHOW_DETAILS,
   figuresOf, usageOf, compactThread, hostRequest, safeColor, viewOf, selfCheckPage, selfCheckLines, installHooks, refreshPanels, refreshConversationLinks, refreshPlanBars, approvalsOf,
   waitReasonOf, onApprovalsChanged, offerReloadIfStale, sidebarShowing, onSidebarChanged, onPanelClosed, onAccountNotification, onAppServerNotification, runningCommands, heardCommand, turnEndChime, turnHeard, _state: () => state, _registry: registry, _approvals: approvals,
-  TAB_DOTS, ASK_MS, PATCH_REMOVED_KEY };
+  writerConflictLine, TAB_DOTS, ASK_MS, PATCH_REMOVED_KEY };
