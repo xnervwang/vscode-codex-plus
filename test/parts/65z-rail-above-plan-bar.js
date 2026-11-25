@@ -7,8 +7,9 @@
  * The navigation rail and the plan bar in a short page (placeRail in src/page/codex-extras-page.js). The rail is centred
  * in the page; when that would put its lower buttons under the plan bar, as on Windows while Codex shows its setup
  * notice over the message box, it is moved up to end 4 px above the bar, and it goes back to the centre once the bar
- * is gone. The stand-in page is 480 px tall and the rail 160 px, so the centred rail spans 160 to 320; the message box
- * starts at 300 and the bar 32 px above it, at 268.
+ * is gone. It goes no higher than 4 px below the top of the conversation's scroller, above which Codex's header has its
+ * New chat button. The stand-in page is 480 px tall and the rail 160 px, so the centred rail spans 160 to 320; the
+ * message box starts at 300 and the bar 32 px above it, at 268.
  */
 const path = require('path');
 const vm = require('vm');
@@ -57,4 +58,12 @@ module.exports = async ({ eq, root }) => {
   resized();
   bar(SUMMARY);
   eq(rail.style.top, '370px', 'in a page tall enough for the centred rail to end above the bar, the bar does not move it');
+  bar(null);
+  win.innerHeight = 300;
+  scroller.rect = { top: 30, height: 166, left: 0, width: 1100 };
+  composer.rect = { top: 200, left: 8, width: 1084, height: 100 };
+  resized();
+  bar(SUMMARY);
+  eq(rail.style.top, '34px', 'in a page with no room for the rail between the top of the conversation and the bar, it stops 4 px below the top '
+    + 'of the conversation, short of Codex\'s header and its New chat button, and stays over the bar');
 };

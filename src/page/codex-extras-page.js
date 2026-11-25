@@ -2371,13 +2371,17 @@
   var railResizeWired = false, RAIL_GAP = 4;
   /* In a page too short for the rail to be centred above the plan bar, as on Windows while Codex shows its setup notice
      over the message box, it is moved up just far enough to end RAIL_GAP above the bar, so the bar covers none of its
-     buttons. */
+     buttons. It goes no higher than RAIL_GAP below the top of the conversation's scroller: above that is Codex's header,
+     whose New chat button the rail would cover. A page with no room between the two keeps the rail over the bar. */
   function placeRail() {
     var h = globalThis.innerHeight;
     if (!(railBox && railBox.isConnected && h > 0)) return;
     var height = railBox.offsetHeight, top = Math.round((h - height) / 2);
     var barTop = planShown() ? parseFloat(planBar.el.style.top) : NaN;
-    if (barTop > 0) top = Math.min(top, Math.round(barTop - RAIL_GAP - height));
+    if (barTop > 0 && top + height > barTop - RAIL_GAP) {
+      var sc = rectOf(scrollerEl()), floor = sc ? Math.round((sc.top || 0) + RAIL_GAP) : 0;
+      top = Math.max(floor, Math.min(top, Math.round(barTop - RAIL_GAP - height)));
+    }
     railBox.style.top = Math.max(0, top) + 'px';
   }
   var rows = [], navNodes = [], sigNodes = [], sigTexts = [], sigRules = '';

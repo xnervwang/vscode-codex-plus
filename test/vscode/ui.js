@@ -1341,13 +1341,19 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         user: document.querySelectorAll('.codex-extras-stamp-user').length, assistant: document.querySelectorAll('.codex-extras-stamp-assistant').length,
         rail: !!document.querySelector('.codex-extras-rail'),
         railAt: (() => { const r = document.querySelector('.codex-extras-rail'); if (!r) return null; const b = r.getBoundingClientRect();
-          return { top: b.top, off: Math.abs(b.top + b.height / 2 - innerHeight / 2) }; })(),
+          const bar = document.querySelector('[data-codex-extras="plan-bar"]'), sc = document.querySelector('[data-app-action-timeline-scroll]');
+          return { top: b.top, bottom: b.bottom, off: Math.abs(b.top + b.height / 2 - innerHeight / 2),
+            bar: bar && bar.getClientRects().length ? bar.getBoundingClientRect().top : null, scroller: sc ? sc.getBoundingClientRect().top : null }; })(),
         buttons: document.querySelectorAll('[data-codex-extras="bar-button"]').length,
         meter: !!document.querySelector('[data-codex-extras="meter"]'), pill: ((document.querySelector('[data-codex-extras="agents"]') || {}).innerText || '').trim(),
         turns: document.querySelectorAll('[data-turn-key]').length }));
       check(seen.user === 4 && seen.assistant >= 4, 'each of the four messages and replies carries a time stamp', seen);
       check(seen.rail, 'the rail at the right edge is drawn', seen);
-      check(!!seen.railAt && Number.isInteger(seen.railAt.top) && seen.railAt.off <= 1, 'and is centred on a whole pixel, so its arrows are drawn sharp', seen.railAt);
+      /* Centred, unless that would put it under the plan bar: then it ends 4 px above the bar, but starts no higher than
+         4 px below the top of the conversation, short of Codex's header. */
+      const railFits = (a) => a.off <= 1 || (a.bar !== null && (Math.abs(a.bottom - (a.bar - 4)) <= 1 || (a.scroller !== null && Math.abs(a.top - (a.scroller + 4)) <= 1)));
+      check(!!seen.railAt && Number.isInteger(seen.railAt.top) && railFits(seen.railAt),
+        'and is on a whole pixel, so its arrows are drawn sharp, centred unless that would put it under the plan bar', seen.railAt);
       check(seen.buttons === 2 && seen.meter, 'the information and chime buttons and the context meter are by the message box', seen);
       check(/1 timer/.test(seen.pill), 'the Agent map pill names the wake-up the conversation has', seen.pill);
       /* Each crop is one control, so none takes in Codex's buttons or the gap before the pill, which moves by a pixel. */
@@ -1590,14 +1596,18 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         full || await barIn(codex));
       check(placed(full), 'the bar sits just above the message box, 6 px clear of it, and is as wide as it', full);
       /* The page is short on Windows, where Codex shows its setup notice over the message box, and the rail centred in
-         it would run under the bar. */
+         it would run under the bar. Where even the space between the top of the conversation and the bar is too short
+         for it, it stays below Codex's header rather than cover the header's New chat button. */
       const railOverBar = await codex.evaluate(() => {
         const r = document.querySelector('.codex-extras-rail'), b = document.querySelector('[data-codex-extras="plan-bar"]');
+        const sc = document.querySelector('[data-app-action-timeline-scroll]');
         if (!r || !b) return null;
         const x = r.getBoundingClientRect(), y = b.getBoundingClientRect();
-        return { rail: [Math.round(x.top), Math.round(x.bottom)], bar: Math.round(y.top), page: innerHeight };
+        return { rail: [Math.round(x.top), Math.round(x.bottom)], bar: Math.round(y.top), scroller: sc ? Math.round(sc.getBoundingClientRect().top) : null, page: innerHeight };
       }).catch((e) => ({ error: String(e) }));
-      check(!!railOverBar && !railOverBar.error && railOverBar.rail[1] <= railOverBar.bar, 'the navigation rail ends above the bar, so the bar covers none of its buttons', railOverBar);
+      check(!!railOverBar && !railOverBar.error && (railOverBar.rail[1] <= railOverBar.bar
+        || (railOverBar.scroller !== null && Math.abs(railOverBar.rail[0] - (railOverBar.scroller + 4)) <= 1)),
+      'the navigation rail ends above the bar, so the bar covers none of its buttons, or in a page with no room for that starts just below Codex\'s header', railOverBar);
       /* What lies under the bar, kept in the results: every Codex element whose drawn part meets the bar, except the
          message box's ancestors. The drawn part is the element's box cut to the inside of each ancestor that clips
          what it holds (overflow other than visible). Codex's conversation scroller ends where the message box's room
