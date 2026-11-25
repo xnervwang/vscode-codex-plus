@@ -675,19 +675,29 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     }
     return { had, left: await read() };
   };
+  /* Codex has now and then put its "Codex could not start" in the new tab on CI instead of starting its page, which is
+     Codex's page failing rather than the button: that tab is closed and the button clicked once more. */
   const newTabPage = async () => {
     await openNotes();
     const buttons = await until(async () => { const b = await codexButtons(); return b.length === 1 && b[0] === TITLES.tab && b; }, 15000, 500);
-    const before = new Set(page.frames());
-    await codexButton().click();
-    /* Codex keeps the page of its hidden sidebar, which also shows a message box and no turns. */
-    const fresh = await until(async () => {
-      for (const f of page.frames()) {
-        if (before.has(f)) continue;
-        try { if (await f.evaluate(() => !!document.querySelector('[data-codex-composer-root]') && !document.querySelector('[data-turn-key]') && innerWidth > 600)) return f; } catch (_) { /* gone */ }
-      }
-      return null;
-    }, 90000, 500);
+    let before = null, fresh = null;
+    for (let tries = 0; tries < 2 && !fresh; tries++) {
+      before = new Set(page.frames());
+      await codexButton().click();
+      /* Codex keeps the page of its hidden sidebar, which also shows a message box and no turns. */
+      const got = await until(async () => {
+        for (const f of page.frames()) {
+          if (before.has(f)) continue;
+          try { if (await f.evaluate(() => !!document.querySelector('[data-codex-composer-root]') && !document.querySelector('[data-turn-key]') && innerWidth > 600)) return f; } catch (_) { /* gone */ }
+        }
+        return await gaveUpInFront() ? 'gaveUp' : null;
+      }, 90000, 500);
+      if (got !== 'gaveUp') { fresh = got; break; }
+      note('the new tab the tab bar button opened has Codex\'s "Codex could not start", so it is closed and the button clicked again');
+      await exec('workbench.action.closeActiveEditor');
+      await served();
+      await openNotes();
+    }
     /* On CI this has failed without saying why, so a screenshot and the list of the window's frames are kept. */
     if (!fresh) {
       await shot('new-tab-page-missing');
