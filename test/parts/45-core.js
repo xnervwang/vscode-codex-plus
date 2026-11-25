@@ -82,7 +82,7 @@ module.exports = async ({ eq, note, tmp, root }) => {
     const tree = control.state.views['agentPlus.conversations'].provider;
     const rows = tree.getChildren().filter((e) => e.kind === 'conversation').map((e) => tree.getTreeItem(e));
     const status = control.state.status.find((i) => i.id === 'agentPlus.conversations');
-    eq([rows.map((r) => r.id), rows[0] && rows[0].description.split(' · ')[0], status && status.text.endsWith('1 to decide')],
+    eq([rows.map((r) => r.id), rows[0] && rows[0].description.split(' · ')[0], status && status.text.endsWith('1 conversation needs you')],
       [[`conversations/codex/${asking.id}`], 'needs you', true],
       'the Codex conversation in this workspace is drawn, needing an answer; the other folder\'s is not');
     eq(!!control.state.views['codexPlus.sessions'], true, 'the Codex session list is there too');

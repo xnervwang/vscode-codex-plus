@@ -1776,7 +1776,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     const panelRow = (text) => page.locator('[id="workbench.parts.panel"] .monaco-list-row').filter({ hasText: text }).first();
     await look('conversations-view', {
       expect: 'Agent Plus\'s Conversations view in the panel lists the Codex conversations of this workspace, with no agent logo since only one agent is installed; this one shows its question "Should the default retry delay stay at 30 seconds, or go up to 60?" waiting for the user, '
-        + 'and the status bar has "1 to decide".',
+        + 'and the status bar has "1 conversation needs you".',
     }, async () => {
       await exec('agentPlus.showConversations');
       await panelRow(title).waitFor({ state: 'visible', timeout: 30000 });

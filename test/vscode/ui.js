@@ -309,10 +309,10 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
   /* The same, whichever bell icon Agent Plus shows; VS Code's own bell at the far end carries no number. */
   const agentCount = () => page.evaluate(() => Math.max(0, ...[...document.querySelectorAll('.statusbar-item')]
     .filter((x) => x.querySelector('.codicon-bell, .codicon-bell-dot')).map((x) => Number(x.innerText.trim()) || 0)));
-  /* The number in Agent Plus's "N to decide" in the status bar, 0 while it is not shown. */
-  const toDecide = () => page.evaluate(() => {
-    const e = [...document.querySelectorAll('.statusbar-item')].find((x) => /\d+ to decide/.test(x.innerText));
-    return e ? Number((/(\d+) to decide/.exec(e.innerText) || [])[1]) || 0 : 0;
+  /* The number in Agent Plus's "N conversations need you" in the status bar, 0 while it is not shown. */
+  const asking = () => page.evaluate(() => {
+    const e = [...document.querySelectorAll('.statusbar-item')].find((x) => /\d+ conversations? needs? you/.test(x.innerText));
+    return e ? Number((/(\d+) conversations? needs? you/.exec(e.innerText) || [])[1]) || 0 : 0;
   });
   const toastAbout = (t, words) => page.evaluate(([want, w]) => {
     const n = [...document.querySelectorAll('.notification-toast')].find((e) => e.innerText.includes(`"${want}" ${w}`));
@@ -3035,7 +3035,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       const id = threads[0].id;
       await tabNamed(title).click();
       await until(async () => (await frontPage()) === codex, 10000, 300);
-      const decided = await toDecide();
+      const decided = await asking();
       model.hold();
       const turns = model.turns();
       let mid = null;
@@ -3053,8 +3053,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         await sleep(1500);
         askInPlan(id, Date.now());
         await exec('agentPlus.refreshWorkPlan');
-        /* Agent Plus has read the question once its Conversations entry has one more question to decide than before. */
-        const read = await until(async () => (await toDecide()) > decided, 20000, 500);
+        /* Agent Plus has read the question once its Conversations entry counts one more conversation that needs the user. */
+        const read = await until(async () => (await asking()) > decided, 20000, 500);
         await sleep(7000);
         mid = { read: !!read, dot: await dotsOn(title), row: (await showList()) ? await listDot(id, '.cp-group') : null, count: [counted, await agentCount()],
           reported: attentionOf(id), notifications: await toastsAbout(title, mark) };
@@ -4539,7 +4539,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
           check(!(await toastsAbout(title, mark)).length, `the window does not have the system's focus on ${process.platform}, and Agent Plus shows no notification`, await toastsAbout(title, mark));
         }
       }
-      check(!!await until(async () => (await agentCount()) > counted, 10000, 500), 'and counts it in the status bar', { before: counted, now: await agentCount(), decide: await toDecide() });
+      check(!!await until(async () => (await agentCount()) > counted, 10000, 500), 'and counts it in the status bar', { before: counted, now: await agentCount(), asking: await asking() });
       if (await showList()) {
         const l = await until(async () => { const x = await listDot(t.id, '.cp-group'); return listDotIs(x, 'waiting') && x; }, 10000, 500);
         check(!!l, 'and its row in the session list carries the red dot too', await listDot(t.id, '.cp-group'));
