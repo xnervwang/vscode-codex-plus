@@ -52,6 +52,8 @@ The controls described in [The message box's toolbar](message-box-toolbar.md) ap
 
 The plan bar shows the conversation's [work plan](work-plan.md), a list of numbered rows, some nested under others, that Codex maintains using the work plan plugin's tools. The bar updates as the plan changes. It sits on one line just above the message box and matches its width. The bar leaves 32 px less space for the conversation above it without covering the conversation or Codex's question or approval cards. Conversations without a work plan have no bar.
 
+If you're within 24 px of the conversation's end, the conversation stays at its end when the bar appears, disappears, changes text or becomes compact in Codex's narrow sidebar, or when you turn Codex Plus off and on again. Farther up, your position stays unchanged. If you then scroll, touch, press a key or click in the page, Codex Plus leaves the conversation where you put it. In short windows, the [rail of your messages](#the-rail-of-your-messages) moves up as needed to end 4 px above the bar, keeping its buttons clear. It returns to the centre when the bar disappears.
+
 The bar's current row is the most deeply nested doing row. If no row is doing, the bar shows the first row in the highest-priority available state: waiting, discussing or todo, in that order. If only parked rows remain open (not done or dropped), the first parked row appears dimmed. When all rows are done, the bar shows a green tick and "All rows done".
 
 From left to right, the bar shows:
