@@ -33,10 +33,10 @@ module.exports = ({ eq, note, tmp }) => {
   try {
     files.setCodexHome(home);
     eq(titles(), ['Notes on drive D', 'Tests on the release branch'],
-      'a row with no name takes the name session_index.jsonl gives it, and a row with a name keeps its own');
+      'the first thread is titled from the index, and the second keeps the name in its row');
     fs.appendFileSync(index, line(made[0].id, 'Notes on drive D, read'));
-    eq(titles()[0], 'Notes on drive D, read', 'a new line in the index is read at the next call, with nothing committed to the database');
+    eq(titles()[0], 'Notes on drive D, read', 'a line added to the index shows at the next call, without a database commit');
     fs.unlinkSync(index);
-    eq(titles()[0], 'Can you look at the notes on drive D?', 'with no index, a row with no name is titled from its other columns as before');
+    eq(titles()[0], 'Can you look at the notes on drive D?', 'with no index, a row with no name is titled from its other columns');
   } finally { db.close(); files.setCodexHome(''); }
 };

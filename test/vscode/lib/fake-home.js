@@ -31,8 +31,8 @@ const THREADS = [
 const BACKGROUND = { id: '0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a71', title: 'Import the nightly feed (run by codex exec)' };
 const ELSEWHERE = { id: '0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a72', title: 'Rename the staging bucket in the other project' };
 const elsewhereFolder = (folder) => path.join(path.dirname(folder), 'elsewhere');
-/* Written only by the step that has another process hold its writer lock (held()), in the folder of ELSEWHERE, so that
-   this window's app-server has never loaded it before that step and no step before it lists it. */
+/* Only held() writes it, for the step where another process holds its writer lock. It is in ELSEWHERE's folder so that
+   this window's app-server has not loaded it, and no list has shown it, before that step. */
 const HELD = { id: '0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a73', title: 'Check the lock timeout of the export job' };
 const PROVIDER = 'fake';
 const PLAN_DIR = path.join('plugins', 'data', 'agent-work-plan-codex-extras');
@@ -100,7 +100,7 @@ function archived(home, { folder, threads }) {
   return files;
 }
 
-/* Writes HELD's rollout, dated two days back like ELSEWHERE's, and returns HELD. */
+/* Writes HELD's rollout, dated two days back like ELSEWHERE's. */
 function held(home, { folder }) {
   const twoDaysAgo = new Date(Date.now() - 2 * 86400e3);
   for (const f of rollouts(home, { folder: elsewhereFolder(folder), threads: [HELD], ago: () => 2 })) fs.utimesSync(f, twoDaysAgo, twoDaysAgo);

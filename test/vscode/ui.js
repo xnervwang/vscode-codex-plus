@@ -74,7 +74,7 @@
  *   locked       a conversation whose writer lock another process holds: Codex says it is open in another app, Codex
  *                Plus clicks its Retry for the user, and once the lock is let go it opens without a click
  *   broken page  a page that could not load one of Codex's modules, which Codex replaces with its recovery page: a new
- *                page is built in the same tab and draws the conversation (the conversation of the locked step)
+ *                page is built in the same tab and draws the conversation the locked step used
  *   token mode   what reaches the made-up model in each of Agent Plus's token modes, with the plugin's hooks trusted
  *
  * Every step saves a screenshot to <out>/shots, and crops of the parts this extension draws are compared with the
@@ -531,10 +531,10 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
    * fail every step after it that needs the conversation. So the tab is then closed, once VS Code has caught up with
    * Codex's files, and `act` done once more, with a note.
    */
-  /* For a frame on Codex's recovery page, what its own resource timing says of the code it fetched: each fetch of Codex's
-     code that did not bring a whole 200 (the file, the status, whether VS Code's service worker answered it, the bytes),
-     and the modules Codex's conversation and New pages import that have no entry at all, which are requests that
-     never ended. Null for any other frame; only its first heading is read before that is known. */
+  /* For a frame on Codex's recovery page, what its own resource timing says of the code it fetched: up to twelve
+     fetches of Codex's code that did not bring a whole 200, and up to twelve modules Codex's conversation and New pages
+     import that have no entry at all, which are requests that never ended. Null for any other frame; only its first
+     heading is read before that is known. */
   const fetchesIn = (f) => f.evaluate(async () => {
     const h = document.querySelector('h1, h2');
     if (!h || !/ChatGPT hit a snag/.test(h.textContent || '')) return null;
@@ -3116,7 +3116,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         await sleep(1500);
         askInPlan(id, Date.now());
         await exec('agentPlus.refreshWorkPlan');
-        /* Agent Plus has read the question once its Conversations entry counts one more conversation that needs the user. */
+        /* Agent Plus has read the question once its Conversations entry counts more conversations that need the user. */
         const read = await until(async () => (await asking()) > decided, 20000, 500);
         await sleep(7000);
         mid = { read: !!read, dot: await dotsOn(title), row: (await showList()) ? await listDot(id, '.cp-group') : null, count: [counted, await agentCount()],
@@ -4342,7 +4342,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       if (own && !own.active) await revealTab(own);
       const shownPage = await until(async () => { const f = await frontPage(); const s = await pageSays(f); return s && s.turns >= 1 && s.text.includes(begun.text) && f; }, 60000, 1000);
       /* A New tab is known by its own URI, so one Codex has put its recovery page in cannot be opened again as the same
-         tab: that is noted, and the rest of this step and what the steps after need the restored tab for are left out. */
+         tab. */
       const fetchedNew = shownPage ? null : await fetchesOf();
       if (fetchedNew) {
         note(`the restored New tab has Codex's recovery page, so the rest of this step and the steps that use that tab were not run; its fetches of Codex's code short of a whole 200: ${JSON.stringify(fetchedNew)}`);
@@ -5187,9 +5187,9 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
               return false;
             }, 20000, 500);
             let approved = !!await approve();
-            /* Codex's recovery page, drawn when one of its own modules failed to load, is Codex's page failing rather than
-               what this checks: the tab is closed and the conversation opened again there, and its app-server, which
-               still has the request, puts the card in the new page. */
+            /* Codex's recovery page is Codex's page failing rather than what this checks: the tab is closed and the
+               conversation opened again there, and its app-server, which still has the request, puts the card in the
+               new page. */
             const fetchedB = approved ? null : await fetchesOf(pageB);
             if (fetchedB) {
               note(`the second window's tab has Codex's recovery page, so it was closed and the conversation opened again there; its fetches of Codex's code short of a whole 200: ${JSON.stringify(fetchedB)}`);
@@ -5453,8 +5453,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
               side = await shown();
               if (side && tries > 1) note('the sidebar: Codex\'s sidebar drew the conversation once it was resumed there a second time');
             }
-            /* Codex's recovery page in the sidebar is Codex's page failing, and the sidebar has no tab to open again: that is
-               noted and the rest of this way left out. */
+            /* The sidebar has no tab to open again, so when it shows Codex's recovery page that is noted and the rest of
+               this way is left out. */
             const fetchedSide = side ? null : await fetchesOf();
             if (fetchedSide) {
               note(`the sidebar: Codex's sidebar has its recovery page, so the rest of this way was not run; its fetches of Codex's code: ${JSON.stringify(fetchedSide)}`);
@@ -5657,9 +5657,9 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         const behind = front === pair[0] ? pair[1] : pair[0];
         const loadedFront = async () => { const l = await loadedNow(); return Array.isArray(l) && l.includes(front.id) && l; };
         let up = await until(loadedFront, 90000, 1000);
-        /* Codex's recovery page, or its "Codex could not start" for a page that has not started within 30 s, in the tab in
-           front is Codex's page failing, not what this checks: the tab is closed and its conversation opened again in a
-           tab, which then has to load it. */
+        /* When the tab in front has Codex's recovery page, or its "Codex could not start" for a page that has not
+           started within 30 s, Codex's page has failed and there is nothing here to check: the tab is closed and its
+           conversation opened again in a tab, which then has to load it. */
         const broke = up ? '' : await brokenInFront();
         if (broke) {
           const fetched = broke === 'ChatGPT hit a snag' ? await fetchesOf() : null;
@@ -5697,8 +5697,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       check(!!failed && model.sent(`sleep ${pid.behind}`) === 0 && Array.isArray(loadedAfter) && !loadedAfter.includes(behind.id),
         'and its tab shows Codex\'s own "Codex could not start", so the conversation is still not loaded and gets no notice',
         { page: await pageSays(await frontPage()), sent: model.sent(`sleep ${pid.behind}`), loaded: loadedAfter, toasts: await toasts() });
-      /* The files its page asked for are waited for first, or the page opened next can find VS Code's queue for them full
-         (served()). */
+      /* served() first: until VS Code has served the files that page asked for, the page opened next can find VS Code's
+         queue for them full. */
       await served();
       await call(`const t = vscode.window.tabGroups.all.flatMap((g) => g.tabs).find((x) => x.input && x.input.uri && x.input.uri.path === arg);
         if (t) await vscode.window.tabGroups.close(t); return !!t;`, `/local/${behind.id}`);
@@ -5906,10 +5906,10 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     /*
      * A conversation whose writer lock another process holds, as the app-server of the window before holds a
      * conversation's lock after a reload until it exits. Codex's page shows its notice that the conversation is open in
-     * another app, and Codex Plus's page script clicks the notice's Retry every few seconds, so once the lock is let go
-     * the conversation opens with no click. The lock is held by a Python process with the kind of lock Codex takes, an
-     * exclusive flock or on Windows a byte-range lock, on the file Codex locks (codex-rs/rollout/src/writer_lock.rs).
-     * The conversation is one this window's app-server has not loaded before (lib/fake-home.js HELD).
+     * another app, and Codex Plus's page script clicks the notice's Retry every few seconds. A Python process holds the
+     * lock, with the kind of lock Codex takes, an exclusive flock or on Windows a byte-range lock, on the file Codex
+     * locks (codex-rs/rollout/src/writer_lock.rs). The conversation is one this window's app-server has not loaded
+     * before (lib/fake-home.js HELD).
      */
     await step('a conversation open in another app', async () => {
       const cp = require('child_process');
@@ -5958,11 +5958,10 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         await shot('writer-conflict-notice');
         await letGo();
         const opened = await until(async () => !await noticeIn() && JSON.stringify(await loaded()).includes(t.id), 30000, 500);
-        check(!!opened, 'once the lock is let go, the conversation opens with no click: the notice goes and this window\'s app-server has it loaded',
+        check(!!opened, 'once the lock is let go, the conversation opens without the user clicking: the notice goes and this window\'s app-server has it loaded',
           { notice: !!await noticeIn(), loaded: await loaded(), said: said() });
         const cleared = await until(() => said().some((l) => new RegExp(`notice that conversation ${t.id} is open in another app went away after Retry was clicked \\d+ times?`).test(l)), 30000, 500);
         check(!!cleared, 'and Codex Plus says in its log how many times it clicked Retry', said());
-        /* Codex's attempt to load the earlier messages meanwhile failed the same way, and leaves a notice of its own. */
         const history = await until(async () => !await alertIn('Couldn\'t load messages'), 20000, 500);
         check(!!history, 'and Codex\'s "Couldn\'t load messages", left by the same conflict, goes too', { history: !!await alertIn('Couldn\'t load messages') });
         await shot('writer-conflict-opened');
@@ -5978,7 +5977,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
      * conversation's page loads when it starts is renamed in Codex's folder while a tab is opened on a conversation, so
      * that page cannot load it; Codex Plus's page script reports the page, the host logs the file it could not load,
      * and the file gets its name back before the host loads the page again (src/broken-pages.js waits 2 s). The new
-     * page draws the conversation, in the same tab, which has kept its position.
+     * page draws the conversation in the same tab.
      */
     await step('a page that could not load Codex\'s code', async () => {
       /* The conversation of the step before, which no other step touches; threads[2] is deleted by "archive and delete". */

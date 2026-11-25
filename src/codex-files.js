@@ -169,9 +169,9 @@ function dataVersion(file) {
 let listed = null;
 
 /*
- * The name session_index.jsonl gives each thread: id -> thread_name, the last line for an id winning. Codex writes the
- * title it generates for a conversation, and a name the user gives it, both here and in the database's `name` column;
- * a thread whose row lost its `name` still has it here. Read again only when the file's size or time changes.
+ * The name session_index.jsonl gives each thread: id -> thread_name, the last line that names an id winning. Codex
+ * writes the title it generates for a conversation, and a name the user gives it, both here and in the database's
+ * `name` column; a thread whose row lost its `name` still has it here.
  */
 let indexRead = null;
 function indexNames(home) {
@@ -193,10 +193,9 @@ function indexNames(home) {
 
 /*
  * Every thread, newest first, each with `kind` added (see sourceKind) and times in milliseconds. Null when neither the
- * database nor the index could be read. Columns a given Codex build lacks are left out of the query rather than
- * failing it. A thread with no `name` in the database takes the one session_index.jsonl gives (indexNames). While the
- * database's data_version on that connection and the index are unchanged, the list read last is returned again. Each
- * thread in it is a fresh copy, because callers add fields to the threads.
+ * database nor the index could be read. Columns a given Codex build lacks are left out of the query rather than failing
+ * it. While the database's data_version on that connection and the index are unchanged, the list read last is returned
+ * again. Each thread in it is a fresh copy, because callers add fields to the threads.
  */
 function listThreads(home = codexHome()) {
   const file = stateDbPath(home);

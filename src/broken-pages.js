@@ -5,7 +5,7 @@
 'use strict';
 /*
  * Loading a Codex page again when Codex has replaced it with its recovery page ("ChatGPT hit a snag") because one of
- * its own modules failed to load. The page script finds that page and says so (lookForBroken in
+ * its own modules failed to load. The page script reports that page (lookForBroken in
  * src/page/codex-extras-page.js). The browser keeps a failed module load for the rest of the page's life, so only a new
  * page brings the conversation back, and a reload from inside the page leaves VS Code's empty placeholder. Setting the
  * webview's html again from here is what builds a new page in place: the tab keeps its position, nothing else comes to
@@ -15,7 +15,7 @@
  * A page is loaded again at most LIMIT times in WINDOW_MS; after that it is left as it is, with a line in the log.
  */
 
-/* How long to wait before loading the page again, which gives whatever made the load fail a moment to pass. */
+/* Gives whatever made the load fail a moment to pass before the page is loaded again. */
 const WAIT_MS = 2000;
 const LIMIT = 2;
 const WINDOW_MS = 10 * 60e3;
@@ -37,12 +37,12 @@ function createBrokenPages({ log = () => {}, sleep = (ms) => new Promise((r) => 
       log(`the page ${where} was loaded again ${times.length} times in the last ${WINDOW_MS / 60e3} minutes, so it is left for the user`);
       return 'limit';
     }
-    times.push(now());
-    recent.set(key, times);
     await sleep(waitMs);
     try {
       const html = String(webview.html || '').replace(STAMP, '');
       webview.html = `${html}<!-- Codex Plus loaded this page again at ${now()} -->`;
+      times.push(now());
+      recent.set(key, times);
       log(`loaded the page ${where} again`);
       return 'loaded';
     } catch (e) {

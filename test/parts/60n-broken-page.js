@@ -4,8 +4,8 @@
 
 'use strict';
 /*
- * A Codex page its error boundary replaced with the recovery page because a module failed to load: the page script says
- * so once (src/page/codex-extras-page.js lookForBroken), and the host builds a new page in its place
+ * Codex's recovery page, which its error boundary draws in place of a page when a module fails to load: the page script
+ * reports it once (src/page/codex-extras-page.js lookForBroken), and the host builds a new page in its place
  * (src/broken-pages.js).
  */
 const path = require('path');
@@ -20,7 +20,7 @@ function pageUnder(root, dom) {
   return { broken: () => posted.filter((m) => m.kind === 'brokenPage').map((m) => [m.reason, m.file]) };
 }
 
-/* A heading with the fiber chain of Codex's recovery page: the heading, the page component, then the boundary's fallback. */
+/* Codex's recovery page as React fibers: a heading, the page component above it, then the boundary's fallback. */
 function recovery(dom, error) {
   const h = dom.el('h1', { texts: ['ChatGPT hit a snag'] });
   const fallback = { memoizedProps: { error, resetError: () => {}, stayOnPage: false }, return: null };
@@ -80,6 +80,10 @@ module.exports = async ({ eq, root }) => {
     const webview = { get html() { return '<html/>'; }, set html(v) { throw new Error('disposed'); } };
     const b = createBrokenPages({ log: (l) => lines.push(l), sleep: quiet });
     eq([await b.report({ webview, key: 'k', where: 'in a tab of a conversation not started yet', file: '' }), lines[1]],
-      ['failed', 'could not load the page in a tab of a conversation not started yet again: disposed'], 'a webview already gone is logged and left');
+      ['failed', 'could not load the page in a tab of a conversation not started yet again: disposed'], 'a webview that is already gone gets a log line and nothing else');
+    const fresh = { html: '<html/>' };
+    const after = [];
+    for (let i = 0; i <= LIMIT; i++) after.push(await b.report({ webview: fresh, key: 'k', where: 'in the same tab', file: '' }));
+    eq(after, Array.from({ length: LIMIT }, () => 'loaded').concat(['limit']), 'a load that failed does not count towards the limit');
   }
 };

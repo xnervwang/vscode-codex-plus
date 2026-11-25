@@ -9,10 +9,11 @@
  *   - The page's time zone goes to the extension host, since this is the one part that runs where the user is.
  *   - Whether an approval card is on screen goes to the host as a flag, which is how the conversation Codex's sidebar
  *     is showing is seen as waiting even though it has no tab of its own.
- *   - When Codex says the conversation is open in another app, which after a window reload is usually the app-server
- *     of the window before still exiting, its Retry is clicked for the user every few seconds for two minutes.
+ *   - When Codex says the conversation is open in another app, which after a window reload usually means the
+ *     app-server of the window before is still exiting, the page clicks its Retry for the user every few seconds for
+ *     about two minutes.
  *   - When Codex replaces the page with its recovery page because one of its own modules failed to load, the host is
- *     told, and builds a new page in its place.
+ *     told and loads the page again.
  *   - The id of the newest turn shown goes to the host, which is how a tab Codex opened for a new conversation is
  *     matched to the conversation it goes on to show.
  *   - A chime plays when the host says a turn finished, Codex stopped for permission, or the model asked something,
@@ -1372,13 +1373,11 @@
    * Codex's notice that a conversation is open in another app, with its Retry button. Codex's app-server takes a
    * conversation only while no other process holds its writer lock, and after a window reload the app-server of the
    * window before can keep that lock for half a minute or more while it exits. The page asks once, shows the notice and
-   * waits for a click. This clicks Retry for the user CONFLICT_FIRST_MS after the notice appears and then every
-   * CONFLICT_EVERY_MS, up to CONFLICT_TRIES times, after which the notice is left as it is. A retry starts again once
-   * the notice has been gone for two steps in a row, or when it is about another conversation.
+   * waits for a click. A retry starts again once the notice has been gone for two steps in a row (it goes away for a
+   * moment while Codex retries), or when it is about another conversation.
    *
-   * The notice is told from Codex's other alerts by the message id of its title, in the props React keeps on its
-   * elements, so it is found whatever language Codex's interface is in. The host gets a line for its log when the
-   * retries start, when the notice goes after some, and when they stop.
+   * The notice is recognised by the message id of its title, in the props React keeps on its elements, so it is found
+   * whatever language Codex's interface is in.
    */
   var CONFLICT_TITLE = 'localConversation.writerConflict.title', HISTORY_FAILED = 'localConversation.historyLoadFailed', ALERT_UP = 30;
   var CONFLICT_FIRST_MS = 3000, CONFLICT_EVERY_MS = 5000, CONFLICT_TRIES = 24, CONFLICT_DEBOUNCE_MS = 300, HISTORY_TRIES = 3;
@@ -1413,8 +1412,8 @@
     return alertWith(function (p) { var c = p.content && typeof p.content === 'object' ? p.content.props : null; return !!c && messageId(c.children) === HISTORY_FAILED; });
   }
   /* Codex also tries to load a conversation's earlier messages, and that fails the same way while the lock is held,
-     leaving "Couldn't load messages" with a Retry of its own after the conversation has opened. Once the conflict is
-     over, that Retry is clicked too, every CONFLICT_EVERY_MS while the notice stays, up to HISTORY_TRIES times. */
+     leaving "Couldn't load messages" with a Retry of its own after the conversation has opened. Once the notice has
+     gone while the retries run, that Retry is clicked too. */
   function retryHistory() {
     historyTimer = 0;
     var n = historyNotice();

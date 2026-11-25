@@ -115,8 +115,8 @@ function anchorsMissingLine(m) {
     + 'The page self-check at the end of "Codex Plus: Show Status" says which part was not found.';
 }
 
-/* The log line for a page's report on Codex's notice that a conversation is open in another app, or '' for a report
-   of a kind this does not know. Only an id of letters, digits and dashes is named. */
+/* What the host logs when the page reports on Codex's notice that a conversation is open in another app, or '' for a
+   report of a kind this does not know. Only an id of letters, digits, underscores and dashes is named. */
 function writerConflictLine(m) {
   const thread = typeof m.thread === 'string' && /^[\w-]{1,200}$/.test(m.thread) ? `conversation ${m.thread}` : 'a conversation';
   const tries = Math.max(0, Math.min(1000, Math.floor(+m.tries || 0)));
@@ -1344,8 +1344,6 @@ function installHooks() {
       const said = CHIME_STATES[msg.state] || 'the audio context is in a state this extension does not know, so nothing may have been heard';
       deps.log(`chime ${sound}: ${said}`);
     }
-    /* A page Codex replaced with its recovery page because one of its own modules failed to load (lookForBroken in the
-       page script): it is loaded again in place (src/broken-pages.js), a tab's page or the sidebar's alike. */
     if (msg && msg.kind === 'brokenPage' && msg.reason === 'module' && webview) {
       const rec = recordOfWebview(webview);
       const file = typeof msg.file === 'string' && /^[\w.-]{1,120}$/.test(msg.file) ? msg.file : '';
@@ -1353,8 +1351,6 @@ function installHooks() {
       const where = !rec ? 'in Codex\'s sidebar' : rec.thread ? `in the tab of conversation ${rec.thread}` : 'in a tab of a conversation not started yet';
       brokenPages.report({ webview, key: rec ? rec.uri || where : 'sidebar', where, file }).catch(() => {});
     }
-    /* The page clicking Retry on Codex's notice that a conversation is open in another app (conflictNotice in the page
-       script): when it starts, when the notice goes after some retries, and when it stops trying. */
     if (msg && msg.kind === 'writerConflict' && deps && deps.log) {
       const line = writerConflictLine(msg);
       if (line) deps.log(line);
