@@ -4,15 +4,11 @@
 
 'use strict';
 /*
- * The plan bar's room and a conversation at its end (keepEnd in src/page/codex-extras-page.js). Codex's conversation
- * scroller and the message box sit one above the other, so the 32 px of top margin the box gets while the bar is drawn
- * come out of the scroller's height. A conversation that was at its end, or within the 24 px Codex counts as its end,
- * is scrolled by what the pass took away and stays as far from its end as it was; one further up is left where it is.
- * Codex measures the turns a pass made taller on its next frame and, while it is not following the end, keeps the
- * passage at the top of the view where it was, so the end is held for a moment after the pass too. The stand-in
- * scroller is as tall as the page leaves it once the room is taken, and like a browser's it never scrolls past its
- * end: a scroller that gets taller shows its end again by itself. The stand-in page has no animation frames, so each
- * frame of the hold is one of its timers. The window test (test/vscode/ui.js) checks the same on Codex's own page.
+ * Checks that the plan bar's room does not move a conversation away from its end (keepEnd in
+ * src/page/codex-extras-page.js). Codex's conversation scroller and the message box sit one above the other, so the
+ * 32 px of top margin the box gets while the bar is drawn come out of the scroller's height. Codex measures the turns
+ * a pass made taller on its next frame. While it is not following the end, it then keeps the passage at the top of the
+ * view where it was. The window test (test/vscode/ui.js) checks the same on Codex's own page.
  */
 const path = require('path');
 const vm = require('vm');
@@ -48,7 +44,6 @@ module.exports = async ({ eq, root }) => {
   const bar = (summary) => send({ type: 'codex-extras-plan-bar', on: !!summary, summary: summary || null });
   const view = (more) => send(Object.assign({ type: 'codex-extras-view', timestamps: false, navigation: false, userColor: '', userEdge: false }, more));
   const at = () => ({ room: room(), fromEnd: content - scroller.clientHeight - scroller.scrollTop });
-  /* Codex measuring turns that grew by `px` below the top of the view, and keeping the top of the view where it was. */
   const grows = (px) => { const keep = scroller.scrollTop; content += px; scroller.scrollTop = keep; };
   const toEnd = (short = 0) => { scroller.scrollTop = most() - short; };
 
