@@ -3912,6 +3912,12 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       check(!!await until(() => model.turns() > turns, 20000, 300), `${how}: its first message reaches the made-up model`, model.seen.slice(-3));
       const id = await until(() => rolloutWith(text), 20000, 500);
       const named = await until(async () => { const t = await frontTab(); return t && bare(t.label).startsWith(text.slice(0, 20)) && t; }, 30000, 500);
+      /* A page that fails to load Codex's code as it turns into the conversation's page has its tab opened again by Codex
+         Plus (src/broken-tabs.js), titled by the conversation, and the turn goes on in that tab's page. */
+      if (named && await f.evaluate(() => /hit a snag/i.test(document.body.innerText)).catch(() => true)) {
+        const g = await until(async () => { const v = await frontPage(); return v && v !== f && v; }, 30000, 500);
+        if (g) { note(`${how}: Codex's page failed after the first message, and the conversation went on in the tab Codex Plus opened again`); f = g; }
+      }
       if (!named && await f.evaluate(() => /hit a snag/i.test(document.body.innerText)).catch(() => false)) {
         model.release();
         const why = `${how}: Codex's own page failed after the first message ("ChatGPT hit a snag"), so there was no conversation page to follow`;
