@@ -164,19 +164,45 @@ function dataVersion(file) {
   } catch (_) { return null; }
 }
 
-/* The last list listThreads read from the database: the file, the connection and its data_version just before. */
+/* The last list listThreads read from the database: the file, the connection and its data_version just before, and
+   the index's stamp (indexNames). */
 let listed = null;
+
+/*
+ * The name session_index.jsonl gives each thread: id -> thread_name, the last line for an id winning. Codex writes the
+ * title it generates for a conversation, and a name the user gives it, both here and in the database's `name` column;
+ * a thread whose row lost its `name` still has it here. Read again only when the file's size or time changes.
+ */
+let indexRead = null;
+function indexNames(home) {
+  const file = path.join(home, 'session_index.jsonl');
+  let key = '';
+  try { const s = fs.statSync(file); key = `${file}:${s.size}:${s.mtimeMs}`; } catch (_) { return { key: '', names: new Map() }; }
+  if (indexRead && indexRead.key === key) return indexRead;
+  const names = new Map();
+  let text = '';
+  try { text = fs.readFileSync(file, 'utf8'); } catch (_) { return { key: '', names }; }
+  for (const line of text.split('\n')) {
+    let r;
+    try { r = JSON.parse(line); } catch (_) { continue; }
+    if (r && THREAD_ID.test(String(r.id || '')) && typeof r.thread_name === 'string') names.set(r.id, r.thread_name);
+  }
+  indexRead = { key, names };
+  return indexRead;
+}
 
 /*
  * Every thread, newest first, each with `kind` added (see sourceKind) and times in milliseconds. Null when neither the
  * database nor the index could be read. Columns a given Codex build lacks are left out of the query rather than
- * failing it. While the database's data_version on that connection is unchanged, the list read last is returned again.
- * Each thread in it is a fresh copy, because callers add fields to the threads.
+ * failing it. A thread with no `name` in the database takes the one session_index.jsonl gives (indexNames). While the
+ * database's data_version on that connection and the index are unchanged, the list read last is returned again. Each
+ * thread in it is a fresh copy, because callers add fields to the threads.
  */
 function listThreads(home = codexHome()) {
   const file = stateDbPath(home);
   const version = dataVersion(file);
-  if (version && listed && listed.file === file && listed.db === version.db && listed.value === version.value) {
+  const index = indexNames(home);
+  if (version && listed && listed.file === file && listed.db === version.db && listed.value === version.value && listed.index === index.key) {
     return listed.threads.map((t) => ({ ...t }));
   }
   listed = null;
@@ -186,8 +212,11 @@ function listThreads(home = codexHome()) {
     const cols = THREAD_COLUMNS.filter((c) => have.has(c));
     const rows = query(`select ${cols.join(', ')} from threads`, home);
     if (rows) {
-      const threads = rows.map(normalizeThread).sort((a, b) => b.updatedMs - a.updatedMs);
-      if (version && open.get(file) === version.db) listed = { file, db: version.db, value: version.value, threads: threads.map((t) => ({ ...t })) };
+      const named = (r) => (String(r.name || '').trim() || !index.names.get(String(r.id || '')) ? r : { ...r, name: index.names.get(String(r.id)) });
+      const threads = rows.map((r) => normalizeThread(named(r))).sort((a, b) => b.updatedMs - a.updatedMs);
+      if (version && open.get(file) === version.db) {
+        listed = { file, db: version.db, value: version.value, index: index.key, threads: threads.map((t) => ({ ...t })) };
+      }
       return threads;
     }
   }
