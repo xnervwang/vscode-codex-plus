@@ -5,8 +5,8 @@
 'use strict';
 /*
  * A Codex page its error boundary replaced with the recovery page because a module failed to load: the page script says
- * so once (src/page/codex-extras-page.js lookForBroken), and the host opens the tab again in its place
- * (src/broken-tabs.js).
+ * so once (src/page/codex-extras-page.js lookForBroken), and the host builds a new page in its place
+ * (src/broken-pages.js).
  */
 const path = require('path');
 const vm = require('vm');
@@ -50,84 +50,36 @@ module.exports = async ({ eq, root }) => {
   }
 
   /* ── The host ── */
-  const { createBrokenTabs, LIMIT } = require(path.join(root, 'src', 'broken-tabs.js'));
-  /* Two editor groups; the second has a text file, the broken Codex tab and another Codex tab, with the text file in front. */
-  const world = ({ frontAt = 0, focusedColumn = 1 } = {}) => {
-    const calls = [];
-    const uri = (s) => ({ toString: () => s, s });
-    const tab = (label, u, active) => ({ label, input: { uri: uri(u), viewType: 'chatgpt.conversationEditor' }, isActive: active });
-    const groups = [
-      { viewColumn: 1, isActive: focusedColumn === 1, tabs: [tab('notes.txt', 'file:///ws/notes.txt', true)] },
-      { viewColumn: 2, isActive: focusedColumn === 2, tabs: [tab('a.txt', 'file:///ws/a.txt', frontAt === 0), tab('Broken', 'openai-codex://route/local/T1', frontAt === 1),
-        tab('Other', 'openai-codex://route/local/T2', frontAt === 2)] },
-    ];
-    const vscode = {
-      Uri: { from: (o) => ({ toString: () => `${o.scheme}://${o.authority}${o.path}` }) },
-      /* A URI is kept as its string, anything else as it is. */
-      commands: { executeCommand: async (c, ...a) => { calls.push([c, ...a.map((x) => (x && typeof x === 'object' && x.toString !== Object.prototype.toString ? String(x) : x))]); } },
-      window: { tabGroups: { get all() { return groups; }, get activeTabGroup() { return groups.find((g) => g.isActive); },
-        close: async (t) => { calls.push(['close', t.label]); for (const g of groups) { const i = g.tabs.indexOf(t); if (i >= 0) g.tabs.splice(i, 1); } } } },
-    };
-    return { vscode, calls };
-  };
+  const { createBrokenPages, LIMIT } = require(path.join(root, 'src', 'broken-pages.js'));
   const quiet = () => Promise.resolve();
   {
-    const { vscode, calls } = world();
+    let t = 1000;
     const lines = [];
-    const b = createBrokenTabs({ vscode, log: (l) => lines.push(l), sleep: quiet });
-    const did = await b.report({ rec: { thread: 'T1', uri: 'openai-codex://route/local/T1' }, file: 'local-conversation-page-1.js' });
-    eq([did, calls], ['reopened', [
-      ['close', 'Broken'],
-      ['vscode.openWith', 'openai-codex://route/local/T1', 'chatgpt.conversationEditor', { viewColumn: 2, preserveFocus: false, preview: false }],
-      ['workbench.action.focusSecondEditorGroup'],
-      ['moveActiveEditor', { to: 'position', by: 'tab', value: 2 }],
-      ['workbench.action.openEditorAtIndex', 0],
-      ['workbench.action.focusFirstEditorGroup'],
-    ]], 'a background tab is closed, opened again in its group, moved back to its position, the tab in front before shown again, and the focus given back to the group that had it');
-    eq(lines, ['Codex\'s page in the tab of conversation T1 could not load its code (local-conversation-page-1.js)',
-      'opened the tab of conversation T1 again, at position 2 of editor group 2'], 'and each part is logged');
-  }
-  {
-    const { vscode, calls } = world({ frontAt: 1, focusedColumn: 2 });
-    const b = createBrokenTabs({ vscode, sleep: quiet });
-    await b.report({ rec: { thread: 'T1', uri: 'openai-codex://route/local/T1' }, file: '' });
-    eq(calls.map((c) => c[0]), ['close', 'vscode.openWith', 'workbench.action.focusSecondEditorGroup', 'moveActiveEditor'],
-      'a tab in front, in the group with the focus, is opened again in front and nothing else is shown');
-  }
-  {
-    let t = 0;
-    const lines = [];
-    const { vscode } = world();
-    const b = createBrokenTabs({ vscode, log: (l) => lines.push(l), sleep: quiet, now: () => t });
-    const results = [];
-    for (let i = 0; i < LIMIT + 1; i++) {
-      vscode.window.tabGroups.all[1].tabs.splice(1, 0, { label: 'Broken', input: { uri: { toString: () => 'openai-codex://route/local/T1' } }, isActive: false });
-      results.push(await b.report({ rec: { thread: 'T1', uri: 'openai-codex://route/local/T1' }, file: '' }));
-      t += 60e3;
-    }
+    const webview = { html: '<html>page</html>' };
+    const b = createBrokenPages({ log: (l) => lines.push(l), sleep: quiet, now: () => t });
+    const tab = { webview, key: 'openai-codex://route/local/T1', where: 'in the tab of conversation T1' };
+    eq([await b.report(Object.assign({ file: 'local-conversation-page-1.js' }, tab)), webview.html],
+      ['loaded', '<html>page</html><!-- Codex Plus loaded this page again at 1000 -->'],
+      'the page\'s html is set again, with the time at its end so that VS Code builds a new page');
+    t = 2000;
+    await b.report(Object.assign({ file: '' }, tab));
+    eq(webview.html, '<html>page</html><!-- Codex Plus loaded this page again at 2000 -->', 'a second load replaces that comment rather than adding one');
+    eq(lines.slice(0, 2), ['Codex\'s page in the tab of conversation T1 could not load its code (local-conversation-page-1.js)',
+      'loaded the page in the tab of conversation T1 again'], 'each part is logged');
+    t = 3000;
+    eq([await b.report(Object.assign({ file: '' }, tab)), webview.html.endsWith('at 2000 -->')], ['limit', true],
+      `a page is loaded again at most ${LIMIT} times in ten minutes, and then left as it is`);
+    eq(lines[lines.length - 1], 'the page in the tab of conversation T1 was loaded again 2 times in the last 10 minutes, so it is left for the user', 'with a line when it is left');
+    const sidebar = { html: '<html>side</html>' };
+    eq(await b.report({ webview: sidebar, key: 'sidebar', where: 'in Codex\'s sidebar', file: '' }), 'loaded', 'another page, such as Codex\'s sidebar, is counted on its own');
     t += 10 * 60e3;
-    results.push(await b.report({ rec: { thread: 'T1', uri: 'openai-codex://route/local/T1' }, file: '' }));
-    eq(results, ['reopened', 'reopened', 'limit', 'reopened'], `a conversation is opened again at most ${LIMIT} times in ten minutes, and again after that`);
-    eq(lines.filter((l) => /left for the user/.test(l)).length, 1, 'with a line when it is left');
+    eq(await b.report(Object.assign({ file: '' }, tab)), 'loaded', 'and the first page is loaded again once ten minutes have passed');
   }
   {
-    const { vscode, calls } = world();
     const lines = [];
-    const b = createBrokenTabs({ vscode, log: (l) => lines.push(l), sleep: quiet });
-    eq([await b.report({ rec: { thread: '', uri: 'openai-codex://route/extension/panel/new#new-1' }, file: 'new-thread-panel-page-1.js' }),
-      await b.report({ rec: { thread: 'T9', uri: 'openai-codex://route/local/T9' }, file: '' }), calls],
-    ['unknown', 'gone', []], 'a tab with no conversation yet, or one already gone, is left as it is');
-    eq(lines.slice(0, 2), ['Codex\'s page in the tab of a conversation not started yet could not load its code (new-thread-panel-page-1.js)',
-      'that tab has no conversation to open again, so it is left for the user'], 'and the first is logged as left for the user');
-  }
-  {
-    /* A New tab whose page failed as its first message was sent: Codex starts the conversation during the wait. */
-    const { vscode, calls } = world();
-    vscode.window.tabGroups.all[1].tabs[1].input.uri = { toString: () => 'openai-codex://route/extension/panel/new#new-2' };
-    const rec = { thread: '', uri: 'openai-codex://route/extension/panel/new#new-2' };
-    const b = createBrokenTabs({ vscode, sleep: async () => { rec.thread = 'T5'; } });
-    eq([await b.report({ rec, file: '' }), calls[1]],
-      ['reopened', ['vscode.openWith', 'openai-codex://route/local/T5', 'chatgpt.conversationEditor', { viewColumn: 2, preserveFocus: false, preview: false }]],
-      'a tab whose conversation becomes known during the wait is opened again on that conversation');
+    const webview = { get html() { return '<html/>'; }, set html(v) { throw new Error('disposed'); } };
+    const b = createBrokenPages({ log: (l) => lines.push(l), sleep: quiet });
+    eq([await b.report({ webview, key: 'k', where: 'in a tab of a conversation not started yet', file: '' }), lines[1]],
+      ['failed', 'could not load the page in a tab of a conversation not started yet again: disposed'], 'a webview already gone is logged and left');
   }
 };

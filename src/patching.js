@@ -85,8 +85,8 @@ const registry = new Map();
 /* How many of either list a page keeps. A prewarmed thread that is never typed into stays in `started` for good. */
 const PAGE_KEEP = 8;
 let deps = null;
-/* src/broken-tabs.js, made on the first report of a page that could not load Codex's code. */
-let brokenTabs = null;
+/* src/broken-pages.js, made on the first report of a page that could not load Codex's code. */
+let brokenPages = null;
 let last = new Map();
 /* The thread Codex's sidebar last started following, as the broadcast says, or ''. It is cleared once no page shows that
    thread any more, as when the sidebar starts a new conversation. */
@@ -1345,15 +1345,13 @@ function installHooks() {
       deps.log(`chime ${sound}: ${said}`);
     }
     /* A page Codex replaced with its recovery page because one of its own modules failed to load (lookForBroken in the
-       page script): its tab is opened again (src/broken-tabs.js). The sidebar's page has no tab, so it is only logged. */
-    if (msg && msg.kind === 'brokenPage' && msg.reason === 'module' && deps && deps.vscode) {
+       page script): it is loaded again in place (src/broken-pages.js), a tab's page or the sidebar's alike. */
+    if (msg && msg.kind === 'brokenPage' && msg.reason === 'module' && webview) {
       const rec = recordOfWebview(webview);
       const file = typeof msg.file === 'string' && /^[\w.-]{1,120}$/.test(msg.file) ? msg.file : '';
-      if (!rec) { if (deps.log) deps.log(`Codex's sidebar page could not load its code${file ? ` (${file})` : ''}; it has no tab to open again`); }
-      else {
-        if (!brokenTabs) brokenTabs = require('./broken-tabs').createBrokenTabs({ vscode: deps.vscode, log: (l) => { if (deps && deps.log) deps.log(l); } });
-        brokenTabs.report({ rec, file }).catch(() => {});
-      }
+      if (!brokenPages) brokenPages = require('./broken-pages').createBrokenPages({ log: (l) => { if (deps && deps.log) deps.log(l); } });
+      const where = !rec ? 'in Codex\'s sidebar' : rec.thread ? `in the tab of conversation ${rec.thread}` : 'in a tab of a conversation not started yet';
+      brokenPages.report({ webview, key: rec ? rec.uri || where : 'sidebar', where, file }).catch(() => {});
     }
     /* The page clicking Retry on Codex's notice that a conversation is open in another app (conflictNotice in the page
        script): when it starts, when the notice goes after some retries, and when it stops trying. */

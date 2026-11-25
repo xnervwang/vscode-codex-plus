@@ -12,7 +12,7 @@
  *   - When Codex says the conversation is open in another app, which after a window reload is usually the app-server
  *     of the window before still exiting, its Retry is clicked for the user every few seconds for two minutes.
  *   - When Codex replaces the page with its recovery page because one of its own modules failed to load, the host is
- *     told, and opens the tab again.
+ *     told, and builds a new page in its place.
  *   - The id of the newest turn shown goes to the host, which is how a tab Codex opened for a new conversation is
  *     matched to the conversation it goes on to show.
  *   - A chime plays when the host says a turn finished, Codex stopped for permission, or the model asked something,
@@ -1462,8 +1462,8 @@
    * Codex's recovery page ("ChatGPT hit a snag"), which its error boundary draws in place of the whole page when one of
    * its own modules fails to load. The browser keeps that failure for the rest of the page's life, so neither Codex's own
    * button nor a reload of the page brings it back (a reload leaves VS Code's empty placeholder page); only a new page
-   * does. The page tells the host once, with the module's file name, and the host opens the tab again
-   * (src/broken-tabs.js). It is found by the props of the boundary's fallback in React's fibers above a heading: an
+   * does. The page tells the host once, with the module's file name, and the host builds a new page in its place
+   * (src/broken-pages.js). It is found by the props of the boundary's fallback in React's fibers above a heading: an
    * `error` and a `resetError`; any other error is left alone.
    */
   var MODULE_FAILED = /dynamically imported module|Importing a module script failed|error loading dynamically imported module/i;

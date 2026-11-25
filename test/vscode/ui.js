@@ -73,8 +73,8 @@
  *                told when a detached command it started ends
  *   locked       a conversation whose writer lock another process holds: Codex says it is open in another app, Codex
  *                Plus clicks its Retry for the user, and once the lock is let go it opens without a click
- *   broken page  a page that could not load one of Codex's modules, which Codex replaces with its recovery page: the
- *                tab is opened again in its place and draws the conversation (the conversation of the locked step)
+ *   broken page  a page that could not load one of Codex's modules, which Codex replaces with its recovery page: a new
+ *                page is built in the same tab and draws the conversation (the conversation of the locked step)
  *   token mode   what reaches the made-up model in each of Agent Plus's token modes, with the plugin's hooks trusted
  *
  * Every step saves a screenshot to <out>/shots, and crops of the parts this extension draws are compared with the
@@ -3912,11 +3912,11 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       check(!!await until(() => model.turns() > turns, 20000, 300), `${how}: its first message reaches the made-up model`, model.seen.slice(-3));
       const id = await until(() => rolloutWith(text), 20000, 500);
       const named = await until(async () => { const t = await frontTab(); return t && bare(t.label).startsWith(text.slice(0, 20)) && t; }, 30000, 500);
-      /* A page that fails to load Codex's code as it turns into the conversation's page has its tab opened again by Codex
-         Plus (src/broken-tabs.js), titled by the conversation, and the turn goes on in that tab's page. */
+      /* A page that fails to load Codex's code as it turns into the conversation's page is built again in place by Codex
+         Plus (src/broken-pages.js), and the turn goes on in the new page of the same tab. */
       if (named && await f.evaluate(() => /hit a snag/i.test(document.body.innerText)).catch(() => true)) {
         const g = await until(async () => { const v = await frontPage(); return v && v !== f && v; }, 30000, 500);
-        if (g) { note(`${how}: Codex's page failed after the first message, and the conversation went on in the tab Codex Plus opened again`); f = g; }
+        if (g) { note(`${how}: Codex's page failed after the first message, and the conversation went on in the page Codex Plus built again`); f = g; }
       }
       if (!named && await f.evaluate(() => /hit a snag/i.test(document.body.innerText)).catch(() => false)) {
         model.release();
@@ -5965,8 +5965,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
      * A tab whose page Codex replaced with its recovery page because one of its own modules failed to load. The module a
      * conversation's page loads when it starts is renamed in Codex's folder while a tab is opened on a conversation, so
      * that page cannot load it; Codex Plus's page script reports the page, the host logs the file it could not load,
-     * and the file gets its name back before the host opens the tab again (src/broken-tabs.js waits 2 s). The tab
-     * opened again draws the conversation, at the position the tab had.
+     * and the file gets its name back before the host loads the page again (src/broken-pages.js waits 2 s). The new
+     * page draws the conversation, in the same tab, which has kept its position.
      */
     await step('a page that could not load Codex\'s code', async () => {
       /* The conversation of the step before, which no other step touches; threads[2] is deleted by "archive and delete". */
@@ -5980,7 +5980,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       const file = path.join(assets, name), away = file + '.away';
       const closeIt = () => call(`const mine = vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((x) => x.input && x.input.uri && String(x.input.uri).includes(arg));
         if (mine.length) await vscode.window.tabGroups.close(mine); return mine.length;`, t.id);
-      const said = () => ownLog().split('\n').filter((l) => l.includes(`conversation ${t.id}`) && /could not load its code|opened the tab of conversation/.test(l));
+      const said = () => ownLog().split('\n').filter((l) => l.includes(`conversation ${t.id}`) && /could not load its code|loaded the page in the tab/.test(l));
       await closeIt();
       await settle('a page that could not load Codex\'s code: before the tab was opened', 0);
       fs.renameSync(file, away);
@@ -5992,17 +5992,17 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         const reported = await until(() => said().some((l) => /could not load its code \([\w.-]+\.js\)\s*$/.test(l)), 30000, 200);
         putBack();
         if (!reported) {
-          note(`with ${name} renamed, the page opened on "${t.title}" did not report Codex's recovery page within 30 s, so the tab was not opened again; ${JSON.stringify(said())}`);
+          note(`with ${name} renamed, the page opened on "${t.title}" did not report Codex's recovery page within 30 s, so it was not loaded again; ${JSON.stringify(said())}`);
           return;
         }
         check(true, 'with the module a conversation\'s page needs taken away, its page reports Codex\'s recovery page, and the host logs the file it could not load');
         const before = (await codexTabsNow()).findIndex((x) => x.route === `/local/${t.id}`);
-        const reopened = await until(() => said().find((l) => /opened the tab of conversation \S+ again, at position \d+ of editor group \d+, in front/.test(l)), 30000, 500);
-        check(!!reopened, 'with the module back, the host opens the tab again, in front', said());
+        const reloaded = await until(() => said().find((l) => new RegExp(`loaded the page in the tab of conversation ${t.id} again`).test(l)), 30000, 500);
+        check(!!reloaded, 'with the module back, the host loads the page again', said());
         const page2 = await until(async () => { const f = await frontPage(); const s = await pageSays(f); return s && s.turns >= 1 && s.text.includes(t.title.slice(0, 30)) && f; }, 60000, 1000);
         const after = (await codexTabsNow()).findIndex((x) => x.route === `/local/${t.id}`);
-        check(!!page2 && after === before, 'and the tab opened again draws the conversation, at the position the tab had', { before, after, tabs: await codexTabsNow(), page: await pageSays(await frontPage()) });
-        await shot('page-opened-again-after-its-code-failed-to-load');
+        check(!!page2 && after === before, 'and the new page draws the conversation in the same tab, which has kept its position', { before, after, tabs: await codexTabsNow(), page: await pageSays(await frontPage()) });
+        await shot('page-loaded-again-after-its-code-failed-to-load');
       } finally {
         putBack();
         await settle('a page that could not load Codex\'s code: before the tab was closed', 0);

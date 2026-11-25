@@ -39,10 +39,9 @@ Timestamps, the rail and the colouring of your own messages are all drawn into C
 
 | | |
 | --- | --- |
-| What happens | Codex loads parts of its page as it needs them. When one of them fails to load, Codex's error boundary replaces the whole page with "ChatGPT hit a snag". The browser keeps that failure for the rest of the page's life, so Codex's own button does not bring the conversation back, and neither does reloading the page, which leaves VS Code's empty placeholder |
-| What Codex Plus does | The page script finds that page by the props of the boundary's fallback, and only when the error is a module that failed to load. Two seconds later the host closes the tab and opens the conversation again in the same editor group, at the same position, in front only if it was in front. A conversation is opened again at most twice in ten minutes; after that it is left for you |
-| What it leaves alone | A New tab whose conversation Codex has not started by the end of those two seconds, which has no conversation to open again, and Codex's sidebar, which has no tab. Both are only logged |
-| What is logged | A line in the Codex Plus output channel when a page reports it, with the file Codex could not load, and when the tab has been opened again |
+| What happens | Codex loads parts of its page as it needs them. When one of them fails to load, Codex's error boundary replaces the whole page with "ChatGPT hit a snag". The browser keeps that failure for the rest of the page's life, so Codex's own button does not bring the conversation back, and neither does reloading the page from inside, which leaves VS Code's empty placeholder |
+| What Codex Plus does | The page script finds that page by the props of the boundary's fallback, and only when the error is a module that failed to load. Two seconds later the host sets the page's HTML again, which makes VS Code build a new page in its place: the tab keeps its position and nothing else comes to the front. Codex's sidebar is loaded again the same way. A page is loaded again at most twice in ten minutes; after that it is left for you |
+| What is logged | A line in the Codex Plus output channel when a page reports it, with the file Codex could not load, and when the page has been loaded again |
 
 ## Sampling a conversation's layout
 
