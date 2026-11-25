@@ -134,12 +134,19 @@ function geometry(m, where, { strip = false } = {}) {
   const t = m.toolbar;
   if (t && (t.toolsInRow || t.meterInRow)) {
     /* All of it in the row or none of it: the two buttons and the meter never split between the row and the one below. */
-    check(!m.bar && (!t.tools || t.toolsInRow) && (!t.meter || t.meterInRow), `${where}: the controls are all in Codex's toolbar row, none below the box`, { bar: m.bar, t });
+    check(!m.bar && (!t.tools || t.toolsInRow) && (!t.meter || t.meterInRow),
+      `${where}: the controls are all ${t.inLine ? 'in a line of their own inside the message box' : 'in Codex\'s toolbar row'}, none below the box`, { bar: m.bar, t });
     const mid = (r) => (r.y0 + r.y1) / 2, line = t.add ? mid(t.add) : null;
     const ours = [t.tools, t.meter].filter(Boolean);
-    check(line !== null && ours.every((r) => Math.abs(mid(r) - line) <= 1), `${where}: they sit on the line of Codex's own toolbar buttons`, { line, ours });
-    if (t.tools) check(t.perm && t.tools.x0 >= t.perm.x1 && t.tools.x1 <= (t.meter || t.model).x0, `${where}: the two buttons come after Codex's permissions button`, { perm: t.perm, tools: t.tools });
-    if (t.meter) check(t.model && t.meter.x1 <= t.model.x0 && t.model.x0 - t.meter.x1 <= 8, `${where}: the meter stands just left of Codex's model picker`, { meter: t.meter, model: t.model });
+    if (t.inLine) {
+      /* A box too narrow for them beside Codex's buttons: the page script gives them a line of their own below those. */
+      check(!!t.add && ours.every((r) => r.y0 >= t.add.y1 - 0.5) && ours.every((r) => Math.abs(mid(r) - mid(ours[0])) <= 1),
+        `${where}: they sit on one line of their own, below Codex's toolbar buttons`, { add: t.add, ours });
+    } else {
+      check(line !== null && ours.every((r) => Math.abs(mid(r) - line) <= 1), `${where}: they sit on the line of Codex's own toolbar buttons`, { line, ours });
+      if (t.tools) check(t.perm && t.tools.x0 >= t.perm.x1 && t.tools.x1 <= (t.meter || t.model).x0, `${where}: the two buttons come after Codex's permissions button`, { perm: t.perm, tools: t.tools });
+      if (t.meter) check(t.model && t.meter.x1 <= t.model.x0 && t.model.x0 - t.meter.x1 <= 8, `${where}: the meter stands just left of Codex's model picker`, { meter: t.meter, model: t.model });
+    }
     check(t.toolTones.every((d) => d <= 1), `${where}: in the row they show no background of their own, as Codex's buttons do not`, t.toolTones);
     const icons = m.ink.codex.filter((h) => h >= 6);
     if (icons.length >= 3) {
@@ -200,7 +207,8 @@ async function railEdges(s, where, { list = false } = {}) {
   if (!list) check(e.text > 0 && e.under.length === 0, `${where}: no message text runs under the rail`, e);
 }
 /* Codex's toolbar buttons with this script's three controls on and then off: none of them moves or changes size. With the
-   controls in the row below the box, the box is raised to make room for that row, so only left edges and sizes are compared. */
+   controls in the row below the box, or in a line of their own inside it, the box is raised to make room for them, so only
+   left edges and sizes are compared. */
 async function unmoved(s, where) {
   const read = async () => { await sleep(700); return s.b.evaluate(MEASURE); };
   const on = await read();
@@ -208,11 +216,13 @@ async function unmoved(s, where) {
   const off = await read();
   await s.toPage(VIEW);
   await read();
-  const inRow = !!(on.toolbar && (on.toolbar.toolsInRow || on.toolbar.meterInRow));
+  const inLine = !!(on.toolbar && on.toolbar.inLine);
+  const inRow = !!(on.toolbar && (on.toolbar.toolsInRow || on.toolbar.meterInRow)) && !inLine;
   const key = (b) => (inRow ? [b.name, b.rect.x0, b.rect.y0, b.rect.x1, b.rect.y1] : [b.name, b.rect.x0, b.rect.x1 - b.rect.x0, b.rect.y1 - b.rect.y0]);
   const a = ((on.toolbar && on.toolbar.buttons) || []).map(key), b = ((off.toolbar && off.toolbar.buttons) || []).map(key);
   check(a.length >= 3 && JSON.stringify(a) === JSON.stringify(b),
-    `${where}: none of Codex's ${a.length} toolbar buttons moves or changes size when this script's controls are ${inRow ? 'in its row' : 'below the box'}`, { on: a, off: b });
+    `${where}: none of Codex's ${a.length} toolbar buttons moves or changes size when this script's controls are `
+    + `${inRow ? 'in its row' : inLine ? 'in a line of their own in the box' : 'below the box'}`, { on: a, off: b });
   return inRow;
 }
 /*
@@ -615,6 +625,7 @@ function selfchecked(r, where, { turns, users, rows, replies = turns }) {
         const meter = document.querySelector('[data-codex-extras="meter"]'), info = document.querySelector('[data-codex-extras="tools"]');
         const st = getComputedStyle(p);
         return { text: p.textContent, rect: b(p), meter: b(meter), tools: b(info), inBar: !!p.closest('[data-codex-extras="bar"]'),
+          inLine: !!p.closest('[data-codex-extras="line"]'),
           model: b(document.querySelector('[data-codex-composer-root] [data-composer-navigation-target="reasoning"]')),
           radius: st.borderRadius, bg: st.backgroundColor, dot: (() => { const d = p.querySelector('[data-codex-extras-dot]'); return d ? [b(d).x1 - b(d).x0, d.getAttribute('data-codex-extras-dot')] : null; })() };
       })()`);
@@ -623,8 +634,9 @@ function selfchecked(r, where, { turns, users, rows, replies = turns }) {
       check(!!pill && pill.text === '2 agents · 1 timer · goal' && pill.dot && pill.dot[0] === 6 && pill.dot[1] === 'working' && pill.radius === '9999px',
         `${name}: the Agent map pill reads as Claude Code Plus labels it, with a 6 px dot for its agents, and is rounded as Claude Code's`, pill);
       check(!!pill && !!pill.meter && Math.abs(pill.rect.mid - pill.meter.mid) <= 1 && pill.rect.x0 >= pill.meter.x1
-        && (pill.inBar || (!!pill.model && pill.rect.x1 <= pill.model.x0)),
-      `${name}: it sits on the line of the context meter and just after it, as Claude Code's pill follows its meter, ${pill && pill.inBar ? 'in the row below the box' : 'before Codex\'s model picker'}`, pill);
+        && (pill.inBar || pill.inLine || (!!pill.model && pill.rect.x1 <= pill.model.x0)),
+      `${name}: it sits on the line of the context meter and just after it, as Claude Code's pill follows its meter, `
+      + `${pill && pill.inBar ? 'in the row below the box' : pill && pill.inLine ? 'in the controls\' own line inside the box' : 'before Codex\'s model picker'}`, pill);
       const at = await centre(s, '[data-codex-extras="agents"]');
       if (!at) { check(false, `${name}: the Agent map pill is in the page to be clicked`); continue; }
       const t0 = await s.b.evaluate('performance.now()');

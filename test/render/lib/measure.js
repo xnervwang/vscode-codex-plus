@@ -130,6 +130,7 @@ function measure() {
     const rectIf = (e) => (e && shown(e) && e.getBoundingClientRect().width > 0 ? R(e) : null);
     return { add: add && R(add), perm: perm && R(perm), model: model && R(model), buttons, meters,
       tools: rectIf(tools), toolsInRow: !!(tools && frame.contains(tools)), meter: rectIf(meter), meterInRow: !!(meter && frame.contains(meter)),
+      inLine: !!document.querySelector('[data-codex-extras="line"]'),
       meterText: meter ? meter.textContent : '', toolTones: [...document.querySelectorAll('[data-codex-extras="bar-button"],[data-codex-extras="meter"]')]
         .filter((b) => frame.contains(b)).map((b) => tone(b).diff) };
   })();
