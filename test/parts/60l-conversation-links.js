@@ -49,14 +49,14 @@ module.exports = async ({ eq, root }) => {
   const turnEl = (key, user, ...replies) => el('div', { attrs: { 'data-turn-key': key }, kids: [el('div', { attrs: { 'data-content-search-turn-key': key },
     kids: [el('div', { kids: [user, el('div', { attrs: { 'data-local-conversation-final-assistant': '' }, kids: replies })] })] })] });
 
-  const p1 = el('p', { texts: ['See 「黑盒测试 ADV和 AUV」, and 「整理发布说明的草稿」 here.'] });
-  const pre1 = el('pre', { kids: [el('code', { texts: ['echo 「黑盒测试 ADV和 AUV」 ' + C] })] });
+  const p1 = el('p', { texts: ['See 「回归测试 CSV和 JSON」, and 「整理发布说明的草稿」 here.'] });
+  const pre1 = el('pre', { kids: [el('code', { texts: ['echo 「回归测试 CSV和 JSON」 ' + C] })] });
   const r1 = replyEl(p1, pre1);
   let p2 = el('p', { texts: ['Fix the retry delay in the uploader landed yesterday.'] });
   const r2 = replyEl(p2);
   const p3a = el('p', { texts: [`It started in ${C}, and `] , kids: [el('code', { texts: [`${C.slice(0, 8)}`] })] });
   const r3a = replyEl(p3a);
-  const p3b = el('p', { texts: ['Next: 「黑盒测试 ADV和 AUV」'] });
+  const p3b = el('p', { texts: ['Next: 「回归测试 CSV和 JSON」'] });
   const r3b = replyEl(p3b);
   dom.setBody(el('body', { kids: [el('div', { attrs: { 'data-app-action-timeline-scroll': '' }, rect: { top: 0, height: 600 }, kids: [
     turnEl(T1, userEl('first'), r1), turnEl(T2, userEl('second'), r2), turnEl(T3, userEl('third'), r3a, r3b)] })] }));
@@ -69,7 +69,7 @@ module.exports = async ({ eq, root }) => {
   page.send(times([1]));
   const list = [
     { sourceId: 'codex', label: 'Codex', sessionId: SELF, title: '整理发布说明的草稿', lastActiveAt: now },
-    { sourceId: 'claude-code', label: 'Claude Code', sessionId: A, title: '黑盒测试 ADV和 AUV', lastActiveAt: now - 120000 },
+    { sourceId: 'claude-code', label: 'Claude Code', sessionId: A, title: '回归测试 CSV和 JSON', lastActiveAt: now - 120000 },
     { sourceId: 'codex', label: 'Codex', sessionId: B, title: 'Fix the retry delay in the uploader', lastActiveAt: now - 3600000 },
     { sourceId: 'codex', label: 'Codex', sessionId: C, title: 'Profile the cold start', lastActiveAt: now - 60000 },
   ];
@@ -81,9 +81,9 @@ module.exports = async ({ eq, root }) => {
   page.send({ type: 'codex-extras-conversations', on: true, list, self: { sessionId: SELF, title: list[0].title } });
   eq(links().length, 0, 'a reply is not linked on the pass that first finds it finished, while Codex may still be drawing it for the last time');
   later();
-  eq(linkTo(p1), [`claude-code:${A}=黑盒测试 ADV和 AUV`],
+  eq(linkTo(p1), [`claude-code:${A}=回归测试 CSV和 JSON`],
     'a title in corner brackets is a link to its conversation, and the title of the conversation the page shows is not');
-  eq(p1.textContent, 'See 「黑盒测试 ADV和 AUV」, and 「整理发布说明的草稿」 here.',
+  eq(p1.textContent, 'See 「回归测试 CSV和 JSON」, and 「整理发布说明的草稿」 here.',
     'and the reply reads as it did');
   eq(linkTo(pre1), [], 'nothing in a code block is linked');
   eq(linkTo(p2), [`codex:${B}=Fix the retry delay in the uploader`], 'a whole title standing on its own is a link');
@@ -93,7 +93,7 @@ module.exports = async ({ eq, root }) => {
 
   page.send(times([1, 2]));
   later();
-  eq(linkTo(p3b), [`claude-code:${A}=黑盒测试 ADV和 AUV`], 'and is linked once the rollout holds it');
+  eq(linkTo(p3b), [`claude-code:${A}=回归测试 CSV和 JSON`], 'and is linked once the rollout holds it');
 
   const link = p1.querySelectorAll(`[${MENTION}]`)[0];
   eq([link.getAttribute('role'), link.getAttribute('tabindex'), link.getAttribute('data-codex-extras')], ['link', '0', 'convo-link'],
@@ -103,7 +103,7 @@ module.exports = async ({ eq, root }) => {
 
   link.dispatch('mouseenter', {});
   const label = dom.document.querySelectorAll('[data-codex-extras="label"]')[0];
-  eq(!!label && /^黑盒测试 ADV和 AUV\nClaude Code conversation 7c1e2d3f, active 2m ago$/.test(label.textContent), true,
+  eq(!!label && /^回归测试 CSV和 JSON\nClaude Code conversation 7c1e2d3f, active 2m ago$/.test(label.textContent), true,
     'hovering it shows the conversation, its agent and when it was last active, in the page\'s own label');
   link.dispatch('mouseleave', {});
   eq(dom.document.querySelectorAll('[data-codex-extras="label"]').length, 0, 'and leaving it takes the label away');
@@ -133,16 +133,16 @@ module.exports = async ({ eq, root }) => {
     'a conversation gone from the list loses its links');
 
   page.send({ type: 'codex-extras-conversations', on: false, list: [], self: { sessionId: SELF, title: '' } });
-  eq([links().length, p1.textContent, p3a.textContent], [0, 'See 「黑盒测试 ADV和 AUV」, and 「整理发布说明的草稿」 here.',
+  eq([links().length, p1.textContent, p3a.textContent], [0, 'See 「回归测试 CSV和 JSON」, and 「整理发布说明的草稿」 here.',
     `It started in ${C}, and ${C.slice(0, 8)}`], 'with the setting off no link is left, and the replies read as before');
   eq(p1.childNodes.filter((n) => n.nodeType === 3).length, 1, 'with the text a link took joined back to the words around it');
 
   page.send({ type: 'codex-extras-conversations', on: true, list, self: { sessionId: SELF, title: list[0].title } });
-  eq(linkTo(p1), [`claude-code:${A}=黑盒测试 ADV和 AUV`], 'and turned on again, the title in brackets is found again');
+  eq(linkTo(p1), [`claude-code:${A}=回归测试 CSV和 JSON`], 'and turned on again, the title in brackets is found again');
 
   /* A stopped turn: it ended before its last reply reached the rollout. */
-  const p4 = el('p', { texts: ['Stopped before 「黑盒测试 ADV和 AUV」'] });
+  const p4 = el('p', { texts: ['Stopped before 「回归测试 CSV和 JSON」'] });
   r3b.appendChild(p4);
   page.send(times([1], true));
-  eq(linkTo(p4), [`claude-code:${A}=黑盒测试 ADV和 AUV`], 'a reply of a turn that has ended is linked even when the rollout holds fewer replies');
+  eq(linkTo(p4), [`claude-code:${A}=回归测试 CSV和 JSON`], 'a reply of a turn that has ended is linked even when the rollout holds fewer replies');
 };

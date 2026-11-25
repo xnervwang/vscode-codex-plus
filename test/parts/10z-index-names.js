@@ -6,7 +6,7 @@
 /*
  * The title of a thread whose database row has no `name` (listThreads and indexNames in src/codex-files.js). Codex
  * writes the title it generates, and a name the user gives, to both the row's `name` and session_index.jsonl; a row
- * has been seen without its `name` while the index kept it, and the tab then showed the first message instead. The
+ * can be missing its `name` while the index keeps it, and the tab would then show the first message instead. The
  * index's name fills an empty `name`; a `name` in the row still wins.
  */
 const fs = require('fs');

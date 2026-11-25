@@ -1,6 +1,6 @@
 # What it costs in tokens
 
-The plan adds about 90 tokens to a message when it has not changed since the previous message, which is about half of all messages, and about 520 tokens (the median) when it has changed. These figures count the text itself; how they were measured is under [Typical values](#typical-values).
+Codex Plus adds work plan text to each message a conversation sends to the model while the plan has open rows. It adds nothing if the conversation has no plan or all its rows are closed; see [How big the work plan is](#how-big-the-work-plan-is).
 
 A request at the end of a turn (an end-of-turn reminder or one of the brief's requests, under [Added now and then](#added-now-and-then)) has a separate cost: Codex answers it with two more model calls that each send the whole context again, and those calls are not included above. The work plan's text, given at the start of the turn, asks for the status before the final reply, so Codex sends the `set_status` call with the turn's other tool calls.
 
@@ -61,16 +61,11 @@ The tables below show the text Codex Plus adds to what Codex sends the model. Al
 - The exceptions are two actions in VS Code that start Codex's own model calls: clicking the context meter compacts the conversation, and Resume Goal lets the goal start turns.
 - Hovering the context meter shows, for the conversation in front, how many times the work plan was added since the last compaction, how many characters that came to, and about what share of the context in use.
 
-## Typical values
+## How big the work plan is
 
-Measured on 2026-11-16 on one machine, with the hooks in this repository. Tokens are estimated: a Chinese, Japanese or Korean character counts as one token, any other character as a quarter of one.
+On the first message with an open plan and the first such message after each compaction, the hook adds the open rows and explains the row states and the command for changing a row's state. On later messages, if the rows have changed, the hook includes the open rows with a short header in place of the explanation. Both forms grow with the number of open rows: a doing row includes its note and a row asking you a question includes the question, each cut to 200 characters; other open rows show only their titles, cut to 80 characters. If only the time spent in each state has changed, or nothing has changed, the hook adds one line with the counts of doing and waiting rows and the plan file path, regardless of how many rows are open.
 
-| What | Typical | How it was measured |
-| --- | --- | --- |
-| The work plan, whole block | Median 3,280 characters, 90th percentile 5,300 | The 46 plans with open rows among the 84 written on that machine in the 14 days before; each was copied and put through the work plan plugin's hook that adds the plan to a message, once. 44 of them are Claude Code plans, which go through the same hook; the two Codex plans gave 2,672 and 3,830 characters |
-| The work plan, short head | Median 1,416 characters (about 520 tokens), 90th percentile 3,584 | The same plans, with one row added; the two Codex plans gave 808 and 1,958 characters |
-| The work plan, one line | 343 characters (about 90 tokens), 102 of them the plan's path | The same plans, with the brief on |
-| Messages whose plan is unchanged since the message before | 50% | 2,773 messages with the plan in 32 Claude Code conversations, from 2026-11-11 22:40 to 2026-11-16 01:12 UTC, counted as unchanged when the hook gave the one line, which it does when the rows differ only in how long each has been in its state (the plan text shows that time) |
+With the conversation brief on, each form ends with one sentence asking for the status before the final reply. The text stays within 6,000 characters, including the brief, and reports how many open rows it left out. Hover over the context meter to see how many times the hook has added the plan to the current conversation since the last compaction, how many characters it added in total, and about what share of the context in use those characters account for.
 
 ## Codex's own list of skills
 
@@ -82,7 +77,7 @@ When `codexPlus.skillsListBudget` is nonzero, Codex Plus writes its value to `sk
 
 If the list exceeds the budget, Codex keeps each skill's name and path first. It divides the remaining space among the descriptions, one character per description at a time, so long descriptions are cut to about the same length. If the names and paths alone exceed the budget, Codex drops all descriptions and leaves out skills from the end of the list.
 
-On one machine with 322 skills installed, the 475k-token context window Codex gives `gpt-6.1-sol` made a default budget of about 9,500 tokens, enough for about 24 characters per description. At the 10k-token maximum, each description would keep about 30 characters.
+By default, Codex gives the skills list 2% of the model's context window. For `gpt-6.1-sol`, Codex uses a 475k-token window, so the default budget is about 9,500 tokens. Codex divides the space left after skill names and paths among the descriptions, so each description gets shorter as you install more skills. The maximum budget you can set is 10k tokens.
 
 Codex does not read `~/.claude/skills`, Claude Code's folder for personal skills. Codex Plus does not add skills from that folder to Codex's list.
 

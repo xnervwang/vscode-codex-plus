@@ -115,7 +115,7 @@ Codex Plus plays Claude Code Plus's three [chimes](docs/waiting-and-chimes.md#ch
 
 Agent Plus's [token mode](docs/token-costs.md) (`agentPlus.tokenMode`) controls which features may add text to what Codex sends the model: the work plan, the time zone note, the conversation brief, wake-ups and notices when a detached command or a background Claude Code session (`claude --bg`) ends. The four modes are Interface features, Essential features, All features (the default) and Custom.
 
-What Codex Plus draws in VS Code sends nothing to the model. For about half of all messages, the work plan is unchanged since the previous message and adds about 90 tokens. When the plan has changed, it adds a median of about 520 tokens.
+Nothing Codex Plus draws in VS Code is sent to the model. With open rows, the first plan message and the first after compaction include the rows and an explanation of their states and how to change them; later messages include the rows with a short header if they have changed, or one line with the doing and waiting counts and the plan file path if they are unchanged apart from time spent in each state.
 
 ![Agent Plus's list of the four token modes](images/shots/token-mode.png)
 

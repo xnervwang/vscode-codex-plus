@@ -6,11 +6,10 @@
 /*
  * Codex's asynchronous question (the request_user_input_async tool): the card stays on the page while the tool returns
  * at once and the turn goes on to finish, and the answer arrives as the next user message. No app-server request
- * stands for it, so it is read from the rollout. The lines below have the shape of a real rollout of Codex 26.1021
- * (one taken on this machine, with every text replaced): the call, its { accepted } output, the turn's end, and the
- * answer opening a turn of its own. In Codex 26.1117 the card's answer is sent into the turn while it still runs, as a
- * user message holding a <send_user_message_question_reply> block, and the turn finishes after it. That reply's shape
- * comes from a rollout of that build, its text replaced too.
+ * stands for it, so it is read from the rollout. The lines below have the shape Codex 26.1021 writes them in: the
+ * call, its { accepted } output, the turn's end, and the answer opening a turn of its own. In Codex 26.1117 the card's
+ * answer is sent into the turn while it still runs, as a user message holding a <send_user_message_question_reply>
+ * block, and the turn finishes after it.
  */
 const fs = require('fs');
 const path = require('path');
@@ -39,31 +38,31 @@ module.exports = async ({ eq, tmp, root }) => {
   const write = (name, lines) => { const f = path.join(tmp('async-q'), name); fs.writeFileSync(f, lines.join('\n') + '\n'); return f; };
 
   const waiting = files.rolloutState(write('waiting.jsonl', [
-    ...turn('2026-11-10T00:34:40.000Z', 't1'), ...asked('2026-11-10T00:34:45.548Z'), ...ended('2026-11-10T00:34:48.631Z', 't1')]));
+    ...turn('2026-01-05T00:34:40.000Z', 't1'), ...asked('2026-01-05T00:34:45.548Z'), ...ended('2026-01-05T00:34:48.631Z', 't1')]));
   eq([waiting.working, waiting.askedMs > 0], [false, true], 'a question asked in the last turn, which has ended, is waiting for the user');
 
   const running = files.rolloutState(write('running.jsonl', [
-    ...turn('2026-11-10T00:34:40.000Z', 't1'), ...asked('2026-11-10T00:34:45.548Z')]));
+    ...turn('2026-01-05T00:34:40.000Z', 't1'), ...asked('2026-01-05T00:34:45.548Z')]));
   eq([running.working, running.askedMs > 0], [true, true], 'while its turn still runs, the rollout says both');
 
   const answer = files.rolloutState(write('answered.jsonl', [
-    ...turn('2026-11-10T00:34:40.000Z', 't1'), ...asked('2026-11-10T00:34:45.548Z'), ...ended('2026-11-10T00:34:48.631Z', 't1'),
-    ...turn('2026-11-10T00:42:13.498Z', 't2'), ...answered('2026-11-10T00:42:13.545Z'), ...ended('2026-11-10T00:42:49.989Z', 't2')]));
+    ...turn('2026-01-05T00:34:40.000Z', 't1'), ...asked('2026-01-05T00:34:45.548Z'), ...ended('2026-01-05T00:34:48.631Z', 't1'),
+    ...turn('2026-01-05T00:42:13.498Z', 't2'), ...answered('2026-01-05T00:42:13.545Z'), ...ended('2026-01-05T00:42:49.989Z', 't2')]));
   eq(answer.askedMs, 0, 'a question from an earlier turn has been answered by the turn that followed it');
 
   const inTurn = files.rolloutState(write('answered-in-turn.jsonl', [
-    ...turn('2026-11-22T19:44:09.000Z', 't1'), ...asked('2026-11-22T20:23:28.000Z'), ...reply('2026-11-22T20:26:50.000Z'),
-    ...asked('2026-11-22T21:40:51.000Z'), ...reply('2026-11-22T21:48:50.000Z'), ...said('2026-11-22T22:33:30.000Z'),
-    ...ended('2026-11-22T22:33:44.000Z', 't1')]));
+    ...turn('2026-01-12T19:44:09.000Z', 't1'), ...asked('2026-01-12T20:23:28.000Z'), ...reply('2026-01-12T20:26:50.000Z'),
+    ...asked('2026-01-12T21:40:51.000Z'), ...reply('2026-01-12T21:48:50.000Z'), ...said('2026-01-12T22:33:30.000Z'),
+    ...ended('2026-01-12T22:33:44.000Z', 't1')]));
   eq([inTurn.working, inTurn.askedMs], [false, 0], 'questions the card answered while their turn still ran are not waiting once that turn has ended');
   const typed = files.rolloutState(write('typed-in-turn.jsonl', [
-    ...turn('2026-11-22T19:44:09.000Z', 't1'), ...asked('2026-11-22T20:23:28.000Z'), ...userSays('2026-11-22T20:31:16.000Z', 'take b'),
-    ...ended('2026-11-22T20:40:00.000Z', 't1')]));
+    ...turn('2026-01-12T19:44:09.000Z', 't1'), ...asked('2026-01-12T20:23:28.000Z'), ...userSays('2026-01-12T20:31:16.000Z', 'take b'),
+    ...ended('2026-01-12T20:40:00.000Z', 't1')]));
   eq(typed.askedMs, 0, 'nor one the user answered by typing into the turn');
   const second = files.rolloutState(write('answered-first.jsonl', [
-    ...turn('2026-11-22T19:44:09.000Z', 't1'), ...asked('2026-11-22T20:23:28.000Z'), ...reply('2026-11-22T20:26:50.000Z'),
-    ...asked('2026-11-22T21:40:51.000Z'), ...ended('2026-11-22T22:33:44.000Z', 't1')]));
-  eq(second.askedMs, Date.parse('2026-11-22T21:40:51.000Z'), 'a second question asked after the first was answered still waits');
+    ...turn('2026-01-12T19:44:09.000Z', 't1'), ...asked('2026-01-12T20:23:28.000Z'), ...reply('2026-01-12T20:26:50.000Z'),
+    ...asked('2026-01-12T21:40:51.000Z'), ...ended('2026-01-12T22:33:44.000Z', 't1')]));
+  eq(second.askedMs, Date.parse('2026-01-12T21:40:51.000Z'), 'a second question asked after the first was answered still waits');
 
   const thread = { id: '01a1c2dd-39e8-7142-b569-2ed9ec1f23cc', title: 't', cwd: '/', updatedMs: Date.now() };
   const as = (st) => conversationOf(thread, { unread: new Set([thread.id]), openHere: new Set(), state: { ...st, lastActivityMs: Date.now() } });

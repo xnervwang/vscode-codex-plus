@@ -29,7 +29,7 @@ module.exports = async ({ eq, tmp, root }) => {
   const { createConversationLinks } = require('../../src/convo-links');
   const everyone = [
     { sourceId: 'codex', label: 'Codex', sessionId: X, title: 'Fix the retry delay', steward: false, cwd: '/w/a', lastActiveAt: 5 },
-    { sourceId: 'claude-code', label: 'Claude Code', sessionId: Z, title: '黑盒测试 ADV和 AUV', steward: true, cwd: '/w/z', lastActiveAt: 7 },
+    { sourceId: 'claude-code', label: 'Claude Code', sessionId: Z, title: '回归测试 CSV和 JSON', steward: true, cwd: '/w/z', lastActiveAt: 7 },
   ];
   const core = coreWith(everyone);
   let on = true, changed = 0;
@@ -41,7 +41,7 @@ module.exports = async ({ eq, tmp, root }) => {
   eq([links.view().on, core.listeners.size, changed > 0], [true, 1, true], 'with the setting on it listens to Agent Plus\'s list of every conversation');
   eq(links.view().list, [
     { sourceId: 'codex', label: 'Codex', sessionId: X, title: 'Fix the retry delay', lastActiveAt: 5 },
-    { sourceId: 'claude-code', label: 'Claude Code', sessionId: Z, title: '黑盒测试 ADV和 AUV', lastActiveAt: 7 }],
+    { sourceId: 'claude-code', label: 'Claude Code', sessionId: Z, title: '回归测试 CSV和 JSON', lastActiveAt: 7 }],
   'and keeps what a page needs of it: the agent, the id, the title and when it was last active, and not the folder');
   links.sync();
   eq(core.listeners.size, 1, 'a second sync does not listen twice');
@@ -53,7 +53,7 @@ module.exports = async ({ eq, tmp, root }) => {
   eq([links.view().list.length, links.view().version !== before, changed > told], [3, true, true], 'a change Agent Plus tells of reaches the pages');
 
   await links.open('claude-code', Z);
-  eq(ran.pop(), ['agentPlus.openConversation', { sourceId: 'claude-code', sessionId: Z, title: '黑盒测试 ADV和 AUV', cwd: '/w/z' }],
+  eq(ran.pop(), ['agentPlus.openConversation', { sourceId: 'claude-code', sessionId: Z, title: '回归测试 CSV和 JSON', cwd: '/w/z' }],
     'opening a conversation a link names runs Agent Plus\'s Open with its agent, id, title and folder from the host\'s own list');
   await links.open('codex', 'not-a-conversation');
   await links.open('claude-code', X);
