@@ -1589,6 +1589,15 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         'a plan with rows doing, waiting on the user and to do draws the bar: 4 open, the deepest doing row as the current one, and "1 to decide" in red',
         full || await barIn(codex));
       check(placed(full), 'the bar sits just above the message box, 6 px clear of it, and is as wide as it', full);
+      /* The page is short on Windows, where Codex shows its setup notice over the message box, and the rail centred in
+         it would run under the bar. */
+      const railOverBar = await codex.evaluate(() => {
+        const r = document.querySelector('.codex-extras-rail'), b = document.querySelector('[data-codex-extras="plan-bar"]');
+        if (!r || !b) return null;
+        const x = r.getBoundingClientRect(), y = b.getBoundingClientRect();
+        return { rail: [Math.round(x.top), Math.round(x.bottom)], bar: Math.round(y.top), page: innerHeight };
+      }).catch((e) => ({ error: String(e) }));
+      check(!!railOverBar && !railOverBar.error && railOverBar.rail[1] <= railOverBar.bar, 'the navigation rail ends above the bar, so the bar covers none of its buttons', railOverBar);
       /* What lies under the bar, kept in the results: every Codex element whose drawn part meets the bar, except the
          message box's ancestors. The drawn part is the element's box cut to the inside of each ancestor that clips
          what it holds (overflow other than visible). Codex's conversation scroller ends where the message box's room

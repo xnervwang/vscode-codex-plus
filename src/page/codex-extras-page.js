@@ -621,6 +621,7 @@
     if (planBar) { planBar.destroy(); planBar = null; }
     var left = all(document, 'style[' + planBarApi.MARK + '-style]');
     for (var i = 0; i < left.length; i++) gone(left[i]);
+    placeRail();
   }
   function makePlanBar() {
     var b = planBarApi.create(document, {
@@ -652,6 +653,7 @@
     planBar.el.style.top = Math.max(0, Math.round(r.top || 0) - PLAN_ROOM) + 'px';
     planBar.el.style.width = width + 'px';
     planBar.fit(width);
+    placeRail();
     if (planBox !== root && typeof ResizeObserver === 'function') {
       if (planSizer) { try { planSizer.disconnect(); } catch (e) { /* gone */ } }
       planBox = root;
@@ -2366,10 +2368,17 @@
   var nav = null, railBox = null, panel = null, rowsBox = null, filter = null, chevron = null;
   /* Placed by script rather than by top 50% and translateY(-50%), which leave the rail half a pixel off whenever the page
      and the rail differ in height by an odd number, and blur its arrows. */
-  var railResizeWired = false;
+  var railResizeWired = false, RAIL_GAP = 4;
+  /* In a page too short for the rail to be centred above the plan bar, as on Windows while Codex shows its setup notice
+     over the message box, it is moved up just far enough to end RAIL_GAP above the bar, so the bar covers none of its
+     buttons. */
   function placeRail() {
     var h = globalThis.innerHeight;
-    if (railBox && railBox.isConnected && h > 0) railBox.style.top = Math.max(0, Math.round((h - railBox.offsetHeight) / 2)) + 'px';
+    if (!(railBox && railBox.isConnected && h > 0)) return;
+    var height = railBox.offsetHeight, top = Math.round((h - height) / 2);
+    var barTop = planShown() ? parseFloat(planBar.el.style.top) : NaN;
+    if (barTop > 0) top = Math.min(top, Math.round(barTop - RAIL_GAP - height));
+    railBox.style.top = Math.max(0, top) + 'px';
   }
   var rows = [], navNodes = [], sigNodes = [], sigTexts = [], sigRules = '';
   var stepIdx = -1, stepAt = 0, keysWired = false, outsideWired = false;
