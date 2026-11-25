@@ -139,7 +139,8 @@ function geometry(m, where, { strip = false } = {}) {
     const mid = (r) => (r.y0 + r.y1) / 2, line = t.add ? mid(t.add) : null;
     const ours = [t.tools, t.meter].filter(Boolean);
     if (t.inLine) {
-      /* A box too narrow for them beside Codex's buttons: the page script gives them a line of their own below those. */
+      /* In a message box too narrow for them beside Codex's buttons, the page script moves them to a line of their own
+         under those buttons. */
       check(!!t.add && ours.every((r) => r.y0 >= t.add.y1 - 0.5) && ours.every((r) => Math.abs(mid(r) - mid(ours[0])) <= 1),
         `${where}: they sit on one line of their own, below Codex's toolbar buttons`, { add: t.add, ours });
     } else {

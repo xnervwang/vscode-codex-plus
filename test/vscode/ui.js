@@ -1268,12 +1268,12 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     let codex = null;
     const title = threads[0].title;
     /*
-     * The end of the conversation in Codex's page `f`: how far its scroller is from its end, whether the row of buttons
-     * under the last reply is inside the part of the scroller that is drawn and above the plan bar, and whether Codex
-     * shows its arrow back to the latest message, which it does once the conversation is more than 112 px from its end.
-     * The plan bar's room comes out of the scroller's height, and a conversation at its end has to stay there when the
-     * room is taken or given back (keepEnd in src/page/codex-extras-page.js). Within 24 px of its end Codex itself
-     * counts a conversation as at its end.
+     * Reads, in Codex's page `f`, how far the conversation's scroller is from its end, whether the row of buttons under
+     * the last reply is within the scroller's view and above the plan bar, and whether Codex shows its arrow back to
+     * the latest message, which it does once the conversation is more than 112 px from its end. The plan bar's room
+     * comes out of the scroller's height, and keepEnd in src/page/codex-extras-page.js keeps a conversation at its end
+     * when that room is taken or given back. Codex itself treats a conversation within 24 px of its end as being at its
+     * end.
      */
     const endOf = (f) => (f ? f.evaluate(() => {
       const sc = document.querySelector('[data-app-action-timeline-scroll]');
@@ -1296,10 +1296,11 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       const at = await until(async () => { const x = await endOf(f); return fine(x) && x; }, 5000, 250) || await endOf(f);
       check(fine(at), `${what}: the conversation is at its end, with the row of buttons under its last reply in view above the message box, and Codex shows no arrow back to the latest message`, at);
     };
-    /* Brings the conversation in `f` back to its end with the rail's Bottom of the conversation, after a scroll up with
-       the wheel when `wheel` is set, as a user does. Codex stops following the end at that scroll up, and takes the
-       rail's jump for none of the user's, so it is the page script that keeps the end in view afterwards. The click is
-       dispatched to the button: in a short page the plan bar is drawn over the rail's lower buttons. */
+    /* Clicks the rail's "Bottom of the conversation" button in `f`, after a scroll up with the mouse wheel when `wheel`
+       is set. Codex stops following the end at that scroll up and does not treat the
+       rail's jump as a scroll of the user's, so it is the page script that keeps the end in view afterwards. The click
+       is dispatched to the button: in a page too short for the whole rail to fit above the plan bar, the bar is still
+       drawn over the rail's lower buttons. */
     const railToEnd = async (f, wheel, what) => {
       if (wheel) {
         const sb = await f.locator('[data-app-action-timeline-scroll]').first().boundingBox().catch(() => null);
@@ -1324,7 +1325,6 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await shot('conversation-tab');
       await checkCurrent(threads[0].id, 'with the tab Resume in Tab opened in front');
       await planShown(threads[0].id, 'with the tab Resume in Tab opened in front');
-      /* The plan just written draws the plan bar over the conversation, which opened at its end. */
       const drawnBar = await until(() => codex.evaluate(() => {
         const b = document.querySelector('[data-codex-extras="plan-bar"]');
         return !!b && b.style.display !== 'none' && b.getClientRects().length > 0;
@@ -1349,8 +1349,6 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         turns: document.querySelectorAll('[data-turn-key]').length }));
       check(seen.user === 4 && seen.assistant >= 4, 'each of the four messages and replies carries a time stamp', seen);
       check(seen.rail, 'the rail at the right edge is drawn', seen);
-      /* Centred, unless that would put it under the plan bar: then it ends 4 px above the bar, but starts no higher than
-         4 px below the top of the conversation, short of Codex's header. */
       const railFits = (a) => a.off <= 1 || (a.bar !== null && (Math.abs(a.bottom - (a.bar - 4)) <= 1 || (a.scroller !== null && Math.abs(a.top - (a.scroller + 4)) <= 1)));
       check(!!seen.railAt && Number.isInteger(seen.railAt.top) && railFits(seen.railAt),
         'and is on a whole pixel, so its arrows are drawn sharp, centred unless that would put it under the plan bar', seen.railAt);
@@ -1520,9 +1518,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         return !b || getComputedStyle(b).display === 'none';
       }), 5000, 200), 'and closes once the pointer leaves the meter', await hoverState());
 
-      /* The jump from the list above left the conversation short of its end in a short page, as on Windows with
-         Codex's setup banner over the message box. Back at its end, it has to stay there through the toggle below,
-         which takes the plan bar's room away and gives it back. */
+      /* The jump from the list above left the conversation scrolled up from its end in a short page, as on Windows with
+         Codex's setup notice over the message box. */
       await railToEnd(codex, true, 'before Codex Plus is toggled off and on');
       /* Toggled off and on with the pointer resting on the meter. The meter is taken out from under the pointer, so the
          page still counts the pointer as on it when the controls come back, and the map arrives after them. */
@@ -1595,9 +1592,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         'a plan with rows doing, waiting on the user and to do draws the bar: 4 open, the deepest doing row as the current one, and "1 to decide" in red',
         full || await barIn(codex));
       check(placed(full), 'the bar sits just above the message box, 6 px clear of it, and is as wide as it', full);
-      /* The page is short on Windows, where Codex shows its setup notice over the message box, and the rail centred in
-         it would run under the bar. Where even the space between the top of the conversation and the bar is too short
-         for it, it stays below Codex's header rather than cover the header's New chat button. */
+      /* Where even the space between the top of the conversation and the bar is too short for the rail, it stays below
+         Codex's header rather than cover its New chat button. */
       const railOverBar = await codex.evaluate(() => {
         const r = document.querySelector('.codex-extras-rail'), b = document.querySelector('[data-codex-extras="plan-bar"]');
         const sc = document.querySelector('[data-app-action-timeline-scroll]');
@@ -1608,14 +1604,13 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       check(!!railOverBar && !railOverBar.error && (railOverBar.rail[1] <= railOverBar.bar
         || (railOverBar.scroller !== null && Math.abs(railOverBar.rail[0] - (railOverBar.scroller + 4)) <= 1)),
       'the navigation rail ends above the bar, so the bar covers none of its buttons, or in a page with no room for that starts just below Codex\'s header', railOverBar);
-      /* What lies under the bar, kept in the results: every Codex element whose drawn part meets the bar, except the
-         message box's ancestors. The drawn part is the element's box cut to the inside of each ancestor that clips
-         what it holds (overflow other than visible). Codex's conversation scroller ends where the message box's room
-         begins, which is where the bar is, and the end of a conversation scrolled past it is not drawn there. Only
-         the ancestors the element is laid out in clip it: a fixed element only those that hold fixed elements (a
-         transform or a filter), an absolute one only from its nearest positioned ancestor up. One a pixel or less
-         across is drawn for screen readers only, as Codex's own visually hidden headings are, and a meeting of less
-         than a pixel is a box placed on a fraction of a pixel against the bar, which is placed on whole pixels. */
+      /* Every Codex element whose drawn part meets the bar, except the message box's ancestors, goes into the
+         results as lying under the bar. Codex's conversation scroller ends at the top of the message box's room, where
+         the bar sits, and the part of the conversation it clips is not drawn below that line. Only ancestors that
+         contain the element's layout clip it. For a fixed element they start at its nearest ancestor with a transform
+         or a filter, and for an absolute one at its nearest positioned ancestor. An element a pixel or less across is
+         drawn for screen readers only, as Codex's own visually hidden headings are. An overlap under a pixel is not
+         counted: it comes from a box at a fractional position beside the bar, which sits on whole pixels. */
       const under = await codex.evaluate(() => {
         const b = document.querySelector('[data-codex-extras="plan-bar"]'), box = document.querySelector('[data-codex-composer-root]');
         if (!b || !box) return null;
@@ -1681,8 +1676,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await exec('workbench.action.closePanel');
       await showList();
 
-      /* No plan, no bar; the setting turns it off and on. Each takes the bar's room away or gives it back, with the
-         conversation at its end. */
+      /* No plan, no bar; the setting turns it off and on. */
       await railToEnd(codex, true, 'before the plan bar goes and comes back');
       fs.rmSync(path.join(PLANS, `${id}.json`), { force: true });
       check(!!await noBar(codex), 'a conversation whose plan is gone has no bar, and the message box no room for one', await barIn(codex));
@@ -3575,7 +3569,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
           }
           check(!!narrow && narrow.compact && narrow.count === '3 open' && narrow.red === '1' && !narrow.row && placed(narrow),
             'in Codex\'s sidebar, narrower than 400 px, the bar is compact: the open count and the number of questions, as wide as the box and just above it', narrow || await barIn(sidePage));
-          /* The compact bar taken away and drawn again with the conversation at its end: its room is the full bar's. */
+          /* The compact bar takes the same room as the full one. */
           fs.rmSync(path.join(PLANS, `${t.id}.json`), { force: true });
           if (await noBar(sidePage)) {
             await railToEnd(sidePage, false, 'in Codex\'s sidebar with its plan gone');
@@ -5715,10 +5709,9 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         await until(async () => { const s = await patchState().catch(() => null); return s && s.active; }, 60000, 1000);
         return { closed: !!closed, back, gap, closedAfterMs: Date.now() - at };
       };
-      /* A round has once waited for good on Linux after the host's restart, with nothing printed: some call into the
-         window that has no time limit of its own never answered. A round is given ROUND_MS and then fails the step,
-         saying what it was waiting for; a round given up does nothing more once that call does answer, so it cannot
-         press keys or restart the host during a later step. */
+      /* On Linux a round once hung after the host's restart, with nothing printed: some call into the window that has
+         no time limit of its own never answered. If that call answers after the round was given up, the round stops
+         at its next step, so it cannot press keys or restart the host during a later step. */
       const ROUND_MS = 180000;
       const dropOnce = async () => {
         const doing = { now: 'starting' }, cut = { done: false };
