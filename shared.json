@@ -1,5 +1,5 @@
 {
-  "core": "3e9aefadf3434a0cab721ac8148dcb1eaf22e150",
+  "core": "60391205b87d337721834666f38a72f83facc946",
   "files": [
     {
       "path": "build/sync-shared.js",
@@ -94,7 +94,7 @@
     {
       "path": "src/page/plan-bar.js",
       "from": "shared/page/plan-bar.js",
-      "sha256": "8322d7f05b59dfbf6acb5bdc559e0ad939563f8243188703a47366b35d5fd5e0"
+      "sha256": "09e14960a7559ffdcfb4e5ae60f74b567344feeb89d178cc45ef2754711bffde"
     },
     {
       "path": "src/python-runtime.js",

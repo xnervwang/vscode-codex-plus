@@ -63,8 +63,8 @@ From left to right, the bar shows:
 - A list icon and "Plan".
 - A short track with one segment per open row, coloured by state.
 - "N open".
-- The current row, with its number and state icon.
-- "N to decide" in red: the number of the [plan's questions](work-plan.md#answering-a-plan-question) waiting for your answer.
+- The row in progress (`doing`), with its number and state icon. With no row in progress this space stays empty, and hovering over the bar lists the open rows.
+- "N to decide" in yellow, the colour of Agent Plus's status bar entry: the number of this conversation's [plan questions](work-plan.md#answering-a-plan-question) waiting for your answer.
 - An arrow.
 
 Below 400 px wide, for example in Codex's sidebar, the bar shows only "Plan", the open count, the question count and the arrow.

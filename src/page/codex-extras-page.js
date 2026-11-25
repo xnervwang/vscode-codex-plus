@@ -607,7 +607,7 @@
   /*
    * The plan bar: one line just above the message box, saying where the conversation's work plan stands. Agent Plus's
    * shared fragment draws the bar. The host sends this page's conversation summary from src/plan-bars.js in a
-   * codex-extras-plan-bar message, and a click posts only 'open' for the bar or 'answer' for its red part.
+   * codex-extras-plan-bar message, and a click posts only 'open' for the bar or 'answer' for its questions part.
    *
    * Like the row below the box it is this script's own element on <body>, placed by measuring the box, since nothing of
    * this script's goes inside an element Codex draws. While it is drawn the stylesheet gives the box PLAN_ROOM more top

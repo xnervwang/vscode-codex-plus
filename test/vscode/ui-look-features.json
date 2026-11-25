@@ -124,7 +124,7 @@
     { "id": "write-about-row", "what": "Agent Plus's pen on a Work plan row putting About row N (title): at the end of the Codex conversation's message box, not sent",
       "steps": [], "checks": ["the pen on a work plan row"], "settings": [], "commands": [],
       "agentPlus": { "commands": ["agentPlus.writeAboutRow"] } },
-    { "id": "plan-bar", "what": "The plan bar just above the message box, as wide as it: the open rows of the conversation's work plan by state on a short track, how many are open, the current row, and in red how many questions wait for the user. A click shows the plan in Agent Plus's Work plan view and one on the red part the question in the Answer view; in a narrow sidebar the bar is compact",
+    { "id": "plan-bar", "what": "The plan bar just above the message box, as wide as it: the open rows of the conversation's work plan by state on a short track, how many are open, the row in progress if there is one, and in yellow how many questions wait for the user. A click shows the plan in Agent Plus's Work plan view and one on the yellow part the question in the Answer view; in a narrow sidebar the bar is compact",
       "steps": ["plan-bar", "plan-bar-light", "plan-bar-sidebar"], "checks": ["the plan bar", "a conversation in Codex's sidebar"], "settings": ["codexPlus.planBar"], "commands": [],
       "agentPlus": { "commands": ["agentPlus.showWorkPlanOf", "agentPlus.answerQuestionOf"] } },
     { "id": "codex-skill-list", "what": "Codex's own list of skills: its budget and the skills it leaves out, written into Codex's config.toml",

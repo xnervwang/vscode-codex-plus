@@ -307,24 +307,30 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
   const waitToasts = async (p, t, mark) => (await toastLogOf(p)).log.filter((x) => x.at >= mark && (x.text.includes(`"${t}"`) || WAIT_WORDS.test(x.text)))
     .map((x) => x.text);
   /* What Agent Plus shows in the status bar about the conversations that need the user. An Agent Plus with a separate
-     bell puts the number of those waiting or finished on it. One without counts them in its Conversations entry,
-     "N conversations need you", together with those that have a question in their plan, and its hover lists the
-     waiting and finished ones last, under SEEN_HEAD; the entry's aria-label carries that hover. */
-  const SEEN_HEAD = 'Finished or waiting for you, not looked at yet:';
+     bell puts the number of those waiting or finished on it. One without counts, in its Conversations entry,
+     "N conversations need you", those that have a question in their plan and those waiting for the user to approve
+     something or answer, and its hover lists the waiting ones last, one a line, under WAITS_HEAD; the entry's aria-label
+     carries that hover. */
+  const WAITS_HEAD = 'Waiting for you to approve something or answer:';
   const agentStatus = () => page.evaluate(() => {
     const shown = [...document.querySelectorAll('.statusbar-item')].filter((x) => x.offsetParent);
     const bell = shown.find((x) => /agentPlus\.attention$/.test(x.id));
     const entry = shown.find((x) => /agentPlus\.conversations$/.test(x.id));
     return { bell: bell ? Number(bell.innerText.trim()) || 0 : null, text: entry ? entry.innerText : '', label: entry ? entry.getAttribute('aria-label') || '' : '' };
   });
-  /* How many conversations waiting or finished Agent Plus counts, 0 while it counts none. */
+  /* How many conversations Agent Plus counts as waiting for the user to approve something or answer, 0 while none. */
   const agentCount = async () => {
     const s = await agentStatus();
     if (s.bell !== null) return s.bell;
-    const at = s.label.indexOf(SEEN_HEAD);
-    if (at < 0) return 0;
-    const rest = s.label.slice(at + SEEN_HEAD.length), more = /and (\d+) more/.exec(rest);
-    return (rest.match(/(?:^|\s)(?:Waiting|Finished): /g) || []).length + (more ? Number(more[1]) : 0);
+    const lines = s.label.split(/\r?\n/).map((l) => l.trim()), at = lines.indexOf(WAITS_HEAD);
+    let n = 0;
+    for (const l of at < 0 ? [] : lines.slice(at + 1)) {
+      const more = /^and (\d+) more$/.exec(l);
+      if (more) return n + Number(more[1]);
+      if (!l || l.endsWith(':')) break;
+      n++;
+    }
+    return n;
   };
   /* The number in Agent Plus's "N conversations need you" in the status bar, 0 while it is not shown. */
   const asking = () => page.evaluate(() => {
@@ -1720,8 +1726,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       check(!!more, 'a row added to the plan shows at once as one more open', more || await barIn(codex));
       writeRows(id, [ROWS[0], { title: 'Change the retry delay', state: 'done', since, closed: since, children: [{ title: 'Read the sync job', state: 'done', since, closed: since }] },
         ROWS[2], ROWS[3], { title: 'Write the release note', state: 'todo', since }]);
-      const fewer = await barSays(codex, (b) => b.count === '3 open' && /3 Decide the default delay/.test(b.row || ''));
-      check(!!fewer && fewer.segments.join() === 'waiting,todo', 'rows closed leave fewer open, and with none doing the row waiting on the user is the current one', fewer || await barIn(codex));
+      const fewer = await barSays(codex, (b) => b.count === '3 open' && !b.row && b.red === '1 to decide');
+      check(!!fewer && fewer.segments.join() === 'waiting,todo', 'rows closed leave fewer open, and with none doing the bar shows no current row, only how many are open and to decide', fewer || await barIn(codex));
       writeRows(id, ROWS);
       await barSays(codex, (b) => b.count === '4 open');
 
@@ -1798,7 +1804,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       }, 30000, 500);
       check(!!unread, 'once the reply lands with the tab not in front, the dot goes and the tab\'s title ends in the envelope',
         { dots: await dotsOn(title), label: await labelOf(title) });
-      check(!!await until(async () => (await agentCount()) > counted, 15000, 500), 'Agent Plus counts it in the status bar among the conversations that need the user',
+      await sleep(3000);
+      check((await agentCount()) <= counted, 'and Agent Plus leaves it to its notification: the status bar does not count a reply not read',
         { before: counted, now: await agentCount() });
       if (apWaits) {
         await sleep(8000);
@@ -1942,7 +1949,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       const inFront = await focused();
       if (read || inFront) {
         check(!!read, 'and bringing the tab to the front takes the envelope away', { dots: await dotsOn(title), label: await labelOf(title), windowFocused: inFront });
-        check(!!await until(async () => (await agentCount()) < unreadCount, 15000, 500), 'and Agent Plus counts it no more in the status bar', { before: unreadCount, now: await agentCount() });
+        check((await agentCount()) <= unreadCount, 'and Agent Plus\'s count, which never had it, does not go up', { before: unreadCount, now: await agentCount() });
         const gone = await panelSays(title, 'stopped', false);
         check(gone.ok, 'and its row in Agent Plus\'s panel loses the envelope', gone.row);
       } else note(`the window does not have the system's focus on ${process.platform}, so the reply stays unread, as it should; clearing the dot was not checked`);
@@ -2084,11 +2091,11 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       const marked = await until(async () => (await labelOf(title)) === `${title} ${ENVELOPE}`, 15000, 500);
       await sleep(6000);
       said = { marked: !!marked, notifications: await toastsAbout(title, mark), count: [counted, await agentCount()] };
-      check(said.marked && !said.notifications.length && said.count[1] === counted + 1,
-        'Mark as Unread in the session list\'s row menu puts the envelope on the stopped conversation\'s tab, is not announced, and adds one to Agent Plus\'s count', said);
+      check(said.marked && !said.notifications.length && said.count[1] === counted,
+        'Mark as Unread in the session list\'s row menu puts the envelope on the stopped conversation\'s tab, is not announced, and leaves Agent Plus\'s count as it was', said);
       retried(await pick(threads[0], ['Codex Plus: Mark as Read']), 'Mark as Read');
       check(!!await until(async () => (await labelOf(title)) === title && (await agentCount()) === counted, 15000, 500),
-        'and Mark as Read takes the envelope away and the count back down', { label: await labelOf(title), count: [counted, await agentCount()] });
+        'and Mark as Read takes the envelope away, the count staying where it was', { label: await labelOf(title), count: [counted, await agentCount()] });
       } else note(`the window does not have the system's focus on ${process.platform}, so the reply is unread already and Mark as Unread was not tried`);
 
       await tabNamed(title).click();
@@ -3569,7 +3576,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       model.release();
       const marked = await until(async () => (await showList()) && (await unseen()), 30000, 1000);
       check(!!marked, 'once its reply lands with the sidebar closed, its row in the session list carries the envelope', { row: await unseen() });
-      check(!!await until(async () => (await agentCount()) > counted, 10000, 500), 'and Agent Plus counts it', { before: counted, now: await agentCount() });
+      await sleep(3000);
+      check((await agentCount()) <= counted, 'and Agent Plus leaves it to its notification rather than count it', { before: counted, now: await agentCount() });
       await shot('sidebar-closed-unread');
       await exec('chatgpt.openSidebar');
       const read = await until(async () => (await showList()) && (await unseen()) === false, 30000, 1000);

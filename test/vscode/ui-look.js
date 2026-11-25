@@ -163,24 +163,30 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     return t ? t.label : null;
   };
   /* What Agent Plus shows in the status bar about the conversations that need the user. An Agent Plus with a separate
-     bell puts the number of those waiting or finished on it. One without counts them in its Conversations entry,
-     "N conversations need you", together with those that have a question in their plan, and its hover lists the
-     waiting and finished ones last, under SEEN_HEAD; the entry's aria-label carries that hover. */
-  const SEEN_HEAD = 'Finished or waiting for you, not looked at yet:';
+     bell puts the number of those waiting or finished on it. One without counts, in its Conversations entry,
+     "N conversations need you", those that have a question in their plan and those waiting for the user to approve
+     something or answer, and its hover lists the waiting ones last, one a line, under WAITS_HEAD; the entry's aria-label
+     carries that hover. */
+  const WAITS_HEAD = 'Waiting for you to approve something or answer:';
   const agentStatus = () => page.evaluate(() => {
     const shown = [...document.querySelectorAll('.statusbar-item')].filter((x) => x.offsetParent);
     const bell = shown.find((x) => /agentPlus\.attention$/.test(x.id));
     const entry = shown.find((x) => /agentPlus\.conversations$/.test(x.id));
     return { bell: bell ? Number(bell.innerText.trim()) || 0 : null, text: entry ? entry.innerText : '', label: entry ? entry.getAttribute('aria-label') || '' : '' };
   });
-  /* How many conversations waiting or finished Agent Plus counts, 0 while it counts none. */
+  /* How many conversations Agent Plus counts as waiting for the user to approve something or answer, 0 while none. */
   const agentCount = async () => {
     const s = await agentStatus();
     if (s.bell !== null) return s.bell;
-    const at = s.label.indexOf(SEEN_HEAD);
-    if (at < 0) return 0;
-    const rest = s.label.slice(at + SEEN_HEAD.length), more = /and (\d+) more/.exec(rest);
-    return (rest.match(/(?:^|\s)(?:Waiting|Finished): /g) || []).length + (more ? Number(more[1]) : 0);
+    const lines = s.label.split(/\r?\n/).map((l) => l.trim()), at = lines.indexOf(WAITS_HEAD);
+    let n = 0;
+    for (const l of at < 0 ? [] : lines.slice(at + 1)) {
+      const more = /^and (\d+) more$/.exec(l);
+      if (more) return n + Number(more[1]);
+      if (!l || l.endsWith(':')) break;
+      n++;
+    }
+    return n;
   };
 
   /* ── boxes, in the window's CSS pixels ── */
@@ -1061,7 +1067,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     await closeMap();
     const planBarBox = async (f = codex) => union([await inCodex('[data-codex-extras="plan-bar"]', f), await inCodex('[data-codex-composer-root]', f)]);
     const PLAN_BAR = 'From the left: a list icon and "Plan" in bold; a short track of three coloured segments, blue for the row doing, orange for the one waiting '
-      + 'and purple for the one to do, of equal length; "3 open"; then "1 Find the retry delay" after a play icon; at the right a red-tinted pill with a red dot and '
+      + 'and purple for the one to do, of equal length; "3 open"; then "1 Find the retry delay" after a play icon; at the right a yellow-tinted pill with a yellow dot and '
       + '"1 to decide", and an arrow. ';
     await look('plan-bar', {
       expect: `Just above the message box, as wide as it and 6 px clear of its top edge, the plan bar, one line high with a thin border and rounded corners. ${PLAN_BAR}`
@@ -1142,14 +1148,13 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     });
     await look('reply-unread', {
       expect: `With notes.txt in front when the reply lands, the conversation has stopped: its tab\'s Codex logo carries no dot and the tab\'s title reads "${title} 📩", the envelope once and last; `
-        + 'its rows in the list have no dot and an envelope after the title, before the time; Agent Plus\'s status bar counts it (a bell with 1, or N conversations need you on a yellow background), '
+        + 'its rows in the list have no dot and an envelope after the title, before the time; Agent Plus\'s status bar does not count it, as a reply not read is left to its notification, '
         + `and a notification says "${title}" finished, with two buttons, Open and Dismiss, and no progress bar.`,
     }, async () => {
       await openNotes();
       await sleep(800);
       model.release();
       await until(async () => { const d = await dotsOn(title); return d && d.working === 0 && d.waiting === 0 && (await labelOf(title)) === `${title} ${ENVELOPE}`; }, 60000, 500);
-      await until(async () => (await agentCount()) >= 1, 15000, 500);
       /* Agent Plus announces a conversation once it has stayed stopped with an unread reply for 5 seconds. */
       if (!await until(async () => (await toastLines()).some((l) => l.includes(`"${title}" finished`)), 20000, 500)) {
         tell(`no "finished" notification in 20 s; the window has the focus: ${await call('return vscode.window.state.focused;').catch((e) => String(e))}`);
@@ -1512,8 +1517,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await closeMap();
       await look('plan-bar-light', {
         expect: 'The plan bar above the message box in the Default Light Modern theme, as wide as the box: "Plan" in bold, a track of two equal segments, orange for '
-          + 'the row waiting and purple for the one to do, "2 open", then "2 Decide the default delay" in dark text after an orange clock icon, and at the right the '
-          + 'red-tinted pill with a red dot and "1 to decide", and an arrow. Its background and border are the light theme\'s input colours, and every part is readable.',
+          + 'the row waiting and purple for the one to do, "2 open", then a gap with no current row, and at the right the '
+          + 'yellow-tinted pill with a yellow dot and "1 to decide", and an arrow. Its background and border are the light theme\'s input colours, and every part is readable.',
         unchanged: 'The first row of the plan is done by now, so it is no longer counted.',
       }, async () => {
         if (!await until(() => codex.evaluate(() => /2 open/.test((document.querySelector('[data-codex-extras="plan-bar"]') || {}).textContent || '')), 20000, 500)) {
@@ -1935,7 +1940,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       const plan1 = path.join(plans, `${t1.id}.json`);
       await look('plan-bar-sidebar', {
         expect: 'In Codex\'s sidebar on the right, which is narrow, the plan bar of "Why does the nightly export skip archived rows?" just above its message box and as '
-          + 'wide as it, in its compact form: the list icon, "Plan" in bold, "3 open", then a gap, a red-tinted pill with a red dot and just "1", and the arrow at the '
+          + 'wide as it, in its compact form: the list icon, "Plan" in bold, "3 open", then a gap, a yellow-tinted pill with a yellow dot and just "1", and the arrow at the '
           + 'right end. No track and no current row. It fits inside the sidebar and covers nothing of the conversation or of the message box.',
       }, async () => {
         fs.writeFileSync(plan1, JSON.stringify({ nodes: [{ title: 'Look at the export logs', state: 'doing', since: iso() },
