@@ -306,14 +306,26 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
   const WAIT_WORDS = /approv|permission|allow|sandbox|waiting for you|needs? you/i;
   const waitToasts = async (p, t, mark) => (await toastLogOf(p)).log.filter((x) => x.at >= mark && (x.text.includes(`"${t}"`) || WAIT_WORDS.test(x.text)))
     .map((x) => x.text);
-  /* The number on Agent Plus's bell in the status bar, 0 while the bell is hidden. */
-  const bellCount = () => page.evaluate(() => {
-    const e = [...document.querySelectorAll('.statusbar-item')].find((x) => x.querySelector('.codicon-bell-dot'));
-    return e ? Number(e.innerText.trim()) || 0 : 0;
+  /* What Agent Plus shows in the status bar about the conversations that need the user. An Agent Plus with a separate
+     bell puts the number of those waiting or finished on it. One without counts them in its Conversations entry,
+     "N conversations need you", together with those that have a question in their plan, and its hover lists the
+     waiting and finished ones last, under SEEN_HEAD; the entry's aria-label carries that hover. */
+  const SEEN_HEAD = 'Finished or waiting for you, not looked at yet:';
+  const agentStatus = () => page.evaluate(() => {
+    const shown = [...document.querySelectorAll('.statusbar-item')].filter((x) => x.offsetParent);
+    const bell = shown.find((x) => /agentPlus\.attention$/.test(x.id));
+    const entry = shown.find((x) => /agentPlus\.conversations$/.test(x.id));
+    return { bell: bell ? Number(bell.innerText.trim()) || 0 : null, text: entry ? entry.innerText : '', label: entry ? entry.getAttribute('aria-label') || '' : '' };
   });
-  /* The same, whichever bell icon Agent Plus shows; VS Code's own bell at the far end carries no number. */
-  const agentCount = () => page.evaluate(() => Math.max(0, ...[...document.querySelectorAll('.statusbar-item')]
-    .filter((x) => x.querySelector('.codicon-bell, .codicon-bell-dot')).map((x) => Number(x.innerText.trim()) || 0)));
+  /* How many conversations waiting or finished Agent Plus counts, 0 while it counts none. */
+  const agentCount = async () => {
+    const s = await agentStatus();
+    if (s.bell !== null) return s.bell;
+    const at = s.label.indexOf(SEEN_HEAD);
+    if (at < 0) return 0;
+    const rest = s.label.slice(at + SEEN_HEAD.length), more = /and (\d+) more/.exec(rest);
+    return (rest.match(/(?:^|\s)(?:Waiting|Finished): /g) || []).length + (more ? Number(more[1]) : 0);
+  };
   /* The number in Agent Plus's "N conversations need you" in the status bar, 0 while it is not shown. */
   const asking = () => page.evaluate(() => {
     const e = [...document.querySelectorAll('.statusbar-item')].find((x) => /\d+ conversations? needs? you/.test(x.innerText));
@@ -1941,7 +1953,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       if (!codex) throw new Error('the conversation did not open');
       const inFocus = await focused();
       await exec('notifications.clearAll');
-      const counted = await bellCount();
+      const counted = await agentCount();
       const mark = await toastMark();
       model.hold();
       const turns = model.turns();
@@ -1953,7 +1965,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       model.release();
       const ended = await until(async () => { const d = await dotsOn(title); return d && d.working === 0 && d; }, 30000, 500);
       await sleep(8000);
-      const after = { ended: !!ended, dots: await dotsOn(title), label: await labelOf(title), counted: await bellCount(), notifications: await toastsAbout(title, mark) };
+      const after = { ended: !!ended, dots: await dotsOn(title), label: await labelOf(title), counted: await agentCount(), notifications: await toastsAbout(title, mark) };
       if (inFocus) {
         check(after.ended && !!after.dots && after.dots.waiting === 0 && after.label === title && after.counted <= counted && !after.notifications.length,
           'when the reply lands with the tab in front of the focused window, the tab gets no envelope and Agent Plus neither announces nor counts it',
@@ -2325,7 +2337,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
          its green ring after the turn. Whether it has the envelope depends on the focus, so that is left out. */
       const leftCase = async ({ name, words, steps, ask, end, ms = 45000, during, notice, map, panel = false }) => {
         const from = model.seen.length;
-        const counted = await bellCount();
+        const counted = await agentCount();
         model.script(id, steps);
         await send(`Start the ${name} and come back.`);
         /* On Windows Codex asks before it runs even a sandboxed command; elsewhere only a command asked to run outside. */
@@ -2343,7 +2355,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
           }
           if (await focused()) {
             await sleep(4000);
-            const held = { counted: await bellCount(), notification: await toastAbout(title, 'is waiting for you') };
+            const held = { counted: await agentCount(), notification: await toastAbout(title, 'is waiting for you') };
             check(held.counted <= counted && !held.notification,
               `${name}: and with the tab in front of the focused window, Agent Plus neither announces nor counts it`, { before: counted, ...held });
           }
@@ -3489,7 +3501,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         return !!r && [...r.querySelectorAll('.cp-unseen')].some((x) => getComputedStyle(x).display !== 'none');
       }, t.id).catch(() => null);
       if (await focused()) {
-        const counted0 = await bellCount(), mark0 = await toastMark();
+        const counted0 = await agentCount(), mark0 = await toastMark();
         const replies = () => side.evaluate((r) => document.body.innerText.split(r).length - 1, REPLY).catch(() => 0);
         const had = await replies();
         model.hold();
@@ -3504,7 +3516,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         const landed = await until(async () => (await replies()) > had, 30000, 500);
         await sleep(8000);
         const after = { landed: !!landed, sidebar: await auxiliaryShowsCodex(), unseen: (await showList()) ? await unseenRow() : null,
-          counted: [counted0, await bellCount()], notifications: await toastsAbout(t.title, mark0) };
+          counted: [counted0, await agentCount()], notifications: await toastsAbout(t.title, mark0) };
         check(after.landed && after.sidebar && after.unseen === false && after.counted[1] <= counted0 && !after.notifications.length,
           'with Codex\'s sidebar left open on it and a text file in front, its reply is not marked unread, not announced and not counted', after);
         await shot('sidebar-open-replied');
@@ -3520,13 +3532,13 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await page.keyboard.type('Check the export once more.');
       await page.keyboard.press('Enter');
       check(!!await until(() => model.turns() > turns, 20000, 300), 'a message sent from Codex\'s sidebar reaches the made-up model', model.seen.slice(-3));
-      const counted = await bellCount();
+      const counted = await agentCount();
       await exec('workbench.action.closeAuxiliaryBar');
       await sleep(800);
       model.release();
       const marked = await until(async () => (await showList()) && (await unseen()), 30000, 1000);
       check(!!marked, 'once its reply lands with the sidebar closed, its row in the session list carries the envelope', { row: await unseen() });
-      check(!!await until(async () => (await bellCount()) > counted, 10000, 500), 'and Agent Plus counts it', { before: counted, now: await bellCount() });
+      check(!!await until(async () => (await agentCount()) > counted, 10000, 500), 'and Agent Plus counts it', { before: counted, now: await agentCount() });
       await shot('sidebar-closed-unread');
       await exec('chatgpt.openSidebar');
       const read = await until(async () => (await showList()) && (await unseen()) === false, 30000, 1000);
@@ -3828,7 +3840,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       const fresh = await newTabPage();
       check(!!fresh, 'the tab bar button opens a new conversation page in a tab');
       if (!fresh) return;
-      const counted = await bellCount();
+      const counted = await agentCount();
       const text = 'Draft the release notes for 1.2.';
       const box = await emptyBox(fresh);
       check(!box.left, 'its message box is empty before the first message is typed', box);
@@ -3848,7 +3860,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       model.release();
       const ended = await until(() => fresh.evaluate((r) => document.body.innerText.includes(r), REPLY).catch(() => false), 30000, 500);
       await sleep(8000);
-      const after = { ended: !!ended, counted: await bellCount(), notifications: await toastsAbout(named ? bare(named.label) : text, mark) };
+      const after = { ended: !!ended, counted: await agentCount(), notifications: await toastsAbout(named ? bare(named.label) : text, mark) };
       if (inFocus) {
         check(after.ended && after.counted <= counted && !after.notifications.length,
           'when its reply lands with the tab in front of the focused window, Agent Plus neither announces nor counts it', { before: counted, ...after });
@@ -3899,7 +3911,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
      */
     const firstMessage = async (f, text, how) => {
       await exec('notifications.clearAll');
-      const counted = await bellCount();
+      const counted = await agentCount();
       model.hold();
       const turns = model.turns();
       const box = await emptyBox(f);
@@ -3941,7 +3953,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       /* Agent Plus counts a conversation while it is unread, which its row's envelope shows; the total can move for other
          conversations meanwhile. */
       const after = { ended: !!ended, unread: id ? await rowUnread(id) : null, notification: await toastAbout(named ? bare(named.label) : text, 'finished'),
-        bell: [counted, await bellCount()], unreadRows: await unreadTitles() };
+        bell: [counted, await agentCount()], unreadRows: await unreadTitles() };
       check(after.ended && after.unread === false && !after.notification, `${how}: its reply, landing with the tab in front, is neither announced nor left unread to count`, after);
       if (!id) return null;
       const open = await until(async () => { const r = await openRows(); return r && r.includes(id) && r; }, 15000, 500);

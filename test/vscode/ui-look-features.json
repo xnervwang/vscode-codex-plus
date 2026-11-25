@@ -158,7 +158,7 @@
     { "id": "answer-question", "what": "Answering a plan question in Agent Plus's Answer view, the answer typed into the conversation's message box and sent",
       "steps": ["answer-question", "answer-sent"], "settings": [], "commands": [],
       "agentPlus": { "commands": ["agentPlus.answerQuestion"] } },
-    { "id": "attention", "what": "Agent Plus's notification when a conversation finishes behind another tab, and the count beside the bell in the status bar, listing them on a click",
+    { "id": "attention", "what": "Agent Plus's notification when a conversation finishes behind another tab, and Agent Plus's count of them in the status bar, and the list of them",
       "steps": ["reply-unread", "attention-list"], "checks": ["a conversation unarchived with a reply not seen", "the notification settings", "what Agent Plus does not announce", "a conversation waiting for you in the background", "a question answered while its turn runs"],
       "settings": [], "commands": [],
       "agentPlus": { "settings": ["agentPlus.notifications.enabled", "agentPlus.notifications.finished", "agentPlus.notifications.waiting"],

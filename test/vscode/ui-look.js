@@ -162,12 +162,26 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     const t = (await tabs()).flatMap((g) => g.tabs).find((x) => bare(x.label) === want);
     return t ? t.label : null;
   };
-  /* Agent Plus's bell. VS Code's own notifications entry, at the right end, shows the same icon while it holds any. */
-  const AGENT_BELL = '.statusbar-item:not([id="status.notifications"])';
-  const bellCount = () => page.evaluate((q) => {
-    const e = [...document.querySelectorAll(q)].find((x) => x.querySelector('.codicon-bell-dot'));
-    return e ? Number(e.innerText.trim()) || 0 : 0;
-  }, AGENT_BELL);
+  /* What Agent Plus shows in the status bar about the conversations that need the user. An Agent Plus with a separate
+     bell puts the number of those waiting or finished on it. One without counts them in its Conversations entry,
+     "N conversations need you", together with those that have a question in their plan, and its hover lists the
+     waiting and finished ones last, under SEEN_HEAD; the entry's aria-label carries that hover. */
+  const SEEN_HEAD = 'Finished or waiting for you, not looked at yet:';
+  const agentStatus = () => page.evaluate(() => {
+    const shown = [...document.querySelectorAll('.statusbar-item')].filter((x) => x.offsetParent);
+    const bell = shown.find((x) => /agentPlus\.attention$/.test(x.id));
+    const entry = shown.find((x) => /agentPlus\.conversations$/.test(x.id));
+    return { bell: bell ? Number(bell.innerText.trim()) || 0 : null, text: entry ? entry.innerText : '', label: entry ? entry.getAttribute('aria-label') || '' : '' };
+  });
+  /* How many conversations waiting or finished Agent Plus counts, 0 while it counts none. */
+  const agentCount = async () => {
+    const s = await agentStatus();
+    if (s.bell !== null) return s.bell;
+    const at = s.label.indexOf(SEEN_HEAD);
+    if (at < 0) return 0;
+    const rest = s.label.slice(at + SEEN_HEAD.length), more = /and (\d+) more/.exec(rest);
+    return (rest.match(/(?:^|\s)(?:Waiting|Finished): /g) || []).length + (more ? Number(more[1]) : 0);
+  };
 
   /* ── boxes, in the window's CSS pixels ── */
   const union = (boxes) => {
@@ -848,7 +862,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       return rowBox(t1.id);
     });
     await look('mark-read', {
-      expect: 'Mark as Read, which its menu now offers in place of Mark as Unread, takes the envelope away again; the title stays red from Text Color, and "Active · N" and the bell drop back by one.',
+      expect: 'Mark as Read, which its menu now offers in place of Mark as Unread, takes the envelope away again; the title stays red from Text Color, and "Active · N" and Agent Plus\'s count in the status bar drop back by one.',
     }, async () => {
       await pick(row(t1.id), ['Mark as Read']);
       await until(() => list.evaluate((id) => { const e = document.querySelector(`.cp-groups .cp-row[data-id="${id}"] .cp-unseen`); return !e || e.classList.contains('cp-hidden'); }, t1.id), 10000, 300);
@@ -1128,14 +1142,14 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     });
     await look('reply-unread', {
       expect: `With notes.txt in front when the reply lands, the conversation has stopped: its tab\'s Codex logo carries no dot and the tab\'s title reads "${title} 📩", the envelope once and last; `
-        + 'its rows in the list have no dot and an envelope after the title, before the time; Agent Plus\'s bell in the status bar shows a count of 1, '
+        + 'its rows in the list have no dot and an envelope after the title, before the time; Agent Plus\'s status bar counts it (a bell with 1, or N conversations need you on a yellow background), '
         + `and a notification says "${title}" finished, with two buttons, Open and Dismiss, and no progress bar.`,
     }, async () => {
       await openNotes();
       await sleep(800);
       model.release();
       await until(async () => { const d = await dotsOn(title); return d && d.working === 0 && d.waiting === 0 && (await labelOf(title)) === `${title} ${ENVELOPE}`; }, 60000, 500);
-      await until(async () => (await bellCount()) >= 1, 15000, 500);
+      await until(async () => (await agentCount()) >= 1, 15000, 500);
       /* Agent Plus announces a conversation once it has stayed stopped with an unread reply for 5 seconds. */
       if (!await until(async () => (await toastLines()).some((l) => l.includes(`"${title}" finished`)), 20000, 500)) {
         tell(`no "finished" notification in 20 s; the window has the focus: ${await call('return vscode.window.state.focused;').catch((e) => String(e))}`);
@@ -1145,15 +1159,17 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       return union([await tabAndRow(), await part(PARTS.statusbar), await toastsBox()]);
     });
     await look('attention-list', {
-      expect: 'A click on the bell in the status bar opens a list at the top of the window of the conversations that need the user, with this conversation in it.',
+      expect: 'A list at the top of the window of the conversations that need the user, with this conversation in it.',
     }, async () => {
-      const bell = page.locator(AGENT_BELL).filter({ has: page.locator('.codicon-bell-dot') }).first();
-      await bell.locator('.statusbar-item-label, a').first().click({ timeout: 5000 });
+      /* An Agent Plus with a separate bell opens the list on a click on it; one without opens it from its command. */
+      const bell = page.locator('.statusbar-item[id$="agentPlus.attention"]').first();
+      if (await bell.isVisible().catch(() => false)) await bell.locator('.statusbar-item-label, a').first().click({ timeout: 5000 });
+      else await start('agentPlus.showAttention');
       if (!await page.locator('.quick-input-widget').first().waitFor({ state: 'visible', timeout: 8000 }).then(() => true, () => false)) {
         const toastsNow = await toastLines();
         await start('agentPlus.showAttention');
         await page.locator('.quick-input-widget').first().waitFor({ state: 'visible', timeout: 8000 }).catch(() => {});
-        throw new Error(`a click on the bell opened no list (notifications then: ${JSON.stringify(toastsNow)}); Agent Plus: Show the Conversations That Need You was run instead`);
+        throw new Error(`neither the bell nor the command opened a list (notifications then: ${JSON.stringify(toastsNow)}); Agent Plus: Show the Conversations That Need You was run instead`);
       }
       await sleep(600);
       return union([await boxIn(null, '.quick-input-widget'), await part(PARTS.statusbar)]);
