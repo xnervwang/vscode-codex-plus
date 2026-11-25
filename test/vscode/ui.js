@@ -2030,8 +2030,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       const landed = await finishBehind('Count the failing tests.');
       await sleep(8000);
       let said = { landed, notifications: await toastsAbout(title, mark), count: [counted, await agentCount()] };
-      check(landed && !said.notifications.length && said.count[1] >= Math.max(1, counted),
-        'with agentPlus.notifications.finished off, a reply landing in the background is not announced, and Agent Plus still counts it', said);
+      check(landed && !said.notifications.length && said.count[1] <= counted,
+        'with agentPlus.notifications.finished off, a reply landing in the background is not announced, nor counted, as no reply not read is', said);
       if (inFocus) check(await readBack(), 'brought to the front, it is read');
       await agentSetting('notifications.finished', undefined);
 
