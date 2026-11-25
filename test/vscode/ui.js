@@ -5424,6 +5424,13 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
               side = await shown();
               if (side && tries > 1) note('the sidebar: Codex\'s sidebar drew the conversation once it was resumed there a second time');
             }
+            /* Codex's recovery page in the sidebar is Codex's page failing, and the sidebar has no tab to open again: that is
+               noted and the rest of this way left out. */
+            const fetchedSide = side ? null : await fetchesOf();
+            if (fetchedSide) {
+              note(`the sidebar: Codex's sidebar has its recovery page, so the rest of this way was not run; its fetches of Codex's code: ${JSON.stringify(fetchedSide)}`);
+              return;
+            }
             if (!side) throw new Error('Codex\'s sidebar did not show the conversation, resumed there twice');
             /* With a text file as the active editor, Codex Plus counts the sidebar's conversation as the one in front. */
             await after('one resumed in Codex\'s sidebar from its row\'s menu', [B], B);
@@ -5621,11 +5628,14 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         const behind = front === pair[0] ? pair[1] : pair[0];
         const loadedFront = async () => { const l = await loadedNow(); return Array.isArray(l) && l.includes(front.id) && l; };
         let up = await until(loadedFront, 90000, 1000);
-        /* Codex's recovery page in the tab in front is Codex's page failing, not what this checks: the tab is closed and
-           its conversation opened again in a tab, which then has to load it. */
-        const fetched = up ? null : await fetchesOf();
-        if (fetched) {
-          note(`${what}: the tab in front has Codex's recovery page, so it was closed and its conversation opened again; its fetches of Codex's code short of a whole 200: ${JSON.stringify(fetched)}`);
+        /* Codex's recovery page, or its "Codex could not start" for a page that has not started within 30 s, in the tab in
+           front is Codex's page failing, not what this checks: the tab is closed and its conversation opened again in a
+           tab, which then has to load it. */
+        const broke = up ? '' : await brokenInFront();
+        if (broke) {
+          const fetched = broke === 'ChatGPT hit a snag' ? await fetchesOf() : null;
+          note(`${what}: the tab in front has Codex's "${broke}", so it was closed and its conversation opened again${fetched ? `; its fetches of Codex's code: ${JSON.stringify(fetched)}` : ''}`);
+          await served();
           await call(`const t = vscode.window.tabGroups.all.flatMap((g) => g.tabs).find((x) => x.input && x.input.uri && x.input.uri.path === arg);
             if (t) await vscode.window.tabGroups.close(t); return !!t;`, `/local/${front.id}`);
           await exec('codexPlus.openThreadInTab', front.id);
