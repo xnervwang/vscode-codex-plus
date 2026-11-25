@@ -5937,8 +5937,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     /*
      * A tab whose page Codex replaced with its recovery page because one of its own modules failed to load. The module a
      * conversation's page loads when it starts is renamed in Codex's folder while a tab is opened on a conversation, so
-     * that page cannot load it; Codex Plus's page script reports the page, the host says in its log that it will open
-     * the tab again, and the file gets its name back before the host does (src/broken-tabs.js waits 2 s). The tab
+     * that page cannot load it; Codex Plus's page script reports the page, the host logs the file it could not load,
+     * and the file gets its name back before the host opens the tab again (src/broken-tabs.js waits 2 s). The tab
      * opened again draws the conversation, at the position the tab had.
      */
     await step('a page that could not load Codex\'s code', async () => {
@@ -5962,13 +5962,13 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       try {
         await exec('codexPlus.openThreadInTab', t.id);
         /* The error names the module the page imported, which can be a small one that imports this one. */
-        const reported = await until(() => said().some((l) => /could not load its code \([\w.-]+\.js\); opening its tab again/.test(l)), 30000, 200);
+        const reported = await until(() => said().some((l) => /could not load its code \([\w.-]+\.js\)\s*$/.test(l)), 30000, 200);
         putBack();
         if (!reported) {
           note(`with ${name} renamed, the page opened on "${t.title}" did not report Codex's recovery page within 30 s, so the tab was not opened again; ${JSON.stringify(said())}`);
           return;
         }
-        check(true, 'with the module a conversation\'s page needs taken away, its page reports Codex\'s recovery page, and the host says it will open the tab again');
+        check(true, 'with the module a conversation\'s page needs taken away, its page reports Codex\'s recovery page, and the host logs the file it could not load');
         const before = (await codexTabsNow()).findIndex((x) => x.route === `/local/${t.id}`);
         const reopened = await until(() => said().find((l) => /opened the tab of conversation \S+ again, at position \d+ of editor group \d+, in front/.test(l)), 30000, 500);
         check(!!reopened, 'with the module back, the host opens the tab again, in front', said());

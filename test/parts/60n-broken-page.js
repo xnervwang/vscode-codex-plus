@@ -75,7 +75,7 @@ module.exports = async ({ eq, root }) => {
     const { vscode, calls } = world();
     const lines = [];
     const b = createBrokenTabs({ vscode, log: (l) => lines.push(l), sleep: quiet });
-    const did = await b.report({ thread: 'T1', uri: 'openai-codex://route/local/T1', file: 'local-conversation-page-1.js' });
+    const did = await b.report({ rec: { thread: 'T1', uri: 'openai-codex://route/local/T1' }, file: 'local-conversation-page-1.js' });
     eq([did, calls], ['reopened', [
       ['close', 'Broken'],
       ['vscode.openWith', 'openai-codex://route/local/T1', 'chatgpt.conversationEditor', { viewColumn: 2, preserveFocus: false, preview: false }],
@@ -84,13 +84,13 @@ module.exports = async ({ eq, root }) => {
       ['workbench.action.openEditorAtIndex', 0],
       ['workbench.action.focusFirstEditorGroup'],
     ]], 'a background tab is closed, opened again in its group, moved back to its position, the tab in front before shown again, and the focus given back to the group that had it');
-    eq(lines, ['Codex\'s page for conversation T1 could not load its code (local-conversation-page-1.js); opening its tab again',
+    eq(lines, ['Codex\'s page in the tab of conversation T1 could not load its code (local-conversation-page-1.js)',
       'opened the tab of conversation T1 again, at position 2 of editor group 2'], 'and each part is logged');
   }
   {
     const { vscode, calls } = world({ frontAt: 1, focusedColumn: 2 });
     const b = createBrokenTabs({ vscode, sleep: quiet });
-    await b.report({ thread: 'T1', uri: 'openai-codex://route/local/T1', file: '' });
+    await b.report({ rec: { thread: 'T1', uri: 'openai-codex://route/local/T1' }, file: '' });
     eq(calls.map((c) => c[0]), ['close', 'vscode.openWith', 'workbench.action.focusSecondEditorGroup', 'moveActiveEditor'],
       'a tab in front, in the group with the focus, is opened again in front and nothing else is shown');
   }
@@ -102,11 +102,11 @@ module.exports = async ({ eq, root }) => {
     const results = [];
     for (let i = 0; i < LIMIT + 1; i++) {
       vscode.window.tabGroups.all[1].tabs.splice(1, 0, { label: 'Broken', input: { uri: { toString: () => 'openai-codex://route/local/T1' } }, isActive: false });
-      results.push(await b.report({ thread: 'T1', uri: 'openai-codex://route/local/T1', file: '' }));
+      results.push(await b.report({ rec: { thread: 'T1', uri: 'openai-codex://route/local/T1' }, file: '' }));
       t += 60e3;
     }
     t += 10 * 60e3;
-    results.push(await b.report({ thread: 'T1', uri: 'openai-codex://route/local/T1', file: '' }));
+    results.push(await b.report({ rec: { thread: 'T1', uri: 'openai-codex://route/local/T1' }, file: '' }));
     eq(results, ['reopened', 'reopened', 'limit', 'reopened'], `a conversation is opened again at most ${LIMIT} times in ten minutes, and again after that`);
     eq(lines.filter((l) => /left for the user/.test(l)).length, 1, 'with a line when it is left');
   }
@@ -114,10 +114,20 @@ module.exports = async ({ eq, root }) => {
     const { vscode, calls } = world();
     const lines = [];
     const b = createBrokenTabs({ vscode, log: (l) => lines.push(l), sleep: quiet });
-    eq([await b.report({ thread: '', uri: 'openai-codex://route/extension/panel/new#new-1', file: 'new-thread-panel-page-1.js' }),
-      await b.report({ thread: 'T9', uri: 'openai-codex://route/local/T9', file: '' }), calls],
+    eq([await b.report({ rec: { thread: '', uri: 'openai-codex://route/extension/panel/new#new-1' }, file: 'new-thread-panel-page-1.js' }),
+      await b.report({ rec: { thread: 'T9', uri: 'openai-codex://route/local/T9' }, file: '' }), calls],
     ['unknown', 'gone', []], 'a tab with no conversation yet, or one already gone, is left as it is');
-    eq(lines[0], 'Codex\'s page for a conversation not started yet could not load its code (new-thread-panel-page-1.js); its tab has no conversation to open again, so it is left for the user',
-      'and the first is logged as left for the user');
+    eq(lines.slice(0, 2), ['Codex\'s page in the tab of a conversation not started yet could not load its code (new-thread-panel-page-1.js)',
+      'that tab has no conversation to open again, so it is left for the user'], 'and the first is logged as left for the user');
+  }
+  {
+    /* A New tab whose page failed as its first message was sent: Codex starts the conversation during the wait. */
+    const { vscode, calls } = world();
+    vscode.window.tabGroups.all[1].tabs[1].input.uri = { toString: () => 'openai-codex://route/extension/panel/new#new-2' };
+    const rec = { thread: '', uri: 'openai-codex://route/extension/panel/new#new-2' };
+    const b = createBrokenTabs({ vscode, sleep: async () => { rec.thread = 'T5'; } });
+    eq([await b.report({ rec, file: '' }), calls[1]],
+      ['reopened', ['vscode.openWith', 'openai-codex://route/local/T5', 'chatgpt.conversationEditor', { viewColumn: 2, preserveFocus: false, preview: false }]],
+      'a tab whose conversation becomes known during the wait is opened again on that conversation');
   }
 };

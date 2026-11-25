@@ -22,7 +22,8 @@
 const tabs = require('./codex-tabs');
 const { FOCUS_GROUP } = require('./load-tabs');
 
-/* How long to wait before closing the tab, which gives whatever made the load fail a moment to pass. */
+/* How long to wait before closing the tab, which gives whatever made the load fail a moment to pass, and Codex time to
+   start the conversation of a New tab whose page failed as its first message was sent. */
 const WAIT_MS = 2000;
 const LIMIT = 2;
 const WINDOW_MS = 10 * 60e3;
@@ -37,8 +38,9 @@ function tabAt(vscode, uri) {
 }
 
 /*
- * vscode; log(line); sleep(ms) -> Promise; now() -> ms. report({ thread, uri, file }) handles one page's report and
- * resolves to what was done: 'reopened', 'unknown' (no conversation), 'gone' (no such tab), 'limit', or 'failed'.
+ * vscode; log(line); sleep(ms) -> Promise; now() -> ms. report({ rec, file }) handles one page's report, `rec` being
+ * the record of the page's panel, and resolves to what was done: 'reopened', 'unknown' (no conversation), 'gone' (no
+ * such tab), 'limit', or 'failed'.
  * Reports are handled one at a time, since each one moves the focus between groups.
  */
 function createBrokenTabs({ vscode, log = () => {}, sleep = (ms) => new Promise((r) => setTimeout(r, ms)), now = Date.now, waitMs = WAIT_MS } = {}) {
@@ -46,17 +48,23 @@ function createBrokenTabs({ vscode, log = () => {}, sleep = (ms) => new Promise(
   let chain = Promise.resolve();
   const exec = (command, ...args) => Promise.resolve(vscode.commands.executeCommand(command, ...args));
 
-  async function reopen({ thread, uri, file }) {
-    const what = `Codex's page for ${thread ? `conversation ${thread}` : 'a conversation not started yet'} could not load its code${file ? ` (${file})` : ''}`;
-    if (!thread) { log(`${what}; its tab has no conversation to open again, so it is left for the user`); return 'unknown'; }
+  /* `rec` is the panel's record (src/patching.js), read again after the wait: a New tab's conversation becomes known
+     only once Codex has started it, which can be after its page reported. */
+  async function reopen({ rec, file }) {
+    const known = (rec && rec.thread) || '';
+    log(`Codex's page in the tab ${known ? `of conversation ${known}` : 'of a conversation not started yet'} could not load its code${file ? ` (${file})` : ''}`);
+    await sleep(waitMs);
+    const thread = (rec && rec.thread) || '';
+    if (!thread) { log('that tab has no conversation to open again, so it is left for the user'); return 'unknown'; }
     const times = (recent.get(thread) || []).filter((t) => now() - t < WINDOW_MS);
-    if (times.length >= LIMIT) { log(`${what} again; it was opened again ${times.length} times in the last ${WINDOW_MS / 60e3} minutes, so it is left for the user`); return 'limit'; }
+    if (times.length >= LIMIT) {
+      log(`the tab of conversation ${thread} was opened again ${times.length} times in the last ${WINDOW_MS / 60e3} minutes, so it is left for the user`);
+      return 'limit';
+    }
+    const at = tabAt(vscode, (rec && rec.uri) || '');
+    if (!at) { log(`the tab of conversation ${thread} was gone before it could be opened again`); return 'gone'; }
     times.push(now());
     recent.set(thread, times);
-    log(`${what}; opening its tab again`);
-    await sleep(waitMs);
-    const at = tabAt(vscode, uri);
-    if (!at) { log(`the tab of conversation ${thread} was gone before it could be opened again`); return 'gone'; }
     const { group, index } = at;
     const wasFront = at.tab.isActive, focused = vscode.window.tabGroups.activeTabGroup;
     const frontIndex = group.tabs.findIndex((t) => t.isActive);

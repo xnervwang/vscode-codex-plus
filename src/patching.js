@@ -1352,7 +1352,7 @@ function installHooks() {
       if (!rec) { if (deps.log) deps.log(`Codex's sidebar page could not load its code${file ? ` (${file})` : ''}; it has no tab to open again`); }
       else {
         if (!brokenTabs) brokenTabs = require('./broken-tabs').createBrokenTabs({ vscode: deps.vscode, log: (l) => { if (deps && deps.log) deps.log(l); } });
-        brokenTabs.report({ thread: rec.thread || '', uri: rec.uri || '', file }).catch(() => {});
+        brokenTabs.report({ rec, file }).catch(() => {});
       }
     }
     /* The page clicking Retry on Codex's notice that a conversation is open in another app (conflictNotice in the page
