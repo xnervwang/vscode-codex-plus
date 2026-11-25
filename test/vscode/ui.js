@@ -516,12 +516,26 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
    * fail every step after it that needs the conversation. So the tab is then closed, once VS Code has caught up with
    * Codex's files, and `act` done once more, with a note.
    */
+  /* For a page on Codex's recovery page, what its own resource timing says of the code it fetched without a whole 200:
+     the file, the status, whether VS Code's service worker answered it, and the bytes. */
+  const fetchesOf = async () => {
+    for (const f of page.frames()) {
+      const r = await f.evaluate(() => (/ChatGPT hit a snag/.test(document.body ? document.body.innerText : '')
+        ? performance.getEntriesByType('resource').filter((e) => /\/assets\//.test(e.name)
+          && (e.responseStatus !== 200 || !e.decodedBodySize || /local-conversation-page/.test(e.name)))
+          .map((e) => ({ file: e.name.split('/').pop(), status: e.responseStatus, worker: e.workerStart > 0, bytes: e.decodedBodySize,
+            at: Math.round(e.startTime), ms: Math.round(e.duration) })).slice(0, 12) : null)).catch(() => null);
+      if (r) return r;
+    }
+    return null;
+  };
   const shownOrAgain = async (what, act, shown, ms = 90000) => {
     let broke = '';
     await act();
     const got = await until(async () => (await shown()) || ((broke = await brokenInFront()) ? 'broke' : null), ms, 500);
     if (got !== 'broke') return got;
-    note(`${what}: Codex put "${broke}" in the page in front, so its tab was closed and that was done again`);
+    const fetched = broke === 'ChatGPT hit a snag' ? await fetchesOf() : null;
+    note(`${what}: Codex put "${broke}" in the page in front, so its tab was closed and that was done again${fetched ? `; its fetches of Codex's code short of a whole 200: ${JSON.stringify(fetched)}` : ''}`);
     await settle(`${what}: before the tab Codex gave up on was closed`, 0);
     await exec('workbench.action.closeActiveEditor');
     await act();
@@ -3866,8 +3880,11 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       if (!named && await f.evaluate(() => /hit a snag/i.test(document.body.innerText)).catch(() => false)) {
         model.release();
         const why = `${how}: Codex's own page failed after the first message ("ChatGPT hit a snag"), so there was no conversation page to follow`;
-        /* Never seen on Linux, where it would be a failure to look into; elsewhere it has come from Codex now and then. */
-        if (process.platform === 'linux') check(false, why, await pageSays(f)); else note(`${why}; not checked on ${process.platform}`);
+        /* Codex's recovery page, drawn when one of its own modules failed to load: never seen on Linux, where it would be a
+           failure to look into, and on macOS and Windows it has come from Codex now and then. */
+        const fetched = await fetchesOf();
+        if (process.platform === 'linux') check(false, why, { page: await pageSays(f), fetched });
+        else note(`${why}; not checked on ${process.platform}; its fetches of Codex's code short of a whole 200: ${JSON.stringify(fetched)}`);
         return null;
       }
       /* When the tab is not titled, the conversation's entry in Codex's state database at that moment shows whether
@@ -3902,14 +3919,24 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     const unreadTitles = () => list.evaluate(() => [...document.querySelectorAll('.cp-group .cp-row')]
       .filter((r) => [...r.querySelectorAll('.cp-unseen')].some((x) => getComputedStyle(x).display !== 'none')).map((r) => r.querySelector('.cp-title').textContent))
       .catch(() => null);
-    /* A page new in this window with a message box but no turns yet. */
-    const newPageSince = (before) => until(async () => {
-      for (const f of page.frames()) {
-        if (before.has(f)) continue;
-        try { if (await f.evaluate(() => !!document.querySelector('[data-codex-composer-root]') && !document.querySelector('[data-turn-key]') && innerWidth > 600)) return f; } catch (_) { /* gone */ }
-      }
-      return null;
-    }, 90000, 500);
+    /* The page of the conversation tab a press has just opened: a message box and no turns, first looked for among the pages
+       added since `before`. On macOS none was found twice in 90 s while the new tab was there and in front, so after
+       10 s the page VS Code shows in front is taken as well, if it was not in front before the press (`wasFront`); a note
+       says when the page taken is one that was there before the press. */
+    const newPageSince = (before, wasFront = null) => {
+      const from = Date.now();
+      return until(async () => {
+        for (const f of page.frames()) {
+          if (before.has(f)) continue;
+          try { if (await f.evaluate(() => !!document.querySelector('[data-codex-composer-root]') && !document.querySelector('[data-turn-key]') && innerWidth > 600)) return f; } catch (_) { /* gone */ }
+        }
+        if (Date.now() - from < 10000) return null;
+        const v = await frontPage();
+        if (!v || v === wasFront || !await v.evaluate(() => !document.querySelector('[data-turn-key]')).catch(() => false)) return null;
+        if (before.has(v)) note(`the new conversation page is one that was there before the press, ${Math.round((Date.now() - from) / 1000)} s after it`);
+        return v;
+      }, 90000, 500);
+    };
 
     /* Clicking a row opens its conversation and chooses that row. Once the tab is closed while in front, no row of the
        conversation is left drawn as current, selected, or highlighted with its buttons shown. */
@@ -3944,9 +3971,9 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     await step('a conversation begun in a tab New Codex Agent opened', async () => {
       await openNotes();
       const groups = (await tabs()).length;
-      const before = new Set(page.frames());
+      const before = new Set(page.frames()), wasFront = await frontPage();
       await exec('chatgpt.newCodexPanel');
-      const f = await newPageSince(before);
+      const f = await newPageSince(before, wasFront);
       check(!!f, 'New Codex Agent, run with notes.txt in front, opens a new conversation page in a tab');
       if (!f) return;
       const where = (await codexTabsNow()).find((x) => x.active);
@@ -4052,9 +4079,9 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       };
       const opened = [];
       const newTab = async (press) => {
-        const had = await codexTabsNow(), groups = (await tabs()).length, before = new Set(page.frames());
+        const had = await codexTabsNow(), groups = (await tabs()).length, before = new Set(page.frames()), wasFront = await frontPage();
         await press();
-        const f = await newPageSince(before);
+        const f = await newPageSince(before, wasFront);
         const tab = f ? await until(async () => { const x = await front(); return x && !had.some((y) => sameTab(x, y)) && x; }, 15000, 500) : null;
         if (tab) opened.push(tab);
         return { f, tab, had, groups: [groups, (await tabs()).length] };
@@ -4150,9 +4177,9 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     /* The session list's New in tab, the same kind of tab as the tab bar button's. */
     await step('a conversation begun in a tab the session list\'s New in tab opened', async () => {
       if (!await showList()) throw new Error('the session list did not open');
-      const before = new Set(page.frames());
+      const before = new Set(page.frames()), wasFront = await frontPage();
       await list.locator('.cp-new[data-send="newInTab"]').first().click();
-      const f = await newPageSince(before);
+      const f = await newPageSince(before, wasFront);
       check(!!f, 'New in tab in the session list opens a new conversation page in a tab');
       if (!f) return;
       const where = (await codexTabsNow()).find((x) => x.active);
@@ -4165,10 +4192,10 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       if (!await showList()) throw new Error('the session list did not open');
       const head = list.locator('.cp-group-head').filter({ hasText: 'Release 1.2' }).first();
       if (!await head.count()) { note('there is no group Release 1.2, so Start New Session in This Group was not tried'); return; }
-      const before = new Set(page.frames());
+      const before = new Set(page.frames()), wasFront = await frontPage();
       await head.click({ button: 'right' });
       await list.locator('.cp-ctx-item').filter({ hasText: 'Start New Session in This Group' }).first().click({ timeout: 5000 });
-      const f = await newPageSince(before);
+      const f = await newPageSince(before, wasFront);
       check(!!f, 'Start New Session in This Group opens a new conversation page in a tab');
       if (!f) return;
       const made = await firstMessage(f, 'List what the release still needs.', 'a conversation begun from Start New Session in This Group');
@@ -4349,6 +4376,13 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
        bottom of a long conversation, so counting them says little. */
     const newestInFront = async () => { const f = await frontPage(); return f ? f.evaluate(() => { const all = document.querySelectorAll('[data-turn-key]');
       return all.length ? all[all.length - 1].getAttribute('data-turn-key') : ''; }).catch(() => '') : ''; };
+    /* For a failure's details: the turns the page in front has drawn, by the end of their keys, and where the conversation
+       is scrolled, which tells a turn not drawn from one drawn out of view. */
+    const drawnInFront = async () => { const f = await frontPage(); return f ? f.evaluate(() => {
+      const sc = document.querySelector('[data-app-action-timeline-scroll]');
+      return { turns: [...document.querySelectorAll('[data-turn-key]')].map((e) => String(e.getAttribute('data-turn-key')).slice(-12)),
+        scroll: sc ? { top: Math.round(sc.scrollTop), height: Math.round(sc.scrollHeight), view: Math.round(sc.clientHeight) } : null };
+    }).catch((e) => String(e)) : null; };
     const REOPEN = process.platform === 'darwin' ? 'Meta+Shift+T' : 'Control+Shift+T';
     /* A conversation whose tab is closed, and how it comes back: from Recently closed, with Ctrl+Shift+T, and, for one
        still open, from Open sessions. */
@@ -4415,9 +4449,11 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         await settle('a closed conversation brought back: before the New tab was closed');
         await exec('workbench.action.closeActiveEditor');
         check(!!await firstClosed(begun.id), 'closing the New tab a conversation was begun in puts that conversation first in Recently closed', await closedIds());
-        check(!!await shownOrAgain(`${REOPEN} for the conversation of a New tab`, reopenKeys, () => cameBack(restored.label, turn, 0), 60000),
+        if (!check(!!await shownOrAgain(`${REOPEN} for the conversation of a New tab`, reopenKeys, () => cameBack(restored.label, turn, 0), 60000),
           `and ${REOPEN} opens that conversation again, titled by it and drawn down to its newest turn`,
-          { tab: await frontTab(), newest: await newestInFront(), had: turn, closed: await closedIds(), codexTabs: await codexTabsNow() });
+          { tab: await frontTab(), newest: await newestInFront(), had: turn, drawn: await drawnInFront(), closed: await closedIds(), codexTabs: await codexTabsNow() })) {
+          await shot('reopened-new-tab-not-at-its-newest-turn');
+        }
         await checkCurrent(begun.id, `the conversation of a New tab opened again with ${REOPEN}`);
       }
       /* A click on a row in Open sessions brings that conversation's tab to the front. */
@@ -5779,8 +5815,9 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       const noticeIn = () => alertIn('This is open in another app');
       const loaded = () => call(`${OWN} const r = await own('patching').hostRequest('thread/loaded/list', {});
         return r && r.outcome === 'done' && r.result ? r.result.data : r;`).catch((e) => String(e));
-      const from = ownLog().length;
-      const said = () => ownLog().slice(from).split('\n').filter((l) => /open in another app/.test(l));
+      /* No other step makes Codex Plus write these lines. ownLog() joins one file per extension host, so an offset into it
+         taken now would not mark where this step began once a file it already holds grows. */
+      const said = () => ownLog().split('\n').filter((l) => /open in another app/.test(l));
       try {
         check(!!await until(() => /held/.test(heard), 15000, 200), 'another process holds the conversation\'s writer lock', heard);
         await exec('codexPlus.openThreadInTab', t.id);
