@@ -505,13 +505,16 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
     }).catch(() => {});
     let where = '';
     let shut = false;
-    /* A menu still open takes a right-click as a click outside it: it closes and opens none. */
+    /* A menu still open takes a right-click as a click outside it, and the tab's hover, which a pointer resting on the
+       tab after the click that selects it brings up, holds the place the menu would take: either way no menu opens. So
+       the pointer is moved off and both are waited out before the right-click. */
     const noMenu = () => until(() => page.evaluate(() => ![...document.querySelectorAll('.context-view')].some((v) => v.offsetParent && v.childElementCount))
       .catch(() => true), 5000, 100);
     for (let attempt = 0; attempt < 3; attempt++) {
-      if (attempt) { await page.keyboard.press('Escape'); await page.mouse.move(5, 5); }
-      await noMenu();
+      if (attempt) await page.keyboard.press('Escape');
       if (select || onPage) await tabNamed(name).click();
+      await page.mouse.move(5, 5);
+      await noMenu();
       if (onPage) {
         const f = await frontPage();
         /* The newest turn is the one in view. Playwright gives a box inside a frame in the window's own coordinates. */
