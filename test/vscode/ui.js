@@ -156,6 +156,9 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
       const k = Object.keys(require.cache).find((x) => x.toLowerCase() === file.toLowerCase());
       return k ? require.cache[k].exports : require(file); };`;
   const shot = (name) => page.screenshot({ path: path.join(shotsDir, `${String(++shotNo).padStart(2, '0')}-${name}.png`) }).catch(() => {});
+  /* Clicks into the message box of a Codex page. The pointer is moved off the page first: a hover card left open over the
+     box, the context meter's or another, would take the click and stay open under the pointer. */
+  const intoComposer = async (f) => { await page.mouse.move(5, 5); await f.locator(COMPOSER).first().click(); };
   /*
    * What the window held when a step failed, beside its screenshot in <out>/state/<number>-<name>/: the workbench's
    * HTML and the text of each frame in it (the webviews of Codex's pages and Agent Plus's views among them), with their
@@ -1723,7 +1726,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
       check(idle.ok, 'and its row in Agent Plus\'s Conversations panel has a blank where a dot would be, and no envelope', idle.row);
       model.hold();
       const turns = model.turns();
-      await codex.locator(COMPOSER).first().click();
+      await intoComposer(codex);
       await codex.locator(COMPOSER).first().pressSequentially('Run the tests again.');
       await codex.locator(COMPOSER).first().press('Enter');
       check(!!await until(() => model.turns() > turns, 20000, 300), 'a message sent from the tab reaches the made-up model', model.seen.slice(-3));
@@ -1925,7 +1928,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
       await until(async () => (await frontPage()) === codex, 10000, 300);
       model.hold();
       const turns = model.turns();
-      await codex.locator(COMPOSER).first().click();
+      await intoComposer(codex);
       await page.keyboard.type(text);
       await page.keyboard.press('Enter');
       if (!await until(() => model.turns() > turns, 20000, 300)) throw new Error(`"${text}" reached no model`);
@@ -2024,7 +2027,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
       await until(async () => (await frontPage()) === codex, 10000, 300);
       model.hold();
       const turns = model.turns();
-      await codex.locator(COMPOSER).first().click();
+      await intoComposer(codex);
       await page.keyboard.type('Draft the summary of the failures.');
       await page.keyboard.press('Enter');
       if (!await until(() => model.turns() > turns, 20000, 300)) throw new Error('the message reached no model');
@@ -2537,7 +2540,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
           { reply: 'Started a session.' }]);
         await exec('notifications.clearAll');
         await tabNamed(title).click();
-        await codex.locator(COMPOSER).first().click();
+        await intoComposer(codex);
         await page.keyboard.type('Start the polled claude --bg session and come back.');
         await page.keyboard.press('Enter');
         /* Codex asks before a command runs outside its sandbox, and on Windows before any command. */
@@ -2602,7 +2605,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
       { reply: 'Started a session.' }]);
       await exec('notifications.clearAll');
       await tabNamed(title).click();
-      await codex.locator(COMPOSER).first().click();
+      await intoComposer(codex);
       await page.keyboard.type('Start the claude --bg session and come back.');
       await page.keyboard.press('Enter');
       /* On Windows Codex asks before it runs even a sandboxed command. */
@@ -2742,7 +2745,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
         }), `codex:${other.id}`).catch((e) => ({ error: String(e) }));
       const bottom = () => codex.evaluate(() => { const s = document.querySelector('[data-app-action-timeline-scroll]'); if (s) s.scrollTop = s.scrollHeight; }).catch(() => {});
       model.script(id, [{ reply }]);
-      await codex.locator(COMPOSER).first().click();
+      await intoComposer(codex);
       await page.keyboard.type('Which conversation was that?');
       await page.keyboard.press('Enter');
       const drawn = await until(async () => { await bottom(); const l = await links(); return Array.isArray(l) && l.length >= 2 && l; }, 45000, 500);
@@ -2779,7 +2782,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
       await tabNamed(title).click();
       await until(async () => { const t = await frontTab(); return t && bare(t.label) === title; }, 15000, 500);
       model.script(threads[0].id, [{ reply: text }]);
-      await codex.locator(COMPOSER).first().click();
+      await intoComposer(codex);
       await page.keyboard.type('Which one was that?');
       await page.keyboard.press('Enter');
     };
@@ -3054,7 +3057,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
       const turns = model.turns();
       let mid = null;
       try {
-        await codex.locator(COMPOSER).first().click();
+        await intoComposer(codex);
         await page.keyboard.type('One more turn on the cache, please.');
         await page.keyboard.press('Enter');
         if (!await until(() => model.turns() > turns, 20000, 300)) throw new Error('the message reached no model');
@@ -3450,7 +3453,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
         const had = await replies();
         model.hold();
         const turns0 = model.turns();
-        await side.locator(COMPOSER).first().click();
+        await intoComposer(side);
         await page.keyboard.type('Check the import once more.');
         await page.keyboard.press('Enter');
         check(!!await until(() => model.turns() > turns0, 20000, 300), 'a message sent from Codex\'s sidebar reaches the made-up model', model.seen.slice(-3));
@@ -3469,7 +3472,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
       const unseen = unseenRow;
       model.hold();
       const turns = model.turns();
-      await side.locator(COMPOSER).first().click();
+      await intoComposer(side);
       await page.keyboard.type('Check the export once more.');
       await page.keyboard.press('Enter');
       check(!!await until(() => model.turns() > turns, 20000, 300), 'a message sent from Codex\'s sidebar reaches the made-up model', model.seen.slice(-3));
@@ -3703,7 +3706,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
         return;
       }
       const turns = model.turns();
-      await f.locator(COMPOSER).first().click();
+      await intoComposer(f);
       await page.keyboard.type('One more check from this tab.');
       await page.keyboard.press('Enter');
       check(!!await until(() => model.turns() > turns, 20000, 300), 'a message sent from that tab reaches the made-up model', model.seen.slice(-3));
@@ -3807,7 +3810,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
       if (box.had) note(`the new page opened with ${JSON.stringify(box.had.slice(0, 80))} in its message box, the draft Codex keeps for every new conversation page`);
       model.hold();
       const turns = model.turns();
-      await fresh.locator(COMPOSER).first().click();
+      await intoComposer(fresh);
       await page.keyboard.type(text);
       await page.keyboard.press('Enter');
       check(!!await until(() => model.turns() > turns, 20000, 300), 'its first message reaches the made-up model', model.seen.slice(-3));
@@ -3878,7 +3881,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
       check(!box.left, `${how}: its message box is empty before the first message is typed`, box);
       if (box.had) note(`${how}: the page opened with ${JSON.stringify(box.had.slice(0, 80))} in its message box, the draft Codex keeps for every new conversation page`);
       /* Typing into the message box itself, since keys sent to the window have landed in another tab's box on Windows. */
-      await f.locator(COMPOSER).first().click();
+      await intoComposer(f);
       await f.locator(COMPOSER).first().pressSequentially(text);
       await f.locator(COMPOSER).first().press('Enter');
       check(!!await until(() => model.turns() > turns, 20000, 300), `${how}: its first message reaches the made-up model`, model.seen.slice(-3));
@@ -4328,7 +4331,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
       await until(async () => (await frontPage()) === restored.page, 15000, 500);
       model.hold();
       const turns = model.turns();
-      await restored.page.locator(COMPOSER).first().click();
+      await intoComposer(restored.page);
       await page.keyboard.type('Add the upgrade notes too.');
       await page.keyboard.press('Enter');
       check(!!await until(() => model.turns() > turns, 20000, 300), 'a message sent from the restored New tab reaches the made-up model', model.seen.slice(-3));
@@ -4461,7 +4464,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
       model.script(t.id, apWaits ? [outside('echo checked'), outside('true'), { reply: 'Checked.' }] : [outside('echo checked'), { reply: 'Checked.' }]);
       model.hold();
       const turns = model.turns();
-      await f.locator(COMPOSER).first().click();
+      await intoComposer(f);
       await page.keyboard.type('Check the build outside the sandbox.');
       await page.keyboard.press('Enter');
       check(!!await until(() => model.turns() > turns, 20000, 300), 'a message sent from the tab reaches the made-up model', model.seen.slice(-3));
@@ -5624,7 +5627,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
          such as the one for a title offers no tools. */
       const turnIn = async (frame, text, zone) => {
         const before = model.seen.length;
-        await frame.locator(COMPOSER).first().click();
+        await intoComposer(frame);
         await page.keyboard.type(text);
         setZone(zone);
         await page.keyboard.press('Enter');
