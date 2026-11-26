@@ -32,4 +32,4 @@ The table below shows single operations measured in isolated runs on one machine
 | Using the scan another window wrote | In place of a scan | 0.07 ms | 258 bytes |
 | Reading the conversations, with the five largest open in tabs | When a file changed | 92 ms the first time, then 0.6 to 1.5 ms while those files do not change | 28.8 MB the first time, then about 100 bytes |
 
-Turning `codexPlus.enabled` off stops the process scan. The 3-second check keeps running because the session list and Agent Plus's views use it. To stop that check too, disable Codex Plus in VS Code's Extensions view.
+Turning `codexPlus.enabled` off stops the process scan, unless Agent Plus's session list is on in the window: the scan also tells the list where else a conversation is open. The 3-second check keeps running because Agent Plus's session list and its other views use it. To stop that check too, disable Codex Plus in VS Code's Extensions view.

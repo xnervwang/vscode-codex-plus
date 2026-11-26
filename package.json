@@ -226,7 +226,7 @@
         "codexPlus.enabled": {
           "type": "boolean",
           "default": true,
-          "markdownDescription": "The main switch over the additions this extension makes to Codex: the time on each message, the list of your own messages, their colouring, the chimes, the buttons and the context meter in the message box's toolbar, the figures strip, the dot on a tab's logo and the envelope after its title, and whether Codex is patched at all. Off leaves each of their own settings as you had it, and turns them back on as they were.\n\nIt does **not** take an applied patch out of Codex's files. The patch stays where it is and nothing is drawn through it; `Codex Plus: Remove the Patch from Codex` is what puts Codex's own files back.\n\nThe work plan and the Codex session list are not covered by it, and have their own settings."
+          "markdownDescription": "The main switch over the additions this extension makes to Codex: the time on each message, the list of your own messages, their colouring, the chimes, the buttons and the context meter in the message box's toolbar, the figures strip, the dot on a tab's logo and the envelope after its title, and whether Codex is patched at all. Off leaves each of their own settings as you had it, and turns them back on as they were.\n\nIt does **not** take an applied patch out of Codex's files. The patch stays where it is and nothing is drawn through it; `Codex Plus: Remove the Patch from Codex` is what puts Codex's own files back.\n\nThe work plan and Agent Plus's session list are not covered by it, and have their own settings."
         },
         "codexPlus.workPlan": {
           "scope": "application",
@@ -252,7 +252,7 @@
           "type": "integer",
           "default": 30,
           "minimum": 0,
-          "markdownDescription": "Conversations in **Archived sessions** across all workspaces that have been archived for at least this many days are deleted; 0 turns off this automatic deletion. Days count from when Codex archived the conversation.\n\nThis deletes the same things as Delete in the **Archived sessions** menu. A conversation that is open in this window or running is left for the next day. One VS Code window does this once a day without asking. The \"Codex Plus\" output lists what it deleted. While Agent Plus's session list archives and deletes conversations, this is left to it."
+          "markdownDescription": "Delete conversations across all workspaces once they have been archived in Codex for at least this many days, counted from when Codex archived them. Set to 0 to turn off automatic deletion. Deletion removes the same logs and saved data as **Delete** in the Agent Plus session list.\n\nOne VS Code window checks once a day without asking and lists each deletion in the **Codex Plus** output channel. It leaves a conversation for the next day if it is open or running in this window, open in another VS Code window or held open by another Codex process. In a window where the Agent Plus session list handles archiving and deletion, #agentPlus.sessions.deleteAfterDays# applies instead."
         },
         "codexPlus.reopenClosedSessionShortcut": {
           "type": "boolean",
