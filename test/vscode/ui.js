@@ -5264,10 +5264,23 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
       check(!!loaded, 'codexPlus.loadRestoredTabs on: the conversation behind gets its notice with its tab never clicked', { sent: model.sent(`sleep ${pid.behind}`), loaded: loadedOn });
       await sleep(Math.max(0, restoredAt + 40000 - Date.now()));
       check(await toFront(behind), 'codexPlus.loadRestoredTabs on: a click more than 30 seconds after the reload brings the tab behind to the front', await tabs());
-      /* Codex's header cuts a long title short. */
-      const drawn = await frameWhere((want) => !!document.querySelector('[data-codex-composer-root]') && document.querySelectorAll('[data-turn-key]').length >= 1
-        && document.body.innerText.includes(want), 30000, behind.title.slice(0, 30));
-      check(!!drawn && !await gaveUp(), 'and the tab draws its conversation', { page: await pageSays(await frontPage()), tabs: await tabs(), toasts: await toasts() });
+      /* The page of the tab now in front, not any page of the window: the tabs still behind can show Codex's "Codex could
+         not start" from the reload, and a hidden page can hold the same conversation. Codex's header cuts a long title
+         short. */
+      const drawn = await until(async () => {
+        for (const f of page.frames()) {
+          try {
+            if (!await f.evaluate((want) => !!document.querySelector('[data-codex-composer-root]') && document.querySelectorAll('[data-turn-key]').length >= 1
+              && document.body.innerText.includes(want), behind.title.slice(0, 30))) continue;
+            const host = f.parentFrame() && await f.parentFrame().frameElement();
+            if (host && await host.isVisible()) return f;
+          } catch (_) { /* not ready, or gone */ }
+        }
+        return null;
+      }, 30000, 500);
+      const gaveUpHere = await gaveUpInFront();
+      check(!!drawn && !gaveUpHere, 'and the tab draws its conversation',
+        { drawn: !!drawn, gaveUpHere, page: await pageSays(await frontPage()), tabs: await tabs(), toasts: await toasts() });
       await setting('loadRestoredTabs', undefined);
     });
 
