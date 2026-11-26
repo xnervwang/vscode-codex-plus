@@ -156,14 +156,14 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
       const k = Object.keys(require.cache).find((x) => x.toLowerCase() === file.toLowerCase());
       return k ? require.cache[k].exports : require(file); };`;
   const shot = (name) => page.screenshot({ path: path.join(shotsDir, `${String(++shotNo).padStart(2, '0')}-${name}.png`) }).catch(() => {});
-  /* Clicks into the message box of a Codex page. The pointer is moved off the page and the context meter's card, which
-     closes a moment after the pointer leaves the meter, is waited out first: a click landing on the card keeps it open
-     under the pointer, over the box. */
+  /* Clicks into the message box of a Codex page, near the start of its first line. Its middle can lie over the row of
+     buttons under the text, where the context meter opens its card on a hover and keeps it open while the pointer stays;
+     the card then covers the box. The pointer is moved off the page first, and a card still open is waited out. */
   const intoComposer = async (f) => {
     await page.mouse.move(5, 5);
     await until(() => f.evaluate(() => ![...document.querySelectorAll('[data-codex-extras="context"]')].some((e) => e.style.display === 'block'))
       .catch(() => true), 3000, 100);
-    await f.locator(COMPOSER).first().click();
+    await f.locator(COMPOSER).first().click({ position: { x: 24, y: 10 } });
   };
   /*
    * What the window held when a step failed, beside its screenshot in <out>/state/<number>-<name>/: the workbench's
