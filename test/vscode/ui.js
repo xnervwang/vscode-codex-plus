@@ -3828,6 +3828,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
       if (box.had) note(`the new page opened with ${JSON.stringify(box.had.slice(0, 80))} in its message box, the draft Codex keeps for every new conversation page`);
       model.hold();
       const turns = model.turns();
+      await settle('the tab bar button\'s new page: before its first message', 0);
       await intoComposer(fresh);
       await page.keyboard.type(text);
       await page.keyboard.press('Enter');
@@ -3891,6 +3892,9 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
      * conversation open here and draws it as current. Resolves to { id, label, text } of the conversation, or null.
      */
     const firstMessage = async (f, text, how) => {
+      /* The first message turns the page into the conversation's, which loads more of Codex's code; with VS Code still
+         serving what other pages asked for, that code does not come and Codex draws its recovery page instead. */
+      await settle(`${how}: before its first message`, 0);
       await exec('notifications.clearAll');
       const counted = await agentCount();
       model.hold();
