@@ -187,6 +187,17 @@
   "agentPlusOther": [
     { "key": "agentPlus.webviewRequestLimit", "why": "VS Code's own limit on requests in flight for webview tabs, which Agent Plus edits in VS Code's files; nothing of this extension's" },
     { "key": "agentPlus.restoreWebviewRequestLimit", "why": "puts that limit back" },
-    { "key": "agentPlus.showStatus", "why": "Agent Plus's own state and the sources it has; what Codex Plus installed, patched and runs is in codexPlus.status" }
+    { "key": "agentPlus.showStatus", "why": "Agent Plus's own state and the sources it has; what Codex Plus installed, patched and runs is in codexPlus.status" },
+    { "key": "agentPlus.sessions", "why": "Agent Plus's session list, which Agent Plus draws and its window test covers; this extension hands it Codex's conversations (src/session-list-source.js)" },
+    { "key": "agentPlus.sessions.archiveAfterDays", "why": "part of Agent Plus's session list, covered by Agent Plus's window test" },
+    { "key": "agentPlus.sessions.deleteArchived", "why": "part of Agent Plus's session list, covered by Agent Plus's window test" },
+    { "key": "agentPlus.sessions.deleteAfterDays", "why": "part of Agent Plus's session list, covered by Agent Plus's window test" },
+    { "key": "agentPlus.sessions.recentlyClosed", "why": "part of Agent Plus's session list, covered by Agent Plus's window test" },
+    { "key": "agentPlus.sessions.hideBackground", "why": "part of Agent Plus's session list, covered by Agent Plus's window test" },
+    { "key": "agentPlus.searchSessions", "why": "part of Agent Plus's session list, covered by Agent Plus's window test" },
+    { "key": "agentPlus.filterSessions", "why": "part of Agent Plus's session list, covered by Agent Plus's window test" },
+    { "key": "agentPlus.newSessionGroup", "why": "part of Agent Plus's session list, covered by Agent Plus's window test" },
+    { "key": "agentPlus.reopenClosedConversation", "why": "part of Agent Plus's session list, covered by Agent Plus's window test" },
+    { "key": "agentPlus.findConversation", "why": "part of Agent Plus's session list, covered by Agent Plus's window test" }
   ]
 }

@@ -58,7 +58,7 @@ module.exports = async ({ eq, tmp, root }) => {
   const on = await run(root, tmp, {});
   const off = await run(root, tmp, { conversationBrief: false, 'agentPlus.tokenMode': 'custom' });
   const noPlans = await run(root, tmp, { workPlan: false, 'agentPlus.tokenMode': 'custom' });
-  eq([on.brief, on.features, off.brief, off.features, noPlans.features], [true, ['brief', 'openHere', 'shows', 'prefill'], false, ['openHere', 'shows', 'prefill'], ['openHere', 'shows', 'prefill']],
+  eq([on.brief, on.features, off.brief, off.features, noPlans.features], [true, ['brief', 'openHere', 'shows', 'prefill', 'sessions', 'sessionImport', 'sessionSeen', 'accountInfo'], false, ['openHere', 'shows', 'prefill', 'sessions', 'sessionImport', 'sessionSeen', 'accountInfo'], ['openHere', 'shows', 'prefill', 'sessions', 'sessionImport', 'sessionSeen', 'accountInfo']],
     'in the Custom token mode, the hooks are given the setting as `brief`, and the source lists the brief while it is on and plans are kept');
 
   /* The sweep (src/workplan.js) deletes side files by suffix, so a new suffix has to be added there too. */
@@ -72,6 +72,6 @@ module.exports = async ({ eq, tmp, root }) => {
   const custom = { 'agentPlus.tokenMode': 'custom' };
   const turned = await run(root, tmp, custom, { conversationBrief: false });
   const back = await run(root, tmp, { conversationBrief: false, ...custom }, { conversationBrief: true });
-  eq([turned.after, back.after], [{ brief: false, features: ['openHere', 'shows', 'prefill'], fired: 1 }, { brief: true, features: ['brief', 'openHere', 'shows', 'prefill'], fired: 1 }],
+  eq([turned.after, back.after], [{ brief: false, features: ['openHere', 'shows', 'prefill', 'sessions', 'sessionImport', 'sessionSeen', 'accountInfo'], fired: 1 }, { brief: true, features: ['brief', 'openHere', 'shows', 'prefill', 'sessions', 'sessionImport', 'sessionSeen', 'accountInfo'], fired: 1 }],
     'changing the setting rewrites config.json, changes the features and tells Agent Plus the conversations changed');
 };

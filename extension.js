@@ -28,8 +28,9 @@ const hostLink = require('./src/host-link');
 const { createConversationLinks } = require('./src/convo-links');
 const { createPlanBars } = require('./src/plan-bars');
 const { TabMemory } = require('./src/tab-memory');
-const { SessionsModel, SessionsView, COLOR_NAMES, LIST_MENU, looksLikeId } = require('./src/sessions-view');
-const { createGroups, createPlacer } = require('./src/session-groups');
+const { SessionsModel, SessionsView, COLOR_NAMES, COLOR_KEY, LIST_MENU, looksLikeId } = require('./src/sessions-view');
+const { createGroups, createPlacer, PINNED_SECTION } = require('./src/session-groups');
+const sessionList = require('./src/session-list-source');
 const accountUsage = require('./src/account-usage');
 const patching = require('./src/patching');
 const supported = require('./src/supported');
@@ -65,6 +66,10 @@ let reader = null;
 let memento = null;
 /* Deletes conversations archived longer than codexPlus.deleteArchivedAfterDays (src/archive-sweep.js). */
 let archiveSweeper = null;
+/* Whether Agent Plus's session list archives and deletes conversations now, and what tells it Account & usage changed;
+   both set once the commands are registered. */
+let listManages = () => false;
+let accountHeard = () => {};
 /* Writes this window's entry (src/window-entries.js); activate() sets it once it knows what the window shows. */
 let publishWindow = () => {};
 /* Which of the archived conversations given the daily pass would leave alone; set with the commands. */
@@ -449,7 +454,7 @@ async function activate(context) {
   let lastConversations = new Map();
   const groups = createGroups({ ask: askAppServer, sections: () => reader.sections(), memento: context.globalState });
   let sessionsModel = null;
-  const account = accountUsage.createAccountUsage({ ask: askAppServer, onChange: () => { if (sessionsModel) sessionsModel.refresh(); } });
+  const account = accountUsage.createAccountUsage({ ask: askAppServer, onChange: () => { if (sessionsModel) sessionsModel.refresh(); accountHeard(); } });
   context.subscriptions.push(patching.onAccountNotification((method, params) => account.heard(method, params)));
   const frontNow = () => source.front();
   sessionsModel = new SessionsModel(vscode, { memory, memento: context.globalState, settings, reader,
@@ -570,7 +575,7 @@ async function activate(context) {
   const userTimes = (id) => reader.request('userTimes', { home: files.codexHome(), id });
   /* How long Codex's pages took to open, from Codex's own log; read only when Show Status or its command asks. */
   const opens = openTimes.createOpenTimes(openTimes.whereLogs(context.logUri && context.logUri.fsPath));
-  registerCommands(context, { source, memory, sessionsModel, sessionsView, say, link, opens, groups, placer });
+  registerCommands(context, { source, memory, sessionsModel, sessionsView, say, link, opens, groups, placer, account });
 
   /* Wake-ups the model set with the work plan's set_wakeup, queued for this window's conversations when due
      (src/wakeup.js). Only over Codex's own connection: hostRequest answers 'unavailable' until the patch hands it over,
@@ -694,7 +699,7 @@ function ownTabBar() {
     settings().enabled !== false && !!codex && codexManifest.carries(codex.packageJSON));
 }
 
-function registerCommands(context, { source, memory, sessionsModel, sessionsView, say, link, opens, groups, placer }) {
+function registerCommands(context, { source, memory, sessionsModel, sessionsView, say, link, opens, groups, placer, account }) {
   const reg = (name, fn) => context.subscriptions.push(vscode.commands.registerCommand(`${CONFIG}.${name}`, fn));
   /* A conversation as a command is given it: its id, the context of a session list row, or Agent Plus's. */
   const threadArg = (arg) => (typeof arg === 'string' ? arg : arg && typeof arg.threadId === 'string' ? arg.threadId
@@ -1279,7 +1284,7 @@ function registerCommands(context, { source, memory, sessionsModel, sessionsView
     days: () => cfg().get('deleteArchivedAfterDays', 30),
     threads: () => reader.threads(),
     check: () => (!context.globalStorageUri ? 'there is no storage folder' : !trusted() ? 'the workspace is not trusted'
-      : standsDown() ? 'this window runs a replaced build of Codex Plus' : ''),
+      : standsDown() ? 'this window runs a replaced build of Codex Plus' : listManages() ? 'Agent Plus\'s session list archives and deletes conversations' : ''),
     hold: (ids) => holdArchived(ids),
     remove: async (list) => {
       const subs = new Map(list.map((t) => [t.id, subAgentsOf(t.id)]));
@@ -1301,6 +1306,110 @@ function registerCommands(context, { source, memory, sessionsModel, sessionsView
     },
     log: say,
   });
+  /* ── Agent Plus's session list: what the Codex source gives it (src/session-list-source.js) ── */
+  const core = link.registered ? link.core : null;
+  /* Whether Agent Plus's session list archives and deletes conversations in this window now, which this extension's
+     own daily pass then leaves to it. Asked each time, so that an older Agent Plus, or one in Restricted Mode, gets the
+     pass back. */
+  listManages = () => { try { return !!core && typeof core.sessionListManages === 'function' && core.sessionListManages() === true; } catch (_) { return false; } };
+  const sessionsChanged = new vscode.EventEmitter(), accountChanged = new vscode.EventEmitter();
+  context.subscriptions.push(sessionsChanged, accountChanged, source.onDidChangeConversations(() => sessionsChanged.fire()));
+  accountHeard = () => accountChanged.fire();
+  const inFolders = (folders) => {
+    const test = Array.isArray(folders) && folders.length ? folderTest(folders, new Map()) : null;
+    return (t) => !test || test(t.cwd);
+  };
+  const baseFeatures = Object.getOwnPropertyDescriptor(source, 'features').get;
+  Object.defineProperty(source, 'features', { configurable: true, enumerable: true,
+    get: () => baseFeatures().concat(['sessions', 'sessionImport', 'sessionSeen', 'accountInfo']) });
+  /* Deletes what the list asks to, with the checks Delete made: never one open or running here, open in another window,
+     or with a sub-agent that is. The list has already asked the user. */
+  const deleteForList = async (ids) => {
+    const results = [];
+    if (!openNow()) return ids.map((id) => ({ sessionId: id, outcome: 'refused', reason: 'this window could not tell which conversations are open' }));
+    await readNow([...new Set(ids.flatMap((id) => [id, ...subAgentsOf(id)]))]);
+    const open = openNow() || new Set(ids), elsewhere = elsewhereNow();
+    const gone = [];
+    for (const id of ids) {
+      const by = [id, ...subAgentsOf(id)].find((x) => open.has(x) || busyNow(x)) || [id, ...subAgentsOf(id)].find((x) => elsewhere.has(x));
+      if (by) {
+        const who = by === id ? 'it' : `its sub-agent "${nameOf(by)}"`;
+        results.push({ sessionId: id, outcome: 'refused', reason: elsewhere.has(by) && !open.has(by) ? `${who} is open in ${windowNames(elsewhere.get(by))}` : `${who} is open or running` });
+        continue;
+      }
+      const subs = subAgentsOf(id);
+      const r = await askAppServer('thread/delete', { threadId: id });
+      const already = r.outcome === 'failed' && /^no rollout found for thread id/.test(r.reason || '');
+      if (r.outcome !== 'done' && !already) { results.push({ sessionId: id, outcome: 'failed', reason: r.outcome === 'sent' ? 'Codex did not answer' : String(r.reason || '') }); continue; }
+      say(`Deleted "${nameOf(id)}" (${id}) from the session list`);
+      gone.push(id, ...subs);
+      results.push({ sessionId: id, outcome: 'done' });
+    }
+    if (gone.length) await forgetDeleted(gone);
+    source._poll({ tell: true });
+    return results;
+  };
+  const GOALS = { 'goal.pause': ['thread/goal/set', { status: 'paused' }], 'goal.resume': ['thread/goal/set', { status: 'active' }], 'goal.clear': ['thread/goal/clear', {}] };
+  Object.assign(source, {
+    async listSessions({ folders = [], cursor = null, limit = 500 } = {}) {
+      await snapshotIn();
+      const keep = inFolders(folders);
+      const all = (reader.threads() || []).filter(keep).map((t) => sessionList.sessionOf(t, source.threadState(t.id), reader.goal(t.id)));
+      return sessionList.pageOf(all, cursor, limit);
+    },
+    onDidChangeSessions: sessionsChanged.event,
+    sessionActions: Object.freeze({ open: ['tab', 'sidebar'], create: ['tab', 'sidebar'], rename: true, delete: true, own: sessionList.OWN }),
+    async runSessionAction(action, sessionIds, args) {
+      const ids = (Array.isArray(sessionIds) ? sessionIds : []).filter((id) => files.THREAD_ID.test(String(id)));
+      const opts = args && typeof args === 'object' ? args : {};
+      const failed = (id, reason, outcome = 'failed') => ({ sessionId: id, outcome, reason });
+      try {
+        if (action === 'open') {
+          if (!ids[0]) return { results: [] };
+          await vscode.commands.executeCommand(opts.where === 'sidebar' ? 'codexPlus.openThreadInSidebar' : 'codexPlus.openThreadInTab', ids[0]);
+          return { results: [{ sessionId: ids[0], outcome: 'done' }] };
+        }
+        if (!trusted()) return { results: ids.map((id) => failed(id, 'Codex Plus changes nothing in Restricted Mode', 'refused')) };
+        if (action === 'create') {
+          await vscode.commands.executeCommand(opts.where === 'sidebar' ? 'codexPlus.newInSidebar' : 'codexPlus.newInTab');
+          return { results: [{ sessionId: '', outcome: 'done' }] };
+        }
+        if (action === 'rename') {
+          const id = ids[0], name = withoutEnvelope(String(opts.title || '')).replace(/\s+/g, ' ').trim();
+          if (!id || !name) return { results: ids.map((x) => failed(x, 'no title', 'refused')) };
+          const r = await askAppServer('thread/name/set', { threadId: id, name });
+          source._poll();
+          return { results: [r.outcome === 'done' ? { sessionId: id, outcome: 'done' } : failed(id, r.outcome === 'sent' ? 'Codex did not answer' : String(r.reason || ''))] };
+        }
+        if (action === 'delete') { await snapshotIn(); return { results: await deleteForList(ids) }; }
+        if (GOALS[action]) {
+          const [method, more] = GOALS[action];
+          const answers = await askAppServerEach(ids.map((id) => [method, Object.assign({ threadId: id, origin: 'user' }, more)]));
+          source._poll();
+          return { results: ids.map((id, i) => (answers[i].outcome === 'done' ? { sessionId: id, outcome: 'done' } : failed(id, answers[i].outcome === 'sent' ? 'Codex did not answer' : String(answers[i].reason || '')))) };
+        }
+        return { results: ids.map((id) => failed(id, `Codex Plus has no action "${String(action).slice(0, 40)}"`, 'refused')) };
+      } catch (e) { return { results: ids.map((id) => failed(id, (e && e.message) || String(e))) }; }
+    },
+    async describeDeletion(ids) {
+      await snapshotIn();
+      return (Array.isArray(ids) ? ids : []).filter((id) => files.THREAD_ID.test(String(id))).map((id) => ({ sessionId: id, what: describe(id, subAgentsOf(id)) }));
+    },
+    wantSessionDetail(ids) { try { source.wantState((Array.isArray(ids) ? ids : []).filter((id) => files.THREAD_ID.test(String(id)))); } catch (_) { /* the rows keep no dot */ } },
+    async importSessions({ folders = [] } = {}) {
+      await snapshotIn();
+      if (!reader.threads()) return null;
+      return sessionList.importOf((reader.threads() || []).filter(inFolders(folders)), { sections: [...reader.sections()], pinnedSection: PINNED_SECTION,
+        colors: context.globalState.get(COLOR_KEY) || {} });
+    },
+    noteSeen(ids, seen) { for (const id of Array.isArray(ids) ? ids : []) { if (seen) source.markRead(id); else source.markUnread(id); } },
+    accountInfo({ sessionId = '' } = {}) {
+      account.load().catch(() => { /* drawn as it was */ });
+      return sessionList.accountOf(account.view(), sessionId ? source.threadState(sessionId) : null);
+    },
+    onDidChangeAccountInfo: accountChanged.event,
+  });
+
   /*
    * Messages from the session list's page, each handled like the matching command: a row clicked, New in tab, New in
    * sidebar, New group, an inline rename of a title or a group, rows dropped on a group, and an item of the list's
