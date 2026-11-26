@@ -505,8 +505,12 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
     }).catch(() => {});
     let where = '';
     let shut = false;
+    /* A menu still open takes a right-click as a click outside it: it closes and opens none. */
+    const noMenu = () => until(() => page.evaluate(() => ![...document.querySelectorAll('.context-view')].some((v) => v.offsetParent && v.childElementCount))
+      .catch(() => true), 5000, 100);
     for (let attempt = 0; attempt < 3; attempt++) {
-      if (attempt) { await page.keyboard.press('Escape'); await page.mouse.move(5, 5); await sleep(500); }
+      if (attempt) { await page.keyboard.press('Escape'); await page.mouse.move(5, 5); }
+      await noMenu();
       if (select || onPage) await tabNamed(name).click();
       if (onPage) {
         const f = await frontPage();
@@ -515,12 +519,15 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
         if (talk) await page.mouse.click(talk.x + talk.width / 2, talk.y + Math.min(20, talk.height / 2), { button: 'right' });
       } else await tabNamed(name).click({ button: 'right' });
       where = await menuWith(item);
-      if (!where) continue;
-      await sleep(400);
-      /* The menu item's own element takes the click; the label inside it reads as covered to Playwright. A menu that
-         closes before the click is opened again. */
-      if (await page.locator('.context-view .monaco-menu .action-menu-item').filter({ hasText: item }).first()
-        .click({ timeout: 5000, force: true }).then(() => true, () => false)) return where;
+      if (!where) {
+        note(`${stepNow}: a right-click on ${onPage ? 'the page' : `the tab "${name}"`} opened no menu with "${item}", so it is made again: ${JSON.stringify(await menuTrace()).slice(0, 700)}`);
+        continue;
+      }
+      /* The menu item's own element takes the click; the label inside it reads as covered to Playwright. The item is
+         clicked once the menu has stopped moving in. A menu that closes before the click is opened again. */
+      const entry = page.locator('.context-view .monaco-menu .action-menu-item').filter({ hasText: item }).first();
+      await still(entry).catch(() => false);
+      if (await entry.click({ timeout: 5000, force: true }).then(() => true, () => false)) return where;
       shut = true;
     }
     const trace = await menuTrace();
@@ -746,9 +753,12 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
     }
     return { had, left: await read() };
   };
-  /* On CI, Codex has now and then put its "Codex could not start" in the new tab instead of starting its page. The
-     button worked, so that tab is closed and the button clicked once more. */
+  /* On CI, Codex has now and then put its "Codex could not start" in the new tab instead of starting its page: the new
+     page got none of its files while VS Code still served what other Codex pages had asked for (served()). So the button
+     is clicked only once every Codex tab page has drawn and VS Code has caught up. If Codex still gives up, the button
+     worked, so that tab is closed and the button clicked once more. */
   const newTabPage = async () => {
+    await settle('before the tab bar button opens a new conversation page', 0);
     await openNotes();
     const buttons = await until(async () => { const b = await codexButtons(); return b.length === 1 && b[0] === TITLES.tab && b; }, 15000, 500);
     let before = null, fresh = null;
@@ -4399,7 +4409,12 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
       const closedIds = () => sl.evaluate(() => [...document.querySelectorAll('.sl-section[data-key="closed"] .sl-row')]
         .map((r) => { try { return JSON.parse(r.dataset.key)[1]; } catch (_) { return r.dataset.key; } })).catch(() => null);
       const firstClosed = (id) => until(async () => { if (!await showList()) return null; const r = await closedIds(); return r && r[0] === id && r; }, 20000, 500);
-      const cameBack = (label, turn, ms = 60000) => until(async () => { const x = await frontTab(); return x && bare(x.label) === label && (await newestInFront()) === turn && x; }, ms, 1000);
+      /* The page is drawn down to the newest turn the rollout has at the time it is looked at: a turn that starts after
+         the tab was closed (the New tab's conversation can still have one queued) is the newest one then. */
+      const cameBack = (label, id, turn, ms = 60000) => until(async () => {
+        const x = await frontTab();
+        return x && bare(x.label) === label && (await newestInFront()) === (newestStarted(id) || turn) && x;
+      }, ms, 1000);
       const reopenKeys = async () => {
         /* The keys go to the editor area, where a user's would, rather than to the session list's page. */
         await exec('workbench.action.focusActiveEditorGroup');
@@ -4415,15 +4430,15 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
         }
         await slRowOf(t, 'closed').click();
       };
-      check(!!await shownOrAgain('a click on it in Recently closed', fromClosed, () => cameBack(title, had, 0), 60000),
+      check(!!await shownOrAgain('a click on it in Recently closed', fromClosed, () => cameBack(title, t.id, had, 0), 60000),
         'a click on it there opens it in a tab again, in front, titled by it and drawn down to its newest turn',
-        { tab: await frontTab(), newest: await newestInFront(), had });
+        { tab: await frontTab(), newest: await newestInFront(), had, now: newestStarted(t.id) });
       await checkCurrent(t.id, 'the conversation opened again from Recently closed');
       await shot('reopened-from-recently-closed');
       await settle('a closed conversation brought back: before the tab opened again from Recently closed was closed');
       await exec('workbench.action.closeActiveEditor');
       await firstClosed(t.id);
-      check(!!await shownOrAgain(`${REOPEN} for it`, reopenKeys, () => cameBack(title, had, 0), 60000),
+      check(!!await shownOrAgain(`${REOPEN} for it`, reopenKeys, () => cameBack(title, t.id, had, 0), 60000),
         `closed again, ${REOPEN} opens it again the same way`, { tab: await frontTab(), newest: await newestInFront(), had });
       await checkCurrent(t.id, `the conversation opened again with ${REOPEN}`);
       if (restored) {
@@ -4433,7 +4448,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
         await settle('a closed conversation brought back: before the New tab was closed');
         await exec('workbench.action.closeActiveEditor');
         check(!!await firstClosed(begun.id), 'closing the New tab a conversation was begun in puts that conversation first in Recently closed', await closedIds());
-        if (!check(!!await shownOrAgain(`${REOPEN} for the conversation of a New tab`, reopenKeys, () => cameBack(restored.label, turn, 0), 60000),
+        if (!check(!!await shownOrAgain(`${REOPEN} for the conversation of a New tab`, reopenKeys, () => cameBack(restored.label, begun.id, turn, 0), 60000),
           `and ${REOPEN} opens that conversation again, titled by it and drawn down to its newest turn`,
           { tab: await frontTab(), newest: await newestInFront(), had: turn, drawn: await drawnInFront(), closed: await closedIds(), codexTabs: await codexTabsNow() })) {
           await shot('reopened-new-tab-not-at-its-newest-turn');
