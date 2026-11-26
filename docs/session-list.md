@@ -4,7 +4,7 @@ Open Conversations in the activity bar to see this workspace's conversations fro
 
 ## Which conversations
 
-Codex Plus lists a Codex conversation if its folder is a workspace folder in this window or is below one. If you opened a workspace folder through a symbolic link, the list also finds conversations Codex recorded under the real path. Conversations archived in Codex appear as archived.
+Codex Plus lists a Codex conversation if its folder is a workspace folder in this window or is below one. If you opened a workspace folder through a symbolic link, the list also finds conversations Codex recorded under the real path. Conversations started in another worktree of the folder's git repository are listed too, with the worktree's folder name on the row. Conversations archived in Codex appear as archived.
 
 Sub-agents appear by nickname under the conversation that started them. Sub-agents, `codex exec` runs and approval reviews are background runs. Codex starts an approval review to decide whether to allow an action a conversation requested. To see background runs, turn off `agentPlus.sessions.hideBackground`, which is on by default.
 

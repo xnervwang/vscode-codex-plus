@@ -20,9 +20,20 @@ module.exports = async ({ eq, tmp, root }) => {
   for (const k of Object.keys(require.cache)) if (k.startsWith(root + path.sep) && !k.includes(`${path.sep}test${path.sep}`)) delete require.cache[k];
   const home = tmp('home');
   const other = tmp('elsewhere');
+  /* A repository and a linked worktree of it, as git writes them: the worktree's .git file and the repository's
+     .git/worktrees/<name>/gitdir naming each other. */
+  const fsx = require('fs');
+  const repo = tmp('repo'), tree = path.join(tmp('trees'), 'feature-x');
+  fsx.mkdirSync(path.join(repo, '.git', 'worktrees', 'feature-x'), { recursive: true });
+  fsx.mkdirSync(path.join(repo, 'sub'), { recursive: true });
+  fsx.mkdirSync(tree, { recursive: true });
+  fsx.writeFileSync(path.join(repo, '.git', 'worktrees', 'feature-x', 'gitdir'), path.join(tree, '.git') + '\n');
+  fsx.writeFileSync(path.join(repo, '.git', 'worktrees', 'feature-x', 'commondir'), '../..\n');
+  fsx.writeFileSync(path.join(tree, '.git'), `gitdir: ${path.join(repo, '.git', 'worktrees', 'feature-x')}\n`);
   const made = fixture.codexHome(home, [{ title: 'First', cwd: home, section: 'sec-1', turns: [{}] }, { title: 'Second', cwd: home, pinned: true, turns: [{}] },
     { title: 'Put away', cwd: home, archived: true, archivedAt: 1000, turns: [{}] }, { title: 'Not here', cwd: other, turns: [{}] },
-    { title: 'Shelved', cwd: home, archived: true, archivedAt: 2000, turns: [{}] }]);
+    { title: 'Shelved', cwd: home, archived: true, archivedAt: 2000, turns: [{}] },
+    { title: 'In the repo', cwd: path.join(repo, 'sub'), turns: [{}] }, { title: 'In its worktree', cwd: tree, turns: [{}] }]);
   /* What VS Code gives as the workspace folder can be a symbolic link to where Codex recorded the conversations. */
   const fs = require('fs');
   const link = path.join(tmp('links'), 'home-link');
@@ -66,6 +77,9 @@ module.exports = async ({ eq, tmp, root }) => {
     src.holdersOf = holdersOf;
     eq([held.First, held.Second], [[{ kind: 'terminal', label: 'terminal pts/3 in ~/w', detail: ['process 7'], running: false }], undefined],
       'a conversation another Codex process holds open names that place, and the others name none');
+    const rowsIn = async (folder) => (await src.listSessions({ folders: [folder], cursor: null, limit: 500 })).sessions.map((x) => [x.title, x.worktree || '']).sort();
+    eq([await rowsIn(path.join(repo, 'sub')), await rowsIn(tree)], [[['In its worktree', 'feature-x'], ['In the repo', '']], [['In its worktree', ''], ['In the repo', path.basename(repo)]]],
+      'a conversation in a linked git worktree of the folder\'s repository is listed with the worktree\'s name, and from the worktree the main one is');
     const two = await src.listSessions({ folders: [home], cursor: null, limit: 2 });
     eq([two.sessions.length, two.cursor], [2, '2'], 'a page at a time');
     const got = await src.importSessions({ folders: [home] });

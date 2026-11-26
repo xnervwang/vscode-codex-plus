@@ -36,6 +36,7 @@ const supported = require('./src/supported');
 const pythonRuntime = require('./src/python-runtime');
 const pythonOffer = require('./src/python-offer');
 const { folderTest } = require('./src/folders');
+const { worktreesOf } = require('./src/git-worktrees');
 const openTimes = require('./src/open-times');
 const codexConfig = require('./src/codex-config');
 const uninstallPlan = require('./src/uninstall-plan');
@@ -1063,9 +1064,15 @@ function registerCommands(context, { source, memory, say, link, opens, account }
   const sessionsChanged = new vscode.EventEmitter(), accountChanged = new vscode.EventEmitter();
   context.subscriptions.push(sessionsChanged, accountChanged, source.onDidChangeConversations(() => sessionsChanged.fire()));
   accountHeard = () => accountChanged.fire();
+  /* Whether a thread is in one of `folders`, below one, or in a linked git worktree of their repositories. treeOf gives
+     the worktree's name for one in a worktree, '' otherwise. */
   const inFolders = (folders) => {
-    const test = Array.isArray(folders) && folders.length ? folderTest(folders, new Map()) : null;
-    return (t) => !test || test(t.cwd);
+    if (!Array.isArray(folders) || !folders.length) return Object.assign(() => true, { treeOf: () => '' });
+    const memo = new Map();
+    const test = folderTest(folders, memo);
+    const trees = worktreesOf(folders).map((w) => ({ name: w.name, test: folderTest([w.path], memo) }));
+    const treeOf = (t) => { const w = test(t.cwd) ? null : trees.find((x) => x.test(t.cwd)); return w ? w.name : ''; };
+    return Object.assign((t) => test(t.cwd) || trees.some((x) => x.test(t.cwd)), { treeOf });
   };
   const baseFeatures = Object.getOwnPropertyDescriptor(source, 'features').get;
   Object.defineProperty(source, 'features', { configurable: true, enumerable: true,
@@ -1107,8 +1114,12 @@ function registerCommands(context, { source, memory, say, link, opens, account }
       await snapshotIn();
       const keep = inFolders(folders);
       const here = openNow() || new Set();
-      const all = (reader.threads() || []).filter(keep).map((t) => sessionList.sessionOf(t, source.threadState(t.id), reader.goal(t.id), source.holdersOf(t.id),
-        { here: here.has(t.id) }));
+      const all = (reader.threads() || []).filter(keep).map((t) => {
+        const s = sessionList.sessionOf(t, source.threadState(t.id), reader.goal(t.id), source.holdersOf(t.id), { here: here.has(t.id) });
+        const tree = keep.treeOf(t);
+        if (tree) s.worktree = tree.slice(0, 100);
+        return s;
+      });
       return sessionList.pageOf(all, cursor, limit);
     },
     onDidChangeSessions: sessionsChanged.event,
