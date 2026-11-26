@@ -30,6 +30,15 @@ module.exports = async ({ eq }) => {
     [[{ text: 'goal', tooltip: 'Goal (goal, 1,200 of 5,000 tokens): Ship it', dim: false }], ['goal.pause', 'goal.clear'], ['goal.resume', 'goal.clear'], true, undefined, undefined],
     'a goal is a badge, dimmed unless it is active, with Pause or Resume and Clear; a goal met has neither');
 
+  const term = { pid: 7, kind: 'terminal', label: 'terminal pts/3 in ~/w', detail: ['process 7'] };
+  const execHolder = { pid: 8, kind: 'exec', label: 'codex exec in ~/w', detail: ['process 8'] };
+  const there = L.sessionOf(t('a'), conv, null, [term]);
+  const idle = L.sessionOf(t('a'), { ...conv, running: false }, null, [term, execHolder]);
+  eq([there.elsewhere, idle.elsewhere.map((p) => p.running), L.sessionOf(t('a'), conv, null, []).elsewhere,
+    L.sessionOf(t('a'), conv, null, Array.from({ length: 12 }, (_, i) => ({ ...term, pid: i }))).elsewhere.length],
+  [[{ kind: 'terminal', label: 'terminal pts/3 in ~/w', detail: ['process 7'], running: true }], [false, true], undefined, 8],
+  'a conversation another Codex process holds open lists it as a place, running there while the conversation runs or when it is a codex exec; none lists no place, and at most eight are listed');
+
   const all = Array.from({ length: 5 }, (_, i) => i);
   eq([L.pageOf(all, null, 2), L.pageOf(all, '2', 2), L.pageOf(all, '4', 2)], [{ sessions: [0, 1], cursor: '2' }, { sessions: [2, 3], cursor: '4' }, { sessions: [4], cursor: null }],
     'pages follow the cursor to the end');

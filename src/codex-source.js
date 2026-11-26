@@ -516,7 +516,8 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
     const known = new Set((reader.threads() || []).map((t) => t.id));
     return JSON.stringify([Object.keys(seenNow.threads).filter((id) => known.has(id)).sort().map((id) => [id, seenNow.threads[id]]),
       (seenNow.detached || []).filter((d) => known.has(d.thread)).map((d) => `${d.thread}.${d.pid}.${d.start}`),
-      (seenNow.running || []).filter((d) => known.has(d.thread)).map((d) => `${d.thread}.${d.kind}.${d.pid}.${d.start}.${d.name}`)]);
+      (seenNow.running || []).filter((d) => known.has(d.thread)).map((d) => `${d.thread}.${d.kind}.${d.pid}.${d.start}.${d.name}`),
+      (seenNow.holders || []).filter((d) => known.has(d.thread)).map((d) => `${d.thread}.${d.pid}.${d.start}.${d.label}`)]);
   };
   function pollLeft() {
     if (leftRun || Date.now() - leftAt < leftEveryMs) return;
@@ -734,6 +735,15 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
       if (!leftSeen || !Array.isArray(leftSeen.detached) || !id) return [];
       const family = new Set(familyOf(String(id).toLowerCase(), childIndex()).map((x) => String(x).toLowerCase()));
       return leftSeen.detached.filter((d) => family.has(d.thread)).sort((a, b) => (a.startMs - b.startMs) || (a.pid - b.pid));
+    },
+    /* The processes other than this window's Codex that hold `id` open, as the last scan listed them
+       (src/writer-locks.js): [{ pid, kind, label, detail }]. This window's own app-server is a process under this
+       extension host. */
+    holdersOf(id) {
+      if (!leftSeen || !Array.isArray(leftSeen.holders) || !id) return [];
+      const key = String(id).toLowerCase();
+      return leftSeen.holders.filter((h) => h.thread === key && h.pid !== process.pid && !(h.ancestors || []).includes(process.pid))
+        .map((h) => ({ pid: h.pid, kind: h.kind, label: h.label, detail: h.detail.slice() }));
     },
     onDidChangeConversations: changed.event,
     planNotice() { return notice; },

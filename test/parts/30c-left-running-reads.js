@@ -105,17 +105,18 @@ module.exports = async ({ ok, bad, eq, note, tmp }) => {
     try { d = JSON.parse(fs.readFileSync(file, 'utf8')); } catch (_) { d = null; }
     eq(d && [d.format, d.proc, d.sessions, d.available, d.threads, d.bg, d.running, typeof d.at],
       [left.SHARE_FORMAT, procDir, path.resolve(sessionsDir), true, mine.threads, mine.bg, mine.running, 'number'], 'and writes what it found for the others');
-    eq([left.SHARE_FORMAT, (mine.running || []).map((x) => [x.kind, x.pid])], [2, [['command', 11], ['codexExec', 40]]],
-      'which lists the rest of the work too, so its format is a new one');
+    eq([left.SHARE_FORMAT, (mine.running || []).map((x) => [x.kind, x.pid]), d && Array.isArray(d.holders), d && d.codex], [3, [['command', 11], ['codexExec', 40]], true, ''],
+      'which lists the rest of the work and the processes holding Codex\'s writer locks too, so its format is a new one');
     eq(fs.readdirSync(share), [left.SHARE_FILE], 'leaving no temporary file behind');
     const other = { format: left.SHARE_FORMAT, at: T0, proc: procDir, sessions: path.resolve(sessionsDir), available: true,
       threads: { [ID(42)]: ['detached'] }, detached: [],
       bg: [{ job: 'abcd1234', pid: 60, start: '100', startMs: 5, name: 'night suite', session: ID(600) }],
-      running: [{ thread: ID(42), kind: 'command', pid: 77, start: '100', startMs: 0, cmd: 'make', name: '', session: '', job: '' }] };
+      running: [{ thread: ID(42), kind: 'command', pid: 77, start: '100', startMs: 0, cmd: 'make', name: '', session: '', job: '' }],
+      codex: '', holders: [{ thread: ID(42), pid: 78, start: '100', kind: 'terminal', label: 'terminal pts/3 in ~/w', detail: ['process 78'], ancestors: [5, 1] }] };
     const write = (o) => fs.writeFileSync(file, typeof o === 'string' ? o : JSON.stringify(o));
     write(other);
     const taken = counting(['readdirSync', 'readFileSync'], () => left.scan({ proc: procDir, sessionsDir, share, now: T0 + left.SHARE_MS - 1 }));
-    eq([taken.out.threads, taken.out.bg, taken.out.running], [other.threads, other.bg, other.running],
+    eq([taken.out.threads, taken.out.bg, taken.out.running, taken.out.holders], [other.threads, other.bg, other.running, other.holders],
       'a scan another window wrote less than SHARE_MS ago is taken as it is');
     eq(taken.calls.filter(([, f]) => typeof f === 'string' && f.startsWith(procDir)).length, 0, 'without reading /proc');
     const passed = (why, o, now) => {
@@ -133,6 +134,9 @@ module.exports = async ({ ok, bad, eq, note, tmp }) => {
     passed('one from a build that listed only the detached commands is not', { ...other, format: 1, jobs: ['abcd1234'], bg: undefined, running: undefined }, T0 + 1);
     passed('one listing work of a kind it cannot be is not', { ...other, running: [{ ...other.running[0], kind: 'subagent' }] }, T0 + 1);
     passed('one listing a claude --bg session with no job id is not', { ...other, bg: [{ ...other.bg[0], job: 'x' }] }, T0 + 1);
+    passed('one written for another Codex home is not', { ...other, codex: '/elsewhere' }, T0 + 1);
+    passed('one from a build that listed no holders of the writer locks is not', { ...other, format: 2, holders: undefined }, T0 + 1);
+    passed('one listing a holder of a kind it cannot be is not', { ...other, holders: [{ ...other.holders[0], kind: 'desktop' }] }, T0 + 1);
 
     /* A claude --bg launch is still read from this window's rollouts, against the busy jobs the shared scan names. */
     const rollout = path.join(tmp('rollouts'), 'rollout.jsonl');

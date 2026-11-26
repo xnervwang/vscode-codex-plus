@@ -148,11 +148,11 @@ const ops = {
     const r = rollout ? require('./user-times').rolloutMarks(rollout) : null;
     return { times: r ? r.times : null, compactions: r ? r.compactions : [], turns: r ? r.turns : {}, turnTimes: r ? r.turnTimes : {} };
   },
-  /* What the recent conversations and sub-agents still have running after their turn ended (src/left-running.js).
-     `share` is the folder the windows share a scan through, '' for none. */
+  /* What the recent conversations and sub-agents still have running after their turn ended, and which processes hold
+     conversations open (src/left-running.js). `share` is the folder the windows share a scan through, '' for none. */
   leftRunning({ home: h, proc = '/proc', sessionsDir, share = '' }) {
     const threads = recentRollouts(at(h));
-    return require('./left-running').leftRunning({ threads, proc, sessionsDir, cache: launchCache, environs, share });
+    return require('./left-running').leftRunning({ threads, proc, sessionsDir, cache: launchCache, environs, share, codexHome: at(h) });
   },
   /* Writes down in `dir` what changed in the claude --bg sessions those conversations launched, for
      src/detached-ends.js to send. */

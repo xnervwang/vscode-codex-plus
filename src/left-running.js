@@ -33,12 +33,16 @@
  * and every busy claude --bg session (`running`). The Agent map shows both lists, and src/detached-ends.js tells the
  * conversation when a detached one is gone.
  *
+ * The same scan lists the processes holding conversations open through Codex's writer locks (src/writer-locks.js),
+ * which Agent Plus's session list shows as where else a conversation is open.
+ *
  * Without /proc only the claude --bg launches are found; src/codex-source.js then falls back on what the rollout says
  * of Codex's own background commands.
  */
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const writerLocks = require('./writer-locks');
 
 const THREAD_KEY = Buffer.from('CODEX_THREAD_ID=', 'latin1');
 const THREAD_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -387,16 +391,17 @@ function launches(file, cache) {
  */
 const SHARE_DIR = 'shared';
 const SHARE_FILE = 'left-running.json';
-/* Format 1 listed only the detached commands; a window that reads one scans for itself. */
-const SHARE_FORMAT = 2;
+/* Format 1 listed only the detached commands, format 2 had no holders of Codex's writer locks; a window that reads an
+   older one scans for itself. */
+const SHARE_FORMAT = 3;
 const SHARE_MS = 9000;
 const SCANNED_KINDS = new Set(['command', 'detached', 'codexExec', 'claudeWorker']);
 const LISTED_KINDS = new Set(['command', 'codexExec', 'claudeWorker']);
 
-function sharedOf(text, { proc, sessions, now }) {
+function sharedOf(text, { proc, sessions, codex, now }) {
   let d;
   try { d = JSON.parse(text); } catch (_) { return null; }
-  if (!d || d.format !== SHARE_FORMAT || d.proc !== proc || d.sessions !== sessions || typeof d.available !== 'boolean') return null;
+  if (!d || d.format !== SHARE_FORMAT || d.proc !== proc || d.sessions !== sessions || d.codex !== codex || typeof d.available !== 'boolean') return null;
   if (typeof d.at !== 'number' || !(d.at <= now) || now - d.at >= SHARE_MS) return null;
   if (!d.threads || typeof d.threads !== 'object' || Array.isArray(d.threads)) return null;
   for (const [id, kinds] of Object.entries(d.threads)) {
@@ -405,7 +410,8 @@ function sharedOf(text, { proc, sessions, now }) {
   if (!Array.isArray(d.bg) || !d.bg.every(isBgEntry)) return null;
   if (!Array.isArray(d.detached) || !d.detached.every(isDetachedEntry)) return null;
   if (!Array.isArray(d.running) || !d.running.every(isRunningEntry)) return null;
-  return { available: d.available, threads: d.threads, bg: d.bg, detached: d.detached, running: d.running };
+  if (!Array.isArray(d.holders) || !d.holders.every(writerLocks.isHolder)) return null;
+  return { available: d.available, threads: d.threads, bg: d.bg, detached: d.detached, running: d.running, holders: d.holders };
 }
 const isProcessEntry = (e) => !!e && Number.isInteger(e.pid) && e.pid > 0 && typeof e.start === 'string' && Number.isFinite(e.startMs);
 const isDetachedEntry = (e) => isProcessEntry(e) && THREAD_ID.test(e.thread) && typeof e.cmd === 'string';
@@ -425,17 +431,19 @@ function writeShared(file, text) {
 }
 
 /*
- * The /proc part of a scan, { available, threads: { [thread id]: [kinds] }, bg, detached, running }, where bg is
- * busyBg()'s list and detached and running are snapshot()'s. It is another window's scan when `share` holds one written
- * less than SHARE_MS before `now`.
+ * The /proc part of a scan, { available, threads: { [thread id]: [kinds] }, bg, detached, running, holders }, where bg
+ * is busyBg()'s list, detached and running are snapshot()'s, and holders the processes holding conversations of
+ * `codexHome` open (src/writer-locks.js). It is another window's scan when `share` holds one written less than
+ * SHARE_MS before `now`.
  */
-function scan({ proc = '/proc', sessionsDir, share = '', environs = null, now = Date.now() } = {}) {
+function scan({ proc = '/proc', sessionsDir, share = '', environs = null, now = Date.now(), codexHome = '' } = {}) {
   const sessions = path.resolve(sessionsDir || sessionsHome());
+  const codex = codexHome ? path.resolve(codexHome) : '';
   const file = share ? path.join(share, SHARE_FILE) : '';
   if (file) {
     let text = null;
     try { text = fs.readFileSync(file, 'utf8'); } catch (_) { text = null; }
-    const got = text === null ? null : sharedOf(text, { proc, sessions, now });
+    const got = text === null ? null : sharedOf(text, { proc, sessions, codex, now });
     if (got) return got;
   }
   const procs = processes(proc);
@@ -443,12 +451,13 @@ function scan({ proc = '/proc', sessionsDir, share = '', environs = null, now = 
   const snap = snapshot({ proc, records, procs, environs });
   const threads = {};
   for (const [id, kinds] of snap.threads) threads[id] = [...kinds];
+  const argvOf = (pid) => { const a = read(path.join(proc, String(pid), 'cmdline'), 'latin1'); return a ? a.split('\0') : []; };
   const out = { available: snap.available, threads, bg: busyBg(records, procs, bootMs(proc)), detached: snap.detached || [],
-    running: snap.running || [] };
+    running: snap.running || [], holders: writerLocks.holders({ codexHome: codex, proc, all: procs, argvOf, isExec: isCodexExec }) };
   if (file) {
     /* Made only inside a plan directory that is there: without one the plugin is not installed. */
     try { fs.mkdirSync(share); } catch (_) { /* there already, or no plan directory */ }
-    writeShared(file, JSON.stringify({ format: SHARE_FORMAT, at: Date.now(), proc, sessions, ...out }) + '\n');
+    writeShared(file, JSON.stringify({ format: SHARE_FORMAT, at: Date.now(), proc, sessions, codex, ...out }) + '\n');
   }
   return out;
 }
@@ -459,8 +468,8 @@ function scan({ proc = '/proc', sessionsDir, share = '', environs = null, now = 
  * the kind claudeBg and as an entry of `running`. `cache` keeps how far each rollout has been read for launches;
  * rollouts no longer passed in are dropped from it.
  */
-function leftRunning({ threads = [], proc = '/proc', sessionsDir, cache = new Map(), environs = null, share = '', now = Date.now() } = {}) {
-  const found = scan({ proc, sessionsDir, share, environs, now });
+function leftRunning({ threads = [], proc = '/proc', sessionsDir, cache = new Map(), environs = null, share = '', now = Date.now(), codexHome = '' } = {}) {
+  const found = scan({ proc, sessionsDir, share, environs, now, codexHome });
   const out = {};
   for (const [id, kinds] of Object.entries(found.threads)) out[id] = [...kinds];
   const jobs = new Map((found.bg || []).map((b) => [b.job, b]));
@@ -481,7 +490,7 @@ function leftRunning({ threads = [], proc = '/proc', sessionsDir, cache = new Ma
     }
   }
   for (const f of [...cache.keys()]) if (!keep.has(f) && jobs.size) cache.delete(f);
-  return { available: found.available, threads: out, detached: found.detached || [], running: running.sort(byStart) };
+  return { available: found.available, threads: out, detached: found.detached || [], running: running.sort(byStart), holders: found.holders || [] };
 }
 
 module.exports = { snapshot, processes, readRecords, busyBg, launches, scan, leftRunning, isCodexExec, envValue, commandOf, STARTERS, KINDS,

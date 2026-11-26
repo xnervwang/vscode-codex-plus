@@ -418,7 +418,7 @@ async function activate(context) {
   };
   const source = createCodexSource(vscode, { log: say, reader, patching, trusted, enabled: () => runs('workPlan'),
     briefs: () => runs('conversationBrief'), seen: createSeen(context.globalState),
-    scanLeft: () => keepsShared() && settings().enabled !== false, onPoll: () => { publishWindow(); if (archiveSweeper) archiveSweeper.tick(); }, onScan,
+    scanLeft: () => keepsShared() && (settings().enabled !== false || listManages()), onPoll: () => { publishWindow(); if (archiveSweeper) archiveSweeper.tick(); }, onScan,
     holdSeen: () => loadingTabs });
   context.subscriptions.push(source);
   planSource = source;
@@ -1067,8 +1067,8 @@ function registerCommands(context, { source, memory, say, link, opens, account }
   const baseFeatures = Object.getOwnPropertyDescriptor(source, 'features').get;
   Object.defineProperty(source, 'features', { configurable: true, enumerable: true,
     get: () => baseFeatures().concat(['sessions', 'sessionImport', 'sessionSeen', 'accountInfo']) });
-  /* Deletes what the list asks to, with the checks Delete made: never one open or running here, open in another window,
-     or with a sub-agent that is. The list has already asked the user. */
+  /* Deletes what the list asks to, with the checks Delete made: never one open or running here, open in another window
+     or held open by another Codex process, or with a sub-agent that is. The list has already asked the user. */
   const deleteForList = async (ids) => {
     const results = [];
     if (!openNow()) return ids.map((id) => ({ sessionId: id, outcome: 'refused', reason: 'this window could not tell which conversations are open' }));
@@ -1076,10 +1076,14 @@ function registerCommands(context, { source, memory, say, link, opens, account }
     const open = openNow() || new Set(ids), elsewhere = elsewhereNow();
     const gone = [];
     for (const id of ids) {
-      const by = [id, ...subAgentsOf(id)].find((x) => open.has(x) || busyNow(x)) || [id, ...subAgentsOf(id)].find((x) => elsewhere.has(x));
+      const family = [id, ...subAgentsOf(id)];
+      const by = family.find((x) => open.has(x) || busyNow(x)) || family.find((x) => elsewhere.has(x)) || family.find((x) => source.holdersOf(x).length);
       if (by) {
         const who = by === id ? 'it' : `its sub-agent "${nameOf(by)}"`;
-        results.push({ sessionId: id, outcome: 'refused', reason: elsewhere.has(by) && !open.has(by) ? `${who} is open in ${windowNames(elsewhere.get(by))}` : `${who} is open or running` });
+        const held = source.holdersOf(by);
+        const reason = elsewhere.has(by) && !open.has(by) ? `${who} is open in ${windowNames(elsewhere.get(by))}`
+          : open.has(by) || busyNow(by) || !held.length ? `${who} is open or running` : `${who} is open in ${held[0].label}`;
+        results.push({ sessionId: id, outcome: 'refused', reason });
         continue;
       }
       const subs = subAgentsOf(id);
@@ -1099,7 +1103,7 @@ function registerCommands(context, { source, memory, say, link, opens, account }
     async listSessions({ folders = [], cursor = null, limit = 500 } = {}) {
       await snapshotIn();
       const keep = inFolders(folders);
-      const all = (reader.threads() || []).filter(keep).map((t) => sessionList.sessionOf(t, source.threadState(t.id), reader.goal(t.id)));
+      const all = (reader.threads() || []).filter(keep).map((t) => sessionList.sessionOf(t, source.threadState(t.id), reader.goal(t.id), source.holdersOf(t.id)));
       return sessionList.pageOf(all, cursor, limit);
     },
     onDidChangeSessions: sessionsChanged.event,

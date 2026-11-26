@@ -60,6 +60,12 @@ module.exports = async ({ eq, tmp, root }) => {
       const via = await src.listSessions({ folders: [link], cursor: null, limit: 500 });
       eq(via.sessions.map((x) => x.title).sort(), ['First', 'Put away', 'Second', 'Shelved'], 'a folder given through a symbolic link holds the conversations recorded under the real path');
     }
+    const holdersOf = src.holdersOf;
+    src.holdersOf = (id) => (id === made[0].id ? [{ pid: 7, kind: 'terminal', label: 'terminal pts/3 in ~/w', detail: ['process 7'] }] : []);
+    const held = Object.fromEntries((await src.listSessions({ folders: [home], cursor: null, limit: 500 })).sessions.map((x) => [x.title, x.elsewhere]));
+    src.holdersOf = holdersOf;
+    eq([held.First, held.Second], [[{ kind: 'terminal', label: 'terminal pts/3 in ~/w', detail: ['process 7'], running: false }], undefined],
+      'a conversation another Codex process holds open names that place, and the others name none');
     const two = await src.listSessions({ folders: [home], cursor: null, limit: 2 });
     eq([two.sessions.length, two.cursor], [2, '2'], 'a page at a time');
     const got = await src.importSessions({ folders: [home] });

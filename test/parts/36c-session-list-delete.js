@@ -57,6 +57,7 @@ module.exports = async ({ eq, tmp, root }) => {
     { id: ID(12), title: 'Elsewhere', cwd: home, turns: [{}] },
     { id: ID(13), title: 'Watcher', cwd: home, turns: [{}] },
     { id: ID(14), title: 'Sentry', cwd: home, threadSource: 'subagent', source: spawn(ID(13), 'Sentry'), turns: [{}] },
+    { id: ID(15), title: 'In a terminal', cwd: home, turns: [{}] },
   ]);
   const planDir = path.join(home, 'plugins', 'data', 'agent-work-plan-codex-extras');
   fs.mkdirSync(planDir, { recursive: true });
@@ -137,6 +138,12 @@ module.exports = async ({ eq, tmp, root }) => {
     entry(dead, [ID(13)]);
     eq((await del(13))[1], ['done'], 'and so is an entry whose window process has ended');
     fs.rmSync(path.join(windowsDir, `${dead}.json`), { force: true });
+
+    /* ── held open by another Codex process ── */
+    const holdersOf = src.holdersOf;
+    src.holdersOf = (id) => (id === ID(15) ? [{ pid: 7, kind: 'terminal', label: 'terminal pts/3 in ~/w', detail: ['process 7'] }] : []);
+    eq(await del(15), [[], ['it is open in terminal pts/3 in ~/w']], 'one another Codex process holds open, such as the terminal interface, is left alone');
+    src.holdersOf = holdersOf;
 
     /* ── Codex refusing ── */
     answer = (r) => ({ id: r.id, error: { code: -32600, message: r.params.threadId === ID(11) ? `no rollout found for thread id ${ID(11)}` : 'busy' } });

@@ -15,6 +15,9 @@
  * its row was last written: renaming it, moving it between Codex's sections or archiving it writes the row.
  *
  * A goal is a badge on the row, and Pause Goal, Resume Goal and Clear Goal are Codex's own actions in its menu.
+ *
+ * Where else a conversation is open comes from the processes holding Codex's writer lock on it (src/writer-locks.js),
+ * leaving out this window's own Codex. Another VS Code window that writes a window entry is found by Agent Plus itself.
  */
 const GOAL_WORD = { active: 'goal', paused: 'goal paused', blocked: 'goal blocked', usageLimited: 'goal: usage limit',
   budgetLimited: 'goal: budget spent', complete: 'goal done' };
@@ -43,11 +46,15 @@ function goalText(g) {
   return `Goal (${GOAL_WORD[g.status] || g.status}, ${used}): ${String(g.objective || '').slice(0, 240)}`;
 }
 
+/* The places a Session lists at most (Agent Plus docs/protocol.md, Limits). */
+const PLACES_MAX = 8;
+
 /*
  * A Session for thread `t`. `conv` is what the source made of it (conversationOf), or null when its rollout has not
- * been read; `goal` its goal, or null.
+ * been read; `goal` its goal, or null; `holders` the processes elsewhere holding it open (codex-source holdersOf). A
+ * turn runs in such a place while the conversation runs, since only the holder can write it; a `codex exec` runs one.
  */
-function sessionOf(t, conv, goal) {
+function sessionOf(t, conv, goal, holders = []) {
   const title = (t.kind === 'subagent' && String(t.nickname || '')) || (conv && conv.title) || t.title || '(untitled)';
   const s = {
     sessionId: t.id, title, cwd: t.cwd || '', createdAt: +t.createdMs || 0,
@@ -62,6 +69,10 @@ function sessionOf(t, conv, goal) {
     const left = (Array.isArray(conv.left) ? conv.left : []).map((k) => LEFT_WORDS[k]).filter(Boolean);
     if (left.length) s.hover = left;
   } else Object.assign(s, { activity: 'stopped', running: false });
+  const places = (Array.isArray(holders) ? holders : []).slice(0, PLACES_MAX);
+  if (places.length) {
+    s.elsewhere = places.map((h) => ({ kind: h.kind, label: h.label, detail: (h.detail || []).slice(), running: h.kind === 'exec' || !!(conv && conv.running) }));
+  }
   if (goal && goal.status && goal.status !== 'complete') {
     s.badges = [{ text: GOAL_WORD[goal.status] || 'goal', tooltip: goalText(goal), dim: goal.status !== 'active' }];
     s.actions = ['goal.clear'];
