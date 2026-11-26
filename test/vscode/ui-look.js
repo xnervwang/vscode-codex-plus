@@ -684,8 +684,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         + '"Can you find where the retry delay for the inventory sync is set?", "Why does the nightly export skip archived rows?" and "Add a dry-run flag to the cleanup script". '
         + 'Each row has Codex\'s logo, its title and at the right how long ago it was last active. The conversation just started, whose tab is in front, has a solid stripe at the start of its row '
         + 'and is drawn as the current one, and no other row is. "Can you find where the retry delay for the inventory sync is set?" has a red dot at the top right of its logo, as its work plan asks '
-        + 'the user a question put after the user\'s last message; the other rows have no dot. The three made-up conversations each have a small envelope icon after their titles, '
-        + 'the list\'s mark of a reply not seen in this window. Above them an ACCOUNT & USAGE section holds a Codex block that says Not signed in, since the made-up provider has no account.',
+        + 'the user a question put after the user\'s last message; the other rows have no dot. No row has the list\'s envelope of a reply not seen, the made-up conversations '
+        + 'having been seen. Above them an ACCOUNT & USAGE section holds a Codex block that says Not signed in, since the made-up provider has no account.',
     }, async () => {
       /* The step before left notes.txt in front. */
       if (freshTitle) await tab(freshTitle).click();
@@ -701,7 +701,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     });
     await look('account-not-signed-in', {
       expect: 'The ACCOUNT & USAGE section at the top of Agent Plus\'s session list, expanded: a block headed by Codex\'s logo and the name Codex, and under it one line, '
-        + 'Account at the left and Not signed in at the right. No bars and no token lines, since the made-up provider has no account; nothing is cut off or overlaps.',
+        + 'Account at the left and Not signed in at the right, and no bars, since the made-up provider has no account. Below a thin line, THIS CONVERSATION in small capitals, '
+        + 'the title of the conversation in front and its Tokens. Nothing is cut off or overlaps.',
     }, async () => {
       await toList();
       const said = await until(() => list.evaluate(() => { const a = document.querySelector('.sl-section[data-key="account"]');
