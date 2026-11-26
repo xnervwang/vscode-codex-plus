@@ -408,7 +408,7 @@
         "codexPlus.planBar": {
           "type": "boolean",
           "default": true,
-          "markdownDescription": "With the patch: a line just above the message box with the work plan's current row, the number of open rows and the number of questions waiting for your answer. Clicking it opens the plan in Agent Plus."
+          "markdownDescription": "With the patch: a line just above the message box that counts the work plan's open rows by state and the questions waiting for your answer. Clicking it opens the plan in Agent Plus."
         }
       }
     }

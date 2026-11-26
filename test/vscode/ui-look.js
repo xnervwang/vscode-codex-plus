@@ -803,15 +803,20 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     });
     await closeMap();
     const planBarBox = async (f = codex) => union([await inCodex('[data-codex-extras="plan-bar"]', f), await inCodex('[data-codex-composer-root]', f)]);
-    const PLAN_BAR = 'From the left: a list icon and "Plan" in bold; a short track of three coloured segments, blue for the row doing, orange for the one waiting '
-      + 'and purple for the one to do, of equal length; "3 open"; then "1 Find the retry delay" after a play icon; at the right a yellow-tinted pill with a yellow dot and '
-      + '"1 to decide", and an arrow. ';
+    /* The plan bar's bubbles in frame `f`, as "state count" joined with commas. */
+    const barBubbles = (f = codex) => f.evaluate(() => {
+      const b = document.querySelector('[data-codex-extras="plan-bar"]');
+      return b ? [...b.querySelectorAll('.apb-b')].map((x) => x.getAttribute('data-state') + ' ' + x.textContent.trim()).join() : '';
+    }).catch(() => '');
+    const PLAN_BAR = 'From the left: a list icon and "Plan" in bold; a small blue-tinted bubble with a blue play icon and 1, for the row doing; a purple-tinted bubble '
+      + 'with a purple circle and 1, for the row to do; then empty space; at the right a solid orange pill with a question mark and "1 to decide" in dark letters, and an '
+      + 'arrow. The row waiting for the answer has no bubble of its own: it is the 1 in "1 to decide". ';
     await look('plan-bar', {
       expect: `Just above the message box, as wide as it and 6 px clear of its top edge, the plan bar, one line high with a thin border and rounded corners. ${PLAN_BAR}`
         + 'It covers neither the last lines of the conversation nor the message box: the conversation ends above it. The toolbar inside the message box is unchanged.',
     }, async () => {
-      if (!await until(() => codex.evaluate(() => /3 open/.test((document.querySelector('[data-codex-extras="plan-bar"]') || {}).textContent || '')), 20000, 500)) {
-        tell('the plan bar did not say "3 open" within 20 s');
+      if (!await until(async () => (await barBubbles()) === 'doing 1,todo 1', 20000, 500)) {
+        tell('the plan bar did not show a bubble of 1 doing and one of 1 to do within 20 s');
       }
       await toBottom();
       return planBarBox();
@@ -1226,13 +1231,13 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       });
       await closeMap();
       await look('plan-bar-light', {
-        expect: 'The plan bar above the message box in the Default Light Modern theme, as wide as the box: "Plan" in bold, a track of two equal segments, orange for '
-          + 'the row waiting and purple for the one to do, "2 open", then a gap with no current row, and at the right the '
-          + 'yellow-tinted pill with a yellow dot and "1 to decide", and an arrow. Its background and border are the light theme\'s input colours, and every part is readable.',
-        unchanged: 'The first row of the plan is done by now, so it is no longer counted.',
+        expect: 'The plan bar above the message box in the Default Light Modern theme, as wide as the box: "Plan" in bold, one purple-tinted bubble with a purple '
+          + 'circle and 1, for the row to do, then empty space, and at the right the solid orange pill with a question mark and "1 to decide" in dark letters, and an '
+          + 'arrow. Its background and border are the light theme\'s input colours, and every part is readable.',
+        unchanged: 'The first row of the plan is done by now, so it has no bubble.',
       }, async () => {
-        if (!await until(() => codex.evaluate(() => /2 open/.test((document.querySelector('[data-codex-extras="plan-bar"]') || {}).textContent || '')), 20000, 500)) {
-          tell('the plan bar did not say "2 open" within 20 s');
+        if (!await until(async () => (await barBubbles()) === 'todo 1', 20000, 500)) {
+          tell('the plan bar did not show just a bubble of 1 to do within 20 s');
         }
         return planBarBox();
       });
@@ -1648,8 +1653,9 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       const plan1 = path.join(plans, `${t1.id}.json`);
       await look('plan-bar-sidebar', {
         expect: 'In Codex\'s sidebar on the right, which is narrow, the plan bar of "Why does the nightly export skip archived rows?" just above its message box and as '
-          + 'wide as it, in its compact form: the list icon, "Plan" in bold, "3 open", then a gap, a yellow-tinted pill with a yellow dot and just "1", and the arrow at the '
-          + 'right end. No track and no current row. It fits inside the sidebar and covers nothing of the conversation or of the message box.',
+          + 'wide as it, in its compact form: the list icon with no "Plan" after it, a blue-tinted bubble with a play icon and 1, a purple-tinted bubble with a circle and 1, '
+          + 'then empty space and, at the right end, a solid orange pill with a question mark and just "1". No arrow. It fits inside the sidebar and covers nothing of '
+          + 'the conversation or of the message box.',
       }, async () => {
         fs.writeFileSync(plan1, JSON.stringify({ nodes: [{ title: 'Look at the export logs', state: 'doing', since: iso() },
           { title: 'Choose what to log', state: 'waiting', waitingOn: 'user', question: 'Log every skipped row, or a count?', asked: iso(), since: iso() },
@@ -1658,9 +1664,10 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         if (!side) throw new Error('Codex\'s sidebar no longer shows the conversation');
         const drawn = await until(() => side.evaluate(() => {
           const b = document.querySelector('[data-codex-extras="plan-bar"]');
-          return b && /3 open/.test(b.textContent) && { compact: b.getAttribute('data-compact') === '1', page: innerWidth };
+          const bubbles = b ? [...b.querySelectorAll('.apb-b')].map((x) => x.getAttribute('data-state') + ' ' + x.textContent.trim()).join() : '';
+          return bubbles === 'doing 1,todo 1' && { compact: b.getAttribute('data-compact') === '1', page: innerWidth };
         }), 20000, 500);
-        if (!drawn) tell('the sidebar\'s plan bar did not say "3 open" within 20 s');
+        if (!drawn) tell('the sidebar\'s plan bar did not show a bubble of 1 doing and one of 1 to do within 20 s');
         else if (!drawn.compact) tell(`the sidebar's page is ${drawn.page} px wide, so its plan bar is the full one`);
         /* The pointer rests where the step before clicked the Agent map pill; with the pill gone or shorter now, the meter
            next to it can have moved under the pointer and opened its hover box. It is moved first to an empty spot near the

@@ -357,7 +357,7 @@ async function main() {
       await sleep(400);
     }
     if (want('plan-bar')) {
-      /* The plan bar above the message box; the demo plan's question to the user is its red part. */
+      /* The plan bar above the message box; the demo plan's question to the user is its "to decide" part. */
       await toBottom();
       const bar = conv.locator('[data-codex-extras="plan-bar"]').first();
       const drawn = await until(() => conv.evaluate(() => {

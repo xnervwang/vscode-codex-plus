@@ -53,17 +53,18 @@ module.exports = async ({ eq, root }) => {
     'just above the message box, 6 px clear of it, and as wide as it');
   eq([room(), barStyle()], [true, 1], 'and the box is given 32 px more top margin, the bar\'s height and its gap, so it covers nothing above the box');
   eq(/position:fixed;z-index:25;/.test(b.style.cssText), true, 'it sits on Codex\'s content and under every overlay Codex draws, as the row below the box does');
-  eq([b.getAttribute('data-compact'), b.querySelectorAll('.apb-count')[0].textContent, /3\.2 CLI: budget/.test(b.textContent), b.querySelectorAll('.apb-q').length],
-    ['0', '3 open', true, 0], 'drawn full: the open rows and the current one, and no red part with no question waiting');
+  const bubbles = (e) => Array.from(e.querySelectorAll('.apb-b')).map((x) => x.getAttribute('data-state') + ' ' + x.textContent);
+  eq([b.getAttribute('data-compact'), b.querySelectorAll('.apb-name').length, bubbles(b), b.querySelectorAll('.apb-q').length],
+    ['0', 1, ['doing 1', 'todo 2'], 0], 'drawn full: Plan, a bubble for each state with open rows, and no "to decide" with no question waiting');
 
   p.send(bar({ summary: Object.assign({}, SUMMARY, { questions: 2 }) }));
   const red = drawn().querySelectorAll('.apb-q')[0];
-  eq(red && red.textContent, '2 to decide', 'questions waiting for the user add the red part');
+  eq(red && red.textContent, '2 to decide', 'questions waiting for the user add "to decide"');
   p.posted.length = 0;
   click(red);
   click(drawn());
   eq(p.posted.filter((m) => m.kind === 'planBar'), [{ type: 'codex-extras', kind: 'planBar', action: 'answer' }, { type: 'codex-extras', kind: 'planBar', action: 'open' }],
-    'a click on the red part asks for the Answer view and one on the bar for the plan, sending only which part was clicked');
+    'a click on "to decide" asks for the Answer view and one on the bar for the plan, sending only which part was clicked');
 
   p.box.rect = Object.assign({}, BOX, { left: 4, width: 300 });
   p.resize();
@@ -85,8 +86,8 @@ module.exports = async ({ eq, root }) => {
   p.resize();
 
   p.send(bar({ summary: { total: 0, done: 0, counts: {}, current: null, allDone: true, questions: 0, open: [] } }));
-  eq([!!drawn(), /All rows done/.test(drawn().textContent), drawn().querySelectorAll('.apb-count')[0].textContent],
-    [true, true, ''], 'a plan with no open row says so, with no count');
+  eq([!!drawn(), /All rows done/.test(drawn().textContent), bubbles(drawn())],
+    [true, true, []], 'a plan with no open row says so, with no bubble');
 
   p.send(bar({ summary: null }));
   eq([drawn(), room(), barStyle()], [null, false, 0], 'a conversation with no plan has no bar, no room for one and no style of it left');

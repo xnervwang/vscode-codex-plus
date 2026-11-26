@@ -1,5 +1,5 @@
 {
-  "core": "fa881b2bb694f4c8835cd5e97bc3ca36e9428c2d",
+  "core": "a6d845bd9801949e5c828ec303e27fecf92815bd",
   "files": [
     {
       "path": "build/sync-shared.js",
@@ -94,7 +94,7 @@
     {
       "path": "src/page/plan-bar.js",
       "from": "shared/page/plan-bar.js",
-      "sha256": "b754bf73392094d6df25f9f209cac2acba72351bb7d588169f94206f190d57b0"
+      "sha256": "498558b2e522ce8e7a7d86e09f5c7697cdcd80d64ca518e59c19dc55479649ca"
     },
     {
       "path": "src/python-runtime.js",
@@ -154,7 +154,7 @@
     {
       "path": "codex-plugin/agent-work-plan/hooks/nudge-work-plan.py",
       "from": "shared/plugin/hooks/nudge-work-plan.py",
-      "sha256": "6d9894abb935de6f47c0cd69139f0b5a4c7fbf09a8bbc96ae4eff92ed6f4b330"
+      "sha256": "b0538117e89d7068c27b90813919da8cfce4a01d1cf54e60c9663d040122e394"
     },
     {
       "path": "codex-plugin/agent-work-plan/hooks/remind-work-plan.py",

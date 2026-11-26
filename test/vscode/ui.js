@@ -1597,14 +1597,15 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
          the steps after this one do not expect. */
       const asked = new Date(Date.now() - 3 * 86400e3).toISOString().replace(/\.\d+Z$/, '+00:00');
       const writeRows = (thread, nodes) => { fs.mkdirSync(PLANS, { recursive: true }); fs.writeFileSync(path.join(PLANS, `${thread}.json`), JSON.stringify({ nodes })); };
-      /* Reads the bar in frame `f`: the text of each of its parts, and where it sits relative to the message box. */
+      /* Reads the bar in frame `f`: its bubbles as "state count", "to decide", whether "Plan" is drawn, and where it sits
+         relative to the message box. */
       const barIn = (f) => (f ? f.evaluate(() => {
         const b = document.querySelector('[data-codex-extras="plan-bar"]');
         if (!b || b.style.display === 'none' || !b.getClientRects().length) return null;
         const t = (sel) => { const e = b.querySelector(sel); return e ? e.textContent.trim() : null; };
         const r = b.getBoundingClientRect(), x = (document.querySelector('[data-codex-composer-root]') || b).getBoundingClientRect();
-        return { count: t('.apb-count'), row: t('.apb-row'), red: t('.apb-q'), compact: b.getAttribute('data-compact') === '1',
-          segments: [...b.querySelectorAll('.apb-seg')].map((s) => s.getAttribute('data-state')), page: innerWidth,
+        return { bubbles: [...b.querySelectorAll('.apb-b')].map((s) => s.getAttribute('data-state') + ' ' + s.textContent.trim()).join(), red: t('.apb-q'),
+          name: !!b.querySelector('.apb-name'), compact: b.getAttribute('data-compact') === '1', page: innerWidth,
           at: { left: Math.round(r.left), top: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.height) },
           box: { left: Math.round(x.left), top: Math.round(x.top), width: Math.round(x.width) } };
       }).catch(() => null) : null);
@@ -1638,10 +1639,12 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
         { title: 'Decide the default delay', state: 'waiting', waitingOn: 'user', question: QUESTION, asked, since: asked },
         { title: 'Update the docs', state: 'todo', since }];
 
+      /* The row waiting for the user's answer counts in "to decide" only, not in a waiting bubble. */
+      const ALL = 'doing 2,todo 1';
       writeRows(id, ROWS);
-      const full = await barSays(codex, (b) => b.count === '4 open' && /2\.1 Read the sync job/.test(b.row || '') && b.red === '1 to decide');
-      check(!!full && !full.compact && full.segments.join() === 'doing,waiting,todo',
-        'a plan with rows doing, waiting on the user and to do draws the bar: 4 open, the deepest doing row as the current one, and "1 to decide" in red',
+      const full = await barSays(codex, (b) => b.bubbles === ALL && b.red === '1 to decide');
+      check(!!full && !full.compact && full.name,
+        'a plan with rows doing, waiting on the user and to do draws the bar: Plan, a bubble of 2 doing and one of 1 to do, and the row waiting in "1 to decide"',
         full || await barIn(codex));
       check(placed(full), 'the bar sits just above the message box, 6 px clear of it, and is as wide as it', full);
       /* Where even the space between the top of the conversation and the bar is too short for the rail, it stays below
@@ -1705,16 +1708,16 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
       await shot('plan-bar');
 
       writeRows(id, [...ROWS, { title: 'Write the release note', state: 'todo', since }]);
-      const more = await barSays(codex, (b) => b.count === '5 open');
-      check(!!more, 'a row added to the plan shows at once as one more open', more || await barIn(codex));
+      const more = await barSays(codex, (b) => b.bubbles === 'doing 2,todo 2');
+      check(!!more, 'a row added to the plan shows at once as one more in its state\'s bubble', more || await barIn(codex));
       writeRows(id, [ROWS[0], { title: 'Change the retry delay', state: 'done', since, closed: since, children: [{ title: 'Read the sync job', state: 'done', since, closed: since }] },
         ROWS[2], ROWS[3], { title: 'Write the release note', state: 'todo', since }]);
-      const fewer = await barSays(codex, (b) => b.count === '3 open' && !b.row && b.red === '1 to decide');
-      check(!!fewer && fewer.segments.join() === 'waiting,todo', 'rows closed leave fewer open, and with none doing the bar shows no current row', fewer || await barIn(codex));
+      const fewer = await barSays(codex, (b) => b.bubbles === 'todo 2' && b.red === '1 to decide');
+      check(!!fewer, 'rows closed leave fewer open, and with none doing the bar has no doing bubble', fewer || await barIn(codex));
       writeRows(id, ROWS);
-      await barSays(codex, (b) => b.count === '4 open');
+      await barSays(codex, (b) => b.bubbles === ALL);
 
-      /* A click on the bar shows the plan in Agent Plus's Work plan view; one on the red part opens the question. */
+      /* A click on the bar shows the plan in Agent Plus's Work plan view; one on "to decide" opens the question. */
       await showList();
       await codex.locator('[data-codex-extras="plan-bar"] .apb-name').first().click({ timeout: 10000 });
       const shown = await until(async () => { const r = await planViewRows(); return r && r.some((x) => x.includes('Read the sync job')) && r; }, 15000, 500);
@@ -1723,7 +1726,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
       await codex.locator('[data-codex-extras="plan-bar"] .apb-q').first().click({ timeout: 10000 });
       const answer = await frameWhere((q) => { const e = document.getElementById('question'); return !!e && e.textContent.includes(q); }, 20000, QUESTION);
       const said = answer && await answer.evaluate(() => ({ row: (document.getElementById('row') || {}).textContent || '', question: document.getElementById('question').textContent }));
-      check(!!said && /Decide the default delay/.test(said.row), 'a click on its red part opens the Answer view at the question, with its row', said);
+      check(!!said && /Decide the default delay/.test(said.row), 'a click on its "to decide" opens the Answer view at the question, with its row', said);
       await shot('plan-bar-opened-answer');
       await exec('workbench.action.closePanel');
       await showList();
@@ -1734,12 +1737,12 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
       check(!!await noBar(codex), 'a conversation whose plan is gone has no bar, and the message box no room for one', await barIn(codex));
       await endInView(codex, 'with the plan bar gone');
       writeRows(id, ROWS);
-      check(!!await barSays(codex, (b) => b.count === '4 open'), 'a plan written again brings the bar back', await barIn(codex));
+      check(!!await barSays(codex, (b) => b.bubbles === ALL), 'a plan written again brings the bar back', await barIn(codex));
       await endInView(codex, 'with the plan bar back');
       await setting('planBar', false);
       check(!!await noBar(codex, 10000), 'codexPlus.planBar turned off takes the bar away', await barIn(codex));
       await setting('planBar', undefined);
-      const back = await barSays(codex, (b) => b.count === '4 open', 10000);
+      const back = await barSays(codex, (b) => b.bubbles === ALL, 10000);
       check(placed(back), 'and turned on again it is back, in its place', back || await barIn(codex));
       await endInView(codex, 'with codexPlus.planBar turned off and on');
       await shot('plan-bar-back');
@@ -3592,7 +3595,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
         const sidePage = await frameWhere((want) => innerWidth < 800 && document.body.innerText.includes(want) && !!document.querySelector('[data-codex-composer-root]'), 30000, t.title);
         if (!sidePage) check(false, 'Codex\'s sidebar still shows the conversation for its plan bar to be checked', await narrowPages());
         else {
-          let narrow = await barSays(sidePage, (b) => b.count === '3 open', 30000);
+          const SIDE = 'doing 1,todo 1';
+          let narrow = await barSays(sidePage, (b) => b.bubbles === SIDE, 30000);
           if (narrow && !narrow.compact) {
             /* The sidebar is wider than the compact width. */
             const edge = await page.evaluate(() => {
@@ -3609,21 +3613,23 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
             }
             narrow = await barSays(sidePage, (b) => b.compact, 10000) || await barIn(sidePage);
           }
-          check(!!narrow && narrow.compact && narrow.count === '3 open' && narrow.red === '1' && !narrow.row && placed(narrow),
-            'in Codex\'s sidebar, narrower than 400 px, the bar is compact: the open count and the number of questions, as wide as the box and just above it', narrow || await barIn(sidePage));
+          check(!!narrow && narrow.compact && narrow.bubbles === SIDE && narrow.red === '1' && !narrow.name && placed(narrow),
+            'in Codex\'s sidebar, narrower than 400 px, the bar is compact: no Plan, the bubbles, and only the number of questions, as wide as the box and just above it',
+            narrow || await barIn(sidePage));
           /* The compact bar takes the same room as the full one. */
           fs.rmSync(path.join(PLANS, `${t.id}.json`), { force: true });
           if (await noBar(sidePage)) {
             await railToEnd(sidePage, false, 'in Codex\'s sidebar with its plan gone');
             writeRows(t.id, SIDE_ROWS);
-            if (await barSays(sidePage, (b) => b.compact && b.count === '3 open', 20000)) await endInView(sidePage, 'in Codex\'s sidebar with the compact bar drawn again');
+            if (await barSays(sidePage, (b) => b.compact && b.bubbles === SIDE, 20000)) await endInView(sidePage, 'in Codex\'s sidebar with the compact bar drawn again');
             else check(false, 'in Codex\'s sidebar the plan written again draws the compact bar again', await barIn(sidePage));
           } else check(false, 'in Codex\'s sidebar the plan taken away takes the compact bar away', await barIn(sidePage));
           await shot('plan-bar-sidebar');
           await tabNamed(title).click();
           await until(async () => (await frontPage()) === codex, 10000, 300);
           await showList();
-          await sidePage.locator('[data-codex-extras="plan-bar"] .apb-name').first().click({ timeout: 10000 });
+          /* The compact bar has no Plan; its list icon is the bar's first part. */
+          await sidePage.locator('[data-codex-extras="plan-bar"] > .apb-icon').first().click({ timeout: 10000 });
           const theirs = await until(async () => { const r = await planViewRows(); return r && r.some((x) => x.includes('Look at the export logs')) && r; }, 15000, 500);
           check(!!theirs && !theirs.some((x) => x.includes(planTitle(threads[0].id))),
             'a click on the sidebar\'s bar shows that conversation\'s plan in the Work plan view, not the plan of the tab in front', theirs || await planViewRows());
