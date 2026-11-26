@@ -4,8 +4,7 @@
 
 'use strict';
 /*
- * Codex's part of Agent Plus's session list, its pure parts (src/session-list-source.js): a thread as a Session, with
- * its kind, parent, branch, what the source made of it and its goal; the pages; what the one import hands over; and the
+ * The pure parts of src/session-list-source.js: turning a thread into a Session, paging, the one import and the
  * Account & usage part.
  */
 module.exports = async ({ eq }) => {

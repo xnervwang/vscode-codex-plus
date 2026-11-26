@@ -1,6 +1,6 @@
 # Codex Plus
 
-Codex Plus is a VS Code extension that adds a [work plan](#work-plan) for each conversation to the views of Agent Plus (its companion extension), Codex's conversations to [Agent Plus's session list](#the-session-list), and [times](#times-and-turn-figures), a [rail of your own messages](#the-rail-of-your-messages), a [context meter](#the-context-meter), [chimes](#chimes-and-waiting-for-your-permission) and [tab dots](#tabs) to the conversation page, message box and tabs in Codex, OpenAI's VS Code extension (`openai.chatgpt`).
+Codex Plus is a VS Code extension for Codex, OpenAI's VS Code extension (extension ID `openai.chatgpt`). It lists your Codex conversations in [Agent Plus's session list](#the-session-list) and adds a [work plan](#work-plan) for each conversation to Agent Plus's Work plan view. Agent Plus is Codex Plus's companion extension. In Codex, the conversation page shows [times](#times-and-turn-figures) and a [rail of your own messages](#the-rail-of-your-messages). The message box gets a [context meter](#the-context-meter). Codex Plus also adds [chimes](#chimes-and-waiting-for-your-permission) and [tab dots](#tabs).
 
 ![A Codex conversation beside its work plan in Agent Plus](images/codex-plus-work-plan.png)
 
@@ -8,7 +8,7 @@ Codex Plus is a VS Code extension that adds a [work plan](#work-plan) for each c
 
 1. Install Codex Plus. VS Code installs Agent Plus along with it. To install from `.vsix` files instead, see [Install](docs/install.md#install).
 2. When Codex Plus starts, it installs the work plan plugin into Codex and edits Codex's installed files without asking. This README calls the file edit "the patch". When Codex asks whether to trust the plugin's hooks (scripts Codex runs at set points, such as when you send a message or when Codex has finished working on it), trust them. You can also do this later in Codex: Settings > Hooks. When Codex Plus offers to reload the window, reload it.
-3. After the reload, your Codex conversations appear in Agent Plus's session list, in its Conversations sidebar. In a Codex conversation, you see the time above every message, a rail of your own messages at the right edge, and an information button, a note button and a context meter in the message box's toolbar. A coloured dot appears on a Codex tab's logo while its conversation is working, has a reply you have not read, or waits for your permission. Your Codex conversations also appear in Agent Plus's Work plan view and in its Conversations view in the panel.
+3. After the reload, you can find your Codex conversations in three places in Agent Plus: the session list in the Conversations sidebar, the Work plan view, and the Conversations view in the panel. In a Codex conversation, you see the time above every message, a rail of your own messages at the right edge, and an information button, a note button and a context meter in the message box's toolbar. A coloured dot appears on a Codex tab's logo while its conversation is working, has a reply you have not read, or waits for your permission.
 4. To turn things off, `Codex Plus: Turn Off` stops drawing what Codex Plus adds to Codex's page and tabs. Agent Plus's token mode (`agentPlus.tokenMode`) decides which features may add text to what Codex sends the model. Set it to Interface features to stop Codex Plus adding anything to what Codex sends the model. `Codex Plus: Remove the Patch from Codex` puts Codex's own files back. All three are in [Turning it all off](docs/install.md#turning-it-all-off).
 
 `Codex Plus: Show Status` shows what is installed, what is patched and what is registered with Agent Plus.
@@ -47,9 +47,9 @@ When Codex runs on another machine, the work plan plugin tells Codex [your time 
 
 ### The session list
 
-Open Conversations in the activity bar to find this workspace's Codex conversations alongside conversations from your other installed agents. [Agent Plus](https://github.com/xnervwang/vscode-agent-plus) is installed with Codex Plus and provides the shared list, which Claude Code Plus and OpenCode Agent Plus also use. It replaces the list that used to be in the Codex Plus sidebar.
+Open Conversations in the activity bar to find this workspace's Codex conversations alongside conversations from your other installed agents. [Agent Plus](https://github.com/xnervwang/vscode-agent-plus) is installed with Codex Plus and provides the shared list, which Claude Code Plus and OpenCode Agent Plus also use. This list replaces the one that used to be in the Codex Plus sidebar.
 
-Agent Plus manages groups, pins, title colours, read marks, Recently closed, search and the agent filter. Its `agentPlus.sessions.*` settings cover features such as automatic archiving and deletion after a set number of days. See [The session list](docs/session-list.md) for Codex status dots, unread replies, goals and conversation actions.
+Agent Plus manages groups, pins, title colours, read and unread marks, Recently closed, search and the agent filter. Its `agentPlus.sessions.*` settings cover features such as automatic archiving and deletion after a set number of days. See [The session list](docs/session-list.md) for Codex status dots, unread replies, goals and conversation actions.
 
 ### Tabs
 

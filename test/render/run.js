@@ -40,7 +40,7 @@ if (found.missing.length) {
   process.exit(0);
 }
 /* --only <name>[,<name>] runs those scenes alone: conversation, narrow, wide, stamps (stamps-300 and stamps-200), rail (rail-wide,
-   rail-narrow and rail-odd), agentmap (and agentmap-narrow), approval, background, compact, chime, long, sessions. */
+   rail-narrow and rail-odd), agentmap (and agentmap-narrow), approval, background, compact, chime, long. */
 const ONLY = arg('--only') ? arg('--only').split(',') : null;
 const want = (name) => !ONLY || ONLY.includes(name);
 const OUT = path.resolve(arg('--out') || fs.mkdtempSync(path.join(os.tmpdir(), 'codex-plus-render-')));

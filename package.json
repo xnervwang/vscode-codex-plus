@@ -252,7 +252,7 @@
           "type": "integer",
           "default": 30,
           "minimum": 0,
-          "markdownDescription": "Delete conversations across all workspaces once they have been archived in Codex for at least this many days, counted from when Codex archived them. Set to 0 to turn off automatic deletion. Deletion removes the same logs and saved data as **Delete** in the Agent Plus session list.\n\nOne VS Code window checks once a day without asking and lists each deletion in the **Codex Plus** output channel. It leaves a conversation for the next day if it is open or running in this window, open in another VS Code window or held open by another Codex process. In a window where the Agent Plus session list handles archiving and deletion, #agentPlus.sessions.deleteAfterDays# applies instead."
+          "markdownDescription": "Across all workspaces, delete conversations once at least this many days have passed since Codex archived them. Set to 0 to turn off automatic deletion. Deletion removes the same logs and saved data as **Delete** in the Agent Plus session list.\n\nOne VS Code window checks once a day without asking and lists each deletion in the **Codex Plus** output channel. It skips a conversation, and checks it again the next day, if the conversation is open in this or another VS Code window, is running in this window, or is held open by another Codex process such as Codex's terminal interface or a `codex exec` run. In a window where the Agent Plus session list handles archiving and deletion, #agentPlus.sessions.deleteAfterDays# applies instead."
         },
         "codexPlus.reopenClosedSessionShortcut": {
           "type": "boolean",

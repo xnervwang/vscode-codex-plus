@@ -359,14 +359,14 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
 
   /* ── Agent Plus's session list, which lists Codex's conversations from what this extension hands it ── */
   let list = null;
-  /* A row's data-key: the source's id and the conversation's (Agent Plus's keyOf). */
+  /* A row's data-key, as Agent Plus's keyOf makes it. */
   const slKey = (id) => JSON.stringify(['codex', id]);
   const ROW = (id) => `.sl-section:not([data-key="closed"]) .sl-row[data-key='${slKey(id)}']`;
   const row = (id) => list.locator(ROW(id)).first();
   const inList = (sel) => boxIn(list, sel);
   const rowBox = (id) => inList(ROW(id));
   const menuBox = () => inList('.sl-ctx');
-  /* What `id`'s row shows: its dot, its stripe, its title, its badges and whether it has the unread mark. */
+  /* What `id`'s row shows: dot, stripe, title, badges and the unread mark. */
   const slRow = (id) => (list ? list.evaluate((key) => {
     const r = [...document.querySelectorAll('.sl-section:not([data-key="closed"]) .sl-row')].find((x) => x.dataset.key === key);
     return r ? { dot: r.dataset.dot, stripe: r.dataset.stripe, title: (r.querySelector('.sl-title') || {}).textContent || '', unread: !!r.querySelector('.sl-unread'),
@@ -399,12 +399,11 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     if (!await until(() => list.evaluate(() => !!document.querySelector('.sl-ctx')), 5000, 100)) throw new Error('no menu opened on the right-click');
     await still(list.locator('.sl-ctx').first());
   };
-  /* An item of the menu, or of its submenu, labelled `label` and nothing more: Archive is not Unarchive. */
+  /* An item of the menu, or of its submenu, labelled `label`: Archive is not Unarchive. */
   const ctxItem = (label, sub = false) => list.locator(sub ? '.sl-ctx-sub .sl-ctx-item' : '.sl-ctx:not(.sl-ctx-sub) .sl-ctx-item')
     .filter({ hasText: new RegExp(`^\\s*${label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*[›✓]?\\s*$`) }).first();
-  /* Right-clicks `target` and clicks labels[0], or that item's submenu item labels[1], the submenu opened with a click
-     on labels[0] as in a narrow side bar. The page closes its menu when another webview takes the focus, so the
-     right-click is tried again when no menu opened or the click on its item missed, as in ui.js. */
+  /* The page closes its menu when another webview takes the focus, so the right-click is tried again when no menu
+     opened or the click on its item missed, as in ui.js. */
   const pick = async (target, labels) => {
     let last = '';
     for (let attempt = 1; attempt <= 3; attempt++) {
@@ -853,7 +852,6 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     await until(() => codex.evaluate(() => !!document.querySelector('.codex-extras-rail')), 15000, 500);
 
     /* ═══ a turn: running, unread, read ═══ */
-    /* The dot of the conversation's row in Agent Plus's session list. */
     const sideRow = async () => ((await slRow(t0.id)) || {}).dot || '';
     const tabAndRow = async () => union([await tab(title).boundingBox().catch(() => null), await rowBox(t0.id)]);
     await look('turn-running', {
@@ -969,7 +967,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       if (!await until(async () => (await labelOf(kept)) === `${kept} ${ENVELOPE}`, 20000, 500)) throw new Error(`the tab read ${JSON.stringify(await labelOf(kept))}`);
       await showList();
       await until(async () => ((await slRow(t0.id)) || {}).title === kept, 15000, 500);
-      /* The side bar, widened in the step before, goes back to 420 px, which leaves the editor room for the whole title on its tab. */
+      /* At 420 px the editor has room for the whole title on its tab. */
       await sideTo(420);
       await away();
       await sleep(800);
@@ -1280,7 +1278,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
 
     /* ═══ links to other conversations in a reply ═══ */
     {
-      /* Three ways of naming one other conversation, t1. */
+      /* Three ways a reply can name the conversation t1. */
       const reply = `That was 「${t1.title}」, whose thread ${t1.id} has the details.\n\nNext time, open ${t1.title} first.`;
       const links = () => codex.evaluate(() => document.querySelectorAll('[data-codex-extras="convo-link"]').length).catch(() => 0);
       await look('conversation-links', {
@@ -1364,7 +1362,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     });
 
     /* ═══ a goal ═══ */
-    /* The goal badge on the conversation's row in Agent Plus's list (GOAL_WORD in src/session-list-source.js), '' for none. */
+    /* The goal badge on the conversation's row (GOAL_WORD in src/session-list-source.js), '' for none. */
     const goalOf = async () => ((await slRow(t0.id)) || { badges: [] }).badges.find((b) => /^goal/.test(b)) || '';
     await look('goal-paused', {
       expect: 'With a paused goal set on the conversation, its row in Agent Plus\'s session list shows a dimmed "goal paused" badge after the title, and its menu offers Codex\'s own "Resume Goal" and "Clear Goal".',

@@ -4,8 +4,9 @@
 
 'use strict';
 /*
- * Which steps of the window test a run takes (test/vscode/lib/steps.js, ui.js stepsToRun): a regular expression of step
- * names or a shard, each with the steps the picked ones rely on, and the tables ui.js keeps for it naming steps it has.
+ * Which steps of the window test a run takes (test/vscode/lib/steps.js, ui.js stepsToRun), picked by a regular
+ * expression of step names or by a shard, with the steps they rely on; and that every step named in ui.js's tables of
+ * steps exists.
  */
 const path = require('path');
 

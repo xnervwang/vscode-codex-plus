@@ -4,9 +4,10 @@
 
 'use strict';
 /*
- * Where else a conversation is open, from the processes holding Codex's writer lock on it (src/writer-locks.js): the
- * held locks /proc/locks lists, what each holder is (another VS Code window's app-server, a terminal, a codex exec),
- * and the source leaving out this window's own app-server.
+ * Where else a conversation is open, from the processes holding Codex's writer lock on it (src/writer-locks.js). The
+ * test reads the held locks from /proc/locks, tells what kind of process each holder is (another VS Code window's
+ * app-server, a terminal, a codex exec), and checks that the source leaves out this window's own app-server, a process
+ * under this extension host.
  *
  * /proc is made up for the test; the lock files are real, so that their device and inode are the ones /proc/locks
  * would give.
@@ -39,11 +40,9 @@ module.exports = async ({ bad, eq, note, tmp }) => {
       'a write lock held is listed under its device and inode, and one waited for, a read lock, or one with no process is not');
   });
 
-  /* The made-up /proc gives a process's folder and terminal as symbolic links, which a test on Windows may not make;
-     no Windows has /proc anyway. */
   if (process.platform === 'win32') { note('holders of the writer locks: a made-up /proc needs symbolic links, and Windows has no /proc'); return; }
 
-  /* A made-up /proc: stat, cmdline, environ, cwd and the terminal on fd 0 for each process. */
+  /* Each made-up process has stat, cmdline, environ, cwd and its terminal on fd 0. */
   const procDir = tmp('proc');
   const put = (pid, { comm, ppid = 1, start = 100, argv, env = {}, cwd = '', tty = '' }) => {
     const d = path.join(procDir, String(pid));
@@ -106,7 +105,7 @@ module.exports = async ({ bad, eq, note, tmp }) => {
     eq(left.scan({ proc: procDir, sessionsDir }).holders, [], 'and one given none lists nobody');
   });
 
-  /* The source: this window's own app-server is a process under this extension host, and is left out. */
+  /* ── the source ── */
   await section('the source', async () => {
     const { vscode } = fake.create();
     fake.install(vscode);

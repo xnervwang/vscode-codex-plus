@@ -7,7 +7,8 @@
  * Deleting for Agent Plus's session list (runSessionAction 'delete'). Agent Plus asks the user and lets only archived
  * conversations through; this side looks again when asked and never deletes one open or running here, open in another
  * VS Code window, or whose sub-agent is, since Codex deletes a conversation's sub-agents with it. What Codex Plus kept
- * for a deleted conversation goes too: its plan and side files, its title colour, its row in what this window closed.
+ * for a deleted conversation goes too: its plan and side files, its title colour, its row in this window's recently
+ * closed tabs.
  */
 const cp = require('child_process');
 const fs = require('fs');

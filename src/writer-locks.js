@@ -6,17 +6,18 @@
 /*
  * Which Codex process has each conversation open, from Codex's own writer locks. A Codex process that loads a
  * conversation (an editor's app-server, the terminal interface, `codex exec`) takes an exclusive lock on
- * CODEX_HOME/thread-writer-locks/<thread id>.lock and keeps it while the conversation stays loaded, idle or not. An
- * app-server lets go up to a minute after its page closes the conversation. The file stays behind once nobody holds
- * it, so only a lock held now counts.
+ * CODEX_HOME/thread-writer-locks/<thread id>.lock (CODEX_HOME is Codex's home folder, and the thread id the
+ * conversation's) and keeps it while the conversation stays loaded, idle or not. An app-server lets go up to a minute
+ * after the conversation is closed in the editor. The file stays behind once nobody holds the lock, so only a lock held
+ * now counts.
  *
  * Linux lists every lock in /proc/locks with the process that took it and the device and inode of the file. Reading
- * that takes no lock, so it cannot get in the way of a Codex process opening a conversation. Without /proc/locks
+ * /proc/locks takes no lock, so it cannot get in the way of a Codex process opening a conversation. Without /proc/locks
  * nothing is found.
  *
- * A holder is described by where it sits: under the extension host of an editor of the VS Code family (an app-server
- * of the Codex extension), a `codex exec`, or a codex program reading a terminal. Its ancestors are kept, so that each
- * window can leave out the app-server of its own Codex.
+ * A holder is described by where it sits: under the extension host of a VS Code-family editor (an app-server of the
+ * Codex extension), a `codex exec`, a codex program reading a terminal, or none of these. Its ancestors are kept, so
+ * that each window can leave out the app-server of its own Codex.
  */
 const fs = require('fs');
 const os = require('os');
@@ -24,7 +25,7 @@ const path = require('path');
 
 const LOCK_DIR = 'thread-writer-locks';
 const LOCK_FILE = /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.lock$/i;
-/* Ancestors walked at most, against a loop in a parent chain read while processes come and go. */
+/* A parent chain read while processes come and go can loop, so the walk stops after this many ancestors. */
 const MAX_DEPTH = 64;
 /* The protocol's limits for one place (Agent Plus docs/protocol.md, Limits). */
 const LABEL_MAX = 80;
@@ -36,8 +37,8 @@ const SERVER_DIR = /[\\/]\.(?:vscode|vscode-insiders|vscodium|cursor|windsurf|ki
 const readLink = (file) => { try { return fs.readlinkSync(file); } catch (_) { return ''; } };
 const read = (file, enc) => { try { return fs.readFileSync(file, enc); } catch (_) { return null; } };
 
-/* `<major>:<minor>:<inode>` -> pids, for the write locks a /proc/locks text says are held. A line for a process waiting
-   on a lock has `->` after its number and is passed over; the device numbers are hex. */
+/* `<major>:<minor>:<inode>` -> pids, for each write lock held in a /proc/locks text. A line for a process waiting on a
+   lock has `->` after its number and is passed over; the device numbers are hex. */
 function heldLocks(text) {
   const out = new Map();
   for (const line of String(text || '').split('\n')) {
@@ -53,7 +54,7 @@ function heldLocks(text) {
   return out;
 }
 
-/* The key heldLocks uses for `file`, from its device number as Linux encodes it, or ''. */
+/* The heldLocks key for `file`, with its device number encoded as Linux writes it, or '' when it cannot be read. */
 function keyOf(file) {
   let st;
   try { st = fs.statSync(file, { bigint: true }); } catch (_) { return ''; }
@@ -73,7 +74,7 @@ function ancestorsOf(pid, all) {
 const isEditor = (argv, comm) => argv.some((a) => a === '--type=extensionHost') || SERVER_DIR.test(argv[0] || '')
   || EDITORS.has(path.basename(argv[0] || '').toLowerCase()) || EDITORS.has(String(comm || '').toLowerCase());
 
-/* `folder` with the home folder written as ~, by its path or by the real path of a home that is a symbolic link. */
+/* `folder` written with ~ for the home folder, whether it is given through home's symbolic link or its real path. */
 function tilde(folder) {
   const home = os.homedir();
   let real = home;
@@ -111,8 +112,9 @@ function placeOf(pid, { all, proc, argvOf, isExec, envOf }) {
 }
 
 /*
- * The conversations of `codexHome` a process holds open now, as [{ thread, pid, start, kind, label, detail, ancestors }],
- * thread in lower case. `all` is src/left-running.js processes() of `proc`; `argvOf` reads a command line.
+ * Lists the conversations of `codexHome` that a process holds open now, one { thread, pid, start, kind, label, detail,
+ * ancestors } each, thread in lower case. `all` is src/left-running.js processes() of `proc`; `argvOf` reads a command
+ * line.
  */
 function holders({ codexHome, proc = '/proc', all, argvOf, isExec }) {
   if (!codexHome || !all || !all.size) return [];
@@ -146,7 +148,7 @@ function holders({ codexHome, proc = '/proc', all, argvOf, isExec }) {
 }
 
 const KINDS = new Set(['vscode', 'terminal', 'exec', 'other']);
-/* Whether `e` is a holder as holders() writes one, for a scan another window shared. */
+/* Checks an entry of a scan another window shared against the shape holders() writes. */
 const isHolder = (e) => !!e && /^[0-9a-f-]{36}$/.test(e.thread) && Number.isInteger(e.pid) && e.pid > 0 && typeof e.start === 'string'
   && KINDS.has(e.kind) && typeof e.label === 'string' && Array.isArray(e.detail) && e.detail.every((d) => typeof d === 'string')
   && Array.isArray(e.ancestors) && e.ancestors.every((p) => Number.isInteger(p));

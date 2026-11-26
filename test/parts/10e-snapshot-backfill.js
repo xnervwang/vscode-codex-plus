@@ -5,8 +5,8 @@
 'use strict';
 /*
  * A snapshot says whether Codex had filled its state database from the rollouts (src/codex-worker.js snapshot), and it
- * reads that before the threads: read after them, a pass finishing between the two reads would pair threads not yet
- * marked archived with its "complete", and the session list's one import would take them as unarchived.
+ * reads that before the threads. The other way round, a pass that finished between the two reads would make threads not
+ * yet marked archived look complete, and the session list's one import would take them as unarchived.
  */
 const fixture = require('../fixture');
 

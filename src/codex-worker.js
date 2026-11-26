@@ -152,7 +152,8 @@ const ops = {
     return { times: r ? r.times : null, compactions: r ? r.compactions : [], turns: r ? r.turns : {}, turnTimes: r ? r.turnTimes : {} };
   },
   /* What the recent conversations and sub-agents still have running after their turn ended, and which processes hold
-     conversations open (src/left-running.js). `share` is the folder the windows share a scan through, '' for none. */
+     conversations open (src/left-running.js). `share` names the folder where the windows share one scan, or is ''
+     when there is none. */
   leftRunning({ home: h, proc = '/proc', sessionsDir, share = '' }) {
     const threads = recentRollouts(at(h));
     return require('./left-running').leftRunning({ threads, proc, sessionsDir, cache: launchCache, environs, share, codexHome: at(h) });

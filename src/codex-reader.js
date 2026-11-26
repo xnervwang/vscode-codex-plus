@@ -140,7 +140,7 @@ class CodexReader {
   }
 
   threads() { return this.snap ? this.snap.threads : null; }
-  /* Whether Codex had filled its state database from the rollouts when the snapshot was read (codex-files backfillDone). */
+  /* codex-files backfillDone() as it was when the snapshot was read. */
   backfilled() { return !!(this.snap && this.snap.backfilled); }
   thread(id) { return (this.snap && this.snap.byId.get(id)) || null; }
   unread() { return this.snap ? this.snap.unread : new Map(); }

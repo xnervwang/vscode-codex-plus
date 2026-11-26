@@ -80,7 +80,7 @@ function createSeen(state = memoryState(), { now = () => Date.now(), setTimer = 
       pending.set(id, now());
       if (!timer) timer = setTimer(write, WRITE_MS);
     },
-    /* When the user last had `id` in front of them, or the start of the record for one never looked at here. */
+    /* The last time `id` was in front of the user, or the start of the record if it never was here. */
     seenAt(id) { return id ? at(id) : 0; },
     /* Whether a turn that ended at `endedMs` ended after the user last looked at `id`, or the user marked it unread. */
     unread(id, endedMs) {

@@ -708,7 +708,8 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
         planAsked: planAskedOf(id) });
     },
     leftOf: (id) => (id ? leftOf(id) : []),
-    /* When the user last had `id` in front of them in any window (src/seen.js), for the session list's read marks. */
+    /* For the session list's read marks: when the user last had `id` in front of them in any window (src/seen.js
+       seenAt). */
     viewedAt: (id) => { try { return id && typeof seen.seenAt === 'function' ? seen.seenAt(id) || 0 : 0; } catch (_) { return 0; } },
     /*
      * The entries of kind command, codexExec, claudeWorker and claudeBg still running for `id` and its sub-agents,
@@ -738,8 +739,8 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
       const family = new Set(familyOf(String(id).toLowerCase(), childIndex()).map((x) => String(x).toLowerCase()));
       return leftSeen.detached.filter((d) => family.has(d.thread)).sort((a, b) => (a.startMs - b.startMs) || (a.pid - b.pid));
     },
-    /* The processes other than this window's Codex that hold `id` open, as the last scan listed them
-       (src/writer-locks.js): [{ pid, kind, label, detail }]. This window's own app-server is a process under this
+    /* What the last scan listed as holding `id` open, leaving out this window's Codex (src/writer-locks.js):
+       [{ pid, kind, label, detail }]. This window's own app-server is a process under this
        extension host. */
     holdersOf(id) {
       if (!leftSeen || !Array.isArray(leftSeen.holders) || !id) return [];

@@ -66,8 +66,8 @@ let reader = null;
 let memento = null;
 /* Deletes conversations archived longer than codexPlus.deleteArchivedAfterDays (src/archive-sweep.js). */
 let archiveSweeper = null;
-/* Whether Agent Plus's session list archives and deletes conversations now, and what tells it Account & usage changed;
-   both set once the commands are registered. */
+/* Set once the commands are registered: listManages, explained there, and what tells Agent Plus's session list that
+   Account & usage changed. */
 let listManages = () => false;
 let accountHeard = () => {};
 /* Writes this window's entry (src/window-entries.js); activate() sets it once it knows what the window shows. */
@@ -444,7 +444,8 @@ async function activate(context) {
   /* Ctrl/Cmd+Shift+T is this extension's only while the tab closed last was a Codex tab (codexPlus.reopenClosedSession). */
   let reopenKey = null;
   const keepReopenKey = () => {
-    /* Agent Plus's session list has Ctrl+Shift+T while it is on (its agentPlus.reopenClosedConversation). */
+    /* While Agent Plus's session list is on, Ctrl+Shift+T is the list's own command,
+       agentPlus.reopenClosedConversation. */
     const on = memory.lastClosedWasCodex() && !listManages();
     if (on === reopenKey) return;
     reopenKey = on;
@@ -861,7 +862,8 @@ function registerCommands(context, { source, memory, say, link, opens, account }
     vscode.window.showInformationMessage('Codex did not take the link that opens a conversation in its sidebar, so it was opened in a tab instead.');
     await tabs.openInTab(vscode, id);
   });
-  /* Which conversations a command acts on: those VS Code passes, the one given, or the one in front. */
+  /* A command acts on the selection VS Code passes when the clicked conversation is in it, otherwise on the one it is
+     given. */
   const chosen = (arg, selected) => {
     if (!threadArg(arg)) return [inFront()].filter(Boolean);
     const ids = Array.isArray(selected) && selected.length && selected.some((s) => threadArg(s) === threadArg(arg))
@@ -976,8 +978,8 @@ function registerCommands(context, { source, memory, say, link, opens, account }
     return `${what} (${sizeText(bytes)})`;
   };
   /* Removes Codex Plus's own data for conversations Codex has deleted: their side files in the plans' folder, the title
-     colours the session list takes over once, and their rows in what this window closed (src/tab-memory.js). Resolves
-     to the files that could not be removed. */
+     colours the session list takes over once, and their entries in this window's recently closed tabs
+     (src/tab-memory.js). Returns the files it could not remove. */
   const forgetDeleted = async (ids) => {
     const stuck = workplan.removeSideFiles(install.planDir(files.codexHome()), ids);
     try {
@@ -1007,9 +1009,9 @@ function registerCommands(context, { source, memory, say, link, opens, account }
    * Codex shows no archived conversation: a tab or its sidebar routed to one draws a new conversation instead. So one
    * opened from here is unarchived first.
    */
-  /* Agent Plus brings forward a conversation this window shows through reveal, from its session list too. One Codex
-     archived is unarchived first there as well and opened again where it is shown, as its page stays read-only until
-     then. */
+  /* Agent Plus, its session list included, brings forward a conversation shown in this window through reveal. When Codex
+     has archived it, it is unarchived first and opened again in the tab or sidebar that shows it, since its page stays
+     read-only until then. */
   const revealShown = source.reveal;
   source.reveal = async (sessionId, row) => {
     let unarchived = false;
@@ -1020,7 +1022,6 @@ function registerCommands(context, { source, memory, say, link, opens, account }
     await vscode.commands.executeCommand(inSidebar ? 'codexPlus.openThreadInSidebar' : 'codexPlus.openThreadInTab', sessionId);
     return true;
   };
-  /* Resolves to whether it asked Codex to unarchive `id`. */
   unarchiveToOpen = async (id) => {
     /* Read afresh: a conversation archived a moment ago, in Codex or another window, is not in the last snapshot yet. */
     await readNow([id]);
@@ -1074,15 +1075,16 @@ function registerCommands(context, { source, memory, say, link, opens, account }
   });
   /* ── Agent Plus's session list: what the Codex source gives it (src/session-list-source.js) ── */
   const core = link.registered ? link.core : null;
-  /* Whether Agent Plus's session list archives and deletes conversations in this window now, which this extension's
-     own daily pass then leaves to it. Asked each time, so that an older Agent Plus, or one in Restricted Mode, gets the
+  /* Whether the list archives and deletes conversations in this window now, which this extension's own daily pass
+     then leaves to it. Asked each time, so that an older Agent Plus, or one in Restricted Mode, gets the
      pass back. */
   listManages = () => { try { return !!core && typeof core.sessionListManages === 'function' && core.sessionListManages() === true; } catch (_) { return false; } };
   const sessionsChanged = new vscode.EventEmitter(), accountChanged = new vscode.EventEmitter();
   context.subscriptions.push(sessionsChanged, accountChanged, source.onDidChangeConversations(() => sessionsChanged.fire()));
   accountHeard = () => accountChanged.fire();
-  /* Whether a thread is in one of `folders`, below one, or in a linked git worktree of their repositories. treeOf gives
-     the worktree's name for one in a worktree, '' otherwise. */
+  /* The test for a thread of `folders`: in one of them, below one, or in a linked git worktree of their repositories;
+     with no folders, every thread passes. treeOf names the worktree a thread is in, or gives '' for one in the folders
+     themselves. */
   const inFolders = (folders) => {
     if (!Array.isArray(folders) || !folders.length) return Object.assign(() => true, { treeOf: () => '' });
     const memo = new Map();
@@ -1094,8 +1096,8 @@ function registerCommands(context, { source, memory, say, link, opens, account }
   const baseFeatures = Object.getOwnPropertyDescriptor(source, 'features').get;
   Object.defineProperty(source, 'features', { configurable: true, enumerable: true,
     get: () => baseFeatures().concat(['sessions', 'sessionImport', 'sessionSeen', 'accountInfo']) });
-  /* Deletes what the list asks to, with the checks Delete made: never one open or running here, open in another window
-     or held open by another Codex process, or with a sub-agent that is. The list has already asked the user. */
+  /* Deletes what the list asks to, except a conversation that is open or running here, open in another window or held
+     open by another Codex process, or that has a sub-agent in that state. The list has already asked the user. */
   const deleteForList = async (ids) => {
     const results = [];
     if (!openNow()) return ids.map((id) => ({ sessionId: id, outcome: 'refused', reason: 'this window could not tell which conversations are open' }));
@@ -1183,8 +1185,8 @@ function registerCommands(context, { source, memory, say, link, opens, account }
     wantSessionDetail(ids) { try { source.wantState((Array.isArray(ids) ? ids : []).filter((id) => files.THREAD_ID.test(String(id)))); } catch (_) { /* the rows keep no dot */ } },
     async importSessions({ folders = [] } = {}) {
       await snapshotIn();
-      /* Until Codex has filled its database, a conversation it archived may not be marked so yet, and the list imports
-         only once: null has the list ask again on the next change. */
+      /* Until Codex has filled its database, a conversation it archived may not be marked archived yet, and the list
+         imports only once: returning null makes the list ask again on the next change. */
       const wait = !reader.threads() ? 'Codex\'s conversations have not been read yet' : !reader.backfilled() ? 'Codex is still filling its state database from the rollouts' : '';
       if (wait) { if (importWait !== wait) say(`the session list's import waits: ${wait}`); importWait = wait; return null; }
       importWait = '';

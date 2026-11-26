@@ -4,21 +4,21 @@
 
 'use strict';
 /*
- * The linked git worktrees of the repositories the window's folders are in, read from git's own files: a worktree's
- * `.git` is a file naming its folder under the repository's `.git/worktrees/`, and that folder's `gitdir` file names
- * the worktree's `.git` back. A conversation started in one of them belongs to this project, and Agent Plus's session
- * list draws the worktree's name on its row. No git program is run.
+ * The linked git worktrees of the repositories the window's workspace folders are in, read from git's own files: a
+ * worktree's `.git` is a file naming its folder under the repository's `.git/worktrees/`, and that folder's `gitdir`
+ * file names the worktree's `.git` back. A conversation started in one of these worktrees belongs to the window's
+ * workspace, and Agent Plus's session list draws the name of the worktree's checkout folder on the conversation's row.
+ * No git program is run.
  */
 const fs = require('fs');
 const path = require('path');
 const { realPath, MAX_WALK_UP } = require('./folders');
 
-/* Worktrees read from one repository at most, against a repository with a great many. */
 const MAX_TREES = 200;
 
 const readText = (file) => { try { return fs.readFileSync(file, 'utf8').trim(); } catch (_) { return null; } };
 
-/* The repository's shared .git folder for a worktree whose top is `top`, or null. */
+/* The shared .git folder of the repository for the worktree at `top`, or null. */
 function commonDirOf(top) {
   const dotGit = path.join(top, '.git');
   let st;
@@ -31,7 +31,7 @@ function commonDirOf(top) {
   return common ? path.resolve(gitDir, common) : gitDir;
 }
 
-/* The top of the worktree holding `folder`: the nearest folder at or above it with a .git, or ''. */
+/* The top folder of the worktree that holds `folder`: the nearest folder at or above it that has a .git, or ''. */
 function topOf(folder) {
   let dir = path.resolve(folder);
   for (let i = 0; i < MAX_WALK_UP; i++) {
@@ -44,9 +44,10 @@ function topOf(folder) {
 }
 
 /*
- * The worktrees of the repositories `folders` are in, other than the ones holding them, as [{ path, name }]: the
- * repository's main worktree when a folder is in a linked one, and every linked worktree whose folder is still there.
- * `name` is the worktree folder's name. Paths are real paths.
+ * The other worktrees of the repositories `folders` are in (any worktree holding one of `folders` is left out), as
+ * [{ path, name }]: the repository's main worktree when a folder is in a linked one, and each linked worktree whose
+ * checkout folder is still there, among the first MAX_TREES entries of the repository's .git/worktrees/. Each `name` is
+ * the worktree folder's base name, and each path a real path.
  */
 function worktreesOf(folders) {
   const out = [];
