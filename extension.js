@@ -975,8 +975,9 @@ function registerCommands(context, { source, memory, say, link, opens, account }
     if (fs.existsSync(path.join(dir, `${id}.wakeup`))) what += ', the wake-up';
     return `${what} (${sizeText(bytes)})`;
   };
-  /* Removes Codex Plus's own data for conversations Codex has deleted: their side files in the plans' folder, title
-     colours and rows in Recently closed. Resolves to the files that could not be removed. */
+  /* Removes Codex Plus's own data for conversations Codex has deleted: their side files in the plans' folder, the title
+     colours the session list takes over once, and their rows in what this window closed (src/tab-memory.js). Resolves
+     to the files that could not be removed. */
   const forgetDeleted = async (ids) => {
     const stuck = workplan.removeSideFiles(install.planDir(files.codexHome()), ids);
     try {
@@ -1006,6 +1007,13 @@ function registerCommands(context, { source, memory, say, link, opens, account }
    * Codex shows no archived conversation: a tab or its sidebar routed to one draws a new conversation instead. So one
    * opened from here is unarchived first.
    */
+  /* Agent Plus brings forward a conversation this window shows through reveal, from its session list too; one Codex
+     archived is unarchived first there as well, or its tab stays read-only. */
+  const revealShown = source.reveal;
+  source.reveal = async (sessionId, row) => {
+    try { await unarchiveToOpen(sessionId); } catch (_) { /* brought forward as it is */ }
+    return revealShown.call(source, sessionId, row);
+  };
   unarchiveToOpen = async (id) => {
     await snapshotIn();
     if (!(reader.thread(id) || {}).archived || restricted()) return;
@@ -1118,6 +1126,8 @@ function registerCommands(context, { source, memory, say, link, opens, account }
         const s = sessionList.sessionOf(t, source.threadState(t.id), reader.goal(t.id), source.holdersOf(t.id), { here: here.has(t.id) });
         const tree = keep.treeOf(t);
         if (tree) s.worktree = tree.slice(0, 100);
+        const viewed = source.viewedAt(t.id);
+        if (viewed > 0) s.viewedAt = viewed;
         return s;
       });
       return sessionList.pageOf(all, cursor, limit);

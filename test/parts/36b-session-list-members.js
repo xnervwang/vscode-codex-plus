@@ -80,6 +80,8 @@ module.exports = async ({ eq, tmp, root }) => {
     const rowsIn = async (folder) => (await src.listSessions({ folders: [folder], cursor: null, limit: 500 })).sessions.map((x) => [x.title, x.worktree || '']).sort();
     eq([await rowsIn(path.join(repo, 'sub')), await rowsIn(tree)], [[['In its worktree', 'feature-x'], ['In the repo', '']], [['In its worktree', ''], ['In the repo', path.basename(repo)]]],
       'a conversation in a linked git worktree of the folder\'s repository is listed with the worktree\'s name, and from the worktree the main one is');
+    const seenTimes = (await src.listSessions({ folders: [home], cursor: null, limit: 500 })).sessions.map((x) => x.viewedAt);
+    eq(seenTimes.every((v) => Number.isFinite(v) && v > 0), true, 'each conversation says when the user last saw it, for the list\'s read marks');
     const two = await src.listSessions({ folders: [home], cursor: null, limit: 2 });
     eq([two.sessions.length, two.cursor], [2, '2'], 'a page at a time');
     const got = await src.importSessions({ folders: [home] });
@@ -104,6 +106,10 @@ module.exports = async ({ eq, tmp, root }) => {
     await src.runSessionAction('open', [made[4].id], { where: 'tab' });
     await tick();
     eq(sent().slice(0, 1), [['thread/unarchive', { threadId: made[4].id }]], 'opening a conversation Codex archived unarchives it in Codex first, since Codex shows none');
+    requests.length = 0;
+    await src.reveal(made[4].id, { title: 'Shelved', cwd: home });
+    await tick();
+    eq(sent().slice(0, 1), [['thread/unarchive', { threadId: made[4].id }]], 'and so does bringing forward one this window shows, as the list does for a row open here');
     const what = await src.describeDeletion([made[2].id]);
     eq([what.length, /^the rollout \(\d/.test(what[0].what)], [1, true], 'deleting says what goes: the rollout and its size');
     requests.length = 0;

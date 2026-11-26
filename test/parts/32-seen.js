@@ -29,6 +29,7 @@ module.exports = async ({ eq }) => {
     'looking at it reads every turn that ended before, not one that ends after, and the mark is not written straight away');
   run();
   eq(shared.get(SEEN_KEY), { t1: 2000 }, 'it is written a moment later');
+  eq([a.seenAt('t1'), a.seenAt('never'), a.seenAt('')], [2000, 1000, 0], 'when it was last looked at, and the record\'s start for one never looked at');
 
   /* A second window: same shared state, its own marks. Each window's question reads the stored value afresh. */
   const b = createSeen(shared, { now, setTimer, clearTimer: () => {} });

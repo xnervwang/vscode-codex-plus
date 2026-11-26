@@ -9,8 +9,8 @@
  *
  *   id, label, logo, extensionId   who the conversations belong to
  *   planPath, planDir              where their plans are (the companion plugin's data directory)
- *   sessionForTab, onDidFocus,     which conversation is in front, and whether a reported one still is; front, the
- *   isFocused, front               one the session list draws as current
+ *   sessionForTab, onDidFocus,     which conversation is in front, and whether a reported one still is, which
+ *   isFocused, front               Agent Plus's work plan view and session list follow; front, that one
  *   listConversations              every conversation a person started, from the reader's latest snapshot
  *   listAllConversations           the same without the archived ones, for Agent Plus's notices
  *   reveal                         bring one to the front: only a tab already in this window
@@ -289,8 +289,8 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
   };
   /*
    * `sidebarLast`: whether Codex's sidebar came to the front after the active editor tab did, by starting to follow a
-   * conversation or by being shown again with one. The session list's current conversation and Agent Plus's work plan
-   * view both go by it (front()). In Claude Code Plus the two follow Claude Code's own activeSessionId, the
+   * conversation or by being shown again with one. Agent Plus's work plan view and its session list's current row both
+   * go by it (isFocused). In Claude Code Plus the two follow Claude Code's own activeSessionId, the
    * conversation of whichever of its panels became active last. `sidebarSeen` is the conversation the sidebar showed at
    * its last change.
    */
@@ -708,6 +708,8 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
         planAsked: planAskedOf(id) });
     },
     leftOf: (id) => (id ? leftOf(id) : []),
+    /* When the user last had `id` in front of them in any window (src/seen.js), for the session list's read marks. */
+    viewedAt: (id) => { try { return id && typeof seen.seenAt === 'function' ? seen.seenAt(id) || 0 : 0; } catch (_) { return 0; } },
     /*
      * The entries of kind command, codexExec, claudeWorker and claudeBg still running for `id` and its sub-agents,
      * oldest first, as { thread, kind, pid, start, startMs, cmd, name, session, job }. A conversation's background terminals are the ones
