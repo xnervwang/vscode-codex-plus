@@ -296,7 +296,7 @@ function goals(home = codexHome()) {
  * first starts in a home and records the pass in backfill_state; until the row says complete, a conversation it has
  * not reached is missing from the threads table or not yet marked archived. False while there is no database or that
  * row says otherwise; true when the database has no backfill_state to read. The table is looked up first because a
- * query that fails closes the connection the thread list is kept against.
+ * failed query closes the connection that the cached thread list depends on.
  */
 function backfillDone(home = codexHome()) {
   const file = stateDbPath(home);

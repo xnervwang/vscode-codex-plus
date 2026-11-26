@@ -4,8 +4,8 @@
 
 'use strict';
 /*
- * A conversation's page and its tab offer two of Claude Code's actions: rename and mark as unread. Rename is sent to
- * Codex's app-server on Codex's own connection (src/patching.js hostRequest); the method name and parameters are the
+ * A conversation's page and its tab offer rename and mark as unread, as Claude Code's do. Rename goes to the
+ * app-server over Codex's own connection (src/patching.js hostRequest); the method name and parameters are the
  * ones an offline app-server of Codex 26.1021.22027 accepted. Mark as unread is kept in this extension's own read
  * record (src/seen.js), not in Codex. Agent Plus's session list does the rest.
  */

@@ -33,8 +33,8 @@
  * and every busy claude --bg session (`running`). The Agent map shows both lists, and src/detached-ends.js tells the
  * conversation when a detached one is gone.
  *
- * The same scan lists the processes holding conversations open through Codex's writer locks (src/writer-locks.js),
- * which Agent Plus's session list shows as where else a conversation is open.
+ * The same scan lists the processes holding conversations open through Codex's writer locks (src/writer-locks.js);
+ * Agent Plus's session list shows them on a conversation's row as the places it is open elsewhere.
  *
  * Without /proc only the claude --bg launches are found; src/codex-source.js then falls back on what the rollout says
  * of Codex's own background commands.
@@ -431,10 +431,9 @@ function writeShared(file, text) {
 }
 
 /*
- * The /proc part of a scan, { available, threads: { [thread id]: [kinds] }, bg, detached, running, holders }, where bg
- * is busyBg()'s list, detached and running are snapshot()'s, and holders the processes holding conversations of
- * `codexHome` open (src/writer-locks.js). It is another window's scan when `share` holds one written less than
- * SHARE_MS before `now`.
+ * The /proc part of a scan: { available, threads: { [thread id]: [kinds] }, bg (busyBg()), detached and running
+ * (snapshot()), holders (the processes holding conversations of `codexHome` open, src/writer-locks.js) }. It is another
+ * window's scan when `share` holds one written less than SHARE_MS before `now`.
  */
 function scan({ proc = '/proc', sessionsDir, share = '', environs = null, now = Date.now(), codexHome = '' } = {}) {
   const sessions = path.resolve(sessionsDir || sessionsHome());

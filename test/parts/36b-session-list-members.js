@@ -4,9 +4,10 @@
 
 'use strict';
 /*
- * The members the Codex source gives Agent Plus's session list, in the running extension: the features it lists, the
- * conversations of the window's folders with Codex's archived ones, the one import, what the list asks it to do (rename,
- * a goal, delete) sent to Codex's app-server, what deleting removes, the read marks, and Account & usage.
+ * Checks, in the running extension, the members the Codex source gives Agent Plus's session list. The source lists its
+ * features and the conversations of the window's folders, Codex's archived ones included, and hands over the one-time
+ * import of Codex's archive, sections and pins. What the list asks of it (rename, a goal, delete) goes to Codex's
+ * app-server. The checks also cover what deleting removes, the read marks and Account & usage.
  */
 const path = require('path');
 const fake = require('../fake-vscode');

@@ -83,9 +83,10 @@ function offlineWrapper(argv) {
 }
 
 /*
- * The Codex the window runs against. By default the newest build src/supported-versions.json lists, so that a run tells
- * of a change here rather than of a Codex release this extension has not been checked against; CODEX_PLUS_UI_CODEX=latest
- * takes the newest the marketplace ships (the daily run), and any other value is a version to install.
+ * Picks the Codex build the window runs against. By default the newest build src/supported-versions.json lists, so that
+ * a failed run points at a change here rather than at a Codex release this extension has not been checked against.
+ * CODEX_PLUS_UI_CODEX=latest takes the newest the marketplace ships, as the daily run does; any other value is a
+ * version to install.
  */
 function codexToInstall(want = (process.env.CODEX_PLUS_UI_CODEX || '').trim()) {
   if (want === 'latest') return 'openai.chatgpt';
@@ -204,8 +205,8 @@ async function testStage() {
     return;
   }
 
-  /* With part of the steps run (ui.js stepsToRun), the suite runs in the first shard only, and with a regular expression
-     only when it matches "inside VS Code". */
+  /* With part of the steps run (ui.js stepsToRun), the suite runs in the first shard only, so that it runs once on each
+     system, and with a regular expression only when it matches the suite's name, "inside VS Code". */
   const shard = steps.shardOf(process.env.CODEX_PLUS_UI_SHARD), only = process.env.CODEX_PLUS_UI_STEPS;
   const suite = shard ? shard.k === 1 : !only || new RegExp(only).test('inside VS Code');
   if (suite) console.log('\n── inside VS Code');

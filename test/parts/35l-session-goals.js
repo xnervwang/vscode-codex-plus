@@ -6,8 +6,8 @@
 /*
  * Goals: while a conversation with a goal is idle, Codex keeps starting turns toward it until the goal is done, blocked
  * or out of budget. Pause, Resume and Clear Goal, from the command palette for the conversation in front and from Agent
- * Plus's session list, send thread/goal/set and thread/goal/clear (origin user), and the list's rows show the goal's
- * state, read from Codex's goals database (src/session-list-source.js).
+ * Plus's session list, go to Codex as thread/goal/set and thread/goal/clear with origin user. The list's rows show the
+ * goal's state, read from Codex's goals database (src/session-list-source.js).
  */
 const fs = require('fs');
 const path = require('path');

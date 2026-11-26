@@ -10,8 +10,8 @@
  *   a tab Codex opened with its New button names no conversation in its URI, so nothing was open as far as this
  *     extension could tell
  *
- * and what Codex's sidebar shows, which counts as open in this window as a tab does. Real directories and symbolic
- * links are made under the suite's scratch directory; Codex's own files are not touched.
+ * A third check covers Codex's sidebar: the conversation it shows counts as open in this window.
+ * Real directories and symbolic links are made under the suite's scratch directory; Codex's own files are not touched.
  */
 const fs = require('fs');
 const path = require('path');

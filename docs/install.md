@@ -43,7 +43,7 @@ Uninstalling this extension puts Codex's own files back in this editor's extensi
 
 Notes on settings and status:
 
-- The work plan has its own setting, `codexPlus.workPlan`, and Agent Plus's session list has its `agentPlus.sessions` settings. `Codex Plus: Turn Off` and `codexPlus.enabled` do not cover them.
+- Use `codexPlus.workPlan` for the work plan and the settings that start with `agentPlus.sessions` for Agent Plus's session list. `Codex Plus: Turn Off` and `codexPlus.enabled` do not cover them.
 - `codexPlus.workPlan`, `codexPlus.workPlanOfferMinTurns`, `codexPlus.workPlanOfferMinToolCalls`, `codexPlus.workPlanQuietWhenReplyMatches`, `codexPlus.conversationBrief` and `codexPlus.tellCodexYourTimeZone` are user settings only. Every window and every `codex` run reads them from one file under `CODEX_HOME`; VS Code ignores their workspace or folder values.
 - Turning the additions on or off shows no notification, as in Claude Code Plus. After `Codex Plus: Remove the Patch from Codex`, `Codex Plus: Turn On` and `Codex Plus: Toggle On/Off` put the patch back and offer a reload.
 - `Codex Plus: Show Status` shows when additions are off, the patch is removed, or the plugin is installed but not loaded.

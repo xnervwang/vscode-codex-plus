@@ -431,8 +431,8 @@ async function main() {
       await away();
     }
     if (want('session-list')) {
-      /* Agent Plus's session list, which lists the demo's Codex conversation from what this extension hands it. Its
-         page is the frame with the list's New bar; a row's data-key is the source's id and the conversation's. */
+      /* Agent Plus's session list, with the demo's Codex conversation that this extension hands it. Its page is the
+         frame with the list's New bar. */
       await exec('workbench.view.extension.agentPlusSessions');
       const key = JSON.stringify(['codex', tid]);
       const list = await frameWhere((k) => !!document.querySelector('.sl-root .sl-new') && [...document.querySelectorAll('.sl-row')].some((r) => r.dataset.key === k), 60000, key);
