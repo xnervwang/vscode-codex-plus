@@ -1182,7 +1182,9 @@ function registerCommands(context, { source, memory, say, link, opens, account }
     wantSessionDetail(ids) { try { source.wantState((Array.isArray(ids) ? ids : []).filter((id) => files.THREAD_ID.test(String(id)))); } catch (_) { /* the rows keep no dot */ } },
     async importSessions({ folders = [] } = {}) {
       await snapshotIn();
-      if (!reader.threads()) return null;
+      /* Until Codex has filled its database, a conversation it archived may not be marked so yet, and the list imports
+         only once: null has the list ask again on the next change. */
+      if (!reader.threads() || !reader.backfilled()) return null;
       return sessionList.importOf((reader.threads() || []).filter(inFolders(folders)), { sections: [...reader.sections()], pinnedSection: PINNED_SECTION,
         colors: context.globalState.get(COLOR_KEY) || {} });
     },

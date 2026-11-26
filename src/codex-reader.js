@@ -109,7 +109,7 @@ class CodexReader {
     this.busy = this.request('snapshot', { home, previous, extra }).then((r) => {
       if (!r || r.same) return false;
       this.snap = {
-        home, stamp: r.stamp, readable: r.readable, threads: r.threads, byId: new Map(r.threads.map((t) => [t.id, t])),
+        home, stamp: r.stamp, readable: r.readable, backfilled: r.backfilled !== false, threads: r.threads, byId: new Map(r.threads.map((t) => [t.id, t])),
         unread: new Map(r.unread), sections: new Map(r.sections), goals: new Map(r.goals || []), states: r.states || {},
         plans: new Set(r.plans || []), wakeups: new Map((r.wakeups || []).map((w) => [w.thread, w])), asks: new Map(r.asks || []), at: Date.now(),
       };
@@ -140,6 +140,8 @@ class CodexReader {
   }
 
   threads() { return this.snap ? this.snap.threads : null; }
+  /* Whether Codex had filled its state database from the rollouts when the snapshot was read (codex-files backfillDone). */
+  backfilled() { return !!(this.snap && this.snap.backfilled); }
   thread(id) { return (this.snap && this.snap.byId.get(id)) || null; }
   unread() { return this.snap ? this.snap.unread : new Map(); }
   sections() { return this.snap ? this.snap.sections : new Map(); }

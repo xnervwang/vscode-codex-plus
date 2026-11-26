@@ -121,7 +121,7 @@ const ops = {
     let wakeups = [];
     try { wakeups = require('./wakeup').planned(install.planDir(dir)); } catch (_) { wakeups = []; }
     return {
-      stamp, same: false, readable: !!threads, threads: threads || [],
+      stamp, same: false, readable: !!threads, threads: threads || [], backfilled: files.backfillDone(dir),
       unread: [...files.unreadThreads(dir)], sections: [...files.sections(dir)], goals: [...files.goals(dir)], states: found, plans, wakeups,
       asks: askedOf(dir, plans.filter((id) => found[id])),
     };

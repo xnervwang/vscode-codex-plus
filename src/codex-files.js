@@ -291,6 +291,22 @@ function goals(home = codexHome()) {
     tokenBudget: Number.isFinite(+r.token_budget) && r.token_budget !== null ? +r.token_budget : null, tokensUsed: +r.tokens_used || 0 }]));
 }
 
+/*
+ * Whether Codex has filled its state database from the rollouts on disk. Codex builds the database when its app-server
+ * first starts in a home and records the pass in backfill_state; until the row says complete, a conversation it has
+ * not reached is missing from the threads table or not yet marked archived. False while there is no database or that
+ * row says otherwise; true when the database has no backfill_state to read. The table is looked up first because a
+ * query that fails closes the connection the thread list is kept against.
+ */
+function backfillDone(home = codexHome()) {
+  const file = stateDbPath(home);
+  if (!file) return false;
+  const table = queryFile(file, "select name from sqlite_master where type = 'table' and name = 'backfill_state'");
+  if (!table || !table.length) return true;
+  const rows = queryFile(file, 'select status from backfill_state');
+  return !rows || rows.every((r) => String(r.status) === 'complete');
+}
+
 /** Threads with something the user has not read: thread id -> first unread turn id ('' for the whole thread). */
 function unreadThreads(home = codexHome()) {
   const rows = query('select thread_id, first_unread_turn from thread_read_receipts where first_unread_turn is not null', home);
@@ -598,6 +614,6 @@ function rolloutExists(id, home = codexHome()) {
 }
 
 module.exports = {
-  existingRollout, THREAD_ID, THREAD_COLUMNS, COMPRESSED_MAX, DECOMPRESSED_MAX, codexHome, setCodexHome, stateDbPath, goalsDbPath, query, listThreads, sourceKind, sections, goals, unreadThreads, tailLines,
+  existingRollout, THREAD_ID, THREAD_COLUMNS, COMPRESSED_MAX, DECOMPRESSED_MAX, codexHome, setCodexHome, stateDbPath, goalsDbPath, query, listThreads, sourceKind, sections, goals, backfillDone, unreadThreads, tailLines,
   sessionMeta, rolloutState, cachedRolloutState, rolloutOf, rolloutExists, closeAll, ASYNC_QUESTION, SETTLED_MS, STATES_KEPT,
 };

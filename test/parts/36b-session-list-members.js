@@ -84,7 +84,17 @@ module.exports = async ({ eq, tmp, root }) => {
     eq(seenTimes.every((v) => Number.isFinite(v) && v > 0), true, 'each conversation says when the user last saw it, for the list\'s read marks');
     const two = await src.listSessions({ folders: [home], cursor: null, limit: 2 });
     eq([two.sessions.length, two.cursor], [2, '2'], 'a page at a time');
+    /* Codex records its pass over the rollouts in backfill_state; until it is complete the archived marks may be missing. */
+    const { DatabaseSync } = require('node:sqlite');
+    const state = new DatabaseSync(path.join(home, 'state_5.sqlite'));
+    state.exec("create table backfill_state (id integer primary key, status text not null, last_watermark text, last_success_at integer, updated_at integer); insert into backfill_state values (1, 'running', null, null, 0)");
+    await src._poll({ force: true });
+    const early = await src.importSessions({ folders: [home] });
+    state.exec("update backfill_state set status = 'complete'");
+    state.close();
+    await src._poll({ force: true });
     const got = await src.importSessions({ folders: [home] });
+    eq([early, !!got], [null, true], 'while Codex is still filling its database from the rollouts there is nothing to import yet, and once it has finished there is');
     got.archived.sort((x, y) => x.at - y.at);
     eq(got, { archived: [{ sessionId: made[2].id, at: 1000000 }, { sessionId: made[4].id, at: 2000000 }], groups: [{ name: 'Pinned', sessionIds: [made[0].id] }],
       pinned: [made[1].id], colors: { [made[0].id]: 'green' } },
