@@ -518,9 +518,15 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
       if (onPage) {
         const f = await frontPage();
         /* The newest turn is the one in view. Playwright gives a box inside a frame in the window's own coordinates. */
-        const talk = f && await f.locator('[data-turn-key]').last().boundingBox();
+        const turn = f && f.locator('[data-turn-key]').last();
+        /* A long newest turn shown down to its end has its top above the page's frame, where a point would land on the
+           tab bar; so it is brought into view and the point taken inside the part of it the frame shows. */
+        if (turn) await turn.scrollIntoViewIfNeeded().catch(() => {});
+        const talk = turn && await turn.boundingBox();
+        const shown = f && await f.frameElement().then((e) => e.boundingBox()).catch(() => null);
         if (talk) {
-          const x = talk.x + talk.width / 2, y = talk.y + Math.min(20, talk.height / 2);
+          const top = shown ? Math.max(talk.y, shown.y) : talk.y, bottom = shown ? Math.min(talk.y + talk.height, shown.y + shown.height) : talk.y + talk.height;
+          const x = talk.x + talk.width / 2, y = top + Math.min(20, Math.max(0, bottom - top) / 2);
           /* Until VS Code has laid the tab's webview over the editor area there, a right-click there opens the editor
              area's own menu. */
           await until(() => page.evaluate(([px, py]) => { const e = document.elementFromPoint(px, py); return !!e && e.tagName === 'IFRAME'; }, [x, y])
