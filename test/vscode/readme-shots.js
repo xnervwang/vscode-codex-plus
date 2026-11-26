@@ -43,7 +43,7 @@ const { sleep, until } = win;
 const ROOT = path.join(os.tmpdir(), 'codex-plus-demo');
 const PLAN_DIR = path.join('plugins', 'data', 'agent-work-plan-codex-extras');
 const SHOTS = ['work-plan', 'images-in-replies', 'reply-figures', 'navigation', 'plan-bar', 'context-meter', 'session-info',
-  'agent-map', 'wake-up', 'tabs', 'session-list', 'session-menu', 'token-mode', 'answer-view'];
+  'agent-map', 'wake-up', 'tabs', 'session-list', 'token-mode', 'answer-view'];
 
 const args = process.argv.slice(2);
 const flag = (name, dflt = '') => { const i = args.indexOf(name); if (i < 0) return dflt; const v = args[i + 1] || ''; args.splice(i, 2); return v; };
@@ -431,34 +431,21 @@ async function main() {
       await away();
     }
     if (want('session-list')) {
-      await exec('workbench.view.extension.codexPlus');
-      const list = await frameWhere(() => !!document.querySelector('.cp-root'), 60000);
-      if (!list) log('the session list did not open: session-list skipped');
+      /* Agent Plus's session list, which lists the demo's Codex conversation from what this extension hands it. Its
+         page is the frame with the list's New bar; a row's data-key is the source's id and the conversation's. */
+      await exec('workbench.view.extension.agentPlusSessions');
+      const key = JSON.stringify(['codex', tid]);
+      const list = await frameWhere((k) => !!document.querySelector('.sl-root .sl-new') && [...document.querySelectorAll('.sl-row')].some((r) => r.dataset.key === k), 60000, key);
+      if (!list) log('the session list did not list the demo conversation: session-list skipped');
       else {
         await sleep(2500);
         await widen();
         await away();
-        await snap('session-list', await sidebar());
-      }
-    }
-    if (want('session-menu')) {
-      /* The right-click menu of the demo conversation's row, drawn by the list's own page. */
-      await exec('workbench.view.extension.codexPlus');
-      const list = await frameWhere(() => !!document.querySelector('.cp-root .cp-row'), 60000);
-      if (!list) log('the session list did not open: session-menu skipped');
-      else {
-        await sleep(1500);
-        await widen();
-        await list.locator(`.cp-row[data-id="${tid}"]`).last().click({ button: 'right' });
-        if (!await until(() => list.evaluate(() => !!document.querySelector('.cp-ctx')), 5000, 100)) log('no menu opened: session-menu skipped');
-        else {
-          await sleep(600);
-          /* The side bar down to a little below the menu, not the empty rest of the list. */
-          const sb = await sidebar(), menu = await list.locator('.cp-ctx').first().boundingBox();
-          await snap('session-menu', menu ? { ...sb, height: Math.min(sb.height, menu.y + menu.height + 40 - sb.y) } : sb);
-        }
-        await page.keyboard.press('Escape');
-        await sleep(400);
+        /* The side bar down to a little below its last row, not the empty rest of the list. */
+        const sb = await sidebar(), at = await (await list.frameElement()).boundingBox();
+        const end = await list.evaluate(() => { const rows = [...document.querySelectorAll('.sl-row')].filter((r) => r.offsetParent);
+          return rows.length ? rows[rows.length - 1].getBoundingClientRect().bottom : null; }).catch(() => null);
+        await snap('session-list', sb && at && end ? { ...sb, height: Math.min(sb.height, at.y + end + 24 - sb.y) } : sb);
       }
     }
     if (want('token-mode')) {

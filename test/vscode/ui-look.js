@@ -63,7 +63,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
   fs.mkdirSync(shotsDir, { recursive: true });
   const plans = path.join(profile.codexHome, PLAN_DIR);
   fs.mkdirSync(plans, { recursive: true });
-  const t0 = threads[0], t1 = threads[1], t2 = threads[2];
+  const t0 = threads[0], t1 = threads[1];
   const title = t0.title;
 
   /* ── what the window starts with, beyond run.js's made-up home ── */
@@ -357,35 +357,32 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     }
   })();
 
-  /* ── the session list ── */
+  /* ── Agent Plus's session list, which lists Codex's conversations from what this extension hands it ── */
   let list = null;
-  const row = (id) => list.locator(`.cp-row[data-id="${id}"]`).last();
-  const rowIn = (key, id) => list.locator(`.cp-group[data-key="${key}"] .cp-row[data-id="${id}"], .cp-section[data-key="${key}"] .cp-row[data-id="${id}"]`).first();
+  /* A row's data-key: the source's id and the conversation's (Agent Plus's keyOf). */
+  const slKey = (id) => JSON.stringify(['codex', id]);
+  const ROW = (id) => `.sl-section:not([data-key="closed"]) .sl-row[data-key='${slKey(id)}']`;
+  const row = (id) => list.locator(ROW(id)).first();
   const inList = (sel) => boxIn(list, sel);
-  const rowBox = (id, where = '.cp-groups') => inList(`${where} .cp-row[data-id="${id}"]`);
-  const menuBox = () => inList('.cp-ctx');
+  const rowBox = (id) => inList(ROW(id));
+  const menuBox = () => inList('.sl-ctx');
+  /* What `id`'s row shows: its dot, its stripe, its title, its badges and whether it has the unread mark. */
+  const slRow = (id) => (list ? list.evaluate((key) => {
+    const r = [...document.querySelectorAll('.sl-section:not([data-key="closed"]) .sl-row')].find((x) => x.dataset.key === key);
+    return r ? { dot: r.dataset.dot, stripe: r.dataset.stripe, title: (r.querySelector('.sl-title') || {}).textContent || '', unread: !!r.querySelector('.sl-unread'),
+      badges: [...r.querySelectorAll('.sl-badge')].map((b) => b.textContent) } : null;
+  }, slKey(id)).catch(() => null) : Promise.resolve(null));
   const closeMenus = async () => {
-    if (!await list.evaluate(() => !!document.querySelector('.cp-ctx, .cp-menu:not(.cp-hidden)'))) return;
+    if (!await list.evaluate(() => !!document.querySelector('.sl-ctx')).catch(() => false)) return;
     await page.keyboard.press('Escape');
-    if (await until(() => list.evaluate(() => !document.querySelector('.cp-ctx')), 1000, 100)) return;
+    if (await until(() => list.evaluate(() => !document.querySelector('.sl-ctx')), 1000, 100)) return;
     const box = await (await list.frameElement()).boundingBox();
     await page.mouse.click(box.x + 20, box.y + box.height - 12);
-    await until(() => list.evaluate(() => !document.querySelector('.cp-ctx')), 3000, 100);
-  };
-  const subOpenFor = (item) => item.evaluate((b) => b.getAttribute('aria-expanded') === 'true' && !!document.querySelector('.cp-ctx-sub')).catch(() => false);
-  const openSubOf = async (item) => {
-    for (let n = 1; n <= 3; n++) {
-      if (await subOpenFor(item)) return n;
-      if (n === 1) await item.hover({ timeout: 3000 }).catch(() => {});
-      else await item.press('ArrowRight', { timeout: 3000 }).catch(() => {});
-      if (await until(() => subOpenFor(item), 2000, 100)) return n;
-    }
-    return 0;
+    await until(() => list.evaluate(() => !document.querySelector('.sl-ctx')), 3000, 100);
   };
   /* What the list shows, for a step that could not find a row in it. */
-  const listState = () => list.evaluate(() => ({ search: (document.querySelector('.cp-search input') || {}).value || '',
-    groups: [...document.querySelectorAll('.cp-section, .cp-group')].map((g) => `${g.dataset.key}: ${[...g.querySelectorAll('.cp-row .cp-title')].map((t) => t.textContent).join(' | ')}`) }))
-    .catch((e) => String(e));
+  const listState = () => list.evaluate(() => [...document.querySelectorAll('.sl-section')].map((s) => `${s.dataset.key}: ${[...s.querySelectorAll('.sl-row .sl-title')]
+    .map((t) => t.textContent).join(' | ')}`)).catch((e) => String(e));
   /* Another view can take the side bar, such as Codex's when it opens there; the list's page is then kept but hidden. */
   const listShown = async () => {
     if (!list) return false;
@@ -399,23 +396,25 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     try { await target.click({ button: 'right', timeout: 10000 }); } catch (e) {
       throw new Error(`${e.message.split('\n')[0]}; the list shows ${JSON.stringify(await listState())}, visible ${await listShown()}`);
     }
-    if (!await until(() => list.evaluate(() => !!document.querySelector('.cp-ctx')), 5000, 100)) throw new Error('no menu opened on the right-click');
-    await still(list.locator('.cp-ctx').first());
+    if (!await until(() => list.evaluate(() => !!document.querySelector('.sl-ctx')), 5000, 100)) throw new Error('no menu opened on the right-click');
+    await still(list.locator('.sl-ctx').first());
   };
-  const ctxItem = (label, sub = false) => list.locator(`${sub ? '.cp-ctx-sub' : '.cp-ctx:not(.cp-ctx-sub)'} .cp-ctx-item`).filter({ hasText: label }).first();
-  /* Right-clicks `target` and clicks labels[0], or that item's submenu item labels[1]. The page closes its menu when
-     another webview takes the focus, so the right-click is tried again when no menu opened or the click on its item
-     missed, as in ui.js. */
+  /* An item of the menu, or of its submenu, labelled `label` and nothing more: Archive is not Unarchive. */
+  const ctxItem = (label, sub = false) => list.locator(sub ? '.sl-ctx-sub .sl-ctx-item' : '.sl-ctx:not(.sl-ctx-sub) .sl-ctx-item')
+    .filter({ hasText: new RegExp(`^\\s*${label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*[›✓]?\\s*$`) }).first();
+  /* Right-clicks `target` and clicks labels[0], or that item's submenu item labels[1], the submenu opened with a click
+     on labels[0] as in a narrow side bar. The page closes its menu when another webview takes the focus, so the
+     right-click is tried again when no menu opened or the click on its item missed, as in ui.js. */
   const pick = async (target, labels) => {
     let last = '';
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
         await menuOn(target);
         if (labels.length > 1) {
-          if (!await openSubOf(ctxItem(labels[0]))) throw new Error(`${labels[0]} opened no submenu`);
+          await ctxItem(labels[0]).click({ timeout: 5000 });
           await ctxItem(labels[1], true).click({ timeout: 5000 });
         } else await ctxItem(labels[0]).click({ timeout: 5000 });
-        await until(() => list.evaluate(() => !document.querySelector('.cp-ctx')), 3000, 100);
+        await until(() => list.evaluate(() => !document.querySelector('.sl-ctx')), 3000, 100);
         await away();
         return attempt;
       } catch (e) { last = e.message.split('\n')[0]; await sleep(500); }
@@ -423,8 +422,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     throw new Error(`could not click ${labels.join(' > ')}: ${last}`);
   };
   const toList = async () => {
-    await exec('workbench.view.extension.codexPlus');
-    list = await frameWhere(() => !!document.querySelector('.cp-root'), 30000);
+    await exec('workbench.view.extension.agentPlusSessions');
+    list = await frameWhere(() => !!document.querySelector('.sl-root .sl-new'), 30000);
     if (!list) throw new Error('the session list did not open');
     return list;
   };
@@ -678,239 +677,33 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     await exec('workbench.action.closeAuxiliaryBar');
     await setting('tabBarButton', 'tab');
 
-    /* ═══ the session list ═══ */
-    await look('session-list', {
-      expect: 'The Codex Plus side bar shows the Codex sessions view. From the top: an "Open sessions" section listing the conversation just started in a tab (there is no "Account & usage" section, since the made-up provider has no account; the next step is about that), '
-        + 'a session manager with "New in tab" and "New in sidebar" side by side (each with a plus icon), a filter row (a funnel, "Active · N", a search icon and "New group"), '
-        + 'and an "Ungrouped" group with four conversations: the one just started and the three made-up ones, "Can you find where the retry delay for the inventory sync is set?", '
-        + '"Why does the nightly export skip archived rows?" and "Add a dry-run flag to the cleanup script". Each row has its title and at the right how long ago it was used with its first and last day, as "1m · 11/20→11/21". '
-        + '"Can you find where the retry delay for the inventory sync is set?" has a red dot before its title, as its work plan asks the user a question put after the user\'s last message in it; '
-        + 'none of the others is running or waiting, so they have no dot, and each title starts at the row\'s left padding. '
-        + 'Section labels are in capitals. The conversation just started, whose tab is in front, is drawn as the current one in both places it is listed, Open sessions and Ungrouped: '
-        + 'the list\'s selection background and its title in bold. No other row has that background or a bold title.',
+    /* ═══ Agent Plus's session list ═══ */
+    await look('agent-plus-session-list', {
+      expect: 'Agent Plus\'s "Conversations" side bar, its session list, shows the Codex conversations. From the top: a New bar (Codex\'s logo with a small caret, then "New in tab" and "New in sidebar", each with a plus), '
+        + 'a row of chips (All, Open, Running, Needs you, each with a count), and an UNGROUPED section with four rows and no others: the conversation just started in a tab, '
+        + '"Can you find where the retry delay for the inventory sync is set?", "Why does the nightly export skip archived rows?" and "Add a dry-run flag to the cleanup script". '
+        + 'Each row has Codex\'s logo, its title and at the right how long ago it was last active. The conversation just started, whose tab is in front, has a solid stripe at the start of its row '
+        + 'and is drawn as the current one, and no other row is. "Can you find where the retry delay for the inventory sync is set?" has a red dot at the top right of its logo, as its work plan asks '
+        + 'the user a question put after the user\'s last message; the other rows have no dot. The three made-up conversations each have a small envelope icon after their titles, '
+        + 'the list\'s mark of a reply not seen in this window. There is no Account & usage section, since the made-up provider has no account.',
     }, async () => {
       /* The step before left notes.txt in front. */
       if (freshTitle) await tab(freshTitle).click();
       await toList();
-      await until(() => list.evaluate((want) => want.every((t) => [...document.querySelectorAll('.cp-row .cp-title')].some((e) => e.textContent === t)), threads.map((t) => t.title)), 30000, 500);
+      if (!await until(async () => (await Promise.all(threads.map((t) => slRow(t.id)))).every(Boolean), 30000, 500)) {
+        throw new Error(`the list does not have the made-up conversations: ${JSON.stringify(await listState())}`);
+      }
+      await until(async () => ((await slRow(t0.id)) || {}).dot === 'red', 15000, 500);
       await widen();
       await away();
+      await sleep(800);
       return part(PARTS.sidebar);
     });
-    await look('account-usage', {
-      expect: 'The made-up provider needs no OpenAI sign-in, so Codex reports no account, and the list has no "Account & usage" section: the list starts with Open sessions, with no empty header or gap above it.',
-    }, async () => {
-      /* Codex's account/read answers { account: null, requiresOpenaiAuth: false } for such a provider, with or without an
-         API key in auth.json, and a real sign-in needs the network the window does not have. */
-      const answer = await hostRequest('account/read', {}).catch((e) => ({ error: String(e) }));
-      tell(`Codex's account/read answered ${JSON.stringify(answer).slice(0, 200)}`);
-      await sleep(1000);
-      const top = await inList('.cp-section:not(.cp-hidden)');
-      return top && { x: top.x, y: top.y, width: top.width, height: Math.min(top.height, 160) };
-    });
-    await look('row-hover', {
-      expect: 'Resting the pointer on the row "Why does the nightly export skip archived rows?" shows a hover box next to it with its group (Ungrouped) and its session ID; '
-        + 'on the row itself the time is replaced by a pencil (Rename) and an archive button.',
-    }, async () => {
-      await showList();
-      await away();
-      await row(t1.id).hover();
-      await until(() => list.evaluate(() => { const h = document.querySelector('.cp-hover'); return h && !h.classList.contains('cp-hidden'); }), 5000, 200);
-      await sleep(500);
-      return union([await rowBox(t1.id), await inList('.cp-hover:not(.cp-hidden)')]);
-    });
-    await look('row-menu', {
-      expect: 'A right-click on that row opens the list\'s own menu, drawn like Claude Code\'s, with no VS Code menu over it: "Codex Plus: Resume in Tab", "Codex Plus: Resume in Sidebar", '
-        + '"Codex Plus: Mark as Unread", "Codex Plus: Rename", "Codex Plus: Text Color" with a chevron, and "Codex Plus: Archive", in groups split by separators. There is no Add to Group while no group exists. '
-        + 'The menu opens at the pointer, so its top edge may lie over the row that was right-clicked.',
-    }, async () => {
-      await menuOn(row(t1.id));
-      return union([await rowBox(t1.id), await menuBox()]);
-    });
-    await look('text-color-submenu', {
-      expect: 'Resting on Text Color opens its submenu to the right: "Default" (checked) and Red, Blue, Green, Yellow, Purple, Orange, Pink and Cyan, each with a swatch of its colour.',
-      unchanged: 'The main menu stays open beside it.',
-    }, async () => {
-      if (!await openSubOf(ctxItem('Text Color'))) throw new Error('Text Color opened no submenu');
-      await still(list.locator('.cp-ctx-sub').first());
-      return union([await menuBox()]);
-    });
-    await look('row-title-red', {
-      expect: 'Clicking Red closes the menu and draws that row\'s title in the theme\'s red; the other rows keep their colour.',
-    }, async () => {
-      await ctxItem('Red', true).click({ timeout: 5000 });
-      await until(() => list.evaluate(() => !document.querySelector('.cp-ctx')), 3000, 100);
-      await sleep(800);
-      return inList('.cp-groups');
-    });
-    await look('search-sessions', {
-      expect: 'The search box opens across the top of the filter row with "export" typed in it and a clear button; the list shows only "Why does the nightly export skip archived rows?", with "export" marked in its title.',
-    }, async () => {
-      await showList();
-      await list.locator('.cp-tool[data-tool="search"]').first().click();
-      await sleep(300);
-      await list.locator('.cp-search input').first().fill('export');
-      await sleep(1000);
-      return inList('.cp-section[data-key="manager"]');
-    });
-    await list.locator('.cp-clear').first().click().catch(() => {});
-    await page.keyboard.press('Escape');
-    await sleep(500);
-    await look('status-filter-menu', {
-      expect: 'The funnel button opens a menu under it: a "Status" heading with Needs input, Working and Completed, a separator, a "Tabs" heading with Open and Closed, each with its count.',
-      unchanged: 'The search box is closed again and all four conversations are listed again.',
-    }, async () => {
-      await list.locator('.cp-tool[data-tool="filter"]').first().click();
-      await until(() => list.evaluate(() => { const m = document.querySelector('.cp-menu'); return m && !m.classList.contains('cp-hidden'); }), 5000, 200);
-      await sleep(300);
-      return union([await inList('.cp-filter-row'), await inList('.cp-menu:not(.cp-hidden)')]);
-    });
-    await page.keyboard.press('Escape');
-    await list.locator('.cp-tool[data-tool="filter"]').first().click().catch(() => {});
-    await closeMenus();
-
-    const groupHead = (name) => list.locator('.cp-group-head').filter({ hasText: name }).first();
-    await look('new-group-inline', {
-      expect: '"New group" in the filter row adds a group named "New group" above Ungrouped, with its name in an edit field, selected, ready to type over.',
-    }, async () => {
-      await list.locator('.cp-tool[data-send="newGroup"]').first().click();
-      if (!await until(() => list.evaluate(() => !!document.querySelector('.cp-group-head .cp-editing, .cp-editing')), 20000, 300)) throw new Error('no group name being edited in 20 s');
-      return inList('.cp-groups');
-    });
-    await look('group-made', {
-      expect: 'Typing "Release 1.2" and Enter names the group: a header "Release 1.2" with a count of 0, which stays listed while empty, above Ungrouped.',
-    }, async () => {
-      await page.keyboard.press('Control+A');
-      await page.keyboard.type('Release 1.2');
-      await page.keyboard.press('Enter');
-      if (!await until(() => list.evaluate(() => [...document.querySelectorAll('.cp-group-name')].some((e) => e.textContent === 'Release 1.2')), 20000, 500)) throw new Error('no group "Release 1.2" in 20 s');
-      await sleep(500);
-      return inList('.cp-groups');
-    });
-    await look('add-to-group-submenu', {
-      expect: 'The row\'s menu now has "Codex Plus: Add to Group" with a chevron; resting on it opens a submenu listing "Release 1.2".',
-    }, async () => {
-      await menuOn(row(t1.id));
-      if (!await openSubOf(ctxItem('Add to Group'))) throw new Error('Add to Group opened no submenu');
-      await still(list.locator('.cp-ctx-sub').first());
-      return menuBox();
-    });
-    await look('row-in-group', {
-      expect: 'Clicking Release 1.2 moves the row "Why does the nightly export skip archived rows?" under the "Release 1.2" header, whose count reads 1; the row keeps its red title.',
-    }, async () => {
-      await ctxItem('Release 1.2', true).click({ timeout: 5000 });
-      if (!await until(() => list.evaluate((id) => {
-        const g = [...document.querySelectorAll('.cp-group')].find((x) => (x.querySelector('.cp-group-name') || {}).textContent === 'Release 1.2');
-        return !!(g && g.querySelector(`.cp-row[data-id="${id}"]`));
-      }, t1.id), 20000, 500)) throw new Error('the row did not move into the group in 20 s');
-      await sleep(500);
-      return inList('.cp-groups');
-    });
-    await look('group-header-menu', {
-      expect: 'A right-click on the "Release 1.2" header opens a menu with "Codex Plus: Start New Session in This Group" and "Codex Plus: New Group...", a separator, "Codex Plus: Rename Group...", a separator, and "Codex Plus: Delete Group". Every label is shown whole.',
-    }, async () => {
-      await menuOn(groupHead('Release 1.2'));
-      return union([await inList('.cp-group-head'), await menuBox()]);
-    });
-    await look('rename-group-inline', {
-      expect: 'Rename Group edits the name where it is drawn; after typing "Release 1.3" and Enter the header reads "Release 1.3", still with a count of 1.',
-    }, async () => {
-      await ctxItem('Rename Group').click({ timeout: 5000 });
-      if (!await until(() => list.evaluate(() => !!document.querySelector('.cp-editing')), 10000, 200)) throw new Error('the group name was not put in an edit field');
-      await page.keyboard.press('Control+A');
-      await page.keyboard.type('Release 1.3');
-      await page.keyboard.press('Enter');
-      if (!await until(() => list.evaluate(() => [...document.querySelectorAll('.cp-group-name')].some((e) => e.textContent === 'Release 1.3')), 20000, 500)) throw new Error('the group was not renamed in 20 s');
-      return inList('.cp-groups');
-    });
-    await look('new-session-in-group', {
-      expect: 'Start New Session in This Group opens a new Codex tab titled "Codex" in the editor, in front, with Codex\'s new-conversation page.',
-    }, async () => {
-      const before = new Set(page.frames());
-      await pick(groupHead('Release 1.3'), ['Start New Session in This Group']);
-      await until(async () => { const t = await frontTab(); return t && t.label === 'Codex' && t.view === 'chatgpt.conversationEditor'; }, 20000, 500);
-      const drawn = await until(async () => {
-        for (const f of page.frames()) {
-          if (before.has(f)) continue;
-          try { if (await f.evaluate(() => !!document.querySelector('[data-codex-composer-root]') && innerWidth > 600)) return true; } catch (_) { /* gone */ }
-        }
-        return false;
-      }, 60000, 500);
-      if (!drawn) tell('the new tab drew no message box in 60 s');
-      await sleep(1500);
-      return union([await tabsBox(), await part(PARTS.editor)]);
-    });
-    await exec('workbench.action.closeActiveEditor');
-    await look('remove-from-group', {
-      expect: 'Remove from Group on the row puts "Why does the nightly export skip archived rows?" back in Ungrouped; the "Release 1.3" group stays, empty, with a count of 0.',
-      unchanged: 'The script closed the tab the step before opened, so the tab that was in front before that step is in front again.',
-    }, async () => {
-      await pick(row(t1.id), ['Remove from Group']);
-      if (!await until(() => list.evaluate((id) => !!document.querySelector(`.cp-group[data-key="ungrouped"] .cp-row[data-id="${id}"]`), t1.id), 20000, 500)) throw new Error('the row did not go back to Ungrouped');
-      await sleep(500);
-      return inList('.cp-groups');
-    });
-    await look('delete-group', {
-      expect: 'Delete Group on the header removes the "Release 1.3" group from the list; Ungrouped still holds all four conversations.',
-    }, async () => {
-      await pick(groupHead('Release 1.3'), ['Delete Group']);
-      if (!await until(() => list.evaluate(() => ![...document.querySelectorAll('.cp-group-name')].some((e) => e.textContent === 'Release 1.3')), 20000, 500)) throw new Error('the group was still listed after 20 s');
-      return inList('.cp-groups');
-    });
-    await look('mark-unread', {
-      expect: 'Mark as Unread on the row "Why does the nightly export skip archived rows?" puts an envelope (📩) after its title, before its time, and no dot, since it is not running; its title stays red from Text Color. As an unread conversation it now counts in "Active · N" and in Agent Plus\'s bell in the status bar, each one more than before.',
-    }, async () => {
-      await pick(row(t1.id), ['Mark as Unread']);
-      await until(() => list.evaluate((id) => { const e = document.querySelector(`.cp-groups .cp-row[data-id="${id}"] .cp-unseen`); return !!e && !e.classList.contains('cp-hidden'); }, t1.id), 10000, 300);
-      await sleep(500);
-      return rowBox(t1.id);
-    });
-    await look('mark-read', {
-      expect: 'Mark as Read, which its menu now offers in place of Mark as Unread, takes the envelope away again; the title stays red from Text Color, and "Active · N" and Agent Plus\'s count in the status bar drop back by one.',
-    }, async () => {
-      await pick(row(t1.id), ['Mark as Read']);
-      await until(() => list.evaluate((id) => { const e = document.querySelector(`.cp-groups .cp-row[data-id="${id}"] .cp-unseen`); return !e || e.classList.contains('cp-hidden'); }, t1.id), 10000, 300);
-      await sleep(500);
-      return rowBox(t1.id);
-    });
-    let t2title = t2.title;
-    await look('rename-row-inline', {
-      expect: 'The pencil on the row "Add a dry-run flag to the cleanup script" turns its title into an edit field holding the title, selected, inside the row.',
-    }, async () => {
-      await showList();
-      await away();
-      await row(t2.id).hover();
-      await sleep(400);
-      await row(t2.id).locator('.cp-act[data-act="rename"]').click({ timeout: 5000 });
-      if (!await until(() => list.evaluate(() => !!document.querySelector('.cp-row.cp-editing, .cp-row .cp-editing, .cp-editing')), 5000, 200)) throw new Error('the title was not put in an edit field');
-      return rowBox(t2.id);
-    });
-    await look('row-renamed', {
-      expect: 'After typing "Add a dry-run flag to the cleanup job" and Enter, the row shows that title, no longer in an edit field.',
-    }, async () => {
-      await page.keyboard.press('Control+A');
-      await page.keyboard.type('Add a dry-run flag to the cleanup job');
-      await page.keyboard.press('Enter');
-      if (!await until(() => list.evaluate((id) => ((document.querySelector(`.cp-row[data-id="${id}"] .cp-title`) || {}).textContent || '') === 'Add a dry-run flag to the cleanup job', t2.id), 20000, 500)) throw new Error('the title did not change in 20 s');
-      t2title = 'Add a dry-run flag to the cleanup job';
-      await away();
-      return rowBox(t2.id);
-    });
-    await look('find-thread', {
-      expect: 'Find a Codex Conversation opens a quick pick at the top of the window; with "nightly" typed it lists "Why does the nightly export skip archived rows?", with its thread ID beside it and its folder under it.',
-    }, async () => {
-      await start('codexPlus.findThread');
-      const input = page.locator('.quick-input-widget input').first();
-      await input.waitFor({ state: 'visible', timeout: 10000 });
-      await input.fill('nightly');
-      await sleep(1200);
-      return boxIn(null, '.quick-input-widget');
-    });
-    await page.keyboard.press('Escape');
     await look('list-new-in-sidebar', {
-      expect: '"New in sidebar" in the session list opens Codex in the secondary side bar on the right, on its new-conversation page with a message box.',
+      expect: '"New in sidebar" in Agent Plus\'s session list, with Codex as the agent of a new conversation, opens Codex in the secondary side bar on the right, on its new-conversation page with a message box.',
     }, async () => {
-      await list.locator('.cp-new[data-send="newInSidebar"]').first().click();
+      await showList();
+      await list.locator('.sl-new [data-where="sidebar"]').first().click();
       await allowUri();
       await until(async () => { const a = await part(PARTS.auxiliary); return a && a.width > 0; }, 15000, 500);
       await sleep(3000);
@@ -918,89 +711,20 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     });
     await exec('workbench.action.closeAuxiliaryBar');
 
-    /* ═══ archive and delete: the conversation no later step uses ═══ */
-    const under = (top) => { try { return fs.readdirSync(path.join(profile.codexHome, top), { recursive: true }).filter((n) => String(n).includes(t2.id)); } catch (_) { return []; } };
-    const shelved = () => list.evaluate((id) => !!document.querySelector(`.cp-group[data-key="archived"] .cp-row[data-id="${id}"]`), t2.id);
-    await look('archived-section', {
-      expect: 'Archive moves the renamed conversation into "Archived sessions", the last group, shown open here with that one row; it is gone from Ungrouped. Its rollout moved to archived_sessions/.',
-    }, async () => {
-      await pick(row(t2.id), ['Archive']);
-      if (!await until(async () => await shelved() && under('archived_sessions').length === 1, 30000, 500)) throw new Error('the conversation was not archived in 30 s');
-      const open = await list.evaluate(() => { const g = document.querySelector('.cp-group[data-key="archived"]'); return g && g.classList.contains('cp-open'); });
-      if (!open) await list.locator('.cp-group[data-key="archived"] .cp-group-head').first().click();
-      await sleep(800);
-      return inList('.cp-groups');
-    });
-    await look('archived-row-menu', {
-      expect: 'The archived row\'s menu has Resume in Tab, Resume in Sidebar, Text Color and Unarchive, then after a separator "Codex Plus: Delete Conversation...", and no Rename, Archive or Add to Group.',
-    }, async () => {
-      await menuOn(rowIn('archived', t2.id));
-      return union([await inList(`.cp-group[data-key="archived"] .cp-row[data-id="${t2.id}"]`), await menuBox()]);
-    });
-    await closeMenus();
-    const dialogBox = () => boxIn(null, '.monaco-dialog-box');
-    const dialogShown = () => page.evaluate(() => !![...document.querySelectorAll('.monaco-dialog-box')].find((e) => e.offsetParent));
-    const press = (label) => page.locator('.monaco-dialog-box .dialog-buttons .monaco-button').filter({ hasText: label }).first().click({ timeout: 5000 });
-    await look('delete-confirmation', {
-      expect: `Delete Conversation... opens VS Code's modal confirmation in the window: "Delete "${t2title}" from disk?", saying the rollout and its sub-agents' rollouts go and that this cannot be undone, with Delete and Cancel buttons.`,
-    }, async () => {
-      await pick(rowIn('archived', t2.id), ['Delete Conversation']);
-      if (!await until(dialogShown, 15000, 300)) throw new Error('no confirmation drawn in the window');
-      await sleep(400);
-      return dialogBox();
-    });
-    await look('deleted', {
-      expect: 'Cancel closes the confirmation and keeps the row; Delete, on a second try, deletes it: the row leaves Archived sessions, which is no longer listed when it is empty.',
-    }, async () => {
-      if (await dialogShown()) await press('Cancel');
-      await sleep(1500);
-      if (!await rowIn('archived', t2.id).count()) throw new Error('Cancel did not keep the row');
-      await pick(rowIn('archived', t2.id), ['Delete Conversation']);
-      if (!await until(dialogShown, 15000, 300)) throw new Error('the second Delete opened no confirmation');
-      await press('Delete');
-      if (!await until(async () => !await rowIn('archived', t2.id).count() && !under('sessions').length && !under('archived_sessions').length, 30000, 500)) throw new Error('the conversation was not deleted in 30 s');
-      return inList('.cp-groups');
-    });
-    await look('current-after-menus', {
-      expect: `With the tab of "${freshTitle || 'the conversation started from the tab bar'}" in front again, after the list's menus were used on other rows above, only that conversation's rows are drawn as the current one: `
-        + 'its row in Open sessions and its row in Ungrouped, with the selection background and a bold title. No other row, in particular "Why does the nightly export skip archived rows?" whose menu was used, '
-        + 'is left with that background, a bold title or an outline.',
-    }, async () => {
-      if (!freshTitle) throw new Error('the conversation started from the tab bar has no title');
-      await tab(freshTitle).click();
-      await showList();
-      await away();
-      await sleep(1500);
-      return part(PARTS.sidebar);
-    });
-    await look('chosen-after-closing', {
-      expect: `"${t1.title}" was opened with a click on its row in the session list, and its tab was then closed while it was in front. `
-        + 'None of its rows in the list has the selection background, an outline, a bold title or its rename button showing; '
-        + 'only the conversation now in front, when it is one of Codex\'s, is drawn as the current one.',
-    }, async () => {
-      await showList();
-      await row(t1.id).click();
-      if (!await until(async () => (await tab(t1.title).count()) > 0, 30000, 500)) throw new Error('the click on its row opened no tab');
-      await sleep(1500);
-      await call(`const mine = vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((x) => x.input && x.input.uri && String(x.input.uri).includes(arg));
-        if (mine.length) await vscode.window.tabGroups.close(mine); return mine.length;`, t1.id);
-      await showList();
-      await away();
-      await sleep(1500);
-      return part(PARTS.sidebar);
-    });
-
     /* ═══ a conversation in a tab ═══ */
-    await look('resume-in-tab', {
-      expect: `Resume in Tab opens "${title}" in a tab of the editor group there, titled by the conversation, showing its four messages and replies and the message box at the bottom. `
+    await look('opened-from-list', {
+      expect: `A click on the row of "${title}" in Agent Plus's session list opens it in a tab of the editor group there, titled by the conversation, showing its four messages and replies and the message box at the bottom. `
         + 'The tab\'s Codex logo carries a red dot, for the question its work plan put to the user after the user\'s last message. '
-        + `In the session list on the left, "${title}" is now the current conversation: its row in Open sessions and its row in Ungrouped have the selection background and a bold title, `
-        + 'and no other row has either, the conversation that was in front before included.',
+        + `In the list on the left, the row of "${title}" now has a solid stripe at its start, as open in this window, and is drawn as the current one, without its envelope icon; `
+        + 'no other row is drawn as current, and the row of the conversation that was in front before keeps its stripe, as its tab is still open.',
     }, async () => {
-      await pick(row(t0.id), ['Resume in Tab']);
+      await showList();
+      await row(t0.id).click({ timeout: 10000 });
       codex = await frameWhere((want) => !!document.querySelector('[data-codex-composer-root]') && document.querySelectorAll('[data-turn-key]').length >= 4
         && document.body.innerText.includes(want), 90000, title);
       if (!codex) throw new Error('the conversation did not open in 90 s');
+      await until(async () => ((await slRow(t0.id)) || {}).stripe === 'here', 15000, 500);
+      await away();
       await sleep(2500);
       return union([await tabsBox(), await part(PARTS.editor), await part(PARTS.sidebar)]);
     });
@@ -1129,10 +853,11 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     await until(() => codex.evaluate(() => !!document.querySelector('.codex-extras-rail')), 15000, 500);
 
     /* ═══ a turn: running, unread, read ═══ */
-    const sideRow = () => list.evaluate((id) => { const r = document.querySelector(`.cp-row[data-id="${id}"]`); return r && r._row ? String(r._row.dot) : ''; }, t0.id).catch(() => '');
-    const tabAndRow = async () => union([await tab(title).boundingBox().catch(() => null), await inList(`.cp-row[data-id="${t0.id}"]`)]);
+    /* The dot of the conversation's row in Agent Plus's session list. */
+    const sideRow = async () => ((await slRow(t0.id)) || {}).dot || '';
+    const tabAndRow = async () => union([await tab(title).boundingBox().catch(() => null), await rowBox(t0.id)]);
     await look('turn-running', {
-      expect: 'While the turn of a message sent from the tab runs, the tab\'s Codex logo carries a solid green dot, and the conversation\'s rows in the session list have a solid green dot.',
+      expect: 'While the turn of a message sent from the tab runs, the tab\'s Codex logo carries a solid green dot, and the conversation\'s row in Agent Plus\'s session list a solid green dot at the top right of its logo.',
       unchanged: 'The script turned the additions back on with Toggle after the step before, so the times, rail and toolbar controls are drawn again.',
     }, async () => {
       await showList();
@@ -1146,7 +871,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     });
     await look('reply-unread', {
       expect: `With notes.txt in front when the reply lands, the conversation has stopped: its tab\'s Codex logo carries no dot and the tab\'s title reads "${title} 📩", the envelope once and last; `
-        + 'its rows in the list have no dot and an envelope after the title, before the time; Agent Plus\'s status bar does not count it, as a reply not read is left to its notification, '
+        + 'its row in the session list has no dot and a small envelope icon after its title, and no envelope inside the title; Agent Plus\'s status bar does not count it, as a reply not read is left to its notification, '
         + `and a notification says "${title}" finished, with two buttons, Open and Dismiss, and no progress bar.`,
     }, async () => {
       await openNotes();
@@ -1157,7 +882,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       if (!await until(async () => (await toastLines()).some((l) => l.includes(`"${title}" finished`)), 20000, 500)) {
         tell(`no "finished" notification in 20 s; the window has the focus: ${await call('return vscode.window.state.focused;').catch((e) => String(e))}`);
       }
-      await until(() => list.evaluate((id) => [...document.querySelectorAll(`.cp-row[data-id="${id}"] .cp-unseen`)].some((e) => !e.classList.contains('cp-hidden')), t0.id), 10000, 300);
+      await until(async () => ((await slRow(t0.id)) || {}).unread, 10000, 300);
       await sleep(1500);
       return union([await tabAndRow(), await part(PARTS.statusbar), await toastsBox()]);
     });
@@ -1182,7 +907,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     /* ═══ the unread envelope in the light themes (src/envelope.js) ═══ */
     const lightUnread = (theme) => ({
       expect: `In ${theme}, with the reply still unread, the tab's title ends in the envelope's text form ✉︎, an outline glyph in the theme's text colour rather than a white emoji, `
-        + 'and the conversation\'s rows in the session list and its row in Agent Plus\'s Conversations panel at the bottom each have one such envelope after the title, clearly visible on the light background.',
+        + 'and the conversation\'s row in Agent Plus\'s Conversations panel at the bottom has one such envelope after the title, clearly visible on the light background. '
+        + 'Its row in the session list on the left has its unread mark after the title.',
     });
     const inLight = (theme) => async () => {
       await setting('colorTheme', theme, 'workbench');
@@ -1199,7 +925,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     await exec('workbench.action.closePanel');
     await until(async () => (await labelOf(title)) === `${title} ${ENVELOPE}`, 15000, 500);
 
-    /* ═══ renaming while the reply is unread, and a long title in a narrow side bar ═══ */
+    /* ═══ renaming while the reply is unread ═══ */
     const renameBox = page.locator('.quick-input-widget input').first();
     const renameTo = async (name) => {
       await start('codexPlus.renameThread', t0.id);
@@ -1221,74 +947,56 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     const sideBefore = ((await part(PARTS.sidebar)) || {}).width || 0;
     await look('renamed-unread', {
       expect: `After "${renamed} 📩" is typed, the envelope at its end as if it had been left in, and Enter, the tab's title reads "${renamed} 📩": one envelope, last, still there because the reply has not been seen. `
-        + `The conversation's rows in the session list read "${renamed}" with one envelope after the title, before the time, and none inside the title.`,
+        + `The conversation's row in Agent Plus's session list reads "${renamed}", with no envelope inside the title and its unread mark after it.`,
     }, async () => {
       await renameBox.fill(`${renamed} ${ENVELOPE}`);
       await renameBox.press('Enter');
       await showList();
       if (!await until(async () => (await labelOf(renamed)) === `${renamed} ${ENVELOPE}`, 20000, 500)) throw new Error(`the tab read ${JSON.stringify(await labelOf(renamed))}`);
-      await until(() => list.evaluate((want) => [...document.querySelectorAll('.cp-row .cp-title')].some((e) => e.textContent === want), renamed), 15000, 500);
+      await until(async () => ((await slRow(t0.id)) || {}).title === renamed, 15000, 500);
       /* Widened so the whole new title fits in the picture. */
       await sideTo(760);
       await away();
       await sleep(800);
-      return union([await tab(renamed).boundingBox().catch(() => null), await rowBox(t0.id, '.cp-section[data-key="open"]'), await rowBox(t0.id)]);
+      return union([await tab(renamed).boundingBox().catch(() => null), await rowBox(t0.id)]);
     });
     const kept = `${title} (kept short)`;
     await look('rename-envelope-anywhere', {
       expect: `When the conversation is renamed to "📩 📩 ${title} 📩 (kept short)" while its reply is unread, the tab's title reads "${kept} 📩". `
-        + `The conversation's rows in the session list, their titles cut short in the narrowed side bar, `
-        + 'each end in one envelope after the title and none inside it. (The window test checks the rows\' whole titles.)',
+        + `The conversation's row in Agent Plus's session list reads "${kept}", with no envelope inside the title and its unread mark after it.`,
     }, async () => {
       await renameTo(`${ENVELOPE} ${ENVELOPE} ${title} ${ENVELOPE} (kept short)`);
       if (!await until(async () => (await labelOf(kept)) === `${kept} ${ENVELOPE}`, 20000, 500)) throw new Error(`the tab read ${JSON.stringify(await labelOf(kept))}`);
       await showList();
-      /* The side bar is still narrowed from the step before, which leaves the editor room for the whole title on its tab. */
+      await until(async () => ((await slRow(t0.id)) || {}).title === kept, 15000, 500);
+      /* The side bar, widened in the step before, goes back to 420 px, which leaves the editor room for the whole title on its tab. */
       await sideTo(420);
       await away();
       await sleep(800);
-      return union([await tab(kept).boundingBox().catch(() => null), await rowBox(t0.id, '.cp-section[data-key="open"]'), await rowBox(t0.id)]);
+      return union([await tab(kept).boundingBox().catch(() => null), await rowBox(t0.id)]);
     });
     await look('rename-unread-pencil', {
-      expect: `The pencil on the conversation's row in the session list, while the reply is unread, turns the title into an edit field holding only "${kept}", selected; the envelope stays drawn after the field.`,
+      expect: `The pencil on the conversation's row in Agent Plus's session list, while the reply is unread, turns the title into an edit field holding only "${kept}", with no envelope in it.`,
     }, async () => {
       await showList();
       await away();
       await row(t0.id).hover();
       await sleep(400);
-      await row(t0.id).locator('.cp-act[data-act="rename"]').click({ timeout: 5000 });
-      if (!await until(() => list.evaluate(() => !!document.querySelector('.cp-editing')), 5000, 200)) throw new Error('the title was not put in an edit field');
-      const editing = await list.evaluate(() => (document.querySelector('.cp-editing') || {}).textContent || '');
+      await row(t0.id).locator('.sl-act[data-act="rename"]').click({ timeout: 5000 });
+      if (!await until(() => list.evaluate(() => !!document.querySelector('.sl-title.sl-editing')), 5000, 200)) throw new Error('the title was not put in an edit field');
+      const editing = await list.evaluate(() => (document.querySelector('.sl-title.sl-editing') || {}).textContent || '');
       tell(`the edit field holds ${JSON.stringify(editing)}`);
       return rowBox(t0.id);
     });
     await page.keyboard.press('Escape');
-    await until(() => list.evaluate(() => !document.querySelector('.cp-editing')), 5000, 200);
-    /* Shorter than the 120-character limit in titleOf (src/codex-files.js). */
-    const longTitle = `${title}, and where its cap is set`;
-    await look('long-title-narrow', {
-      expect: 'Renamed to a long title, with the side bar dragged narrow, the conversation\'s row in the Open sessions section shows the title cut short with an ellipsis (…), and right after the ellipsis the envelope, whole and fully visible, '
-        + 'then the time at the right edge of the row.',
-    }, async () => {
-      await renameTo(longTitle);
-      await showList();
-      await sideTo(240);
-      if (!await until(() => list.evaluate((id) => {
-        const t = document.querySelector(`.cp-groups .cp-row[data-id="${id}"] .cp-title`);
-        return !!t && t.textContent.length > 60 && t.scrollWidth > t.clientWidth;
-      }, t0.id), 15000, 500)) throw new Error('the long title was not cut short in the side bar');
-      await away();
-      await sleep(800);
-      /* The row in Open sessions: the one in Ungrouped stays highlighted from the menus used before, its time hidden. */
-      return rowBox(t0.id, '.cp-section[data-key="open"]');
-    });
+    await until(() => list.evaluate(() => !document.querySelector('.sl-title.sl-editing')), 5000, 200);
     try {
       if (sideBefore) await sideTo(sideBefore);
       await renameTo(title);
       await until(async () => (await labelOf(title)) !== null, 20000, 500);
     } catch (e) { tell(`putting the title and the side bar back failed: ${(e && e.message) || e}`); }
     await look('reply-read', {
-      expect: `Bringing the tab to the front takes the envelope off its title, which reads "${title}" again, and off its rows in the list; the stopped conversation has no dot on its logo or its rows. The count goes off the bell, and the notification closes.`,
+      expect: `Bringing the tab to the front takes the envelope off its title, which reads "${title}" again, and the unread mark off its row in the list; the stopped conversation has no dot on its logo or its row. The count goes off the bell, and the notification closes.`,
     }, async () => {
       await tab(title).click();
       await until(async () => { const d = await dotsOn(title); return d && d.waiting === 0 && d.working === 0 && (await labelOf(title)) === title; }, 20000, 500);
@@ -1341,24 +1049,24 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
 
     /* ═══ work left running after a turn ═══ */
     await look('left-running-command', {
-      expect: 'After a turn that started "sleep 30" in the background has ended, the tab\'s logo carries a hollow green ring rather than a solid dot, the conversation\'s rows in the list a green ring, and the row below the message box '
+      expect: 'After a turn that started "sleep 30" in the background has ended, the tab\'s logo carries a hollow green ring rather than a solid dot, the conversation\'s row in the session list a green ring, and the row below the message box '
         + 'says at its right end that a command is still running.',
     }, async () => {
       model.script(t0.id, [{ call: 'exec_command', args: { cmd: 'sleep 30', yield_time_ms: 1000 } }, { reply: 'Started the job.' }]);
       await type('Start the background command and come back.');
-      if (!await until(async () => model.left() === 0 && ((await dotsOn(title)) || {}).ring && (await sideRow()) === 'background', 40000, 500)) throw new Error('the conversation had no green ring after its turn');
+      if (!await until(async () => model.left() === 0 && ((await dotsOn(title)) || {}).ring && (await sideRow()) === 'greenRing', 40000, 500)) throw new Error('the conversation had no green ring after its turn');
       await sleep(4000);
       return union([await tab(title).boundingBox(), await bottomBox(160)]);
     });
     await look('left-running-row-hover', {
-      expect: 'The hover of the conversation\'s row in the session list says "A background command is still running".',
+      expect: 'The hover box of the conversation\'s row in Agent Plus\'s session list, under the row, ends with the line "A background command is still running", which Codex Plus gives it.',
     }, async () => {
       await showList();
       await away();
       await row(t0.id).hover();
-      await until(() => list.evaluate(() => { const h = document.querySelector('.cp-hover'); return h && !h.classList.contains('cp-hidden'); }), 5000, 200);
+      await until(() => list.evaluate(() => { const h = document.querySelector('.sl-hover'); return h && !h.classList.contains('sl-hidden') && /still running/.test(h.textContent); }), 5000, 200);
       await sleep(500);
-      return union([await rowBox(t0.id, '.cp-section[data-key="open"]') || await rowBox(t0.id), await inList('.cp-hover:not(.cp-hidden)')]);
+      return union([await rowBox(t0.id), await inList('.sl-hover:not(.sl-hidden)')]);
     });
     await away();
     await until(async () => !(((await dotsOn(title)) || {}).working >= 6), 60000, 1000);
@@ -1367,18 +1075,18 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     const outside = (cmd) => ({ call: 'exec_command', args: { cmd, yield_time_ms: 1000, sandbox_permissions: 'require_escalated', justification: 'Start the job outside the sandbox.' } });
     const notices = model.sent('Codex Plus notice');
     await look('approval-waiting', {
-      expect: 'A command asked to run outside the sandbox: Codex shows its approval card in place of the message box, asking whether to run "setsid sleep 40 ..." with its buttons; the tab\'s logo carries a red dot and the conversation\'s rows in the list a red dot.',
+      expect: 'A command asked to run outside the sandbox: Codex shows its approval card in place of the message box, asking whether to run "setsid sleep 40 ..." with its buttons; the tab\'s logo carries a red dot and the conversation\'s row in the session list the blue dot of a dialog waiting for the user.',
     }, async () => {
       model.script(t0.id, [outside('setsid sleep 40 >/dev/null 2>&1 < /dev/null &'), { reply: 'Started the job.' }]);
       await type('Start the detached job and come back.');
       if (!await until(card, 20000, 300)) throw new Error('Codex showed no approval card');
       await until(async () => ((await dotsOn(title)) || {}).waiting >= 6, 20000, 500);
-      await until(async () => (await sideRow()) === 'waiting', 10000, 300);
+      await until(async () => (await sideRow()) === 'blue', 10000, 300);
       await sleep(1500);
       return union([await tabAndRow(), await bottomBox(360)]);
     });
     await look('detached-running', {
-      expect: 'Once approved and the turn has ended, the tab\'s logo and the conversation\'s rows carry the green ring, and the Agent map pill counts the detached command: "1 detached · 1 timer".',
+      expect: 'Once approved and the turn has ended, the tab\'s logo carries the green ring, and the Agent map pill counts the detached command: "1 detached · 1 timer".',
     }, async () => {
       await approve();
       if (!await until(async () => model.left() === 0 && /\b1 detached\b/.test(await pillText()), 40000, 500)) throw new Error(`the pill read ${JSON.stringify(await pillText())}`);
@@ -1433,17 +1141,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       return mapBox();
     });
     await closeMap();
-    await look('subagent-row-indented', {
-      expect: 'With codexPlus.hideBackgroundSessions off, the session list also lists the sub-agent, indented under the conversation that started it, titled by the same name the Agent map gives it rather than "(untitled)", with a green dot while it runs.',
-    }, async () => {
-      await showList();
-      await setting('hideBackgroundSessions', false);
-      await until(() => list.evaluate(() => !!document.querySelector('.cp-row.cp-child')), 20000, 500);
-      await sleep(800);
-      return inList('.cp-groups');
-    });
     model.releaseOthers();
-    await setting('hideBackgroundSessions', true);
     await until(async () => !(((await dotsOn(title)) || {}).working >= 6), 60000, 1000);
     model.script(null);
 
@@ -1582,7 +1280,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
 
     /* ═══ links to other conversations in a reply ═══ */
     {
-      /* By t1 alone, since an earlier step deletes t2 and a deleted conversation gets no link. */
+      /* Three ways of naming one other conversation, t1. */
       const reply = `That was 「${t1.title}」, whose thread ${t1.id} has the details.\n\nNext time, open ${t1.title} first.`;
       const links = () => codex.evaluate(() => document.querySelectorAll('[data-codex-extras="convo-link"]').length).catch(() => 0);
       await look('conversation-links', {
@@ -1666,22 +1364,24 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     });
 
     /* ═══ a goal ═══ */
-    const goalOf = () => list.evaluate((id) => { const r = document.querySelector(`.cp-row[data-id="${id}"]`); return r && r._row ? String(r._row.goal || '') : ''; }, t0.id).catch(() => '');
+    /* The goal badge on the conversation's row in Agent Plus's list (GOAL_WORD in src/session-list-source.js), '' for none. */
+    const goalOf = async () => ((await slRow(t0.id)) || { badges: [] }).badges.find((b) => /^goal/.test(b)) || '';
     await look('goal-paused', {
-      expect: 'With a paused goal set on the conversation, its row in the list shows "goal paused" after the title, and its menu offers "Codex Plus: Resume Goal" and "Codex Plus: Clear Goal".',
+      expect: 'With a paused goal set on the conversation, its row in Agent Plus\'s session list shows a dimmed "goal paused" badge after the title, and its menu offers Codex\'s own "Resume Goal" and "Clear Goal".',
     }, async () => {
       const r = await hostRequest('thread/goal/set', { threadId: t0.id, objective: 'Make the nightly export include archived rows', status: 'paused', origin: 'user' });
       if (r && r.error) throw new Error(`thread/goal/set: ${JSON.stringify(r.error)}`);
-      if (!await until(async () => (await goalOf()) === 'paused', 30000, 500)) throw new Error(`the row's goal is ${JSON.stringify(await goalOf())}`);
+      await showList();
+      if (!await until(async () => (await goalOf()) === 'goal paused', 30000, 500)) throw new Error(`the row's goal badge is ${JSON.stringify(await goalOf())}`);
       await menuOn(row(t0.id));
       return union([await rowBox(t0.id), await menuBox()]);
     });
     await look('goal-active', {
-      expect: 'Resume Goal sets it going: the row shows "goal", its dot turns green as Codex starts a turn for the goal, and the Agent map pill names the goal.',
+      expect: 'Resume Goal sets it going: the row\'s badge reads "goal", its dot turns green as Codex starts a turn for the goal, and the Agent map pill names the goal.',
     }, async () => {
       model.hold();
       await ctxItem('Resume Goal').click({ timeout: 5000 });
-      if (!await until(async () => (await goalOf()) === 'active', 30000, 500)) throw new Error(`the row's goal is ${JSON.stringify(await goalOf())}`);
+      if (!await until(async () => (await goalOf()) === 'goal', 30000, 500)) throw new Error(`the row's goal badge is ${JSON.stringify(await goalOf())}`);
       await sleep(2000);
       return union([await rowBox(t0.id), await tab(title).boundingBox(), await toolbar()]);
     });
@@ -1689,10 +1389,10 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     model.release();
     await until(async () => !(((await dotsOn(title)) || {}).working >= 6), 60000, 1000);
     await look('goal-cleared', {
-      expect: 'After Pause Goal and then Clear Goal the row shows no goal word, and the Agent map pill no longer names a goal.',
+      expect: 'After Pause Goal and then Clear Goal the row shows no goal badge, and the Agent map pill no longer names a goal.',
     }, async () => {
       await pick(row(t0.id), ['Clear Goal']);
-      if (!await until(async () => (await goalOf()) === '', 30000, 500)) throw new Error(`the row's goal is ${JSON.stringify(await goalOf())}`);
+      if (!await until(async () => (await goalOf()) === '', 30000, 500)) throw new Error(`the row's goal badge is ${JSON.stringify(await goalOf())}`);
       await sleep(1000);
       return union([await rowBox(t0.id), await toolbar()]);
     });
@@ -1700,7 +1400,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     /* ═══ tabs ═══ */
     const vsMenu = () => page.evaluate(() => { const m = [...document.querySelectorAll('.context-view .monaco-menu')].find((e) => e.offsetParent); return m ? m.innerText : ''; });
     await look('tab-context-menu', {
-      expect: 'A right-click on the conversation, on its tab or else inside its page, opens a VS Code menu holding "Codex Plus: Mark as Unread", "Codex Plus: Rename" and "Codex Plus: Add to Group".',
+      expect: 'A right-click on the conversation, on its tab or else inside its page, opens a VS Code menu holding "Codex Plus: Mark as Unread" and "Codex Plus: Rename".',
     }, async () => {
       await tab(title).click({ button: 'right' });
       await until(vsMenu, 5000, 200);
@@ -1719,22 +1419,17 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       return union([at, await boxIn(null, '.context-view .monaco-menu')]);
     });
     await page.keyboard.press('Escape');
-    await look('recently-closed', {
-      expect: `Once the tab of "${freshTitle || 'the conversation started from the tab bar'}" is closed, the session list's "Recently closed" section, opened, lists it.`,
-    }, async () => {
-      if (!freshTitle) throw new Error('the conversation started from the tab bar has no title');
-      await showList();
+    /* ═══ a closed conversation reopened ═══ */
+    if (freshTitle) {
       await tab(freshTitle).click();
       await exec('workbench.action.closeActiveEditor');
-      await until(() => list.evaluate(() => !!document.querySelector('.cp-section[data-key="closed"] .cp-row')), 20000, 500);
-      const open = await list.evaluate(() => { const s = document.querySelector('.cp-section[data-key="closed"]'); return s && s.classList.contains('cp-open'); });
-      if (!open) await list.locator('.cp-section[data-key="closed"] .cp-section-head').first().click();
-      await sleep(800);
-      return inList('.cp-section[data-key="closed"]');
-    });
+      await sleep(1000);
+    }
     await look('reopen-closed-shortcut', {
-      expect: `Ctrl+Shift+T, with the editor focused, reopens "${freshTitle}" in a tab, in front, showing its message and reply.`,
+      expect: `With the tab of "${freshTitle || 'the conversation started from the tab bar'}" closed, Ctrl+Shift+T with the editor focused, which Agent Plus's session list takes while it is on, `
+        + 'reopens that conversation in a tab, in front, showing its message and reply.',
     }, async () => {
+      if (!freshTitle) throw new Error('the conversation started from the tab bar has no title');
       await tab(title).click();
       await sleep(500);
       const at = Date.now();
@@ -1748,7 +1443,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       return union([await tabsBox(), await part(PARTS.editor)]);
     });
     await look('reopen-shortcut-off', {
-      expect: `With codexPlus.reopenClosedSessionShortcut off, "${freshTitle}" is closed again, and Ctrl+Shift+T runs VS Code's own Reopen Closed Editor: the tab closed last comes back in front, with the address it had.`,
+      expect: `With codexPlus.reopenClosedSessionShortcut off and "${freshTitle}" closed again, Ctrl+Shift+T is still Agent Plus's session list's, since the list is on: `
+        + 'it reopens that conversation in a tab, in front, as in the step before.',
     }, async () => {
       await setting('reopenClosedSessionShortcut', false);
       await tab(freshTitle).click();
@@ -1867,13 +1563,13 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     await setting('tokenMode', undefined, 'agentPlus');
 
     /* ═══ Codex's sidebar ═══ */
-    await look('resume-in-sidebar', {
-      expect: 'Resume in Sidebar on "Why does the nightly export skip archived rows?", with notes.txt the tab in front, shows it in Codex\'s sidebar on the right, with a time on each message and reply, each inside its column; '
-        + 'the session list\'s Open sessions lists it, and its rows in Open sessions and in its group are drawn as the current conversation (selection background, bold title), with no other row drawn so.',
+    await look('opened-in-sidebar', {
+      expect: 'Open in Sidebar, in the menu of the row "Why does the nightly export skip archived rows?" in Agent Plus\'s session list, with notes.txt the tab in front, shows that conversation in Codex\'s sidebar on the right, '
+        + 'with a time on each message and reply, each inside its column; in the list its row has a solid stripe at its start, as open in this window, and is drawn as the current conversation, with no other row drawn so.',
     }, async () => {
       await openNotes();
       await toList();
-      await pick(row(t1.id), ['Resume in Sidebar']);
+      await pick(row(t1.id), ['Open in Sidebar']);
       await allowUri();
       const side = await frameWhere((want) => innerWidth < 800 && document.body.innerText.includes(want) && document.querySelectorAll('.codex-extras-stamp-assistant').length >= 4, 90000, t1.title);
       if (!side) throw new Error('the conversation did not show in Codex\'s sidebar');
@@ -1971,26 +1667,23 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     /* ═══ archived while its tab is open ═══ */
     const shelvedOnDisk = () => { try { return fs.readdirSync(path.join(profile.codexHome, 'archived_sessions'), { recursive: true }).some((n) => String(n).includes(t0.id)); } catch (_) { return false; } };
     await look('archived-while-open', {
-      expect: 'Archived while its tab is open, the conversation stays in the tab with all its turns, read-only, with no message box; the session list shows it under Archived sessions.',
+      expect: 'Archived in Codex while its tab is open, as Codex\'s own Archive does, the conversation stays in the tab with all its turns, read-only, with no message box, and no "!" or warning from Codex Plus on the page.',
     }, async () => {
       await tab(title).click();
-      await exec('codexPlus.archiveThread', { webviewSection: 'thread', threadId: t0.id, webview: 'codexPlus.sessions' }, [t0.id]);
-      if (!await until(shelvedOnDisk, 30000, 500)) throw new Error('the rollout did not move to archived_sessions/');
+      const r = await hostRequest('thread/archive', { threadId: t0.id });
+      if (!await until(shelvedOnDisk, 30000, 500)) throw new Error(`the rollout did not move to archived_sessions/: ${JSON.stringify(r).slice(0, 200)}`);
       await until(() => codex.evaluate(() => document.querySelectorAll('[data-turn-key]').length > 0 && !document.querySelector('[data-codex-composer-root]')).catch(() => false), 30000, 500);
       await sleep(1500);
-      return union([await part(PARTS.editor), await part(PARTS.sidebar)]);
+      return part(PARTS.editor);
     });
-    await look('unarchived-from-list', {
-      expect: 'A click on its row in Archived sessions unarchives it: the row goes back among the others, and the tab has its message box again.',
+    await look('unarchived-on-open', {
+      expect: 'Codex Plus\'s Open in Tab, which Agent Plus\'s session list runs for a conversation not open in the window, unarchives it: the tab, in front, has its message box at the bottom again.',
     }, async () => {
-      const open = await list.evaluate(() => { const g = document.querySelector('.cp-group[data-key="archived"]'); return g && g.classList.contains('cp-open'); });
-      if (!open) await list.locator('.cp-group[data-key="archived"] .cp-group-head').first().click();
-      await sleep(500);
-      await rowIn('archived', t0.id).click({ timeout: 10000 });
+      await exec('codexPlus.openThreadInTab', t0.id);
       if (!await until(() => !shelvedOnDisk(), 30000, 500)) throw new Error('the conversation was not unarchived');
       await until(() => codex.evaluate(() => !!document.querySelector('[data-codex-composer-root]')).catch(() => false), 30000, 500);
       await sleep(1500);
-      return union([await part(PARTS.editor), await part(PARTS.sidebar)]);
+      return part(PARTS.editor);
     });
 
     /* ═══ commands ═══ */
@@ -2017,15 +1710,6 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       return part(PARTS.editor);
     });
     await exec('workbench.action.closeActiveEditor');
-    await look('session-list-hidden', {
-      expect: 'With codexPlus.sessionList off, the Codex Plus side bar no longer shows the Codex sessions view.',
-    }, async () => {
-      await exec('workbench.view.extension.codexPlus');
-      await setting('sessionList', false);
-      await sleep(2000);
-      return part(PARTS.sidebar);
-    });
-    await setting('sessionList', true);
     trustAuto = false;
     await look('stop-loading-plugin', {
       expect: 'Stop Loading the Work Plan Plugin shows a notification that Codex will not load the plugin and that it stays installed, with its trust kept.',
