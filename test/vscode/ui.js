@@ -1189,6 +1189,12 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
         'none of them has a dot, as none runs or waits, nor the stripe of a conversation open in this window', listed && threads.map(of));
       check(!!listed && ARCHIVED.every((t) => of(t).title === t.title),
         'the two conversations Codex archived are in Archived, imported as Codex had them the first time the list saw Codex', listed && ARCHIVED.map(of));
+      if (!listed) {
+        const db = await call(`${OWN} const f = own('codex-files'); const t = f.listThreads() || [];
+          return { file: f.stateDbPath(), backfillDone: f.backfillDone(), backfill: f.query('select status, updated_at from backfill_state'),
+            archived: t.filter((x) => x.archived).map((x) => x.id), threads: t.length };`).catch((e) => String(e));
+        note(`what Codex Plus reads of Codex's state database after the list was not as expected: ${JSON.stringify(db)}`);
+      }
       const bg = fakeHome.BACKGROUND;
       const kind = await call(`${OWN} const t = (own('codex-files').listThreads() || []).find((x) => x.id === arg);
         return t ? { kind: t.kind, source: t.source, cwd: t.cwd } : null;`, bg.id).catch((e) => String(e));

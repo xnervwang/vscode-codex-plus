@@ -1125,6 +1125,7 @@ function registerCommands(context, { source, memory, say, link, opens, account }
     source._poll({ tell: true });
     return results;
   };
+  let importWait = '';
   const GOALS = { 'goal.pause': ['thread/goal/set', { status: 'paused' }], 'goal.resume': ['thread/goal/set', { status: 'active' }], 'goal.clear': ['thread/goal/clear', {}] };
   Object.assign(source, {
     async listSessions({ folders = [], cursor = null, limit = 500 } = {}) {
@@ -1184,9 +1185,13 @@ function registerCommands(context, { source, memory, say, link, opens, account }
       await snapshotIn();
       /* Until Codex has filled its database, a conversation it archived may not be marked so yet, and the list imports
          only once: null has the list ask again on the next change. */
-      if (!reader.threads() || !reader.backfilled()) return null;
-      return sessionList.importOf((reader.threads() || []).filter(inFolders(folders)), { sections: [...reader.sections()], pinnedSection: PINNED_SECTION,
+      const wait = !reader.threads() ? 'Codex\'s conversations have not been read yet' : !reader.backfilled() ? 'Codex is still filling its state database from the rollouts' : '';
+      if (wait) { if (importWait !== wait) say(`the session list's import waits: ${wait}`); importWait = wait; return null; }
+      importWait = '';
+      const got = sessionList.importOf((reader.threads() || []).filter(inFolders(folders)), { sections: [...reader.sections()], pinnedSection: PINNED_SECTION,
         colors: context.globalState.get(COLOR_KEY) || {} });
+      say(`the session list's import: ${got.archived.length} archived, ${got.groups.length} group(s), ${got.pinned.length} pinned`);
+      return got;
     },
     noteSeen(ids, seen) { for (const id of Array.isArray(ids) ? ids : []) { if (seen) source.markRead(id); else source.markUnread(id); } },
     accountInfo({ sessionId = '' } = {}) {
