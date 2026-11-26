@@ -49,14 +49,15 @@ const hasWindow = (w) => !!(w && typeof w.usedPercent === 'number' && Number.isF
  * apart from an agent that has no such section. `read` is whether Codex has answered.
  */
 function viewOf({ account, limits, usage, read = false }, today = new Date().toISOString().slice(0, 10)) {
-  if (!account) return { account: [{ label: 'Account', value: read ? 'Not signed in' : 'Not known yet' }], windows: [], tokens: [] };
-  /* Claude Code's Account block is an Email line; Codex's own menu says "Logged in with Amazon Bedrock". */
+  if (!account) return { account: [{ label: 'Sign-in', value: read ? 'Not signed in' : 'Not known yet' }], windows: [], tokens: [] };
+  /* Claude Code's Account block is an Email line; Codex's own menu says "Logged in with Amazon Bedrock". Sign-in is the label
+     Claude Code Plus gives the same line, so the two agents' blocks read alike. */
   const rows = [];
-  if (!ACCOUNT_KINDS[account.type]) rows.push({ label: 'Account', value: 'Signed in' });
+  if (!ACCOUNT_KINDS[account.type]) rows.push({ label: 'Sign-in', value: 'Signed in' });
   else if (account.type === 'chatgpt') {
-    rows.push(account.email ? { label: 'Email', value: account.email } : { label: 'Signed in with', value: 'ChatGPT' });
+    rows.push(account.email ? { label: 'Email', value: account.email } : { label: 'Sign-in', value: 'ChatGPT' });
     if (PLAN_NAMES[account.planType]) rows.push({ label: 'Plan', value: PLAN_NAMES[account.planType] });
-  } else rows.push({ label: 'Signed in with', value: ACCOUNT_KINDS[account.type] });
+  } else rows.push({ label: 'Sign-in', value: ACCOUNT_KINDS[account.type] });
   const windows = [];
   for (const w of [limits && limits.primary, limits && limits.secondary]) {
     if (!hasWindow(w)) continue;

@@ -52,8 +52,8 @@ module.exports = async ({ eq }) => {
   eq(imp, { archived: [{ sessionId: 'a', at: 42 }], groups: [{ name: 'Plugins', sessionIds: ['b', 'c'] }], pinned: ['d', 'e'], colors: { b: 'green' } },
     'the import hands over what Codex archived and when, its sections as groups, its Pinned section and pin mark as pinned, and the title colours');
 
-  const view = { account: [{ label: 'Signed in with', value: 'API key' }], windows: [{ name: '5-hour', usedPercent: 32, resetsAt: 1000 }], tokens: [{ label: 'Tokens today', value: 1900000 }] };
-  eq(L.accountOf(view, { title: 'T a', tokens: { total: 412000 } }), { rows: [{ label: 'Signed in with', value: 'API key' }, { label: 'Tokens today', value: '1,900,000' }],
+  const view = { account: [{ label: 'Sign-in', value: 'API key' }], windows: [{ name: '5-hour', usedPercent: 32, resetsAt: 1000 }], tokens: [{ label: 'Tokens today', value: 1900000 }] };
+  eq(L.accountOf(view, { title: 'T a', tokens: { total: 412000 } }), { rows: [{ label: 'Sign-in', value: 'API key' }, { label: 'Tokens today', value: '1,900,000' }],
     bars: [{ label: '5-hour limit', percent: 32, resetsAt: 1000000 }], conversation: { title: 'T a', rows: [{ label: 'Tokens', value: '412,000' }] } },
   'Account & usage: the sign-in and the day\'s tokens, the limits as bars, and the tokens of the conversation in front');
   eq([L.accountOf(null, null), L.accountOf(view, null).conversation], [null, undefined], 'with no account known there is no part, and with no conversation no conversation rows');

@@ -132,7 +132,7 @@ module.exports = async ({ eq, tmp, root }) => {
     src.noteSeen([made[1].id], true);
     const read = (await src.listConversations()).find((c) => c.sessionId === made[1].id);
     eq([unread.unseen, read.unseen], [true, false], 'the list\'s read marks go to Codex Plus\'s own record');
-    eq(src.accountInfo({ sessionId: '' }), { rows: [{ label: 'Account', value: 'Not known yet' }], bars: [] },
+    eq(src.accountInfo({ sessionId: '' }), { rows: [{ label: 'Sign-in', value: 'Not known yet' }], bars: [] },
       'with no account known yet the Account & usage part says so, rather than being left out as for an agent without one');
     eq(ext._sweepArchived ? typeof ext._sweepArchived : 'function', 'function', 'the extension keeps its own pass over archived conversations');
     manages = true;

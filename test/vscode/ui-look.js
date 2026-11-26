@@ -701,7 +701,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     });
     await look('account-not-signed-in', {
       expect: 'The ACCOUNT & USAGE section at the top of Agent Plus\'s session list, expanded: a block headed by Codex\'s logo and the name Codex, and under it one line, '
-        + 'Account at the left and Not signed in at the right, and no bars, since the made-up provider has no account. Below a thin line, THIS CONVERSATION in small capitals, '
+        + 'Sign-in at the left and Not signed in at the right, and no bars, since the made-up provider has no account. Below a thin line, THIS CONVERSATION in small capitals, '
         + 'the title of the conversation in front and its Tokens. Nothing is cut off or overlaps.',
     }, async () => {
       await toList();
