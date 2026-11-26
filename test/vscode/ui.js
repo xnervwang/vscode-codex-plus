@@ -156,13 +156,15 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
       const k = Object.keys(require.cache).find((x) => x.toLowerCase() === file.toLowerCase());
       return k ? require.cache[k].exports : require(file); };`;
   const shot = (name) => page.screenshot({ path: path.join(shotsDir, `${String(++shotNo).padStart(2, '0')}-${name}.png`) }).catch(() => {});
-  /* Clicks into the message box of a Codex page, near the start of its first line. Its middle can lie over the row of
-     buttons under the text, where the context meter opens its card on a hover and keeps it open while the pointer stays;
-     the card then covers the box. The pointer is moved off the page first, and a card still open is waited out. */
+  /* Clicks into the message box of a Codex page, near the start of its first line. The context meter in the row of
+     buttons under the text opens a card over the box on a hover, and a pointer left where the meter has moved to can
+     open it with no move at all. The pointer is first moved to a corner of the same page, which the meter hears as the
+     pointer leaving it (a move out of the page is not), and the card is waited out. */
   const intoComposer = async (f) => {
-    await page.mouse.move(5, 5);
-    await until(() => f.evaluate(() => ![...document.querySelectorAll('[data-codex-extras="context"]')].some((e) => e.style.display === 'block'))
+    await f.locator('body').hover({ position: { x: 4, y: 4 }, force: true }).catch(() => page.mouse.move(5, 5));
+    const shut = await until(() => f.evaluate(() => ![...document.querySelectorAll('[data-codex-extras="context"]')].some((e) => e.style.display === 'block'))
       .catch(() => true), 3000, 100);
+    if (!shut) note(`${stepNow}: the context meter's card was still open 3 s after the pointer left it, over the message box`);
     await f.locator(COMPOSER).first().click({ position: { x: 24, y: 10 } });
   };
   /*
