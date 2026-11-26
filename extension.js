@@ -1106,7 +1106,9 @@ function registerCommands(context, { source, memory, say, link, opens, account }
     async listSessions({ folders = [], cursor = null, limit = 500 } = {}) {
       await snapshotIn();
       const keep = inFolders(folders);
-      const all = (reader.threads() || []).filter(keep).map((t) => sessionList.sessionOf(t, source.threadState(t.id), reader.goal(t.id), source.holdersOf(t.id)));
+      const here = openNow() || new Set();
+      const all = (reader.threads() || []).filter(keep).map((t) => sessionList.sessionOf(t, source.threadState(t.id), reader.goal(t.id), source.holdersOf(t.id),
+        { here: here.has(t.id) }));
       return sessionList.pageOf(all, cursor, limit);
     },
     onDidChangeSessions: sessionsChanged.event,

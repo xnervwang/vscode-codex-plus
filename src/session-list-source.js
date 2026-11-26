@@ -53,8 +53,10 @@ const PLACES_MAX = 8;
  * A Session for thread `t`. `conv` is what the source made of it (conversationOf), or null when its rollout has not
  * been read; `goal` its goal, or null; `holders` the processes elsewhere holding it open (codex-source holdersOf). A
  * turn runs in such a place while the conversation runs, since only the holder can write it; a `codex exec` runs one.
+ * `here` is whether a tab or the sidebar of this window shows it: with a holder elsewhere too, it is open in two
+ * processes at once, and Codex shows this window's page as unable to write it.
  */
-function sessionOf(t, conv, goal, holders = []) {
+function sessionOf(t, conv, goal, holders = [], { here = false } = {}) {
   const title = (t.kind === 'subagent' && String(t.nickname || '')) || (conv && conv.title) || t.title || '(untitled)';
   const s = {
     sessionId: t.id, title, cwd: t.cwd || '', createdAt: +t.createdMs || 0,
@@ -72,6 +74,7 @@ function sessionOf(t, conv, goal, holders = []) {
   const places = (Array.isArray(holders) ? holders : []).slice(0, PLACES_MAX);
   if (places.length) {
     s.elsewhere = places.map((h) => ({ kind: h.kind, label: h.label, detail: (h.detail || []).slice(), running: h.kind === 'exec' || !!(conv && conv.running) }));
+    if (places.length + (here ? 1 : 0) > 1) s.processes = places.length + (here ? 1 : 0);
   }
   if (goal && goal.status && goal.status !== 'complete') {
     s.badges = [{ text: GOAL_WORD[goal.status] || 'goal', tooltip: goalText(goal), dim: goal.status !== 'active' }];

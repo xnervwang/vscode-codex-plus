@@ -29,7 +29,7 @@ When a conversation leaves a command running detached, Codex Plus tells the conv
 
 A Codex process holds a lock while it has a conversation loaded, even when the conversation is idle. Only one process can hold the lock, at `thread-writer-locks/<conversation id>.lock` in Codex's home folder. On Linux, Codex Plus reads `/proc/locks` to find the process without taking a lock itself. It does this during its scan for work left running. The windows on the machine share one scan, which runs about every 12 seconds.
 
-The list marks conversations open elsewhere and excludes this window's own Codex process. Hover over the row to see whether the lock belongs to the Codex extension in another VS Code window, Codex's terminal interface or a `codex exec` run. For the terminal interface, the hover shows the terminal (such as `pts/3`), its folder and whether it runs in tmux or a VS Code terminal.
+The list marks conversations open elsewhere and excludes this window's own Codex process. Hover over the row to see whether the lock belongs to the Codex extension in another VS Code window, Codex's terminal interface or a `codex exec` run. For the terminal interface, the hover shows the terminal (such as `pts/3`), its folder and whether it runs in tmux or a VS Code terminal. If a tab or Codex's sidebar in this window shows the conversation too, the row warns that two processes have it open at once.
 
 On any system, Agent Plus can identify another VS Code window running Codex Plus by its window title, using that window's own record. On macOS and Windows, these are the only places the list detects. After you close a conversation in another VS Code window, Codex can keep its lock for up to a minute, so the list can still show it as open there.
 

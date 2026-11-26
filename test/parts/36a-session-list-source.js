@@ -38,6 +38,8 @@ module.exports = async ({ eq }) => {
     L.sessionOf(t('a'), conv, null, Array.from({ length: 12 }, (_, i) => ({ ...term, pid: i }))).elsewhere.length],
   [[{ kind: 'terminal', label: 'terminal pts/3 in ~/w', detail: ['process 7'], running: true }], [false, true], undefined, 8],
   'a conversation another Codex process holds open lists it as a place, running there while the conversation runs or when it is a codex exec; none lists no place, and at most eight are listed');
+  eq([L.sessionOf(t('a'), conv, null, [term], { here: true }).processes, there.processes, L.sessionOf(t('a'), conv, null, [], { here: true }).processes],
+    [2, undefined, undefined], 'held open elsewhere while this window shows it too, it is open in two processes at once; one place alone is not counted');
 
   const all = Array.from({ length: 5 }, (_, i) => i);
   eq([L.pageOf(all, null, 2), L.pageOf(all, '2', 2), L.pageOf(all, '4', 2)], [{ sessions: [0, 1], cursor: '2' }, { sessions: [2, 3], cursor: '4' }, { sessions: [4], cursor: null }],
