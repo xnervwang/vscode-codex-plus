@@ -1007,18 +1007,26 @@ function registerCommands(context, { source, memory, say, link, opens, account }
    * Codex shows no archived conversation: a tab or its sidebar routed to one draws a new conversation instead. So one
    * opened from here is unarchived first.
    */
-  /* Agent Plus brings forward a conversation this window shows through reveal, from its session list too; one Codex
-     archived is unarchived first there as well, or its tab stays read-only. */
+  /* Agent Plus brings forward a conversation this window shows through reveal, from its session list too. One Codex
+     archived is unarchived first there as well and opened again where it is shown, as its page stays read-only until
+     then. */
   const revealShown = source.reveal;
   source.reveal = async (sessionId, row) => {
-    try { await unarchiveToOpen(sessionId); } catch (_) { /* brought forward as it is */ }
-    return revealShown.call(source, sessionId, row);
+    let unarchived = false;
+    try { unarchived = await unarchiveToOpen(sessionId); } catch (_) { /* brought forward as it is */ }
+    if (!unarchived) return revealShown.call(source, sessionId, row);
+    let inSidebar = false;
+    try { inSidebar = !tabs.codexTabs(vscode).some((t) => t.thread === sessionId) && patching.sidebarShowing() === sessionId; } catch (_) { inSidebar = false; }
+    await vscode.commands.executeCommand(inSidebar ? 'codexPlus.openThreadInSidebar' : 'codexPlus.openThreadInTab', sessionId);
+    return true;
   };
+  /* Resolves to whether it asked Codex to unarchive `id`. */
   unarchiveToOpen = async (id) => {
     /* Read afresh: a conversation archived a moment ago, in Codex or another window, is not in the last snapshot yet. */
     await readNow([id]);
-    if (!(reader.thread(id) || {}).archived || restricted()) return;
+    if (!(reader.thread(id) || {}).archived || restricted()) return false;
     await sendEach('unarchive', 'thread/unarchive', [id], /^no archived rollout found for thread id/);
+    return true;
   };
   /* The daily pass over archived conversations (src/archive-sweep.js), with the same checks Delete makes. */
   holdArchived = async (ids) => {

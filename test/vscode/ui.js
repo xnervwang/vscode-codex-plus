@@ -4990,8 +4990,9 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         await closeB();
         const gone = await until(() => !entryOf(folderB), 30000, 500);
         check(!!gone && pageB.isClosed(), 'closed, the second window leaves no entry among the windows', entries());
-        const free = await held();
-        check(Array.isArray(free) && !free.includes(T.id), 'and the daily pass would now take it', free);
+        /* Its app-server lets go of the conversation's writer lock as it exits, and the holders are read every 10 s or so. */
+        const free = await until(async () => { const f = await held(); return Array.isArray(f) && !f.includes(T.id) && f; }, 90000, 2000);
+        check(!!free, 'and the daily pass would now take it, once that window\'s Codex has let go of the conversation', free || await held());
         /* The steps after this one open the conversation again. */
         const back = await call(`${OWN} return own('patching').hostRequest('thread/unarchive', { threadId: arg });`, T.id).catch((e) => ({ outcome: 'failed', reason: String(e) }));
         check(!!await until(() => !!rolloutOf(T.id) && !archivedOnDisk(), 30000, 500),
