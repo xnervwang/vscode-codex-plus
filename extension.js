@@ -1016,10 +1016,13 @@ function registerCommands(context, { source, memory, say, link, opens, account }
     await readNow([...new Set(ids.flatMap((id) => [id, ...subAgentsOf(id)]))]);
     const open = openNow(), elsewhere = elsewhereNow();
     if (!open) return null;
-    const away = ids.filter((id) => ![id, ...subAgentsOf(id)].some((x) => open.has(x) || busyNow(x)) && [id, ...subAgentsOf(id)].some((x) => elsewhere.has(x)));
+    const held = (x) => source.holdersOf(x);
+    const away = ids.filter((id) => ![id, ...subAgentsOf(id)].some((x) => open.has(x) || busyNow(x))
+      && [id, ...subAgentsOf(id)].some((x) => elsewhere.has(x) || held(x).length));
     for (const id of away) {
-      const by = [id, ...subAgentsOf(id)].find((x) => elsewhere.has(x));
-      say(`left for the next pass "${nameOf(id)}" (${id}), archived long enough to be deleted: ${by === id ? 'it' : `its sub-agent "${nameOf(by)}"`} is open in ${windowNames(elsewhere.get(by))}`);
+      const by = [id, ...subAgentsOf(id)].find((x) => elsewhere.has(x)) || [id, ...subAgentsOf(id)].find((x) => held(x).length);
+      const where = elsewhere.has(by) ? windowNames(elsewhere.get(by)) : held(by)[0].label;
+      say(`left for the next pass "${nameOf(id)}" (${id}), archived long enough to be deleted: ${by === id ? 'it' : `its sub-agent "${nameOf(by)}"`} is open in ${where}`);
     }
     return new Set(ids.filter((id) => away.includes(id) || [id, ...subAgentsOf(id)].some((x) => open.has(x) || busyNow(x))));
   };

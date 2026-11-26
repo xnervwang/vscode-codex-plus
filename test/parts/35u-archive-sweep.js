@@ -125,9 +125,14 @@ module.exports = async ({ eq, tmp, root }) => {
     { id: ID(4), title: 'No time', cwd: home, archived: true, archivedAt: null, turns: [{}] },
     { id: ID(5), title: 'Kept', cwd: home, turns: [{}] },
     { id: ID(6), title: 'Old, open elsewhere', cwd: home, archived: true, archivedAt: sec(real - 40 * DAY), turns: [{}] },
+    { id: ID(7), title: 'Old, held in a terminal', cwd: home, archived: true, archivedAt: sec(real - 40 * DAY), turns: [{}] },
   ]);
   process.env.CODEX_HOME = home;
   control.state.config = { reopenDroppedTabs: false };
+  /* Agent Plus with its session list off in this window, so that the pass is this extension's. */
+  control.state.extensions.set('xnervwang.agent-plus', { isActive: true, exports: { agentPlus: { protocol: 1, accepts: [1], features: ['sessionList'],
+    sessionListManages: () => false,
+    registerSource: (s) => { control.state.source = s; return { accepted: true, code: '', reason: '', registration: { dispose() {} } }; } } } });
   const manifest = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
   const self = path.join(tmp('window'), 'xnervwang.codex-plus-1.0.1');
   fs.mkdirSync(self, { recursive: true });
@@ -174,12 +179,17 @@ module.exports = async ({ eq, tmp, root }) => {
     eq(await pass(), [], 'nor in a window running a build that has since been replaced');
     stamp(5000);
     control.state.log.length = 0;
+    const holdersOf = control.state.source.holdersOf;
+    control.state.source.holdersOf = (id) => (id === ID(7) ? [{ pid: 7, kind: 'terminal', label: 'terminal pts/3 in ~/w', detail: ['process 7'] }] : []);
     eq([await pass(), control.state.said], [['01'], []],
       'otherwise the pass deletes the one archived 40 days ago, leaves the one open here, the recent one and the one with no archive time, '
         + 'and shows no notification');
     eq(control.state.log.some((l) => /deleted 1 conversation archived 30 or more days ago: "Old"/.test(l)), true, 'it says so in the output');
     eq(control.state.log.some((l) => l.includes(`left for the next pass "Old, open elsewhere" (${ID(6)}), archived long enough to be deleted: it is open in the VS Code window "Window B"`)),
       true, 'one as old that another window shows is left for the next pass, and the output names that window');
+    eq(control.state.log.some((l) => l.includes(`left for the next pass "Old, held in a terminal" (${ID(7)}), archived long enough to be deleted: it is open in terminal pts/3 in ~/w`)),
+      true, 'and so is one another Codex process holds open, such as the terminal interface');
+    control.state.source.holdersOf = holdersOf;
     eq(await pass(), [], 'and the next pass the same day deletes nothing');
     fs.rmSync(otherEntry, { force: true });
     const stateDir = path.join(storage, 'archive-sweep');
