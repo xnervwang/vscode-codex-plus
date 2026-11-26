@@ -34,6 +34,16 @@ on:
         description: A regular expression of window test step names to run; empty runs them all, in shards
         type: string
         default: ''
+      agent_plus:
+        description: The Agent Plus to build against, the commit in .github/agent-plus-commit or its newest
+        type: choice
+        options: [pinned, latest]
+        default: pinned
+      codex:
+        description: The Codex to install, the newest in src/supported-versions.json or the newest released
+        type: choice
+        options: [supported, latest]
+        default: supported
 
 permissions:
   contents: read
@@ -51,11 +61,23 @@ jobs:
         run: |
           vsix=$(bash build/pack.sh | tail -n 1)
           mv "$vsix" extension.vsix
-      # This extension depends on Agent Plus, so the run installs it too. Checked out after the build above, whose
-      # checks read the files under this folder.
+      # This extension depends on Agent Plus, so the run installs it too: the commit .github/agent-plus-commit names,
+      # except on the daily run (and by hand with agent_plus latest), which takes Agent Plus's newest commit. Checked
+      # out after the build above, whose checks read the files under this folder.
+      - name: Which Agent Plus
+        id: core
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = schedule ] || [ "${{ inputs.agent_plus }}" = latest ]; then
+            echo "ref=" >> "$GITHUB_OUTPUT"; echo "Agent Plus: its newest commit"
+          else
+            ref=$(grep -v '^#' .github/agent-plus-commit | grep -m1 .)
+            echo "ref=$ref" >> "$GITHUB_OUTPUT"; echo "Agent Plus: $ref, from .github/agent-plus-commit"
+          fi
       - uses: actions/checkout@v7
         with:
           repository: xnervwang/vscode-agent-plus
+          ref: ${{ steps.core.outputs.ref }}
           path: agent-plus
       - name: Build Agent Plus's .vsix
         shell: bash
@@ -82,6 +104,9 @@ jobs:
     runs-on: ${{ matrix.os }}
     env:
       CODEX_PLUS_UI_STEPS: ${{ inputs.steps }}
+      # A push is checked against the newest Codex src/supported-versions.json lists; the daily run, against the newest
+      # Codex released, tells of a release this extension still has to be fitted to.
+      CODEX_PLUS_UI_CODEX: ${{ (github.event_name == 'schedule' || inputs.codex == 'latest') && 'latest' || 'supported' }}
       CODEX_PLUS_UI_SHARD: ${{ matrix.shard != 0 && format('{0}/5', matrix.shard) || '' }}
     steps:
       # Some checks compare source text, so no CRLF on Windows.
@@ -118,6 +143,10 @@ jobs:
         if: runner.os != 'Linux'
         shell: bash
         run: node test/vscode/run.js extension.vsix core.vsix --out vscode-results
+      - name: Say what the daily run checks
+        if: failure() && github.event_name == 'schedule'
+        shell: bash
+        run: echo "::error::The daily run builds against Agent Plus's newest commit and installs the newest Codex released. Run this workflow by hand with agent_plus latest, or with codex latest, to see which one this extension needs fitting to; pushes are not held up by it."
       - uses: actions/upload-artifact@v7
         if: always()
         with:

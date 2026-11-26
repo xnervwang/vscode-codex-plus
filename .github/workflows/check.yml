@@ -35,9 +35,17 @@ jobs:
       - uses: actions/checkout@v7
         with:
           path: vscode-codex-plus
+      # The Agent Plus commit .github/agent-plus-commit names, except on the daily run, which takes its newest commit.
+      - name: Which Agent Plus
+        id: core
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = schedule ]; then echo "ref=" >> "$GITHUB_OUTPUT"; echo "Agent Plus: its newest commit"
+          else ref=$(grep -v '^#' vscode-codex-plus/.github/agent-plus-commit | grep -m1 .); echo "ref=$ref" >> "$GITHUB_OUTPUT"; echo "Agent Plus: $ref"; fi
       - uses: actions/checkout@v7
         with:
           repository: xnervwang/vscode-agent-plus
+          ref: ${{ steps.core.outputs.ref }}
           path: vscode-agent-plus
       - uses: actions/setup-node@v7
         with:

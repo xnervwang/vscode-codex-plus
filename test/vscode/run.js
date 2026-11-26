@@ -6,7 +6,7 @@
 /*
  * Usage: node test/vscode/run.js <Codex Plus .vsix> [<Agent Plus .vsix>] [--out <dir>] [--vscode <executable>] [--local] [--look]
  *
- * Downloads the newest stable VS Code (unless --vscode names one), installs the newest Codex, Agent Plus and the .vsix
+ * Downloads the newest stable VS Code (unless --vscode names one), installs Codex (codexToInstall), Agent Plus and the .vsix
  * into a profile of its own, and runs two stages against that install: ui.js, which drives the window and checks what
  * is drawn, and ./suite inside VS Code, which checks the patched files and the plugin. Exits non-zero if either fails. Screenshots, crops, diffs and VS Code's logs go to --out (by default
  * a folder in the temporary root it makes).
@@ -82,6 +82,18 @@ function offlineWrapper(argv) {
   return { prog, args: full };
 }
 
+/*
+ * The Codex the window runs against. By default the newest build src/supported-versions.json lists, so that a run tells
+ * of a change here rather than of a Codex release this extension has not been checked against; CODEX_PLUS_UI_CODEX=latest
+ * takes the newest the marketplace ships (the daily run), and any other value is a version to install.
+ */
+function codexToInstall(want = (process.env.CODEX_PLUS_UI_CODEX || '').trim()) {
+  if (want === 'latest') return 'openai.chatgpt';
+  if (want && want !== 'supported') return `openai.chatgpt@${want}`;
+  const newest = require('../../src/supported').versions().pop();
+  return newest ? `openai.chatgpt@${newest}` : 'openai.chatgpt';
+}
+
 async function fetchStage() {
   const vsix = path.resolve(args[0] || '');
   if (!args[0] || !fs.existsSync(vsix)) throw new Error('usage: node test/vscode/run.js <Codex Plus .vsix> [<Agent Plus .vsix>] [--out <dir>] [--vscode <exe>] [--local]');
@@ -102,7 +114,9 @@ async function fetchStage() {
   const code = cli(te, exe);
   const env = cleanEnv(root);
   const profile = [`--extensions-dir=${p.exts}`, `--user-data-dir=${p.user}`];
-  for (const ext of ['openai.chatgpt', core, vsix]) {
+  const codex = codexToInstall();
+  console.log(`Codex: ${codex}${codex === 'openai.chatgpt' ? ', the newest the marketplace ships' : ''}`);
+  for (const ext of [codex, core, vsix]) {
     const r = code(['--install-extension', ext, ...profile], env);
     console.log(r.out.split('\n').filter((l) => !/DeprecationWarning|trace-deprecation/.test(l)).join('\n'));
     if (r.status !== 0) throw new Error(`installing ${ext} failed (${r.status})`);

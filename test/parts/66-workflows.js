@@ -56,7 +56,7 @@ module.exports = ({ ok, bad, eq, tmp, root }) => {
   eq(/node:\s*\['22',\s*'24'\]/.test(check), true, 'on the two Node versions the extension is meant to read Codex\'s database under');
   /* Agent Plus beside this repository, where test/parts/45-core.js looks for it, so the checks of the two together run on
      a runner too; and the suite run from this repository's own folder, which is no longer the workspace's root. */
-  eq([/repository:\s*xnervwang\/vscode-agent-plus\s*\n\s*path:\s*vscode-agent-plus\b/.test(check),
+  eq([/repository:\s*xnervwang\/vscode-agent-plus\s*\n(\s*ref:[^\n]*\n)?\s*path:\s*vscode-agent-plus\b/.test(check),
     /^\s+path:\s*vscode-codex-plus\s*$/m.test(check), /working-directory:\s*vscode-codex-plus\b/.test(check)], [true, true, true],
   'Agent Plus is checked out beside this repository, as ../vscode-agent-plus, and the suite runs in this one');
   eq(/^\s+push:\s*\n\s+branches:\s*\[main\]/m.test(check), true, 'a push runs it on main only');
@@ -86,6 +86,15 @@ module.exports = ({ ok, bad, eq, tmp, root }) => {
     eq([/xvfb-run[^\n]*node test\/vscode\/run\.js/.test(ui), /CODEX_PLUS_UI_OFFLINE:\s*require/.test(ui)], [true, true],
       'on Linux under a virtual display, and failing there if the test stage cannot be cut off from the network');
     eq(/if:\s*always\(\)\s*\n\s*with:\s*\n\s*name:\s*vscode-/.test(ui), true, 'and the results are kept as an artifact whether the run passed or not');
+    const pinned = (fs.readFileSync(path.join(root, '.github', 'agent-plus-commit'), 'utf8').split('\n').find((l) => l && !l.startsWith('#')) || '').trim();
+    eq([/^[0-9a-f]{40}$/.test(pinned), [ui, check].every((t) => /grep -v '\^#' [\w./-]*\.github\/agent-plus-commit/.test(t) && /ref:\s*\$\{\{\s*steps\.core\.outputs\.ref\s*\}\}/.test(t)
+      && /github\.event_name \}\}" = schedule \]/.test(t))], [true, true],
+      'a push builds against the Agent Plus commit .github/agent-plus-commit names, and the daily run against its newest commit');
+    eq(/CODEX_PLUS_UI_CODEX:\s*\$\{\{\s*\(github\.event_name == 'schedule' \|\| inputs\.codex == 'latest'\) && 'latest' \|\| 'supported'\s*\}\}/.test(ui), true,
+      'a push installs the newest Codex src/supported-versions.json lists, and the daily run the newest released');
+    const runJs = fs.readFileSync(path.join(root, 'test', 'vscode', 'run.js'), 'utf8');
+    eq(/require\('\.\.\/\.\.\/src\/supported'\)\.versions\(\)\.pop\(\)/.test(runJs) && /want === 'latest'\) return 'openai\.chatgpt'/.test(runJs), true,
+      'and test/vscode/run.js installs that one by default, the marketplace\'s newest with CODEX_PLUS_UI_CODEX=latest');
   }
 
   /* ── the one that publishes a release ── */
