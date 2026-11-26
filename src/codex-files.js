@@ -169,8 +169,8 @@ function dataVersion(file) {
 let listed = null;
 
 /*
- * The name session_index.jsonl gives each thread: id -> thread_name, the last line that names an id winning. Codex
- * writes the title it generates for a conversation, and a name the user gives it, both here and in the database's
+ * The name session_index.jsonl gives each thread: id -> thread_name; where an id has several lines, the last wins.
+ * Codex writes the title it generates for a conversation, and a name the user gives it, both here and in the database's
  * `name` column; a thread whose row lost its `name` still has it here.
  */
 let indexRead = null;

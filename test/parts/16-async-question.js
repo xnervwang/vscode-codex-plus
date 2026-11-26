@@ -38,31 +38,31 @@ module.exports = async ({ eq, tmp, root }) => {
   const write = (name, lines) => { const f = path.join(tmp('async-q'), name); fs.writeFileSync(f, lines.join('\n') + '\n'); return f; };
 
   const waiting = files.rolloutState(write('waiting.jsonl', [
-    ...turn('2026-01-05T00:34:40.000Z', 't1'), ...asked('2026-01-05T00:34:45.548Z'), ...ended('2026-01-05T00:34:48.631Z', 't1')]));
+    ...turn('2026-02-11T05:51:53.211Z', 't1'), ...asked('2026-02-11T05:51:58.759Z'), ...ended('2026-02-11T05:52:01.842Z', 't1')]));
   eq([waiting.working, waiting.askedMs > 0], [false, true], 'a question asked in the last turn, which has ended, is waiting for the user');
 
   const running = files.rolloutState(write('running.jsonl', [
-    ...turn('2026-01-05T00:34:40.000Z', 't1'), ...asked('2026-01-05T00:34:45.548Z')]));
+    ...turn('2026-02-11T05:51:53.211Z', 't1'), ...asked('2026-02-11T05:51:58.759Z')]));
   eq([running.working, running.askedMs > 0], [true, true], 'while its turn still runs, the rollout says both');
 
   const answer = files.rolloutState(write('answered.jsonl', [
-    ...turn('2026-01-05T00:34:40.000Z', 't1'), ...asked('2026-01-05T00:34:45.548Z'), ...ended('2026-01-05T00:34:48.631Z', 't1'),
-    ...turn('2026-01-05T00:42:13.498Z', 't2'), ...answered('2026-01-05T00:42:13.545Z'), ...ended('2026-01-05T00:42:49.989Z', 't2')]));
+    ...turn('2026-02-11T05:51:53.211Z', 't1'), ...asked('2026-02-11T05:51:58.759Z'), ...ended('2026-02-11T05:52:01.842Z', 't1'),
+    ...turn('2026-02-11T05:59:26.709Z', 't2'), ...answered('2026-02-11T05:59:26.756Z'), ...ended('2026-02-11T06:00:03.200Z', 't2')]));
   eq(answer.askedMs, 0, 'a question from an earlier turn has been answered by the turn that followed it');
 
   const inTurn = files.rolloutState(write('answered-in-turn.jsonl', [
-    ...turn('2026-01-12T19:44:09.000Z', 't1'), ...asked('2026-01-12T20:23:28.000Z'), ...reply('2026-01-12T20:26:50.000Z'),
-    ...asked('2026-01-12T21:40:51.000Z'), ...reply('2026-01-12T21:48:50.000Z'), ...said('2026-01-12T22:33:30.000Z'),
-    ...ended('2026-01-12T22:33:44.000Z', 't1')]));
+    ...turn('2026-02-19T01:01:22.211Z', 't1'), ...asked('2026-02-19T01:40:41.211Z'), ...reply('2026-02-19T01:44:03.211Z'),
+    ...asked('2026-02-19T02:58:04.211Z'), ...reply('2026-02-19T03:06:03.211Z'), ...said('2026-02-19T03:50:43.211Z'),
+    ...ended('2026-02-19T03:50:57.211Z', 't1')]));
   eq([inTurn.working, inTurn.askedMs], [false, 0], 'questions the card answered while their turn still ran are not waiting once that turn has ended');
   const typed = files.rolloutState(write('typed-in-turn.jsonl', [
-    ...turn('2026-01-12T19:44:09.000Z', 't1'), ...asked('2026-01-12T20:23:28.000Z'), ...userSays('2026-01-12T20:31:16.000Z', 'take b'),
-    ...ended('2026-01-12T20:40:00.000Z', 't1')]));
+    ...turn('2026-02-19T01:01:22.211Z', 't1'), ...asked('2026-02-19T01:40:41.211Z'), ...userSays('2026-02-19T01:48:29.211Z', 'take b'),
+    ...ended('2026-02-19T01:57:13.211Z', 't1')]));
   eq(typed.askedMs, 0, 'nor one the user answered by typing into the turn');
   const second = files.rolloutState(write('answered-first.jsonl', [
-    ...turn('2026-01-12T19:44:09.000Z', 't1'), ...asked('2026-01-12T20:23:28.000Z'), ...reply('2026-01-12T20:26:50.000Z'),
-    ...asked('2026-01-12T21:40:51.000Z'), ...ended('2026-01-12T22:33:44.000Z', 't1')]));
-  eq(second.askedMs, Date.parse('2026-01-12T21:40:51.000Z'), 'a second question asked after the first was answered still waits');
+    ...turn('2026-02-19T01:01:22.211Z', 't1'), ...asked('2026-02-19T01:40:41.211Z'), ...reply('2026-02-19T01:44:03.211Z'),
+    ...asked('2026-02-19T02:58:04.211Z'), ...ended('2026-02-19T03:50:57.211Z', 't1')]));
+  eq(second.askedMs, Date.parse('2026-02-19T02:58:04.211Z'), 'a second question asked after the first was answered still waits');
 
   const thread = { id: '01a1c2dd-39e8-7142-b569-2ed9ec1f23cc', title: 't', cwd: '/', updatedMs: Date.now() };
   const as = (st) => conversationOf(thread, { unread: new Set([thread.id]), openHere: new Set(), state: { ...st, lastActivityMs: Date.now() } });

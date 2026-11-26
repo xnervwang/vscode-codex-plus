@@ -5,8 +5,8 @@
 'use strict';
 /*
  * The page script's side of Agent Plus's pen on a plan row (src/page/codex-extras-page.js takePrefill): the text goes
- * after whatever Codex's message box holds, after a space when that does not end in one, nothing is sent, and the page
- * tells the host what it saw. The editor's insertText stands in for the browser's, appending to the box.
+ * at the end of Codex's message box; nothing is sent, and the page tells the host what it saw. The editor's insertText
+ * stands in for the browser's, appending to the box.
  */
 const path = require('path');
 const vm = require('vm');
@@ -41,32 +41,32 @@ module.exports = async ({ eq, root }) => {
   send('a', 'About row 2 (Port it): ');
   settle();
   eq([editable.textContent, typed, replies()], ['About row 2 (Port it): ', [['insertText', 'About row 2 (Port it): ']], [['a', 'drafted']]],
-    'into an empty box the text goes as it is, and the host is told it is there');
+    'an empty box gets the text as it is');
 
   typed = [];
   editable.textContent = 'and also';
   send('b', 'About row 1 (Pick): ');
   settle();
-  eq([editable.textContent, replies().pop()], ['and also About row 1 (Pick): ', ['b', 'drafted']], 'after the user\'s own words it goes after a space, and they are kept');
+  eq([editable.textContent, replies().pop()], ['and also About row 1 (Pick): ', ['b', 'drafted']], 'the user\'s own words stay, and the text follows them after a space');
   editable.textContent = 'ends in a space ';
   send('c', 'About row 3 (Ship): ');
   settle();
   eq(editable.textContent, 'ends in a space About row 3 (Ship): ', 'with no second space when the box already ends in one');
-  eq(keys, 0, 'and no key is pressed, so nothing is sent');
+  eq(keys, 0, 'and no key is pressed');
 
   const count = replies().length;
   send('c', 'About row 3 (Ship): ');
   settle();
-  eq([replies().length, editable.textContent], [count, 'ends in a space About row 3 (Ship): '], 'the same request posted again is taken once');
+  eq([replies().length, editable.textContent], [count, 'ends in a space About row 3 (Ship): '], 'a request posted twice under one id is handled once');
 
   takes = false;
   send('d', 'About row 4 (Nope): ');
   settle();
-  eq(replies().pop(), ['d', 'changed'], 'a box that does not take the text is reported as changed');
+  eq(replies().pop(), ['d', 'changed'], 'when the editor refuses the text, the page reports changed');
   takes = true;
 
   holder.removeChild(composer);
   send('e', 'About row 5 (Gone): ');
   settle();
-  eq(replies().pop(), ['e', 'noComposer'], 'with no message box on the page, after looking for a while, it says so');
+  eq(replies().pop(), ['e', 'noComposer'], 'a page with no message box looks for one for a while, then reports noComposer');
 };

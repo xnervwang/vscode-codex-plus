@@ -58,13 +58,13 @@ module.exports = async ({ eq, root }) => {
   const other = notice('localConversation.resumeFailed.title');
   show(other);
   step(3);
-  eq(clicks, 0, 'an alert whose title has another message id is left alone too');
+  eq(clicks, 0, 'nor is an alert whose title has another message id');
 
   show(notice());
   dom.runTimers();
   eq([clicks, dom.waiting()], [0, 1], 'the first retry waits a few seconds after the notice appears');
   dom.runTimers();
-  eq([clicks, page.conflicts()], [1, [['retrying', '01a2-thread', 0]]], 'after those seconds Retry is clicked, and the host is told the retries started');
+  eq([clicks, page.conflicts()], [1, [['retrying', '01a2-thread', 0]]], 'then the page clicks Retry and tells the host the retries started');
   disabled = true;
   dom.runTimers();
   eq(clicks, 1, 'Retry is not clicked while Codex has it disabled, and such a step does not count');
@@ -78,12 +78,12 @@ module.exports = async ({ eq, root }) => {
   eq([clicks, page.conflicts().length], [3, 1], 'one step without the notice does not count as gone: the notice goes away for a moment each time Codex retries');
   dom.runTimers();
   eq([clicks, page.conflicts().slice(1), dom.waiting()], [3, [['cleared', '01a2-thread', 3]], 0],
-    'after two steps without it, the host is told the notice went away after three clicks, and nothing more is scheduled');
+    'two steps without the notice end the retries, and the host is told it went away after three clicks');
 
   show(notice());
   step(30);
   eq([clicks - 3, page.conflicts().slice(2), dom.waiting()], [24, [['retrying', '01a2-thread', 0], ['stopped', '01a2-thread', 24]], 0],
-    'a notice that comes back starts afresh; after 24 clicks it is left for the user and the host is told');
+    'a notice that comes back is clicked from the start again, up to 24 times, then left for the user');
   observer.fn([]);
   step(3);
   eq(clicks - 3, 24, 'more changes to the page do not start it again while that notice stays');
@@ -95,7 +95,7 @@ module.exports = async ({ eq, root }) => {
   step(2);
   show(notice());
   step(1);
-  eq(page.conflicts().slice(-2), [['cleared', '01a3-other', 1], ['retrying', '01a2-thread', 0]], 'a notice after the last one went away starts afresh too');
+  eq(page.conflicts().slice(-2), [['cleared', '01a3-other', 1], ['retrying', '01a2-thread', 0]], 'the count also starts again for a notice that appears once the last one has gone');
 
   /* "Couldn't load messages", which the conflict also leaves behind. */
   {
@@ -128,7 +128,7 @@ module.exports = async ({ eq, root }) => {
     steps(2);
     eq([conflictClicks, historyClicks], [2, 1], 'once the conflict notice has been gone for two steps, "Couldn\'t load messages" gets a click');
     steps(5);
-    eq([historyClicks, d.waiting()], [3, 0], 'while it stays it is clicked at each step, three times at most, and then left');
+    eq([historyClicks, d.waiting()], [3, 0], 'it is then clicked once a step while it stays, three times at most');
     showAll(conflictEl(), historyEl());
     steps(2);
     showAll(historyEl());
@@ -150,5 +150,5 @@ module.exports = async ({ eq, root }) => {
     'Codex\'s notice that conversation 01a2-thread is open in another app went away after Retry was clicked 1 time',
     'Codex still says a conversation is open in another app after Retry was clicked 24 times; left for the user to retry',
     '',
-  ], 'each report gets its log line, an id with other characters is not named, and a report of another kind gets none');
+  ], 'the host logs a line for each report it knows and none for any other');
 };

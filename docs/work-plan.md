@@ -8,8 +8,6 @@ Agent Plus's Work plan view shows the plan, which Codex receives with every mess
 
 ![Agent Plus's Work plan view for a Codex conversation, with done, to-do and parked rows](../images/shots/work-plan.png)
 
-Click the pen button at the end of any row in Agent Plus's Work plan view to bring the plan's Codex conversation to the front; if no tab or sidebar in the current window shows that conversation, Codex Plus first opens it in a tab. Codex Plus appends `About row N (title): ` to any text already in the message box (`关于第 N 行（标题）：` when VS Code's display language is Chinese), using the row's number and title; nothing is sent until you finish writing and send the message from the conversation. If Codex Plus cannot insert the text, Agent Plus copies it to the clipboard and a notification explains why; clicking a row that asks a question still opens the question in Agent Plus's Answer view.
-
 The work plan needs the work plan plugin, which Codex Plus installs into Codex, and needs its hooks to be trusted. Codex changes rows with the plugin's `set_row` and `add_row` tools, and changes the brief with `set_summary` and `set_status`. These tools come from the plugin's MCP server, a process the plugin runs that offers Codex tools through the Model Context Protocol. Calling them needs no sandbox approval. If Codex edits the plan file directly, the edit is refused.
 
 At the end of a turn, the plugin reminds Codex about rows left `doing` (in progress), a reply that asks you something without putting the question on a row, and a plan not brought up to date. Before automatic compaction, it reminds Codex to update `doing` rows when the context reaches 70% and 85% of the point where Codex compacts. Codex compacts at 90% of the model's context window, or at `model_auto_compact_token_limit` in Codex's `config.toml` when that is lower. After compaction, the plugin points Codex to the plan. `codexPlus.workPlanQuietWhenReplyMatches`, a regular expression, keeps these reminders quiet when the latest reply matches it, for conversations that relay another model's replies word for word.
@@ -27,6 +25,12 @@ Codex is also asked for a summary when there is none, after a top-level plan row
 Codex can put questions on rows of its work plan. You answer these plan questions in Agent Plus's Answer view. Your answer goes into the conversation's message box only when the box is empty, and is sent as Enter would send it. While a turn runs, Codex queues the answer or steers the running turn with it.
 
 The answer goes to the conversation's Codex tab, or to Codex's sidebar when the sidebar shows the conversation. The Answer view says whether the answer was sent, left as a draft, or refused because the box held a draft of yours. This needs the patch. Without the patch, the answer stays in the Answer view.
+
+### Writing about a row
+
+Click the pen button at the end of any row in Agent Plus's Work plan view to bring the plan's Codex conversation to the front. If neither a tab nor Codex's sidebar in the current window shows that conversation, Codex Plus opens it in a tab first. Codex Plus appends `About row N (title): ` (with the row's number and title) to any text already in the message box. When VS Code's display language is Chinese, the prefix is `关于第 N 行（标题）：`. Finish writing in the conversation and send the message when you're ready.
+
+If Codex Plus cannot insert the prefix into the message box or cannot tell whether it got there, Agent Plus copies the prefix to the clipboard and shows a notification explaining why. Paste it into the conversation's message box. Clicking the row itself when it asks you a question still opens that question in Agent Plus's Answer view.
 
 ## Wake-ups
 

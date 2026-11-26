@@ -774,7 +774,7 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
     /*
      * Agent Plus's pen on a plan row: the conversation comes to the front here with `text` at the end of its message
      * box, not sent (src/patching.js prefill). A conversation this window does not show is opened in a tab first, and
-     * the whole of it stays within PREFILL_MS, short of the ten seconds Agent Plus waits.
+     * the whole of it is kept to about PREFILL_MS.
      */
     async prefill(sessionId, text) {
       const started = Date.now();

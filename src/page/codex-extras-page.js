@@ -1560,11 +1560,9 @@
   }
 
   /*
-   * Text from the host for the message box of the conversation this page shows (src/patching.js prefill), for the
-   * user to finish and send: it goes after whatever the box holds, after a space when that does not end in white
-   * space, with the cursor after it, and nothing is sent. Typed with insertText at the end of the box, so Codex's
-   * editor takes it as typing and keeps what was there. What goes back is 'drafted' once the box ends with it,
-   * 'noComposer' when no box turned up, and 'changed' when the box did not take it.
+   * Text from the host for the message box of the conversation this page shows (src/patching.js prefill), for the user
+   * to finish and send: it goes after whatever the box holds, with the cursor after it, and nothing is sent. Typed with
+   * insertText at the end of the box, so Codex's editor takes it as typing and keeps what was there.
    */
   var PREFILL_TRIES = 50;
   var prefillTaken = {};

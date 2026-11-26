@@ -32,7 +32,7 @@ const BACKGROUND = { id: '0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a71', title: 'Import 
 const ELSEWHERE = { id: '0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a72', title: 'Rename the staging bucket in the other project' };
 const elsewhereFolder = (folder) => path.join(path.dirname(folder), 'elsewhere');
 /* Only held() writes it, for the step where another process holds its writer lock. It is in ELSEWHERE's folder so that
-   this window's app-server has not loaded it, and no list has shown it, before that step. */
+   nothing before that step has loaded or listed it. */
 const HELD = { id: '0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a73', title: 'Check the lock timeout of the export job' };
 const PROVIDER = 'fake';
 const PLAN_DIR = path.join('plugins', 'data', 'agent-work-plan-codex-extras');

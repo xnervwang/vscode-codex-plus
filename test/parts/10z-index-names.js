@@ -5,9 +5,9 @@
 'use strict';
 /*
  * The title of a thread whose database row has no `name` (listThreads and indexNames in src/codex-files.js). Codex
- * writes the title it generates, and a name the user gives, to both the row's `name` and session_index.jsonl; a row
- * can be missing its `name` while the index keeps it, and the tab would then show the first message instead. The
- * index's name fills an empty `name`; a `name` in the row still wins.
+ * writes the title it generates, and a name the user gives, to both the row's `name` and session_index.jsonl; a row can
+ * be missing its `name` while the index keeps it, and without the index the tab would show the first message instead.
+ * The index's name fills an empty `name`; a `name` in the row still wins.
  */
 const fs = require('fs');
 const path = require('path');
@@ -33,9 +33,9 @@ module.exports = ({ eq, note, tmp }) => {
   try {
     files.setCodexHome(home);
     eq(titles(), ['Notes on drive D', 'Tests on the release branch'],
-      'the first thread is titled from the index, and the second keeps the name in its row');
+      'the index names the first thread, and the second keeps its own');
     fs.appendFileSync(index, line(made[0].id, 'Notes on drive D, read'));
-    eq(titles()[0], 'Notes on drive D, read', 'a line added to the index shows at the next call, without a database commit');
+    eq(titles()[0], 'Notes on drive D, read', 'a line added to the index is read at the next call, with no database commit');
     fs.unlinkSync(index);
     eq(titles()[0], 'Can you look at the notes on drive D?', 'with no index, a row with no name is titled from its other columns');
   } finally { db.close(); files.setCodexHome(''); }

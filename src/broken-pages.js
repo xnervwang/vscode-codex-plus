@@ -15,7 +15,7 @@
  * A page is loaded again at most LIMIT times in WINDOW_MS; after that it is left as it is, with a line in the log.
  */
 
-/* Gives whatever made the load fail a moment to pass before the page is loaded again. */
+/* A pause before the page is loaded again, for whatever made the load fail to clear. */
 const WAIT_MS = 2000;
 const LIMIT = 2;
 const WINDOW_MS = 10 * 60e3;

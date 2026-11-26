@@ -61,7 +61,7 @@ Open a row's [right-click menu](docs/session-list.md#menus-and-groups) to rename
 
 With the patch, [Codex Plus's tab bar button](docs/tabs.md) replaces Codex's and opens a new conversation in a tab, or opens Codex's sidebar if `codexPlus.tabBarButton` is set to `sidebar`. Each Codex tab uses the conversation name as its title and adds an envelope to the title when there is an unread reply. The tab's logo shows the same status dot as the conversation's row in the session list. Ctrl+Shift+T (Cmd+Shift+T on a Mac) reopens the conversation from the last Codex tab you closed.
 
-Codex Plus reopens any Codex tabs that VS Code did not restore after a reconnect. Codex sometimes reports that a conversation is [open in another app](docs/codex-page.md#a-conversation-open-in-another-app), including after a window reload. Codex Plus clicks the notice's Retry button for you for up to two minutes. If Codex replaces a page with "ChatGPT hit a snag" because part of the page [failed to load](docs/codex-page.md#a-page-that-could-not-load-codexs-code), Codex Plus loads the page again in the same tab.
+Codex Plus reopens any Codex tabs that VS Code did not restore after VS Code reconnects to the remote machine. Codex sometimes reports that a conversation is [open in another app](docs/codex-page.md#a-conversation-open-in-another-app), including after a window reload. Codex Plus clicks the notice's Retry button for you for up to two minutes. If Codex replaces a page with "ChatGPT hit a snag" because part of the page [failed to load](docs/codex-page.md#a-page-that-could-not-load-codexs-code), Codex Plus loads the page again in the same tab.
 
 ![A Codex tab with its dot and title, and the hover of Codex Plus's tab bar button](images/shots/tabs.png)
 
@@ -117,7 +117,7 @@ Codex Plus plays Claude Code Plus's three [chimes](docs/waiting-and-chimes.md#ch
 
 Agent Plus's [token mode](docs/token-costs.md) (`agentPlus.tokenMode`) controls which features may add text to what Codex sends the model: the work plan, the time zone note, the conversation brief, wake-ups and notices when a detached command or a background Claude Code session (`claude --bg`) ends. The four modes are Interface features, Essential features, All features (the default) and Custom.
 
-Nothing Codex Plus draws in VS Code is sent to the model. With open rows, the first plan message and the first after compaction include the rows and an explanation of their states and how to change them; later messages include the rows with a short header if they have changed, or one line with the doing and waiting counts and the plan file path if they are unchanged apart from time spent in each state.
+Nothing Codex Plus draws in VS Code is sent to the model. When a conversation's plan has open rows (rows not `done` or `dropped`), the first message that carries the plan includes those rows and explains the row states and how to change a row. The first message after each compaction does the same. Later messages include the open rows with a short header when the rows change. Time spent in a state does not count as a change. With no changes, a later message includes only one line with the counts of doing and waiting rows and the path of the file that holds the plan.
 
 ![Agent Plus's list of the four token modes](images/shots/token-mode.png)
 

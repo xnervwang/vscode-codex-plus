@@ -367,7 +367,7 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
   eq(await answerWith(''), ['uncertain', [['codex-extras-answer', 'My answer to row 1'], route]],
     'with no Codex to read the page from, the page is told about the answer first, and with no reply in time it is reported uncertain');
   eq((await patching.deliver('aaaaaaaa-0000-0000-0000-000000000000', 'x')).outcome, 'notReceived', 'a conversation with no panel here does not receive it');
-  /* Agent Plus's pen on a plan row: text for the message box, never sent. */
+  /* prefill: text for a conversation's message box, never sent. */
   {
     control.state.extensions.delete('openai.chatgpt');
     sent.length = 0;
@@ -375,7 +375,7 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
     const posted = sent.filter((m) => m.type === 'codex-extras-prefill');
     eq([quiet.outcome, posted.length >= 2, posted.every((m) => m.text === 'About row 1 (Pick the branch): ' && m.id === posted[0].id),
       sent.some((m) => m.type === 'navigate-to-route')], ['uncertain', true, true, false],
-    'the text goes to the page, again until the page answers, under one id and with no route draft the page would send; with no answer it is uncertain');
+    'the page is sent the text under one id, again and again until it answers; with no answer the outcome is uncertain');
     const answered = async (word) => {
       sent.length = 0;
       const p = patching.prefill(thread, 'About row 2 (Port it): ', { waitMs: 2000, againMs: 1000 });
@@ -387,7 +387,7 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
     eq([await answered('drafted'), await answered('noComposer'), (await answered('changed')).outcome],
       [{ outcome: 'drafted' }, { outcome: 'notReceived', reason: 'Codex\'s page shows no message box for it' }, 'uncertain'],
       'what the page saw becomes the protocol\'s outcome');
-    eq((await patching.prefill('aaaaaaaa-0000-0000-0000-000000000000', 'x')).outcome, 'notReceived', 'a conversation with no panel here does not take it');
+    eq((await patching.prefill('aaaaaaaa-0000-0000-0000-000000000000', 'x')).outcome, 'notReceived', 'prefill for a conversation with no panel here is notReceived');
   }
   vscode.commands.executeCommand = async () => {};
   eq([await patching.openInSidebar(thread), navigated[0]], [true, `/local/${thread}`], 'opening in the sidebar navigates Codex\'s sidebar to it');

@@ -82,7 +82,7 @@ function createPlanBars({ core = null, enabled = () => false, onChange = () => {
   /* The message for the page showing `sessionId`, which is '' while the page has no conversation yet. */
   const view = (sessionId, opts) => (sub ? { type: PAGE_TYPE, on: true, summary: summaryOf(sessionId, opts) } : NO_BAR);
 
-  /* A click on the bar ('open') or on its red part ('answer'). */
+  /* A click on the bar ('open') or on its questions part ('answer'). */
   async function act(sessionId, action) {
     const command = Object.prototype.hasOwnProperty.call(COMMANDS, action) ? COMMANDS[action] : '';
     if (!sub || !command || !usableId(sessionId)) return false;

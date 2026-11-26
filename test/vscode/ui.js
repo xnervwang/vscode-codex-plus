@@ -306,11 +306,10 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
   const WAIT_WORDS = /approv|permission|allow|sandbox|waiting for you|needs? you/i;
   const waitToasts = async (p, t, mark) => (await toastLogOf(p)).log.filter((x) => x.at >= mark && (x.text.includes(`"${t}"`) || WAIT_WORDS.test(x.text)))
     .map((x) => x.text);
-  /* What Agent Plus shows in the status bar about the conversations that need the user. An Agent Plus with a separate
-     bell puts the number of those waiting or finished on it. One without counts, in its Conversations entry,
-     "N conversations need you", those that have a question in their plan and those waiting for the user to approve
-     something or answer, and its hover lists the waiting ones last, one a line, under WAITS_HEAD; the entry's aria-label
-     carries that hover. */
+  /* The bell, a separate entry Agent Plus dropped after 1.7.0, shows the number of conversations waiting or finished.
+     The Conversations entry's "N conversations need you" counts those with a question in their plan and those waiting
+     for the user to approve something or answer; its hover, which the entry's aria-label carries, lists the waiting ones
+     last under WAITS_HEAD, one a line for the first ten and then "and N more". */
   const WAITS_HEAD = 'Waiting for you to approve something or answer:';
   const agentStatus = () => page.evaluate(() => {
     const shown = [...document.querySelectorAll('.statusbar-item')].filter((x) => x.offsetParent);
@@ -318,7 +317,6 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     const entry = shown.find((x) => /agentPlus\.conversations$/.test(x.id));
     return { bell: bell ? Number(bell.innerText.trim()) || 0 : null, text: entry ? entry.innerText : '', label: entry ? entry.getAttribute('aria-label') || '' : '' };
   });
-  /* How many conversations Agent Plus counts as waiting for the user to approve something or answer, 0 while none. */
   const agentCount = async () => {
     const s = await agentStatus();
     if (s.bell !== null) return s.bell;
@@ -538,9 +536,9 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
    * Codex's files, and `act` done once more, with a note.
    */
   /* For a frame on Codex's recovery page, what its own resource timing says of the code it fetched: up to twelve
-     fetches of Codex's code that did not bring a whole 200, and up to twelve modules Codex's conversation and New pages
-     import that have no entry at all, which are requests that never ended. Null for any other frame; only its first
-     heading is read before that is known. */
+     fetches of Codex's code that did not return a complete 200 response, and up to twelve modules Codex's conversation
+     and New pages import that have no entry at all, which are requests that never ended. Null for any other frame; only
+     its first heading is read before that is known. */
   const fetchesIn = (f) => f.evaluate(async () => {
     const h = document.querySelector('h1, h2');
     if (!h || !/ChatGPT hit a snag/.test(h.textContent || '')) return null;
@@ -675,8 +673,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     }
     return { had, left: await read() };
   };
-  /* Codex has now and then put its "Codex could not start" in the new tab on CI instead of starting its page, which is
-     Codex's page failing rather than the button: that tab is closed and the button clicked once more. */
+  /* On CI, Codex has now and then put its "Codex could not start" in the new tab instead of starting its page. The
+     button worked, so that tab is closed and the button clicked once more. */
   const newTabPage = async () => {
     await openNotes();
     const buttons = await until(async () => { const b = await codexButtons(); return b.length === 1 && b[0] === TITLES.tab && b; }, 15000, 500);
@@ -693,7 +691,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         return await gaveUpInFront() ? 'gaveUp' : null;
       }, 90000, 500);
       if (got !== 'gaveUp') { fresh = got; break; }
-      note('the new tab the tab bar button opened has Codex\'s "Codex could not start", so it is closed and the button clicked again');
+      note('the new tab has Codex\'s "Codex could not start", so it is closed');
       await exec('workbench.action.closeActiveEditor');
       await served();
       await openNotes();
@@ -1737,7 +1735,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       writeRows(id, [ROWS[0], { title: 'Change the retry delay', state: 'done', since, closed: since, children: [{ title: 'Read the sync job', state: 'done', since, closed: since }] },
         ROWS[2], ROWS[3], { title: 'Write the release note', state: 'todo', since }]);
       const fewer = await barSays(codex, (b) => b.count === '3 open' && !b.row && b.red === '1 to decide');
-      check(!!fewer && fewer.segments.join() === 'waiting,todo', 'rows closed leave fewer open, and with none doing the bar shows no current row, only how many are open and to decide', fewer || await barIn(codex));
+      check(!!fewer && fewer.segments.join() === 'waiting,todo', 'rows closed leave fewer open, and with none doing the bar shows no current row', fewer || await barIn(codex));
       writeRows(id, ROWS);
       await barSays(codex, (b) => b.count === '4 open');
 
@@ -1815,7 +1813,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       check(!!unread, 'once the reply lands with the tab not in front, the dot goes and the tab\'s title ends in the envelope',
         { dots: await dotsOn(title), label: await labelOf(title) });
       await sleep(3000);
-      check((await agentCount()) <= counted, 'and Agent Plus leaves it to its notification: the status bar does not count a reply not read',
+      check((await agentCount()) <= counted, 'and Agent Plus\'s status bar count does not include it',
         { before: counted, now: await agentCount() });
       if (apWaits) {
         await sleep(8000);
@@ -2041,7 +2039,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await sleep(8000);
       let said = { landed, notifications: await toastsAbout(title, mark), count: [counted, await agentCount()] };
       check(landed && !said.notifications.length && said.count[1] <= counted,
-        'with agentPlus.notifications.finished off, a reply landing in the background is not announced, nor counted, as no reply not read is', said);
+        'with agentPlus.notifications.finished off, a reply landing in the background is neither announced nor counted', said);
       if (inFocus) check(await readBack(), 'brought to the front, it is read');
       await agentSetting('notifications.finished', undefined);
 
@@ -2102,10 +2100,10 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await sleep(6000);
       said = { marked: !!marked, notifications: await toastsAbout(title, mark), count: [counted, await agentCount()] };
       check(said.marked && !said.notifications.length && said.count[1] === counted,
-        'Mark as Unread in the session list\'s row menu puts the envelope on the stopped conversation\'s tab, is not announced, and leaves Agent Plus\'s count as it was', said);
+        'Mark as Unread in the session list\'s row menu puts the envelope on the stopped conversation\'s tab, without a notification or a change to Agent Plus\'s count', said);
       retried(await pick(threads[0], ['Codex Plus: Mark as Read']), 'Mark as Read');
       check(!!await until(async () => (await labelOf(title)) === title && (await agentCount()) === counted, 15000, 500),
-        'and Mark as Read takes the envelope away, the count staying where it was', { label: await labelOf(title), count: [counted, await agentCount()] });
+        'and Mark as Read takes the envelope away without changing the count', { label: await labelOf(title), count: [counted, await agentCount()] });
       } else note(`the window does not have the system's focus on ${process.platform}, so the reply is unread already and Mark as Unread was not tried`);
 
       await tabNamed(title).click();
@@ -3106,7 +3104,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     });
 
     /* Agent Plus's pen on a Work plan row: the conversation in front gets "About row 1 (title): " at the end of its message
-       box, and nothing is sent (src/codex-source.js prefill, src/page/codex-extras-page.js takePrefill). */
+       box (src/codex-source.js prefill, src/page/codex-extras-page.js takePrefill). */
     await step('the pen on a work plan row', async () => {
       if (!codex) throw new Error('the conversation did not open');
       const id = threads[0].id;
@@ -3129,7 +3127,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await row.locator('.action-label[aria-label="Agent Plus: Write About This Row in Its Conversation"]').click({ timeout: 10000 });
       const want = `About row 1 (${planTitle(id)}):`;
       const got = await until(async () => { const t = await boxText(); return t === want && t; }, 15000, 300);
-      check(!!got, 'the pen on its Work plan row puts About row 1 (title): in the conversation\'s message box', { want, have: await boxText() });
+      check(!!got, 'the pen on its Work plan row puts "About row 1 (title):" in the conversation\'s message box', { want, have: await boxText() });
       await sleep(1500);
       check(model.turns() === turns, 'and sends nothing', { turns: model.turns(), before: turns });
       await clearBox();
@@ -3164,7 +3162,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         await sleep(1500);
         askInPlan(id, Date.now());
         await exec('agentPlus.refreshWorkPlan');
-        /* Agent Plus has read the question once its Conversations entry counts more conversations that need the user. */
+        /* A rise in the Conversations entry's count shows that Agent Plus has read the question. */
         const read = await until(async () => (await asking()) > decided, 20000, 500);
         await sleep(7000);
         mid = { read: !!read, dot: await dotsOn(title), row: (await showList()) ? await listDot(id, '.cp-group') : null, count: [counted, await agentCount()],
@@ -3587,7 +3585,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       const marked = await until(async () => (await showList()) && (await unseen()), 30000, 1000);
       check(!!marked, 'once its reply lands with the sidebar closed, its row in the session list carries the envelope', { row: await unseen() });
       await sleep(3000);
-      check((await agentCount()) <= counted, 'and Agent Plus leaves it to its notification rather than count it', { before: counted, now: await agentCount() });
+      check((await agentCount()) <= counted, 'and Agent Plus does not count it in the status bar', { before: counted, now: await agentCount() });
       await shot('sidebar-closed-unread');
       await exec('chatgpt.openSidebar');
       const read = await until(async () => (await showList()) && (await unseen()) === false, 30000, 1000);
@@ -5236,9 +5234,9 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
               return false;
             }, 20000, 500);
             let approved = !!await approve();
-            /* Codex's recovery page is Codex's page failing rather than what this checks: the tab is closed and the
-               conversation opened again there, and its app-server, which still has the request, puts the card in the
-               new page. */
+            /* A recovery page here means Codex's page broke, which is not what this step tests: the tab is closed and
+               the conversation opened again there, and its app-server, which still has the request, puts the card in
+               the new page. */
             const fetchedB = approved ? null : await fetchesOf(pageB);
             if (fetchedB) {
               note(`the second window's tab has Codex's recovery page, so it was closed and the conversation opened again there; its fetches of Codex's code short of a whole 200: ${JSON.stringify(fetchedB)}`);
@@ -6007,7 +6005,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         await shot('writer-conflict-notice');
         await letGo();
         const opened = await until(async () => !await noticeIn() && JSON.stringify(await loaded()).includes(t.id), 30000, 500);
-        check(!!opened, 'once the lock is let go, the conversation opens without the user clicking: the notice goes and this window\'s app-server has it loaded',
+        check(!!opened, 'once the lock is let go, the conversation opens without the user clicking',
           { notice: !!await noticeIn(), loaded: await loaded(), said: said() });
         const cleared = await until(() => said().some((l) => new RegExp(`notice that conversation ${t.id} is open in another app went away after Retry was clicked \\d+ times?`).test(l)), 30000, 500);
         check(!!cleared, 'and Codex Plus says in its log how many times it clicked Retry', said());

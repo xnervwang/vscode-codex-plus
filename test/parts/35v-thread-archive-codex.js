@@ -19,7 +19,7 @@ module.exports = async ({ eq, note, root }) => {
   if (!binary) { note('no Codex is installed here, so what its thread/archive does was not checked'); return; }
   const why = require(path.join(root, 'test', 'render', 'lib', 'app-server')).offlineProblem();
   if (why) { note(`Codex's app-server cannot be run offline here (${why}), so what its thread/archive does was not checked`); return; }
-  const r = spawnSync(process.execPath, [path.join(root, 'test', 'thread-archive-probe.js'), binary], { encoding: 'utf8', timeout: 120000 });
+  const r = spawnSync(process.execPath, [...process.execArgv, path.join(root, 'test', 'thread-archive-probe.js'), binary], { encoding: 'utf8', timeout: 120000 });
   let out = null;
   try { out = JSON.parse((r.stdout || '').trim().split('\n').pop()); } catch (_) { out = null; }
   if (!out) { note(`the probe could not run (${((r.error && r.error.message) || r.stderr || `exit ${r.status}`).trim().slice(0, 200)}), so thread/archive was not checked`); return; }

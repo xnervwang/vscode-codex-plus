@@ -162,11 +162,10 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     const t = (await tabs()).flatMap((g) => g.tabs).find((x) => bare(x.label) === want);
     return t ? t.label : null;
   };
-  /* What Agent Plus shows in the status bar about the conversations that need the user. An Agent Plus with a separate
-     bell puts the number of those waiting or finished on it. One without counts, in its Conversations entry,
-     "N conversations need you", those that have a question in their plan and those waiting for the user to approve
-     something or answer, and its hover lists the waiting ones last, one a line, under WAITS_HEAD; the entry's aria-label
-     carries that hover. */
+  /* The bell, a separate entry Agent Plus dropped after 1.7.0, shows the number of conversations waiting or finished.
+     The Conversations entry's "N conversations need you" counts those with a question in their plan and those waiting
+     for the user to approve something or answer; its hover, which the entry's aria-label carries, lists the waiting ones
+     last under WAITS_HEAD, one a line for the first ten and then "and N more". */
   const WAITS_HEAD = 'Waiting for you to approve something or answer:';
   const agentStatus = () => page.evaluate(() => {
     const shown = [...document.querySelectorAll('.statusbar-item')].filter((x) => x.offsetParent);
@@ -174,7 +173,6 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     const entry = shown.find((x) => /agentPlus\.conversations$/.test(x.id));
     return { bell: bell ? Number(bell.innerText.trim()) || 0 : null, text: entry ? entry.innerText : '', label: entry ? entry.getAttribute('aria-label') || '' : '' };
   });
-  /* How many conversations Agent Plus counts as waiting for the user to approve something or answer, 0 while none. */
   const agentCount = async () => {
     const s = await agentStatus();
     if (s.bell !== null) return s.bell;
@@ -1166,7 +1164,6 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     await look('attention-list', {
       expect: 'A list at the top of the window of the conversations that need the user, with this conversation in it.',
     }, async () => {
-      /* An Agent Plus with a separate bell opens the list on a click on it; one without opens it from its command. */
       const bell = page.locator('.statusbar-item[id$="agentPlus.attention"]').first();
       if (await bell.isVisible().catch(() => false)) await bell.locator('.statusbar-item-label, a').first().click({ timeout: 5000 });
       else await start('agentPlus.showAttention');
@@ -1174,7 +1171,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         const toastsNow = await toastLines();
         await start('agentPlus.showAttention');
         await page.locator('.quick-input-widget').first().waitFor({ state: 'visible', timeout: 8000 }).catch(() => {});
-        throw new Error(`neither the bell nor the command opened a list (notifications then: ${JSON.stringify(toastsNow)}); Agent Plus: Show the Conversations That Need You was run instead`);
+        throw new Error(`no list opened (notifications at the time: ${JSON.stringify(toastsNow)}); ran Agent Plus: Show the Conversations That Need You afterwards`);
       }
       await sleep(600);
       return union([await boxIn(null, '.quick-input-widget'), await part(PARTS.statusbar)]);

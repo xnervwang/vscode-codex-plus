@@ -80,7 +80,7 @@ module.exports = async ({ eq, root }) => {
     const webview = { get html() { return '<html/>'; }, set html(v) { throw new Error('disposed'); } };
     const b = createBrokenPages({ log: (l) => lines.push(l), sleep: quiet });
     eq([await b.report({ webview, key: 'k', where: 'in a tab of a conversation not started yet', file: '' }), lines[1]],
-      ['failed', 'could not load the page in a tab of a conversation not started yet again: disposed'], 'a webview that is already gone gets a log line and nothing else');
+      ['failed', 'could not load the page in a tab of a conversation not started yet again: disposed'], 'a webview that is already gone is logged and otherwise left alone');
     const fresh = { html: '<html/>' };
     const after = [];
     for (let i = 0; i <= LIMIT; i++) after.push(await b.report({ webview: fresh, key: 'k', where: 'in the same tab', file: '' }));

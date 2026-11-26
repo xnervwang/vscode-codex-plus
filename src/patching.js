@@ -561,11 +561,12 @@ async function deliver(thread, text, { waitMs = ANSWER_WAIT_MS } = {}) {
 }
 
 /*
- * Text for the message box of a conversation shown here, in a tab or in the sidebar, not to be sent (Agent Plus's pen on
- * a plan row): the tab or the sidebar comes to the front and the page script adds the text at the end of the box
- * (src/page/codex-extras-page.js takePrefill), which it reports on. A page with no such script cannot take it, and one
- * that does not answer in time leaves the outcome uncertain. The message is posted again every PREFILL_AGAIN_MS until
- * the page answers, since a tab opened for it may not be listening yet; the page takes each id once.
+ * Text for the message box of a conversation shown here, in a tab or in the sidebar, not to be sent (Agent Plus's
+ * pen on a plan row): that view is brought forward and the page script adds the text at the end of the box
+ * (src/page/codex-extras-page.js takePrefill), which it reports on. A page with no such script cannot take it, and
+ * one that does not answer in time leaves the outcome uncertain. Until the page answers or the wait runs out, the
+ * message is posted again every PREFILL_AGAIN_MS, since a tab opened for it may not be listening yet; the page takes
+ * each id once.
  */
 const PREFILL_WAIT_MS = 8000;
 const PREFILL_AGAIN_MS = 1000;
@@ -586,7 +587,7 @@ async function prefill(thread, text, { waitMs = PREFILL_WAIT_MS, againMs = PREFI
   try {
     if (panel) panel.reveal(undefined, false);
     else await deps.vscode.commands.executeCommand('chatgpt.openSidebar');
-  } catch (_) { /* typed, just not brought forward */ }
+  } catch (_) { /* the text still goes to the page, only not brought forward */ }
   const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const msg = { type: 'codex-extras-prefill', id, text };
   const send = () => {
@@ -1300,8 +1301,8 @@ function installHooks() {
         if (sidebar) postPlanBarToSidebar(sidebar, true);
       }
     }
-    /* The page reports a click on the plan bar as 'open' and one on its red part as 'answer'; the command runs for
-       the conversation that page shows. */
+    /* The page reports a click on the plan bar as 'open' and one on its questions part as 'answer'; the command runs
+       for the conversation that page shows. */
     if (msg && msg.kind === 'planBar' && (msg.action === 'open' || msg.action === 'answer') && deps && typeof deps.planBarAct === 'function') {
       const rec = recordOfWebview(webview);
       const thread = rec ? rec.thread : sidebar;
