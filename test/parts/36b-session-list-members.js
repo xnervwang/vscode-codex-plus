@@ -88,7 +88,7 @@ module.exports = async ({ eq, tmp, root }) => {
     /* Codex records its pass over the rollouts in backfill_state; until it is complete the archived marks may be missing. */
     const { DatabaseSync } = require('node:sqlite');
     const state = new DatabaseSync(path.join(home, 'state_5.sqlite'));
-    state.exec("create table backfill_state (id integer primary key, status text not null, last_watermark text, last_success_at integer, updated_at integer); insert into backfill_state values (1, 'running', null, null, 0)");
+    state.exec("update backfill_state set status = 'running'");
     await src._poll({ force: true });
     const early = await src.importSessions({ folders: [home] });
     state.exec("update backfill_state set status = 'complete'");

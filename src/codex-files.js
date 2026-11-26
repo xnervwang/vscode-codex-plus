@@ -293,18 +293,19 @@ function goals(home = codexHome()) {
 
 /*
  * Whether Codex has filled its state database from the rollouts on disk. Codex builds the database when its app-server
- * first starts in a home and records the pass in backfill_state; until the row says complete, a conversation it has
- * not reached is missing from the threads table or not yet marked archived. False while there is no database or that
- * row says otherwise; true when the database has no backfill_state to read. The table is looked up first because a
- * failed query closes the connection that the cached thread list depends on.
+ * first starts in a home and records the pass in backfill_state; until its row says complete, a conversation it has
+ * not reached is missing from the threads table or not yet marked archived. Every Codex this extension supports
+ * creates that table and then writes its row, in two steps, so a database without the table or without a row is one
+ * Codex is still building: false then, as while there is no database. The table is looked up first because a failed
+ * query closes the connection that the cached thread list depends on.
  */
 function backfillDone(home = codexHome()) {
   const file = stateDbPath(home);
   if (!file) return false;
   const table = queryFile(file, "select name from sqlite_master where type = 'table' and name = 'backfill_state'");
-  if (!table || !table.length) return true;
+  if (!table || !table.length) return false;
   const rows = queryFile(file, 'select status from backfill_state');
-  return !rows || rows.every((r) => String(r.status) === 'complete');
+  return !rows || (rows.length > 0 && rows.every((r) => String(r.status) === 'complete'));
 }
 
 /** Threads with something the user has not read: thread id -> first unread turn id ('' for the whole thread). */

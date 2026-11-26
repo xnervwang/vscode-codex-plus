@@ -19,6 +19,8 @@ const SCHEMA = `CREATE TABLE threads (id TEXT PRIMARY KEY, rollout_path TEXT NOT
   preview TEXT NOT NULL DEFAULT '', name TEXT, is_pinned INTEGER NOT NULL DEFAULT 0, thread_section_id TEXT,
   originator TEXT);
 CREATE TABLE thread_sections (id TEXT PRIMARY KEY, name TEXT NOT NULL, appearance TEXT);
+CREATE TABLE backfill_state (id INTEGER PRIMARY KEY, status TEXT NOT NULL, last_watermark TEXT, last_success_at INTEGER, updated_at INTEGER);
+INSERT INTO backfill_state VALUES (1, 'complete', NULL, NULL, 0);
 CREATE TABLE thread_read_receipts (thread_id TEXT PRIMARY KEY, first_unread_turn TEXT, revision TEXT NOT NULL,
   last_published_turn TEXT);`;
 
