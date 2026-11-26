@@ -3709,18 +3709,24 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await sleep(8000);
       const archivedSays = { warned: await codex.evaluate(() => !!document.querySelector('[data-codex-extras="warn"]')).catch(() => null), logged: noAnchors().slice(unrecognised) };
       check(archivedSays.warned === false && !archivedSays.logged.length, 'and that page is not taken for one whose message box Codex Plus no longer finds: no "!" on it and no such line in Codex Plus\'s log', archivedSays);
-      /* A click on its row in Agent Plus's list asks the source to bring forward the tab it is open in (reveal), and Open
-         in Tab, which the list runs for a conversation not open here, opens it; both unarchive it in Codex first. */
-      if (await showList()) {
-        await slRowOf(t).click().catch(() => {});
-        check(!!await until(() => !shelvedOnDisk(), 30000, 500), 'a click on its row in Agent Plus\'s session list, which brings its tab forward, unarchives it in Codex first');
-        check(!!await drawn(true), 'and the tab has its message box again');
-        await call(`${OWN} return own('patching').hostRequest('thread/archive', { threadId: arg });`, t.id).catch(() => null);
-        check(!!await until(shelvedOnDisk, 30000, 500), 'archived again, for Open in Tab');
-      }
-      await exec('codexPlus.openThreadInTab', t.id);
-      check(!!await until(() => !shelvedOnDisk(), 30000, 500), 'Open in Tab unarchives it');
+      /* A click on its row in Agent Plus's list asks the source to bring forward the tab it is open in (reveal), which
+         unarchives it in Codex first and opens it again in that tab. */
+      if (await showList()) await slRowOf(t).click().catch(() => {});
+      else await exec('codexPlus.openThreadInTab', t.id);
+      check(!!await until(() => !shelvedOnDisk(), 30000, 500), 'a click on its row in Agent Plus\'s session list, which brings its tab forward, unarchives it in Codex first');
       check(!!await drawn(true), 'and the tab has its message box again');
+      /* Open in Tab, which the list runs for a conversation not open here, on one Codex archived long ago: unarchived
+         first, it opens in a new tab with its message box. That tab is closed again. */
+      const shelf = ARCHIVED[1];
+      const shelved = () => { try { return fs.readdirSync(path.join(profile.codexHome, 'archived_sessions'), { recursive: true }).some((n) => String(n).includes(shelf.id)); } catch (_) { return false; } };
+      if (!shelved()) { note(`"${shelf.title}" is no longer in archived_sessions/, so Open in Tab on a conversation Codex archived was not tried`); return; }
+      await exec('codexPlus.openThreadInTab', shelf.id);
+      check(!!await until(() => !shelved(), 30000, 500), 'Open in Tab on a conversation Codex archived, not open in this window, unarchives it');
+      const writable = await until(async () => { const f = await frontPage(); const said = f && await pageSays(f); return !!said && said.text.includes(shelf.title.slice(0, 20))
+        && await f.evaluate(() => document.querySelectorAll('[data-turn-key]').length > 0).catch(() => false) && f; }, 30000, 500);
+      check(!!writable, 'and its new tab shows its turns with a message box');
+      await call(`const mine = vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((x) => x.input && x.input.uri && String(x.input.uri).includes(arg));
+        if (mine.length) await vscode.window.tabGroups.close(mine); return mine.length;`, shelf.id).catch(() => 0);
     });
 
     let begun = null;
