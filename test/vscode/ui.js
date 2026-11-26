@@ -713,6 +713,11 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
   /* Everything Codex Plus's output channel has written in this run, across reloads. NO_ANCHORS matches its line for a
      page whose message box or messages the page script did not recognise (src/patching.js anchorsMissingLine). */
   const ownLog = () => walk(path.join(profile.user, 'logs')).filter((f) => /Codex Plus\.log$/.test(f)).map((f) => fs.readFileSync(f, 'utf8')).join('\n');
+  /* When Codex's own log says a page of it did not start within its own wait (reason=renderer_ready_timeout), each such
+     line's time; Codex writes its log lines in local time. */
+  const codexStalls = () => walk(path.join(profile.user, 'logs')).filter((f) => /[\\/]openai\.chatgpt[\\/]Codex\.log$/.test(f))
+    .flatMap((f) => fs.readFileSync(f, 'utf8').split('\n')).filter((l) => /reason=renderer_ready_timeout/.test(l))
+    .map((l) => Date.parse(l.slice(0, 23).replace(' ', 'T'))).filter(Number.isFinite);
   const NO_ANCHORS = /the page script recognised none of [^\n]*/g;
   const noAnchors = () => ownLog().match(NO_ANCHORS) || [];
   const agentFront = () => {
@@ -3992,16 +3997,19 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
         return v;
       }, 90000, 500);
     };
-    /* `press` and the new page it opens (newPageSince). A new page Codex replaced with its recovery page has no
-       conversation for Codex Plus to open again, and is Codex's page failing rather than what a step checks: that is
-       noted, its tab closed, and `press` done once more. */
+    /* `press` and the new page it opens (newPageSince). A new page Codex replaced with its recovery page, or one Codex's
+       log says did not start, has no conversation for Codex Plus to open again, and is Codex's page failing rather than
+       what a step checks: that is noted, its tab closed, and `press` done once more. */
     const newPageAfter = async (what, press) => {
       let before = new Set(page.frames()), wasFront = await frontPage();
+      const pressed = Date.now();
       await press();
       let f = await newPageSince(before, wasFront);
       const fetched = f ? null : await fetchesOf();
-      if (fetched) {
-        note(`${what}: the new page has Codex's recovery page, so its tab was closed and that was done again; its fetches of Codex's code: ${JSON.stringify(fetched)}`);
+      const stalled = !f && !fetched && codexStalls().some((t) => t >= pressed - 1000);
+      if (fetched || stalled) {
+        note(fetched ? `${what}: the new page has Codex's recovery page, so its tab was closed and that was done again; its fetches of Codex's code: ${JSON.stringify(fetched)}`
+          : `${what}: Codex's log says the new page did not start within its own wait (renderer_ready_timeout), so its tab was closed and that was done again`);
         await exec('workbench.action.closeActiveEditor');
         before = new Set(page.frames());
         wasFront = await frontPage();
