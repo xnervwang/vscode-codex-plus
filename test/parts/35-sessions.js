@@ -4,14 +4,14 @@
 
 'use strict';
 /*
- * The three reasons the session list came up empty in a real window, one check each:
+ * Two reasons Codex's conversations went missing from a window's list, one check each:
  *
  *   the workspace filter compared path strings, so a workspace reached through a symbolic link matched nothing
- *   a filtered-out conversation was simply absent, with no count and no way back
  *   a tab Codex opened with its New button names no conversation in its URI, so nothing was open as far as this
  *     extension could tell
  *
- * Real directories and symbolic links are made under the suite's scratch directory; Codex's own files are not touched.
+ * and what Codex's sidebar shows, which counts as open in this window as a tab does. Real directories and symbolic
+ * links are made under the suite's scratch directory; Codex's own files are not touched.
  */
 const fs = require('fs');
 const path = require('path');
@@ -19,24 +19,21 @@ const fake = require('../fake-vscode');
 
 const ID = (n) => `0000000${n}-0000-7000-8000-00000000000${n}`;
 
-/** A thread row as src/codex-files.js listThreads() returns one. */
-const thread = (n, cwd, extra = {}) => ({ id: ID(n), title: `t${n}`, cwd, kind: 'user', archived: false, pinned: false, section: null,
-  createdMs: 1000, updatedMs: 2000 + n, present: true, rollout: '', ...extra });
-
-/** A reader with a fixed snapshot: the view reads nothing from disk. */
+/** A reader with a fixed snapshot, which reads nothing from disk. */
 const stubReader = (threads) => ({ threads: () => threads, sections: () => new Map(), state: () => null, unread: () => new Map(),
   hasPlan: () => false, thread: (id) => threads.find((t) => t.id === id) || null, present: () => true,
   refresh: async () => false, ready: async () => ({ threads, readable: true }) });
 
-const stubMemory = () => ({ openThreads: () => [], recentlyClosed: () => [], frontAt: () => 0 });
+/** A thread row as src/codex-files.js listThreads() returns one. */
+const thread = (n, cwd, extra = {}) => ({ id: ID(n), title: `t${n}`, cwd, kind: 'user', archived: false, pinned: false, section: null,
+  createdMs: 1000, updatedMs: 2000 + n, present: true, rollout: '', ...extra });
+
 
 module.exports = async ({ ok, bad, eq, tmp }) => {
   const { vscode, control } = fake.create();
   fake.install(vscode);
   const { folderTest, realPath } = require('../../src/folders');
   const tabs = require('../../src/codex-tabs');
-  const { SessionsModel } = require('../../src/sessions-view');
-  const keysOf = (m) => [...(m.closed.length ? ['closed'] : []), ...(m.open.length ? ['open'] : []), ...m.groups.map((g) => g.key)];
   const { unnamedTabThread, createCodexSource } = require('../../src/codex-source');
 
   /* ── the workspace filter, through a symbolic link ── */
@@ -61,22 +58,8 @@ module.exports = async ({ ok, bad, eq, tmp }) => {
       [true, true], 'a directory that no longer exists is placed through the nearest ancestor that does');
   }
 
-  /* ── the view holds this workspace's conversations, as Claude Code's own list does ── */
   const inside = linked ? path.join(real, 'ws', 'sub') : path.join(base, 'ws', 'sub');
-  const outsideA = path.join(base, 'other');
-  const outsideB = path.join(base, 'other2');
-  const threads = [thread(1, inside), thread(2, outsideA), thread(3, outsideB)];
-  vscode.workspace.workspaceFolders = [{ uri: vscode.Uri.file(linked ? path.join(link, 'ws') : path.join(base, 'ws')) }];
-  const provider = new SessionsModel(vscode, { memory: stubMemory(), memento: fake.memento(), reader: stubReader(threads),
-    stateOf: () => null, settings: () => ({ recentClosedSessions: 10, hideBackgroundSessions: true }) });
-  provider.refresh();
-  const ungrouped = provider.groups.find((g) => g.key === 'ungrouped');
-  eq([ungrouped.threads.map((t) => t.title), provider.groups.some((g) => g.threads.some((t) => t.title === 't2' || t.title === 't3'))],
-    [['t1'], false], 'the conversation in this workspace is listed even though its folder is the one behind the link, and those of other folders are not');
-  eq(provider.model().groups.map((g) => g.label).includes('Other folders'), false, 'and there is no group for other folders');
-  vscode.workspace.workspaceFolders = [];
-  provider.refresh();
-  eq(provider.groups.find((g) => g.key === 'ungrouped').threads.length, 3, 'a window with no folder open lists every conversation');
+  const threads = [thread(1, inside), thread(2, path.join(base, 'other')), thread(3, path.join(base, 'other2'))];
   vscode.workspace.workspaceFolders = [{ uri: vscode.Uri.file(linked ? path.join(link, 'ws') : path.join(base, 'ws')) }];
 
   /* ── the tab URIs Codex really uses ── */
@@ -149,65 +132,14 @@ module.exports = async ({ ok, bad, eq, tmp }) => {
     'the patch reports the conversations its panels show, and raises the one asked for');
   disposed();
   eq(patching.panelThreads(), [], 'a closed panel is no longer open');
-  /* ── the groups a reader of Claude Code's list would recognise, each with its count ── */
-  const { group } = require('../../src/sessions-view');
-  const inWs = (cwd) => cwd === inside;
-  const shaped = group([thread(1, inside), thread(2, outsideA), thread(5, inside, { archived: true })],
-    { open: [], closed: [], cwdFilter: inWs });
-  eq(shaped.map((g) => g.label), ['Recently closed', 'Open sessions', 'Ungrouped', 'Archived sessions'],
-    'the group names are the ones Claude Code\'s session list uses, in its order');
-  eq(shaped.filter((g) => !g.expanded).map((g) => g.label), ['Recently closed', 'Archived sessions'],
-    'the ones a reader opens only when looking for something start collapsed');
-
-  /* ── an empty Open sessions is left out, as Claude Code Plus leaves it out ── */
-  const bare = new SessionsModel(vscode, { memory: stubMemory(), memento: fake.memento(), reader: stubReader([thread(1, inside)]),
-    stateOf: () => null, settings: () => ({ recentClosedSessions: 10, hideBackgroundSessions: true }) });
-  bare.refresh();
-  eq(keysOf(bare.model()), ['ungrouped'], 'with nothing open there is no Open sessions group at all');
-  eq(bare.model().groups.find((g) => g.key === 'ungrouped').rows.length, 1, 'a group that holds something has its rows, which the page counts');
-
-  /* ── a conversation the user has not read gets no dot, and asks for one when its group opens ── */
-  const asked = [];
-  const old = thread(7, inside, { updatedMs: 50 });
-  const unreadReader = { ...stubReader([thread(1, inside), old]), state: (id) => (id === ID(1) ? { working: false } : null) };
-  const lazy = new SessionsModel(vscode, { memory: stubMemory(), memento: fake.memento(), reader: unreadReader,
-    stateOf: (id) => (id === ID(1) ? { state: 'working', activity: 'working' } : { state: 'idle', activity: 'stopped' }), wantState: (ids) => asked.push(...ids),
-    settings: () => ({ recentClosedSessions: 10, hideBackgroundSessions: true }) });
-  lazy.refresh();
-  const kids = lazy.model().groups.find((g) => g.key === 'ungrouped').rows;
-  eq([kids.find((r) => r.id === ID(1)).dot, kids.find((r) => r.id === ID(7)).dot], ['working', 'unknown'],
-    'the one whose rollout was read carries its status dot; the one that was not carries none rather than an idle one');
-  eq(asked, [], 'working out the list asks for no rollout');
-  lazy.expanded(['ungrouped']);
-  eq(asked, [ID(7)], 'the page saying the group is open asks for that one rollout, and only that one');
-  asked.length = 0;
-  lazy.expanded(['open', 'closed']);
-  eq(asked, [], 'a group nobody opened asks for nothing, so the cost follows what is on screen');
-
-  /* ── what Recently closed does with its setting ── */
-  const closedList = [{ thread: ID(8), title: 'closed one', at: 9 }];
-  const noneKept = group([thread(1, inside)], { open: [], closed: [] });
-  eq(noneKept.find((g) => g.key === 'closed').threads.length, 0, 'with none kept, Recently closed is empty and so is left out of the tree');
-  const kept = group([thread(1, inside)], { open: [], closed: closedList });
-  eq(kept.find((g) => g.key === 'closed').threads.map((t) => t.title), ['closed one'],
-    'a conversation closed here is listed by the title it was closed under, even with no thread row left for it');
-  eq(group([thread(5, inside, { archived: true })], { open: [], closed: [] }).filter((g) => g.threads.length).map((g) => g.key), ['archived'],
-    'an archived conversation is listed in Archived sessions and nowhere else');
-
-  ok('the session list was checked against real directories and a symbolic link');
+  ok('the workspace filter was checked against real directories and a symbolic link');
   /*
-   * The conversation Codex's sidebar shows is open in this window as much as a tab is, so Open sessions lists it while
-   * a sidebar view is visible, and clicking it goes to the sidebar rather than opening a tab. The patch knows the view
-   * (the provider's sidebarView, a WebviewView) and which conversation the sidebar went to last; the list redraws on the
-   * view's own visibility event.
+   * The conversation Codex's sidebar shows is open in this window as much as a tab is, while a sidebar view is
+   * visible. The patch knows the view (the provider's sidebarView, a WebviewView) and which conversation the sidebar
+   * went to last, and tells the source on the view's own visibility event.
    */
   {
     const inside = tmp('sidebar-ws');
-    const t1 = thread(1, inside), t2 = thread(2, inside);
-    const openOf = (groups) => groups.find((g) => g.key === 'open');
-    eq(openOf(group([t1, t2], { open: [], closed: [], sidebar: ID(2) })).threads.map((t) => t.id), [ID(2)],
-      'a conversation the sidebar shows is in Open sessions');
-    eq(openOf(group([t1, t2], { open: [ID(2)], closed: [], sidebar: ID(2) })).threads.length, 1, 'and once only when a tab shows it too');
     delete require.cache[require.resolve('../../src/patching')];
     const patching = require('../../src/patching');
     patching.installHooks();
@@ -227,12 +159,6 @@ module.exports = async ({ ok, bad, eq, tmp }) => {
     hear();
     eq([patching.sidebarShowing(), redraws], ['', 2], 'a sidebar that is hidden shows nothing, which its own visibility event says');
     view.visible = true;
-    const listing = new SessionsModel(vscode, { memory: stubMemory(), memento: fake.memento(), reader: stubReader([t1, t2]),
-      settings: () => ({ hideBackgroundSessions: true, recentClosedSessions: 10 }),
-      stateOf: () => null, sidebarShowing: () => patching.sidebarShowing() });
-    listing.refresh();
-    const open = listing.model().open;
-    eq([open.length, open[0].sidebar], [1, true], 'its row is marked as the sidebar\'s, so a click on it goes to the sidebar');
     patching._approvals.clear();
   }
 };

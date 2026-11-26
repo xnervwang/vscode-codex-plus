@@ -929,8 +929,6 @@ function selfchecked(r, where, { turns, users, rows, replies = turns }) {
     results.blocked.push(...s.b.blocked);
   } finally { await s.close(); }
 
-  /* The session list's own page, which is this extension's rather than Codex's (lib/sessions-scene.js). */
-  if (want('sessions')) await require('./lib/sessions-scene').run({ env: ENV, check, shots: SHOTS, out: OUT, results });
 
   results.passed = passed;
   results.failed = failed;

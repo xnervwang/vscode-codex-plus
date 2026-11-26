@@ -119,25 +119,8 @@
         }
       },
       {
-        "command": "codexPlus.openThreadInTab",
-        "title": "Codex Plus: Resume in Tab"
-      },
-      {
-        "command": "codexPlus.openThreadInSidebar",
-        "title": "Codex Plus: Resume in Sidebar"
-      },
-      {
         "command": "codexPlus.reopenClosedSession",
         "title": "Codex Plus: Reopen Closed Codex Conversation"
-      },
-      {
-        "command": "codexPlus.setTitleColor",
-        "title": "Codex Plus: Text Color..."
-      },
-      {
-        "command": "codexPlus.findThread",
-        "title": "Codex Plus: Find a Codex Conversation by Title or ID",
-        "icon": "$(search)"
       },
       {
         "command": "codexPlus.renameThread",
@@ -145,37 +128,16 @@
         "icon": "$(edit)"
       },
       {
-        "command": "codexPlus.moveThreadToSection",
-        "title": "Codex Plus: Add to Group"
-      },
-      {
-        "command": "codexPlus.removeFromGroup",
-        "title": "Codex Plus: Remove from Group"
-      },
-      {
-        "command": "codexPlus.newGroup",
-        "title": "Codex Plus: New Group...",
-        "icon": "$(new-folder)"
-      },
-      {
-        "command": "codexPlus.newThreadInGroup",
-        "title": "Codex Plus: Start New Session in This Group"
-      },
-      {
-        "command": "codexPlus.renameGroup",
-        "title": "Codex Plus: Rename Group..."
-      },
-      {
-        "command": "codexPlus.deleteGroup",
-        "title": "Codex Plus: Delete Group"
-      },
-      {
         "command": "codexPlus.markThreadUnread",
         "title": "Codex Plus: Mark as Unread"
       },
       {
-        "command": "codexPlus.markThreadRead",
-        "title": "Codex Plus: Mark as Read"
+        "command": "codexPlus.removePatch",
+        "title": "Codex Plus: Remove the Patch from Codex (restore original files)"
+      },
+      {
+        "command": "codexPlus.showOpenTimes",
+        "title": "Codex Plus: Show How Long Opening a Codex Page Took"
       },
       {
         "command": "codexPlus.pauseGoal",
@@ -188,47 +150,8 @@
       {
         "command": "codexPlus.clearGoal",
         "title": "Codex Plus: Clear Goal"
-      },
-      {
-        "command": "codexPlus.archiveThread",
-        "title": "Codex Plus: Archive"
-      },
-      {
-        "command": "codexPlus.unarchiveThread",
-        "title": "Codex Plus: Unarchive"
-      },
-      {
-        "command": "codexPlus.deleteThread",
-        "title": "Codex Plus: Delete Conversation..."
-      },
-      {
-        "command": "codexPlus.removePatch",
-        "title": "Codex Plus: Remove the Patch from Codex (restore original files)"
-      },
-      {
-        "command": "codexPlus.showOpenTimes",
-        "title": "Codex Plus: Show How Long Opening a Codex Page Took"
       }
     ],
-    "viewsContainers": {
-      "activitybar": [
-        {
-          "id": "codexPlus",
-          "title": "Codex Plus",
-          "icon": "images/sidebar.svg"
-        }
-      ]
-    },
-    "views": {
-      "codexPlus": [
-        {
-          "type": "webview",
-          "id": "codexPlus.sessions",
-          "name": "Codex sessions",
-          "when": "config.codexPlus.sessionList"
-        }
-      ]
-    },
     "menus": {
       "commandPalette": [
         {
@@ -240,23 +163,7 @@
           "when": "false"
         },
         {
-          "command": "codexPlus.openThreadInTab",
-          "when": "false"
-        },
-        {
-          "command": "codexPlus.openThreadInSidebar",
-          "when": "false"
-        },
-        {
-          "command": "codexPlus.setTitleColor",
-          "when": "false"
-        },
-        {
           "command": "codexPlus.renameThread",
-          "when": "false"
-        },
-        {
-          "command": "codexPlus.moveThreadToSection",
           "when": "false"
         },
         {
@@ -265,42 +172,6 @@
         },
         {
           "command": "codexPlus.downloadPython",
-          "when": "false"
-        },
-        {
-          "command": "codexPlus.renameGroup",
-          "when": "false"
-        },
-        {
-          "command": "codexPlus.deleteGroup",
-          "when": "false"
-        },
-        {
-          "command": "codexPlus.removeFromGroup",
-          "when": "false"
-        },
-        {
-          "command": "codexPlus.newGroup",
-          "when": "false"
-        },
-        {
-          "command": "codexPlus.markThreadRead",
-          "when": "false"
-        },
-        {
-          "command": "codexPlus.newThreadInGroup",
-          "when": "false"
-        },
-        {
-          "command": "codexPlus.archiveThread",
-          "when": "false"
-        },
-        {
-          "command": "codexPlus.unarchiveThread",
-          "when": "false"
-        },
-        {
-          "command": "codexPlus.deleteThread",
           "when": "false"
         }
       ],
@@ -326,11 +197,6 @@
           "command": "codexPlus.renameThread",
           "when": "resourceScheme == 'openai-codex'",
           "group": "codexPlus@2"
-        },
-        {
-          "command": "codexPlus.moveThreadToSection",
-          "when": "resourceScheme == 'openai-codex' && !codexPlus.noGroups",
-          "group": "codexPlus@3"
         }
       ],
       "webview/context": [
@@ -343,11 +209,6 @@
           "command": "codexPlus.renameThread",
           "when": "webviewId == 'chatgpt.conversationEditor'",
           "group": "codexPlus@2"
-        },
-        {
-          "command": "codexPlus.moveThreadToSection",
-          "when": "webviewId == 'chatgpt.conversationEditor'",
-          "group": "codexPlus@3"
         }
       ]
     },
@@ -375,39 +236,28 @@
         },
         "codexPlus.tabBarButton": {
           "type": "string",
-          "enum": ["tab", "sidebar"],
-          "enumDescriptions": ["A new Codex conversation in a tab.", "Codex's sidebar."],
+          "enum": [
+            "tab",
+            "sidebar"
+          ],
+          "enumDescriptions": [
+            "A new Codex conversation in a tab.",
+            "Codex's sidebar."
+          ],
           "default": "tab",
           "markdownDescription": "What the Codex button on the editor tab bar opens. With the patch in effect the button is this extension's, in place of Codex's own, and its hover says what it opens: *New Codex Conversation in a Tab* or *Open Codex Sidebar*. A window shows it once it has been reloaded after the patch was written; until then it shows Codex's own button, which opens a tab all the same when this is `tab` but keeps Codex's title, *Open Codex Sidebar*. Without the patch Codex's button opens its sidebar."
-        },
-        "codexPlus.sessionList": {
-          "type": "boolean",
-          "default": true,
-          "markdownDescription": "Show the **Codex sessions** view in the Codex Plus sidebar: the conversations open in this window, recently closed ones, and the rest by Codex's own sections."
-        },
-        "codexPlus.hideBackgroundSessions": {
-          "type": "boolean",
-          "default": true,
-          "markdownDescription": "Leave out the threads Codex starts by itself - sub-agents and the reviews of approval requests - and `codex exec` runs."
-        },
-        "codexPlus.recentClosedSessions": {
-          "type": "integer",
-          "default": 10,
-          "markdownDescription": "How many conversations **Recently closed** lists. 0 hides it.",
-          "minimum": 0,
-          "maximum": 50
         },
         "codexPlus.deleteArchivedAfterDays": {
           "scope": "application",
           "type": "integer",
           "default": 30,
           "minimum": 0,
-          "markdownDescription": "Conversations in **Archived sessions** across all workspaces that have been archived for at least this many days are deleted; 0 turns off this automatic deletion. Days count from when Codex archived the conversation.\n\nThis deletes the same things as Delete in the **Archived sessions** menu. A conversation that is open in this window or running is left for the next day. One VS Code window does this once a day without asking. The \"Codex Plus\" output lists what it deleted."
+          "markdownDescription": "Conversations in **Archived sessions** across all workspaces that have been archived for at least this many days are deleted; 0 turns off this automatic deletion. Days count from when Codex archived the conversation.\n\nThis deletes the same things as Delete in the **Archived sessions** menu. A conversation that is open in this window or running is left for the next day. One VS Code window does this once a day without asking. The \"Codex Plus\" output lists what it deleted. While Agent Plus's session list archives and deletes conversations, this is left to it."
         },
         "codexPlus.reopenClosedSessionShortcut": {
           "type": "boolean",
           "default": true,
-          "markdownDescription": "Ctrl+Shift+T (Cmd+Shift+T on a Mac) reopens the Codex conversation closed last, while the tab closed last was a Codex tab. After any other tab it is VS Code's Reopen Closed Editor, as before."
+          "markdownDescription": "Ctrl+Shift+T (Cmd+Shift+T on a Mac) reopens the Codex conversation closed last, while the tab closed last was a Codex tab. After any other tab it is VS Code's Reopen Closed Editor, as before. While Agent Plus's session list is on, its own Ctrl+Shift+T reopens the conversation of any agent closed last."
         },
         "codexPlus.reopenDroppedTabs": {
           "type": "boolean",

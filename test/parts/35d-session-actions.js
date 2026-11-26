@@ -4,11 +4,10 @@
 
 'use strict';
 /*
- * The session list and the conversation page offer the same actions as Claude Code's: rename, add to one of Codex's
- * sections, and mark as unread. The first two are sent to Codex's app-server on
- * Codex's own connection (src/patching.js hostRequest); the method names and parameters are the ones an offline
- * app-server of Codex 26.1021.22027 accepted. Mark as unread is kept in this extension's own read record
- * (src/seen.js), not in Codex.
+ * A conversation's page and its tab offer two of Claude Code's actions: rename and mark as unread. Rename is sent to
+ * Codex's app-server on Codex's own connection (src/patching.js hostRequest); the method name and parameters are the
+ * ones an offline app-server of Codex 26.1021.22027 accepted. Mark as unread is kept in this extension's own read
+ * record (src/seen.js), not in Codex. Agent Plus's session list does the rest.
  */
 const fs = require('fs');
 const path = require('path');
@@ -60,7 +59,7 @@ module.exports = async ({ eq, tmp, root }) => {
     sendRequest(name, id, method, params) { const r = { name, id, method, params }; requests.push(r); setTimeout(() => handler && handler.onResult(answer(r)), 1); },
   };
   const provider = { codexMcpConnection: conn, postMessageToWebview() {}, sendMessageToPanel() {} };
-  const row = (t, group = 'ungrouped') => ({ kind: 'thread', thread: { id: t.id }, group });
+  const row = (t) => t.id;
   const run = async (cmd, ...args) => { requests.length = 0; await control.state.handlers[`codexPlus.${cmd}`](...args); await tick();
     return requests.filter((r) => r.method !== 'threadSection/list').map((r) => [r.method, r.params]); };
   try {
@@ -80,9 +79,6 @@ module.exports = async ({ eq, tmp, root }) => {
     control.state.inputAnswer = undefined;
     eq(await run('renameThread', row(made[0])), [], 'and a dismissed box renames nothing');
 
-    control.state.pickAnswer = (items) => items.find((i) => i.label === 'Pinned');
-    eq(await run('moveThreadToSection', row(made[1])), [['thread/section/move', { threadId: made[1].id, sectionId: 'sec-1' }]],
-      'Add to Group offers Codex\'s sections and moves the conversation into the one picked');
 
     answer = (r) => ({ id: r.id, error: { code: -32600, message: 'thread not found' } });
     control.state.said.length = 0;
@@ -116,9 +112,6 @@ module.exports = async ({ eq, tmp, root }) => {
     control.state.inputAnswer = (o) => (o.value === 'Second' ? 'Second, renamed' : undefined);
     eq(await run('renameThread', behind.input.uri, { groupId: 1, editorIndex: 1 }), [['thread/name/set', { threadId: made[1].id, name: 'Second, renamed' }]],
       'and Rename from it renames that tab\'s conversation');
-    control.state.pickAnswer = (items) => items.find((i) => i.label === 'Pinned');
-    eq(await run('moveThreadToSection', behind.input.uri, { groupId: 1, editorIndex: 1 }), [['thread/section/move', { threadId: made[1].id, sectionId: 'sec-1' }]],
-      'and Add to Group moves that tab\'s conversation');
     control.state.inputAnswer = undefined;
   } finally {
     for (const d of subs) { try { d.dispose(); } catch (_) { /* gone */ } }
@@ -127,18 +120,13 @@ module.exports = async ({ eq, tmp, root }) => {
 
   /* ── the manifest ── */
   const menus = pkg.contributes.menus;
-  const { LIST_MENU } = require('../../src/sessions-view');
-  const item = (cmd) => (LIST_MENU || []).filter((m) => m.command === `codexPlus.${cmd}` && /^webviewSection == 'thread'/.test(m.when));
-  const page = fs.readFileSync(path.join(root, 'src', 'page', 'sessions-page.js'), 'utf8');
-  eq([/dataset\.act = 'rename'/.test(page), item('renameThread').length], [true, 1], 'Rename is a button on a row, shown on hover, and in its right-click menu');
-  eq(['moveThreadToSection', 'markThreadUnread'].map((c) => item(c).length), [1, 1], 'Add to Group and Mark as Unread are in a row\'s right-click menu');
   const onPage = (menus['webview/context'] || []).filter((m) => m.when === "webviewId == 'chatgpt.conversationEditor'").map((m) => m.command).sort();
-  eq(onPage, ['codexPlus.markThreadUnread', 'codexPlus.moveThreadToSection', 'codexPlus.renameThread'],
-    'the right-click menu of a conversation\'s page has Rename, Mark as Unread and Add to Group, as Claude Code\'s has its three');
+  eq(onPage, ['codexPlus.markThreadUnread', 'codexPlus.renameThread'],
+    'the right-click menu of a conversation\'s page has Rename and Mark as Unread; groups are the session list\'s');
   const onTab = (menus['editor/title/context'] || []).filter((m) => /\bresourceScheme == 'openai-codex'/.test(m.when || '')).map((m) => m.command).sort();
-  eq(onTab, ['codexPlus.markThreadUnread', 'codexPlus.moveThreadToSection', 'codexPlus.renameThread'],
+  eq(onTab, ['codexPlus.markThreadUnread', 'codexPlus.renameThread'],
     'and so has the right-click menu of a Codex tab itself, as docs/tabs.md says');
   const hidden = (menus.commandPalette || []).filter((m) => m.when === 'false').map((m) => m.command);
-  eq(['renameThread', 'moveThreadToSection', 'markThreadUnread'].filter((c) => !hidden.includes(`codexPlus.${c}`)), [],
+  eq(['renameThread', 'markThreadUnread'].filter((c) => !hidden.includes(`codexPlus.${c}`)), [],
     'none of them is in the command palette, where Claude Code has none of them either');
 };

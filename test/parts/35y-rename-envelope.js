@@ -76,20 +76,6 @@ module.exports = async ({ eq, tmp, root }) => {
       [[], ['Sec ond'], ['Third']], 'an envelope typed once more, in the middle or at the start is not saved (the first leaves the name as it was)');
     eq(await renamed(`${COLOUR}`), [], 'and nothing is sent for a name that is only an envelope');
 
-    const page = control.showWebviewView('codexPlus.sessions');
-    await page.fromPage({ kind: 'ready' });
-    requests.length = 0;
-    await page.fromPage({ kind: 'rename', id: made[1].id, title: `New ${TEXT} title ${COLOUR}` });
-    await tick();
-    eq(names(), ['New title'], 'a title edited where the list draws it is saved without the envelopes typed into it');
-    const envelopeNow = () => (page.posted.filter((x) => x.type === 'model').pop() || { model: {} }).model.envelope;
-    const dark = envelopeNow();
-    control.setTheme(4);
-    await tick();
-    const light = envelopeNow();
-    control.setTheme(3);
-    await tick();
-    eq([dark, light, envelopeNow()], [COLOUR, TEXT, COLOUR], 'a change of theme redraws the list with the envelope of that theme');
   } finally {
     for (const d of subs) { try { d.dispose(); } catch (_) { /* gone */ } }
     ext.deactivate();

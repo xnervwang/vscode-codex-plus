@@ -20,7 +20,6 @@ module.exports = async ({ eq, tmp }) => {
   fake.install(vscode);
   const patching = require('../../src/patching');
   const { TabMemory, CLOSED_KEY } = require('../../src/tab-memory');
-  const { group } = require('../../src/sessions-view');
 
   const provider = { sendMessageToPanel() {}, postMessageToWebview() {}, navigateToRoute() {} };
   let conversations = [];
@@ -98,8 +97,4 @@ module.exports = async ({ eq, tmp }) => {
     memory.dispose();
   }
 
-  /* ── where the group sits ── */
-  const t = (id) => ({ id, title: id.slice(0, 4), kind: 'user', cwd: '/w', updatedMs: 2, createdMs: 1, archived: false, section: '' });
-  const groups = group([t(NEW), t(NAMED)], { open: [NAMED], closed: [{ thread: NEW, title: 'x', at: 1 }] });
-  eq(groups.slice(0, 2).map((g) => g.key), ['closed', 'open'], 'Recently closed comes above Open sessions, as in Claude Code Plus');
 };

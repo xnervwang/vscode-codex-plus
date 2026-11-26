@@ -58,13 +58,10 @@ module.exports = async ({ eq }) => {
     { account: [{ label: 'Signed in with', value: 'ChatGPT' }, { label: 'Plan', value: 'Plus' }], windows: [], tokens: [{ label: 'Tokens today', value: 5 }] }, 'tokens by day are shown when Codex has them, with no money');
   eq(viewOf({ account: null }), null, 'and with no account known there is no section');
 
-  /* ── drawn at the top of the list ── */
-  const { SessionsModel } = require('../../src/sessions-view');
+  /* ── handed to Agent Plus's session list, which draws it at the top ── */
+  const { accountOf } = require('../../src/session-list-source');
   const view = { account: [{ label: 'Signed in with', value: 'Amazon Bedrock' }], windows: [], tokens: [] };
-  const list = new SessionsModel(vscode, { memory: { openThreads: () => [], recentlyClosed: () => [], frontAt: () => 0 }, memento: fake.memento(),
-    reader: { threads: () => [], sections: () => new Map(), state: () => null, thread: () => null }, stateOf: () => null,
-    settings: () => ({ recentClosedSessions: 10, hideBackgroundSessions: true }), account: () => view });
-  eq(list.model().account, view, 'the section is in the model the page draws');
+  eq(accountOf(view, null), { rows: [{ label: 'Signed in with', value: 'Amazon Bedrock' }], bars: [] }, 'the section is what Agent Plus\'s list is given for Codex');
 
   /* ── no connection: nothing is started to find out ── */
   const quiet = createAccountUsage({ ask: async () => ({ outcome: 'unavailable' }), now: () => t });

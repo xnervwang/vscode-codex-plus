@@ -85,7 +85,7 @@ module.exports = async ({ eq, note, tmp, root }) => {
     eq([rows.map((r) => r.id), rows[0] && rows[0].description.split(' · ')[0], status && status.text.endsWith('1 conversation needs you')],
       [[`conversations/codex/${asking.id}`], 'needs you', true],
       'the Codex conversation in this workspace is drawn, needing an answer; the other folder\'s is not');
-    eq(!!control.state.views['codexPlus.sessions'], true, 'the Codex session list is there too');
+    eq(!!control.state.webviews['agentPlus.sessions'], true, 'and Agent Plus\'s session list, which lists Codex\'s conversations');
 
     /* Claude Code Plus, which links to conversations, is given the Codex conversations of every folder. */
     const listening = exported.agentPlus.onDidChangeAllConversations(() => {});

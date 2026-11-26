@@ -37,11 +37,8 @@ module.exports = ({ ok, bad, eq, root }) => {
   eq(pkg.agentPlus, { protocol: require(path.join(root, 'src', 'codex-source.js')).PROTOCOL }, 'the manifest states the protocol the source implements');
   eq(pkg.capabilities && pkg.capabilities.untrustedWorkspaces && pkg.capabilities.untrustedWorkspaces.supported, 'limited', 'it runs, limited, in Restricted Mode');
   const c = pkg.contributes;
-  eq([c.viewsContainers.activitybar, Object.keys(c.views), c.views.codexPlus],
-    [[{ id: 'codexPlus', title: 'Codex Plus', icon: 'images/sidebar.svg' }], ['codexPlus'],
-      [{ type: 'webview', id: 'codexPlus.sessions', name: 'Codex sessions', when: 'config.codexPlus.sessionList' }]],
-  'the session list is a webview view in its own activity bar container, so it does not sit in the work plan sidebar of whichever agent is in front');
-  eq(fs.existsSync(path.join(root, 'images', 'sidebar.svg')), true, 'that container icon is in the repository');
+  eq([c.viewsContainers, c.views], [undefined, undefined],
+    'it has no view of its own: Agent Plus\'s session list lists Codex\'s conversations with the other agents\'');
   const commands = c.commands.map((x) => x.command);
   const gone = ['refreshWorkPlan', 'openWorkPlanFile', 'showWorkPlanDetail', 'showConversations', 'answerQuestion', 'openConversation',
     'restoreWebviewRequestLimit'].map((n) => 'codexPlus.' + n);

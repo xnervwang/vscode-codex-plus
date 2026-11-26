@@ -110,20 +110,17 @@ module.exports = async ({ eq, root }) => {
   /* ── the commands Claude Code Plus also has ── */
   const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
   const title = (c) => (pkg.contributes.commands.find((x) => x.command === c) || {}).title;
-  eq([title('codexPlus.renameThread'), title('codexPlus.moveThreadToSection'), title('codexPlus.markThreadUnread'), title('codexPlus.stopLoadingWorkPlanPlugin')],
-    ['Codex Plus: Rename', 'Codex Plus: Add to Group', 'Codex Plus: Mark as Unread', 'Codex Plus: Stop Loading the Work Plan Plugin'],
+  eq([title('codexPlus.renameThread'), title('codexPlus.markThreadUnread'), title('codexPlus.stopLoadingWorkPlanPlugin')],
+    ['Codex Plus: Rename', 'Codex Plus: Mark as Unread', 'Codex Plus: Stop Loading the Work Plan Plugin'],
     'the tab\'s menu items carry no "...", as Claude Code\'s do not, and Stop Loading is named as Claude Code Plus names it');
 
   /* ── the session information's names ── */
   const info2 = require('../../src/session-info');
   eq(info2.rows('019a6a10-0000-7000-8000-00000000ffff', { pid: '4242' }).map((r) => r.label), ['Thread', 'Process'],
     'the box names its rows in a word or two, as Claude Code Plus\'s Session and Process');
-  /* ── the Agent map: the list's dots, the dialog's border while it has the focus ── */
-  const listCss = fs.readFileSync(path.join(root, 'src', 'page', 'sessions-page.css'), 'utf8');
-  eq([/var GREEN = '#22c55e', RED = '#ef4444';/.test(source), /\.cp-dot\.d-working \{ background: #22c55e; \}/.test(listCss),
-    /\.cp-dot\.d-background \{ border: 2px solid #22c55e; \}/.test(listCss) && /'border:2px solid ' \+ GREEN/.test(source),
-    /\.cp-dot\.d-waiting \{ background: #ef4444; \}/.test(listCss), /#3b82f6/.test(source)], [true, true, true, true, false],
-  'a sub-agent\'s dot has the session list\'s colours: green, a green ring and red, and no blue');
+  /* ── the Agent map: the session list's dots, the dialog's border while it has the focus ── */
+  eq([/var GREEN = '#22c55e', RED = '#ef4444';/.test(source), /'border:2px solid ' \+ GREEN/.test(source)], [true, true],
+    'a sub-agent\'s dot has the colours of Agent Plus\'s session list: green, a green ring and red');
   eq(/\[data-codex-extras="map-dialog"\]:focus-within\{border-color:color-mix\(in srgb,var\(--vscode-inputOption-activeBorder,#2488db\) 65%,transparent\) !important;\}/.test(css()),
     true, 'the dialog\'s border turns to the active input border at 65% while it holds the focus, as Claude Code\'s');
 

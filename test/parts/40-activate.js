@@ -70,7 +70,7 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
   eq([hosted.registered.length, hosted.registered[0] && hosted.registered[0].id, hosted.registered[0] && hosted.registered[0].protocol],
     [1, 'codex', 1], 'the Codex source is registered with Agent Plus, at protocol 1');
   eq(hosted.state.context['codexPlus.registered'], true, 'an accepted registration shows the session list');
-  eq(hosted.state.views, ['codexPlus.sessions'], 'the session list is the only view this extension provides');
+  eq(hosted.state.views, [], 'this extension provides no view: Agent Plus\'s session list lists Codex\'s conversations');
   eq(hosted.state.status.filter((s) => s.shown).length, 0, 'and nothing of its own is in the status bar while no conversation is waiting on anybody');
   eq(declared.filter((c) => !hosted.state.registered.includes(c)), [], 'every command in the manifest is registered');
   eq(hosted.wroteSettings, true, 'in a trusted window the hooks\' settings are written');
@@ -189,32 +189,6 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
       'Session Information on a tab opened with Codex\'s New button shows the conversation that tab went on to start');
   }
 
-  /* Find searches the conversations the list holds: this workspace's. */
-  {
-    const w = await run(root, tmp, { probe: async ({ vscode, control, home }) => {
-      vscode.workspace.workspaceFolders = [{ uri: vscode.Uri.file(tmp('another-workspace')) }];
-      await control.state.handlers['codexPlus.findThread']();
-      const elsewhere = control.state.quickPicks[control.state.quickPicks.length - 1].items.length;
-      vscode.workspace.workspaceFolders = [{ uri: vscode.Uri.file(home) }];
-      await control.state.handlers['codexPlus.findThread']();
-      const here = control.state.quickPicks[control.state.quickPicks.length - 1].items.map((i) => i.label);
-      return { elsewhere, here };
-    } });
-    eq([w.probed.elsewhere, w.probed.here], [0, ['One']], 'Find lists this workspace\'s conversations only, as the session list does');
-  }
-  {
-    const w = await run(root, tmp, { holdReader: true, probe: async ({ vscode, control, home, releaseReader }) => {
-      vscode.workspace.workspaceFolders = [{ uri: vscode.Uri.file(home) }];
-      const finding = control.state.handlers['codexPlus.findThread']();
-      const qp = control.state.quickPicks[control.state.quickPicks.length - 1];
-      const shown = [!!qp, !!(qp && qp.busy)];
-      releaseReader();
-      await finding;
-      return { shown, listed: control.state.quickPicks[control.state.quickPicks.length - 1].items.map((i) => i.label) };
-    } });
-    eq([w.probed.shown, w.probed.listed], [[true, true], ['One']],
-      'Find pressed before the first read of Codex\'s files opens at once, busy, and lists the conversations once they are read');
-  }
   {
     const w = await run(root, tmp, { holdReader: true, probe: async ({ control, home, releaseReader }) => {
       const id = /([0-9a-f-]{36})\.jsonl$/.exec(fs.readdirSync(path.join(home, 'sessions'), { recursive: true }).map(String)

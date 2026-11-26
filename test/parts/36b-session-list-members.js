@@ -21,7 +21,13 @@ module.exports = async ({ eq, tmp, root }) => {
   const home = tmp('home');
   const other = tmp('elsewhere');
   const made = fixture.codexHome(home, [{ title: 'First', cwd: home, section: 'sec-1', turns: [{}] }, { title: 'Second', cwd: home, pinned: true, turns: [{}] },
-    { title: 'Put away', cwd: home, archived: true, archivedAt: 1000, turns: [{}] }, { title: 'Not here', cwd: other, turns: [{}] }]);
+    { title: 'Put away', cwd: home, archived: true, archivedAt: 1000, turns: [{}] }, { title: 'Not here', cwd: other, turns: [{}] },
+    { title: 'Shelved', cwd: home, archived: true, archivedAt: 2000, turns: [{}] }]);
+  /* What VS Code gives as the workspace folder can be a symbolic link to where Codex recorded the conversations. */
+  const fs = require('fs');
+  const link = path.join(tmp('links'), 'home-link');
+  let linked = true;
+  try { fs.symlinkSync(home, link, 'dir'); } catch (_) { linked = false; }
   process.env.CODEX_HOME = home;
   control.state.config = { reopenDroppedTabs: false };
   let manages = true;
@@ -48,11 +54,17 @@ module.exports = async ({ eq, tmp, root }) => {
     const page = await src.listSessions({ folders: [home], cursor: null, limit: 500 });
     const byTitle = Object.fromEntries(page.sessions.map((s) => [s.title, s]));
     eq([Object.keys(byTitle).sort(), page.cursor, byTitle.First.kind, byTitle.First.createdAt > 0, typeof byTitle.First.detail],
-      [['First', 'Put away', 'Second'], null, 'user', true, 'boolean'],
+      [['First', 'Put away', 'Second', 'Shelved'], null, 'user', true, 'boolean'],
       'it lists the conversations of the window\'s folders, the ones Codex archived among them, and none of another folder');
+    if (linked) {
+      const via = await src.listSessions({ folders: [link], cursor: null, limit: 500 });
+      eq(via.sessions.map((x) => x.title).sort(), ['First', 'Put away', 'Second', 'Shelved'], 'a folder given through a symbolic link holds the conversations recorded under the real path');
+    }
     const two = await src.listSessions({ folders: [home], cursor: null, limit: 2 });
     eq([two.sessions.length, two.cursor], [2, '2'], 'a page at a time');
-    eq(await src.importSessions({ folders: [home] }), { archived: [{ sessionId: made[2].id, at: 1000000 }], groups: [{ name: 'Pinned', sessionIds: [made[0].id] }],
+    const got = await src.importSessions({ folders: [home] });
+    got.archived.sort((x, y) => x.at - y.at);
+    eq(got, { archived: [{ sessionId: made[2].id, at: 1000000 }, { sessionId: made[4].id, at: 2000000 }], groups: [{ name: 'Pinned', sessionIds: [made[0].id] }],
       pinned: [made[1].id], colors: { [made[0].id]: 'green' } },
     'the import hands over what Codex archived, its sections as groups, what it pinned, and the title colours');
 
@@ -68,6 +80,10 @@ module.exports = async ({ eq, tmp, root }) => {
       'Pause Goal and Clear Goal go to Codex as the user\'s');
     eq((await src.runSessionAction('fly', [made[0].id], {})).results[0].outcome, 'refused', 'an action it does not have is refused');
 
+    requests.length = 0;
+    await src.runSessionAction('open', [made[4].id], { where: 'tab' });
+    await tick();
+    eq(sent().slice(0, 1), [['thread/unarchive', { threadId: made[4].id }]], 'opening a conversation Codex archived unarchives it in Codex first, since Codex shows none');
     const what = await src.describeDeletion([made[2].id]);
     eq([what.length, /^the rollout \(\d/.test(what[0].what)], [1, true], 'deleting says what goes: the rollout and its size');
     requests.length = 0;

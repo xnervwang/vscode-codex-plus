@@ -277,45 +277,22 @@ module.exports = async ({ ok, bad, eq, tmp, root }) => {
     } finally { source.dispose(); reader.dispose(); }
   });
 
-  /* The session list and the Agent map both draw a green ring for this. */
+  /* Agent Plus's session list and the Agent map both draw a green ring for this. */
   await section('the session list', async () => {
-    const { SessionsModel } = require('../../src/sessions-view');
     const conv = { sessionId: ID(1), state: 'working', ownState: 'unread', working: false, left: ['command', 'subagent'], activity: 'background', unseen: true };
     const { mapOf } = require('../../src/agent-map');
     const kid = { id: ID(2), title: 'Kid', kind: 'subagent', parent: ID(1), nickname: 'kid', createdMs: 1, updatedMs: 1 };
     eq(mapOf(ID(1), { reader: { threads: () => [kid], wakeup: () => null, goal: () => null }, stateOf: () => conv }).agents.map((a) => a.dot), ['background'],
       'in the Agent map, a sub-agent with only work left running has the green ring, not a turn running in another window');
-    const threads = [{ id: ID(1), title: 'Busy after its turn', kind: 'user', parent: '', cwd: '/w', section: '', createdMs: 1, updatedMs: 2 }];
-    const model = new SessionsModel(vscode, { memory: { openThreads: () => [], recentlyClosed: () => [], frontAt: () => 0 }, memento: fake.memento(),
-      reader: { threads: () => threads, sections: () => new Map(), state: () => ({}), thread: () => null },
-      stateOf: () => conv, settings: () => ({ recentClosedSessions: 10 }) }).model();
-    const row = model.groups.flatMap((g) => g.rows).find((r) => r.id === ID(1));
-    eq([row.dot, row.unread, row.running], ['background', true, 'A background command is still running\nA sub-agent is still running'],
-      'its row has the green ring, keeps its envelope and Mark as Read, and names what is running');
-    const { createDom } = require('../fake-dom');
-    const dom = createDom();
-    const page = dom.el('div', { attrs: { id: 'root' } });
-    dom.setBody(dom.el('body', { kids: [page] }));
-    const listeners = {};
-    const sandbox = Object.assign({}, dom.sandbox, { window: { innerWidth: 400, innerHeight: 800, getSelection: () => ({ removeAllRanges() {}, addRange() {} }),
-      addEventListener: (k, fn) => { (listeners[k] = listeners[k] || []).push(fn); } }, Map, Set, Proxy, Promise,
-    acquireVsCodeApi: () => ({ postMessage() {}, getState: () => null, setState() {} }) });
-    vm.createContext(sandbox);
-    vm.runInContext(fs.readFileSync(path.join(root, 'src', 'page', 'sessions-page.js'), 'utf8'), sandbox);
-    for (const fn of listeners.message) fn({ data: { type: 'model', model } });
-    const r = page.querySelector(`.cp-row[data-id="${ID(1)}"]`);
-    const hover = page.querySelector('.cp-hover');
-    if (!r || !hover) { bad('the session page drew no row or no hover box'); return; }
-    r.bubble('mouseover');
-    dom.runTimers();
-    eq(/A background command is still running\nA sub-agent is still running/.test(hover.textContent), true, 'and the hover box says so');
+    const { sessionOf } = require('../../src/session-list-source');
+    const given = sessionOf({ id: ID(1), title: 'Busy after its turn', kind: 'user', parent: '', cwd: '/w', createdMs: 1, updatedMs: 2 }, conv, null);
+    eq([given.activity, given.hover], ['background', ['A background command is still running', 'A sub-agent is still running']],
+      'Agent Plus\'s session list is told it has only background work left, and its hover names what is running');
   });
 
   await section('the extension', async () => {
     const ext = fs.readFileSync(path.join(root, 'extension.js'), 'utf8');
     eq(/scanLeft: \(\) => keepsShared\(\)/.test(ext), true, 'a window that stands down for a newer build scans only while no window runs the installed one, and one being uninstalled never does');
-    const doc = fs.readFileSync(path.join(root, 'docs', 'session-list.md'), 'utf8');
-    eq(/still running after (its|the) turn/i.test(doc), true, 'docs/session-list.md says so under its status dots');
   });
   if (left) ok('the module that reads /proc for work left running loads');
 };

@@ -31,6 +31,10 @@ const LEFT_WORDS = {
   claudeBg: 'A claude --bg session it started is still busy',
 };
 const KIND = { user: 'user', subagent: 'subagent' };
+/* Codex's built-in Pinned section, a section like the others in its state database. */
+const PINNED_SECTION = '01984de2-8f74-7c91-a3b2-5c5e937cf318';
+/* Where Codex Plus kept the title colours of its own list, handed over once by the import. */
+const COLOR_KEY = 'codexPlus.titleColors';
 
 function goalText(g) {
   if (!g) return '';
@@ -113,4 +117,4 @@ function accountOf(view, conv) {
   return out;
 }
 
-module.exports = { sessionOf, pageOf, importOf, accountOf, goalText, GOAL_WORD, RESUMABLE, OWN, LEFT_WORDS };
+module.exports = { sessionOf, pageOf, importOf, accountOf, goalText, GOAL_WORD, RESUMABLE, OWN, LEFT_WORDS, PINNED_SECTION, COLOR_KEY };

@@ -109,29 +109,13 @@ module.exports = async ({ eq, root }) => {
   eq([/left: \(id\) => source\.leftOf\(id\)/.test(ext), /running: \(id\) => source\.runningOf\(id\)/.test(ext), /envelope: envelope\(vscode\)/.test(ext)],
     [true, true, true], 'the extension builds each page\'s map with the kinds, the work and the envelope');
 
-  /* ── the session list's sub-agent rows ── */
+  /* ── a sub-agent in Agent Plus's session list ── */
   {
-    const { SessionsModel } = require('../../src/sessions-view');
-    const t = (n, extra) => ({ id: ID(n), title: `t${n}`, kind: 'user', parent: '', cwd: '/w', section: '', createdMs: n, updatedMs: n, ...extra });
-    const list = [t(20, { updatedMs: 90 }),
-      t(21, { kind: 'subagent', parent: ID(20), nickname: 'scout', title: '', createdMs: 21 }),
-      t(22, { kind: 'subagent', parent: ID(20), nickname: '', title: 'Fix the test', createdMs: 22 }),
-      t(23, { kind: 'subagent', parent: ID(20), nickname: '', title: '', createdMs: 23 }),
-      t(24, { kind: 'subagent', parent: ID(20), nickname: 'idler', title: 'Look around', createdMs: 24 })];
-    const convs = new Map([[ID(20), { activity: 'working' }]]);
-    const subs = new Map([[ID(21), { activity: 'working', unseen: false }], [ID(22), { activity: 'background' }],
-      [ID(23), { activity: 'waiting' }], [ID(24), { activity: 'stopped', unseen: true }]]);
-    const model = new SessionsModel(vscode, { memory: { openThreads: () => [], recentlyClosed: () => [], frontAt: () => 0 }, memento: fake.memento(),
-      reader: { threads: () => list, sections: () => new Map(), state: () => ({}), thread: (id) => list.find((x) => x.id === id) || null },
-      stateOf: (id) => convs.get(id), threadState: (id) => subs.get(id) || null,
-      settings: () => ({ recentClosedSessions: 10, hideBackgroundSessions: false }) }).model();
-    const rowsOf = model.groups.flatMap((g) => g.rows);
-    const row = (n) => rowsOf.find((r) => r.id === ID(n)) || {};
-    eq([21, 22, 23, 24].map((n) => [row(n).title, row(n).dot, row(n).child, row(n).unread]),
-      [['scout', 'working', true, false], ['Fix the test', 'background', true, false], ['(untitled)', 'waiting', true, false], ['idler', 'none', true, true]],
-      'a sub-agent row is titled by its nickname, else its title, as in the Agent map, and drawn indented with its own dot and envelope');
-    const css = fs.readFileSync(path.join(root, 'src', 'page', 'sessions-page.css'), 'utf8');
-    eq(/\.cp-row\.cp-child \.cp-dot\.d-none[^{]*\{[^}]*visibility:\s*hidden/.test(css), true,
-      'a sub-agent row with no dot keeps the dot\'s room, so it stays indented under its parent');
+    const { sessionOf } = require('../../src/session-list-source');
+    const t = (n, extra) => ({ id: ID(n), title: `t${n}`, kind: 'subagent', parent: ID(20), cwd: '/w', createdMs: n, updatedMs: n, ...extra });
+    eq([sessionOf(t(21, { nickname: 'scout', title: '' }), null, null), sessionOf(t(22, { nickname: '', title: 'Fix the test' }), null, null),
+      sessionOf(t(23, { nickname: '', title: '' }), null, null)].map((x) => [x.title, x.kind, x.parentId]),
+    [['scout', 'subagent', ID(20)], ['Fix the test', 'subagent', ID(20)], ['(untitled)', 'subagent', ID(20)]],
+    'a sub-agent is titled by its nickname, else its title, as in the Agent map, and the list puts it under its parent');
   }
 };

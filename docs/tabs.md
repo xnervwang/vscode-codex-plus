@@ -26,4 +26,4 @@ The tab title follows the conversation name in Codex, including when you start t
 
 Rename opens without the envelope and does not save one you type into the new name. When the tab bar cannot fit the whole title, VS Code cuts off the end, including the envelope. The session list draws the envelope separately, so it stays visible there.
 
-The right-click menu on a Codex tab has the same three actions as on a Claude Code tab (Rename, Mark as Unread and Add to Group), and each acts on the conversation in the tab you right-clicked, even when another tab is in front. Add to Group opens a list at the top of the window. You need the patch for the dots, titles and tab bar button.
+The right-click menu on a Codex tab has Rename and Mark as Unread, as a Claude Code tab has, and each acts on the conversation in the tab you right-clicked, even when another tab is in front. Groups are kept by Agent Plus's session list. You need the patch for the dots, titles and tab bar button.
