@@ -156,9 +156,15 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
       const k = Object.keys(require.cache).find((x) => x.toLowerCase() === file.toLowerCase());
       return k ? require.cache[k].exports : require(file); };`;
   const shot = (name) => page.screenshot({ path: path.join(shotsDir, `${String(++shotNo).padStart(2, '0')}-${name}.png`) }).catch(() => {});
-  /* Clicks into the message box of a Codex page. The pointer is moved off the page first: a hover card left open over the
-     box, the context meter's or another, would take the click and stay open under the pointer. */
-  const intoComposer = async (f) => { await page.mouse.move(5, 5); await f.locator(COMPOSER).first().click(); };
+  /* Clicks into the message box of a Codex page. The pointer is moved off the page and the context meter's card, which
+     closes a moment after the pointer leaves the meter, is waited out first: a click landing on the card keeps it open
+     under the pointer, over the box. */
+  const intoComposer = async (f) => {
+    await page.mouse.move(5, 5);
+    await until(() => f.evaluate(() => ![...document.querySelectorAll('[data-codex-extras="context"]')].some((e) => e.style.display === 'block'))
+      .catch(() => true), 3000, 100);
+    await f.locator(COMPOSER).first().click();
+  };
   /*
    * What the window held when a step failed, beside its screenshot in <out>/state/<number>-<name>/: the workbench's
    * HTML and the text of each frame in it (the webviews of Codex's pages and Agent Plus's views among them), with their
