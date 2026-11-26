@@ -44,16 +44,18 @@
 
 ### On CI
 
-Three workflows in `.github/workflows/`. **None has ever run: this repository has not been pushed anywhere**, so they are checked only by `test/parts/66-workflows.js`, which runs the shell of `against-latest.yml`'s step (below) against a stand-in `node`.
+The workflows in `.github/workflows/` below, and `release.yml`, which publishes a release. `test/parts/66-workflows.js` checks all four, and runs the shell of `against-latest.yml`'s step (below) against a stand-in `node`.
 
 | | |
 | --- | --- |
 | `check.yml` | The suite, on every push to main, every pull request and once a day, on Node 22 and Node 24, with Agent Plus checked out beside this repository so `test/parts/45-core.js` runs; the daily run brings a change to Agent Plus's main that breaks this one to light within a day. Both, because `node:sqlite` is behind a flag in one and not the other and `test/check.js` re-execs itself with the flag only when it has to. A runner has no Codex installed, so three checks report themselves as not run; the suite's last line counts those separately and the rest still pass. |
 | `against-latest.yml` | `test/against-latest.js` once a day, and on demand. This is the check that can go red with nothing here having changed: Codex ships a build a required edit no longer fits (see [Verified Codex builds](#verified-codex-builds)), and the patch then quietly does nothing for everyone who updates. |
-| `vscode.yml` | `test/vscode/run.js` on Linux, macOS and Windows, on every push to main or to a `ci/` branch, every pull request, once a day and on demand, with the results folder of each platform kept as an artifact. Only the Linux crops have approved copies so far, made on a development machine; macOS and Windows runs save their crops without comparing them until someone approves a set from a CI run. On Linux the window runs in a namespace with loopback only; macOS and Windows get only a proxy that does not exist. |
+| `vscode.yml` | `test/vscode/run.js` on Linux, macOS and Windows, on every push to main or to a `ci/` branch, every pull request, once a day and on demand. Each system runs the window test in the five shards of `SHARD_STARTS` in `test/vscode/ui.js`, side by side, and keeps the results folder of each as an artifact, with a `state/` folder holding the window's HTML and text for every step that failed. Run by hand it takes `os` (one system, or `all`) and `steps` (a regular expression of step names: only those run, with the steps they rely on, in one job per system). Only the Linux crops have approved copies so far, made on a development machine; macOS and Windows runs save their crops without comparing them until someone approves a set from a CI run. On Linux the window runs in a namespace with loopback only; macOS and Windows get only a proxy that does not exist. |
 
 - The step of `against-latest.yml` is red for exit 1 (an edit no longer fits, or a patched file no longer parses) **and** for any other non-zero code (the check did not run), with a different annotation for each. A step that passes whatever happened reads the same as one that keeps working, and a scheduled check is the kind nobody looks at until it matters.
 - A Codex release merely absent from `src/supported-versions.json` prints as a note and does not fail, which is `against-latest.js`'s own decision: the edits fitting a build is not the whole of what that file claims.
+- `CODEX_PLUS_UI_STEPS` (a regular expression of step names) and `CODEX_PLUS_UI_SHARD` (`k/n`) pick the steps `run.js` takes locally too. A step that uses what an earlier one left, a variable it set or a conversation it opened, names that step in `STEP_NEEDS` in `ui.js`, or it fails when run alone or in a later shard.
+- To try a fix of a window test failure, push it to a branch that is not `main` or `ci/…` and run `vscode.yml` on that branch by hand with the system it failed on and the steps that failed. Once that passes, merge it and let the run on `main` take every step. A failure that does not come back on that run is rerun with "Re-run failed jobs".
 
 ## Verified Codex builds
 

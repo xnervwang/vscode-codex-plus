@@ -89,6 +89,7 @@ const { baselines } = require('./lib/baseline');
 const pixels = require('./lib/pixels');
 const fakeHome = require('./lib/fake-home');
 const { codexBinary } = require('../../src/appserver');
+const steps = require('./lib/steps');
 
 const { sleep, until } = win;
 const TITLES = { tab: 'Codex Plus: New Codex Conversation in a Tab', sidebar: 'Codex Plus: Open Codex Sidebar', codex: 'Open Codex Sidebar' };
@@ -104,7 +105,43 @@ const COMPOSER = '[data-codex-composer-root] [contenteditable="true"]';
 /* What lib/fake-model.js answers a turn with when no script is set. */
 const REPLY = 'Done. The cap is configurable.';
 
-async function run({ exe, profile, env, playwright, model, threads, out, check, note }) {
+/*
+ * Which steps a run of part of this script takes along (lib/steps.js). BASE sets up what nearly every step uses: the
+ * patched and reloaded window, and `codex`, the page of the conversation in a tab. NEEDS has, for a step, the earlier
+ * steps whose variables or conversations it uses. SHARD_STARTS cuts the steps into the shards .github/workflows/vscode.yml
+ * runs side by side, at about even times.
+ */
+const STEP_BASE = ['the feature list against the Agent Plus installed', 'the patch', 'tab bar', 'a conversation in a tab'];
+const BEGUN = 'a conversation begun in a tab the tab bar button opened';
+const AGENT_NEW = 'a conversation begun in a tab New Codex Agent opened';
+const IN_TAB_NEW = 'a conversation begun with Codex\'s new conversation button in a tab';
+const SUB_AGENT = 'a sub-agent opened in a tab from the Agent map';
+const RESTORED = 'tabs restored at a reload';
+const STEP_NEEDS = {
+  [AGENT_NEW]: [BEGUN],
+  [IN_TAB_NEW]: [AGENT_NEW],
+  'a conversation\'s tab brought back to the front': [BEGUN],
+  'New Codex Agent twice and Codex\'s New chat in a tab, each a new conversation': [BEGUN],
+  [RESTORED]: [BEGUN, IN_TAB_NEW, SUB_AGENT],
+  'a turn in a restored New tab': [RESTORED],
+  'a closed conversation brought back': [RESTORED],
+  'a second window': [BEGUN],
+  'a notice for a tab restored behind another': [RESTORED],
+  'restored tabs keep their envelopes': [RESTORED],
+  'a tab closed while the extension host was away': [RESTORED],
+};
+const SHARD_STARTS = ['the feature list against the Agent Plus installed', 'a claude --bg session whose job id a later poll reads',
+  'a conversation in Codex\'s sidebar', 'a second window', 'a tab closed while the extension host was away'];
+/* The steps this run takes: CODEX_PLUS_UI_STEPS, a regular expression of step names, or CODEX_PLUS_UI_SHARD, "k/n"; null
+   for every step. */
+function stepsToRun(env = process.env) {
+  return steps.chosen({ names: steps.namesIn(__filename), only: env.CODEX_PLUS_UI_STEPS ? new RegExp(env.CODEX_PLUS_UI_STEPS) : null,
+    shard: env.CODEX_PLUS_UI_SHARD || '', starts: SHARD_STARTS, needs: STEP_NEEDS, base: STEP_BASE });
+}
+
+async function run({ exe, profile, env, playwright, model, threads, out, check: report, note }) {
+  let failedChecks = 0;
+  const check = (cond, what, detail) => { const ok = report(cond, what, detail); if (!ok) failedChecks++; return ok; };
   const shotsDir = path.join(out, 'shots');
   fs.mkdirSync(shotsDir, { recursive: true });
   const base = baselines({ out, check, note });
@@ -119,9 +156,27 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       const k = Object.keys(require.cache).find((x) => x.toLowerCase() === file.toLowerCase());
       return k ? require.cache[k].exports : require(file); };`;
   const shot = (name) => page.screenshot({ path: path.join(shotsDir, `${String(++shotNo).padStart(2, '0')}-${name}.png`) }).catch(() => {});
-  /* CODEX_PLUS_UI_STEPS, a regular expression, runs only the steps whose names match it. The steps a later one relies
-     on (the patch, tab bar, a conversation in a tab) have to match too. */
-  const only = process.env.CODEX_PLUS_UI_STEPS ? new RegExp(process.env.CODEX_PLUS_UI_STEPS) : null;
+  /*
+   * What the window held when a step failed, beside its screenshot in <out>/state/<number>-<name>/: the workbench's
+   * HTML and the text of each frame in it (the webviews of Codex's pages and Agent Plus's views among them), with their
+   * addresses, the tabs VS Code has, and the notifications shown.
+   */
+  const keepState = async (name) => {
+    const dir = path.join(out, 'state', `${String(shotNo).padStart(2, '0')}-${name.replace(/[^\w.-]+/g, '-').slice(0, 80)}`);
+    try {
+      fs.mkdirSync(dir, { recursive: true });
+      const frames = [];
+      for (const [i, f] of page.frames().entries()) {
+        const html = await f.content().catch(() => '');
+        const text = await f.evaluate(() => (document.body ? document.body.innerText : '')).catch(() => '');
+        if (html) fs.writeFileSync(path.join(dir, `frame-${i}.html`), html.slice(0, 4 << 20));
+        frames.push({ frame: i, url: f.url().slice(0, 300), name: f.name(), text: text.slice(0, 20000) });
+      }
+      const said = { step: name, at: new Date().toISOString(), tabs: await tabs().catch((e) => String(e)), notifications: await toasts().catch((e) => String(e)), frames };
+      fs.writeFileSync(path.join(dir, 'state.json'), JSON.stringify(said, null, 2) + '\n');
+    } catch (e) { note(`${name}: the window's state could not be kept: ${(e && e.message) || e}`); }
+  };
+  const picked = stepsToRun();
   /* Turns a step's error into one line: the error's first lines, the end of Playwright's call log for a timeout (it says
      what kept the action from happening), and where the error was thrown. */
   const failure = (e) => {
@@ -215,12 +270,14 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     return true;
   };
   const step = async (name, fn) => {
-    if (only && !only.test(name)) { note(`${name}: not run, as CODEX_PLUS_UI_STEPS leaves it out`); return; }
+    if (picked && !picked.has(name)) return;
     console.log(`\n── ${name}`);
     stepNow = name;
+    const failedBefore = failedChecks;
     const waited = await served().catch(() => 0);
     if (waited >= 10) note(`${name}: before it began, VS Code took ${waited} s to give Codex's pages the files they had asked for`);
-    try { await fn(); } catch (e) { check(false, `${name}: ran to its end`, failure(e)); await shot(`${name}-error`); }
+    try { await fn(); } catch (e) { check(false, `${name}: ran to its end`, failure(e)); }
+    if (failedChecks > failedBefore) { await shot(`${name}-failed`); await keepState(`${name}-failed`); }
   };
 
   /* ── what the window and the extension host say ── */
@@ -5705,4 +5762,4 @@ function prepare({ profile, fakeHome }) {
     seen: Object.fromEntries(ARCHIVED.map((t) => [t.id, Date.now() - t.days * 86400e3])) }));
 }
 
-module.exports = { run, prepare, SETTINGS };
+module.exports = { run, prepare, SETTINGS, stepsToRun, STEP_BASE, STEP_NEEDS, SHARD_STARTS };

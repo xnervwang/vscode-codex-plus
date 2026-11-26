@@ -5,9 +5,10 @@
 # the approved copies for that platform. It runs once a day as well as on each push, since either upstream can change
 # without a commit here.
 #
-# The results folder of each platform is kept as an artifact whether the run passed or not: the screenshots of every
-# step, the crops, a diff image of each crop that failed, and VS Code's logs. A platform with no approved copies yet
-# only saves its crops there, with a note in the log.
+# The results folder of each platform and shard is kept as an artifact whether the run passed or not: the screenshots
+# of every step, the crops, a diff image of each crop that failed, VS Code's logs, and for a step that failed what the
+# window held then (its state/ folder). A platform with no approved copies yet only saves its crops there, with a note in
+# the log.
 name: vscode
 
 on:
@@ -19,7 +20,20 @@ on:
     # 07:53 UTC. Not on the hour or the half hour, when the scheduler is busiest, and apart from check.yml (05:41) and
     # against-latest.yml (06:17).
     - cron: '53 7 * * *'
+  # By hand: one system or all three, and with `steps` only the window test steps whose names match that regular
+  # expression, with the steps they rely on (test/vscode/ui.js stepsToRun). Used to try a fix of one failure on the
+  # system it failed on.
   workflow_dispatch:
+    inputs:
+      os:
+        description: The system to run on
+        type: choice
+        options: [all, ubuntu-latest, macos-latest, windows-latest]
+        default: all
+      steps:
+        description: A regular expression of window test step names to run; empty runs them all, in shards
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -55,13 +69,20 @@ jobs:
             extension.vsix
             core.vsix
 
+  # Every step on one machine takes about half an hour, so a full run cuts the steps into the five shards of
+  # test/vscode/ui.js SHARD_STARTS and runs them side by side on each system; a shard first runs the steps the ones in it
+  # rely on. A run by hand with `steps` given has one job per system instead, shard 0.
   run:
     needs: package
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: ${{ fromJSON(inputs.os && inputs.os != 'all' && format('["{0}"]', inputs.os) || '["ubuntu-latest", "macos-latest", "windows-latest"]') }}
+        shard: ${{ fromJSON(inputs.steps && '[0]' || '[1, 2, 3, 4, 5]') }}
     runs-on: ${{ matrix.os }}
+    env:
+      CODEX_PLUS_UI_STEPS: ${{ inputs.steps }}
+      CODEX_PLUS_UI_SHARD: ${{ matrix.shard != 0 && format('{0}/5', matrix.shard) || '' }}
     steps:
       # Some checks compare source text, so no CRLF on Windows.
       - run: git config --global core.autocrlf false
@@ -100,6 +121,6 @@ jobs:
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: vscode-${{ runner.os }}
+          name: vscode-${{ runner.os }}-${{ matrix.shard }}
           path: vscode-results
           if-no-files-found: warn

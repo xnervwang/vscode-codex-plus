@@ -29,6 +29,7 @@ const cp = require('child_process');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const steps = require('./lib/steps');
 
 const HERE = __dirname;
 const args = process.argv.slice(2);
@@ -189,8 +190,12 @@ async function testStage() {
     return;
   }
 
-  console.log('\n── inside VS Code');
-  try {
+  /* With part of the steps run (ui.js stepsToRun), the suite runs in the first shard only, and with a regular expression
+     only when it matches "inside VS Code". */
+  const shard = steps.shardOf(process.env.CODEX_PLUS_UI_SHARD), only = process.env.CODEX_PLUS_UI_STEPS;
+  const suite = shard ? shard.k === 1 : !only || new RegExp(only).test('inside VS Code');
+  if (suite) console.log('\n── inside VS Code');
+  if (suite) try {
     await te.runTests({ vscodeExecutablePath: exe, extensionDevelopmentPath: path.join(HERE, 'suite'), extensionTestsPath: path.join(HERE, 'suite', 'index.js'),
       launchArgs: [p.folder, `--extensions-dir=${p.exts}`, `--user-data-dir=${p.user}`, ...require('./lib/window').SECRETS] });
     check(true, 'the suite inside VS Code passed');

@@ -74,7 +74,15 @@ module.exports = ({ ok, bad, eq, tmp, root }) => {
     const others = [check, latest].map((t) => cron(t).slice(0, 2).join(' '));
     eq(days.join(' ') === '* * *' && /^\d+$/.test(minute) && !['0', '30'].includes(minute) && !others.includes(`${minute} ${hour}`), true,
       'and once a day, neither on the hour nor on the half hour, and not at the time of the other two');
-    eq(/os:\s*\[ubuntu-latest,\s*macos-latest,\s*windows-latest\]/.test(ui), true, 'on Linux, macOS and Windows');
+    eq(/os:[^\n]*\["ubuntu-latest",\s*"macos-latest",\s*"windows-latest"\]/.test(ui), true, 'on Linux, macOS and Windows');
+    const shards = /shard:[^\n]*'\[([\d,\s]+)\]'/.exec(ui);
+    const { SHARD_STARTS } = require(path.join(root, 'test', 'vscode', 'ui.js'));
+    eq([shards && shards[1].split(',').map((x) => +x.trim()).join(' '), (/format\('\{0\}\/(\d+)', matrix\.shard\)/.exec(ui) || [])[1]],
+      [SHARD_STARTS.map((_, i) => i + 1).join(' '), String(SHARD_STARTS.length)],
+      'each system runs the window test in as many shards as ui.js SHARD_STARTS cuts it into, side by side');
+    eq([/inputs:\s*\n\s+os:[\s\S]*options:\s*\[all,\s*ubuntu-latest,\s*macos-latest,\s*windows-latest\]/.test(ui), /\n\s+steps:\s*\n\s+description:/.test(ui),
+      /CODEX_PLUS_UI_STEPS:\s*\$\{\{\s*inputs\.steps\s*\}\}/.test(ui), /fromJSON\(inputs\.steps && '\[0\]'/.test(ui)], [true, true, true, true],
+      'by hand it can be run on one system, and with a regular expression of step names in one job per system instead of the shards');
     eq([/xvfb-run[^\n]*node test\/vscode\/run\.js/.test(ui), /CODEX_PLUS_UI_OFFLINE:\s*require/.test(ui)], [true, true],
       'on Linux under a virtual display, and failing there if the test stage cannot be cut off from the network');
     eq(/if:\s*always\(\)\s*\n\s*with:\s*\n\s*name:\s*vscode-/.test(ui), true, 'and the results are kept as an artifact whether the run passed or not');
