@@ -68,6 +68,8 @@ function sessionOf(t, conv, goal, holders = [], { here = false } = {}) {
     Object.assign(s, { state: conv.state, activity: conv.activity, running: conv.running, lastUserAt: conv.lastUserAt || 0 });
     if (conv.waitingFor) s.waitingFor = conv.waitingFor;
     if (conv.lastReplyAt) s.lastReplyAt = conv.lastReplyAt;
+    /* Codex Plus's own record of what was read, which a tab's Mark as Unread also sets. */
+    if (conv.unseen) s.unseen = true;
     const left = (Array.isArray(conv.left) ? conv.left : []).map((k) => LEFT_WORDS[k]).filter(Boolean);
     if (left.length) s.hover = left;
   } else Object.assign(s, { activity: 'stopped', running: false });

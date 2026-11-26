@@ -19,6 +19,7 @@ module.exports = async ({ eq }) => {
   eq(a, { sessionId: 'a', title: 'T a', cwd: '/w', createdAt: 100, lastActiveAt: 800, kind: 'user', parentId: '', branch: 'main', detail: true,
     state: 'working', activity: 'working', running: true, lastUserAt: 500, lastReplyAt: 700, hover: ['A background command is still running'] },
   'a conversation read has its activity, its last message rather than when its row was written, and what still runs in its hover');
+  eq([L.sessionOf(t('a'), { ...conv, unseen: true }, null).unseen, a.unseen], [true, undefined], 'one Codex Plus holds as not read says so, for the list\'s envelope');
   const kid = L.sessionOf(t('k', { kind: 'subagent', parent: 'a', nickname: 'Ada' }), null, null);
   const exec = L.sessionOf(t('e', { kind: 'background' }), null, null);
   const guard = L.sessionOf(t('g', { kind: 'guardian' }), null, null);
