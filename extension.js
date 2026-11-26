@@ -1015,7 +1015,8 @@ function registerCommands(context, { source, memory, say, link, opens, account }
     return revealShown.call(source, sessionId, row);
   };
   unarchiveToOpen = async (id) => {
-    await snapshotIn();
+    /* Read afresh: a conversation archived a moment ago, in Codex or another window, is not in the last snapshot yet. */
+    await readNow([id]);
     if (!(reader.thread(id) || {}).archived || restricted()) return;
     await sendEach('unarchive', 'thread/unarchive', [id], /^no archived rollout found for thread id/);
   };

@@ -3709,12 +3709,14 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await sleep(8000);
       const archivedSays = { warned: await codex.evaluate(() => !!document.querySelector('[data-codex-extras="warn"]')).catch(() => null), logged: noAnchors().slice(unrecognised) };
       check(archivedSays.warned === false && !archivedSays.logged.length, 'and that page is not taken for one whose message box Codex Plus no longer finds: no "!" on it and no such line in Codex Plus\'s log', archivedSays);
-      /* A click on its row in Agent Plus's list asks the source to bring forward the tab it is open in (reveal); Open in
-         Tab, which the list runs for a conversation not open here, unarchives it. */
+      /* A click on its row in Agent Plus's list asks the source to bring forward the tab it is open in (reveal), and Open
+         in Tab, which the list runs for a conversation not open here, opens it; both unarchive it in Codex first. */
       if (await showList()) {
         await slRowOf(t).click().catch(() => {});
-        await sleep(5000);
-        note(`a click on its row in Agent Plus's session list ${shelvedOnDisk() ? 'left it archived' : 'unarchived it'}`);
+        check(!!await until(() => !shelvedOnDisk(), 30000, 500), 'a click on its row in Agent Plus\'s session list, which brings its tab forward, unarchives it in Codex first');
+        check(!!await drawn(true), 'and the tab has its message box again');
+        await call(`${OWN} return own('patching').hostRequest('thread/archive', { threadId: arg });`, t.id).catch(() => null);
+        check(!!await until(shelvedOnDisk, 30000, 500), 'archived again, for Open in Tab');
       }
       await exec('codexPlus.openThreadInTab', t.id);
       check(!!await until(() => !shelvedOnDisk(), 30000, 500), 'Open in Tab unarchives it');
@@ -5409,6 +5411,63 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         await call(`const mine = vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((x) => x.input && x.input.uri && String(x.input.uri).includes(arg));
           if (mine.length) await vscode.window.tabGroups.close(mine); return mine.length;`, t.id).catch(() => 0);
       }
+    });
+
+    /*
+     * Where else a conversation is open, in Agent Plus's session list (src/writer-locks.js): a process holding the
+     * conversation's writer lock, first a stand-in that only takes the lock, then Codex's own terminal interface on it,
+     * started in a pseudo-terminal from the codex program of the Codex extension. The holders are read from /proc/locks,
+     * so only on Linux.
+     */
+    await step('a conversation another Codex process has open', async () => {
+      if (process.platform !== 'linux') { note('the processes holding Codex\'s writer locks are read from /proc/locks, which only Linux has'); return; }
+      const cp = require('child_process');
+      const py = ['python3', 'python'].find((x) => (cp.spawnSync(x, ['-c', 'import sys; print(sys.version_info[:2] >= (3, 7))'], { encoding: 'utf8' }).stdout || '').trim() === 'True');
+      const here = (await hereRows()) || [];
+      const t = fakeHome.THREADS.find((x) => !here.includes(x.id));
+      if (!t || !await showList()) { check(false, 'a conversation not open in this window is in Agent Plus\'s session list', { here }); return; }
+      const lockFile = path.join(profile.codexHome, 'thread-writer-locks', `${t.id}.lock`);
+      const gone = async (what) => check(!!await slRowSays(t.id, (r) => r.stripe !== 'elsewhere' && !r.away, 40000),
+        `${what}: once it lets go, the row is no longer drawn as open somewhere else`, await slRow(t.id));
+      if (py) {
+        const HOLD = ['import os, sys', 'p = sys.argv[1]', 'os.makedirs(os.path.dirname(p), exist_ok=True)', "f = open(p, 'a+b')",
+          'import fcntl', 'fcntl.flock(f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)', "print('held', flush=True)", 'sys.stdin.read()'].join('\n');
+        const holder = cp.spawn(py, ['-c', HOLD, lockFile], { stdio: ['pipe', 'pipe', 'pipe'] });
+        let heard = '';
+        holder.stdout.on('data', (d) => { heard += d; });
+        const exited = new Promise((r) => holder.on('exit', r));
+        try {
+          check(!!await until(() => /held/.test(heard), 15000, 200), 'a stand-in process holds the conversation\'s writer lock', heard);
+          const away = await slRowSays(t.id, (r) => r.stripe === 'elsewhere' && r.away === 'terminal', 40000);
+          check(!!away, 'held by another process, its row in Agent Plus\'s session list has the outlined stripe and, before its time, the icon of another program', await slRow(t.id));
+          check(!!away && /Open in \S+ process \d+/.test(away.hover), 'and its hover names that process and its id', away && away.hover);
+        } finally {
+          try { holder.stdin.end(); } catch (_) { /* closed */ }
+          await Promise.race([exited, sleep(5000)]);
+          try { holder.kill(); } catch (_) { /* gone */ }
+        }
+        await gone('the stand-in');
+      } else note('no Python 3.7 or later here, so no stand-in process held a conversation\'s writer lock');
+
+      const ext = fs.readdirSync(profile.exts).find((d) => d.startsWith('openai.chatgpt-'));
+      const bin = ext ? codexBinary(path.join(profile.exts, ext)) : '';
+      const hasScript = cp.spawnSync('script', ['--version'], { encoding: 'utf8' }).status === 0;
+      if (!bin || !hasScript) { note(`${bin ? 'no script(1) here' : 'no codex program in the Codex extension'}, so Codex's terminal interface was not started on the conversation`); return; }
+      const quote = (x) => `'${String(x).replace(/'/g, "'\\''")}'`;
+      const tui = cp.spawn('script', ['-qfc', `${quote(bin)} resume ${t.id}`, '/dev/null'],
+        { env: { ...env, TERM: 'xterm-256color' }, cwd: profile.folder, detached: true, stdio: ['pipe', 'pipe', 'pipe'] });
+      let screen = '';
+      tui.stdout.on('data', (d) => { screen = (screen + d).slice(-20000); });
+      try {
+        const inTerm = await slRowSays(t.id, (r) => r.stripe === 'elsewhere' && r.away === 'terminal' && /Open in terminal (pts\/\d+|tty\w*)/.test(r.hover), 60000);
+        if (inTerm) check(true, 'Codex\'s terminal interface on the conversation: its row is drawn as open somewhere else, and its hover says in which terminal', inTerm.hover);
+        else note(`Codex's terminal interface did not take the conversation's writer lock within a minute (it may have stopped at a first-run question); its screen ended: ${screen.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, '').replace(/\s+/g, ' ').slice(-300)}`);
+      } finally {
+        try { process.kill(-tui.pid, 'SIGTERM'); } catch (_) { try { tui.kill(); } catch (__) { /* gone */ } }
+        await sleep(2000);
+        try { process.kill(-tui.pid, 'SIGKILL'); } catch (_) { /* gone */ }
+      }
+      await gone('Codex\'s terminal interface');
     });
 
     /*
