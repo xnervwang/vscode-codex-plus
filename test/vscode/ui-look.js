@@ -685,7 +685,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         + 'Each row has Codex\'s logo, its title and at the right how long ago it was last active. The conversation just started, whose tab is in front, has a solid stripe at the start of its row '
         + 'and is drawn as the current one, and no other row is. "Can you find where the retry delay for the inventory sync is set?" has a red dot at the top right of its logo, as its work plan asks '
         + 'the user a question put after the user\'s last message; the other rows have no dot. The three made-up conversations each have a small envelope icon after their titles, '
-        + 'the list\'s mark of a reply not seen in this window. There is no Account & usage section, since the made-up provider has no account.',
+        + 'the list\'s mark of a reply not seen in this window. Above them an ACCOUNT & USAGE section holds a Codex block that says Not signed in, since the made-up provider has no account.',
     }, async () => {
       /* The step before left notes.txt in front. */
       if (freshTitle) await tab(freshTitle).click();
@@ -698,6 +698,20 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await away();
       await sleep(800);
       return part(PARTS.sidebar);
+    });
+    await look('account-not-signed-in', {
+      expect: 'The ACCOUNT & USAGE section at the top of Agent Plus\'s session list, expanded: a block headed by Codex\'s logo and the name Codex, and under it one line, '
+        + 'Account at the left and Not signed in at the right. No bars and no token lines, since the made-up provider has no account; nothing is cut off or overlaps.',
+    }, async () => {
+      await toList();
+      const said = await until(() => list.evaluate(() => { const a = document.querySelector('.sl-section[data-key="account"]');
+        return !!a && !a.classList.contains('sl-hidden') && /Not signed in/.test(a.innerText); }).catch(() => false), 30000, 500);
+      if (!said) throw new Error(`Account & usage does not say Not signed in: ${JSON.stringify(await listState())}`);
+      if (!await list.evaluate(() => document.querySelector('.sl-section[data-key="account"]').classList.contains('sl-open'))) {
+        await list.locator('.sl-section[data-key="account"] .sl-head').first().click();
+      }
+      await away();
+      return inList('.sl-section[data-key="account"]');
     });
     await look('list-new-in-sidebar', {
       expect: '"New in sidebar" in Agent Plus\'s session list, with Codex as the agent of a new conversation, opens Codex in the secondary side bar on the right, on its new-conversation page with a message box.',

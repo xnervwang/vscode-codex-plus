@@ -56,7 +56,15 @@ module.exports = async ({ eq }) => {
   eq(au.view().account, [{ label: 'Signed in with', value: 'Amazon Bedrock' }], 'a change of sign-in is shown at once');
   eq(viewOf({ account: { type: 'chatgpt', email: null, planType: 'plus' }, limits: null, usage: { summary: {}, dailyUsageBuckets: [{ startDate: '2026-11-10', tokens: 5 }] } }, '2026-11-10'),
     { account: [{ label: 'Signed in with', value: 'ChatGPT' }, { label: 'Plan', value: 'Plus' }], windows: [], tokens: [{ label: 'Tokens today', value: 5 }] }, 'tokens by day are shown when Codex has them, with no money');
-  eq(viewOf({ account: null }), null, 'and with no account known there is no section');
+  eq([viewOf({ account: null, read: true }).account, viewOf({ account: null }).account, viewOf({ account: { type: 'somethingNew' }, read: true }).account],
+    [[{ label: 'Account', value: 'Not signed in' }], [{ label: 'Account', value: 'Not known yet' }], [{ label: 'Account', value: 'Signed in' }]],
+    'with no account the section says so: not signed in once Codex has answered, not known yet before, and signed in to a kind it does not know');
+  const out = createAccountUsage({ ask: async (m) => (m === 'account/read' ? { outcome: 'done', result: { account: null, requiresOpenaiAuth: true } } : { outcome: 'failed' }), now: () => t });
+  eq([out.view().account, (await out.load()).account], [[{ label: 'Account', value: 'Not known yet' }], [{ label: 'Account', value: 'Not signed in' }]],
+    'before Codex is asked the section says not known yet, and once account/read answers with no account, not signed in');
+  out.heard('account/updated', { authMode: 'apikey' });
+  out.heard('account/updated', { authMode: null });
+  eq(out.view().account, [{ label: 'Account', value: 'Not signed in' }], 'a sign-out heard afterwards is not signed in again');
 
   /* ── handed to Agent Plus's session list, which draws it at the top ── */
   const { accountOf } = require('../../src/session-list-source');
@@ -65,7 +73,7 @@ module.exports = async ({ eq }) => {
 
   /* ── no connection: nothing is started to find out ── */
   const quiet = createAccountUsage({ ask: async () => ({ outcome: 'unavailable' }), now: () => t });
-  eq(await quiet.load(), null, 'without Codex\'s connection the section is not drawn');
+  eq((await quiet.load()).account, [{ label: 'Account', value: 'Not known yet' }], 'without Codex\'s connection nothing is asked, and the section says the account is not known yet');
 
   /* ── the patch hands the notifications over ── */
   const patching = require('../../src/patching');

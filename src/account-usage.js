@@ -43,14 +43,17 @@ function mergeLimits(into, over) {
 const hasWindow = (w) => !!(w && typeof w.usedPercent === 'number' && Number.isFinite(w.usedPercent));
 
 /*
- * The section's contents, or null with no known account: { account: [{ label, value }], windows: [{ name, usedPercent,
- * resetsAt }], tokens: [{ label, value }] }. resetsAt is in seconds since the epoch; the page formats it.
+ * The section's contents: { account: [{ label, value }], windows: [{ name, usedPercent, resetsAt }], tokens: [{ label,
+ * value }] }. resetsAt is in seconds since the epoch; the page formats it. With no account the section still says so,
+ * "Not signed in" once Codex has answered account/read without one and "Not known yet" before it has, so that it reads
+ * apart from an agent that has no such section. `read` is whether Codex has answered.
  */
-function viewOf({ account, limits, usage }, today = new Date().toISOString().slice(0, 10)) {
-  if (!account || !ACCOUNT_KINDS[account.type]) return null;
+function viewOf({ account, limits, usage, read = false }, today = new Date().toISOString().slice(0, 10)) {
+  if (!account) return { account: [{ label: 'Account', value: read ? 'Not signed in' : 'Not known yet' }], windows: [], tokens: [] };
   /* Claude Code's Account block is an Email line; Codex's own menu says "Logged in with Amazon Bedrock". */
   const rows = [];
-  if (account.type === 'chatgpt') {
+  if (!ACCOUNT_KINDS[account.type]) rows.push({ label: 'Account', value: 'Signed in' });
+  else if (account.type === 'chatgpt') {
     rows.push(account.email ? { label: 'Email', value: account.email } : { label: 'Signed in with', value: 'ChatGPT' });
     if (PLAN_NAMES[account.planType]) rows.push({ label: 'Plan', value: PLAN_NAMES[account.planType] });
   } else rows.push({ label: 'Signed in with', value: ACCOUNT_KINDS[account.type] });
@@ -74,10 +77,10 @@ function viewOf({ account, limits, usage }, today = new Date().toISOString().sli
  * `onChange()` is called when viewOf's result changes.
  */
 function createAccountUsage({ ask, onChange = () => {}, now = Date.now }) {
-  const st = { account: null, limits: null, usage: null };
+  const st = { account: null, limits: null, usage: null, read: false };
   let loadedAt = 0;
   let loading = null;
-  let viewNow = null;
+  let viewNow = viewOf(st);
   const changed = () => {
     const next = viewOf(st);
     if (JSON.stringify(next) === JSON.stringify(viewNow)) return;
@@ -94,7 +97,7 @@ function createAccountUsage({ ask, onChange = () => {}, now = Date.now }) {
       loading = Promise.all([one('account/read'), one('account/rateLimits/read'), one('account/usage/read')]).then(([a, l, u]) => {
         if (a.outcome === 'unavailable') return viewNow;
         loadedAt = now();
-        if (a.outcome === 'done' && a.result) st.account = a.result.account || null;
+        if (a.outcome === 'done' && a.result) { st.account = a.result.account || null; st.read = true; }
         st.limits = l.outcome === 'done' && l.result && l.result.rateLimits ? l.result.rateLimits : null;
         st.usage = u.outcome === 'done' && u.result ? u.result : null;
         changed();
@@ -109,8 +112,8 @@ function createAccountUsage({ ask, onChange = () => {}, now = Date.now }) {
         changed();
       } else if (method === 'account/updated' && params) {
         const type = MODE_KINDS[params.authMode];
-        if (type) st.account = { ...(st.account && st.account.type === type ? st.account : {}), type, planType: params.planType || (st.account || {}).planType };
-        else if (params.authMode === null) st.account = null;
+        if (type) { st.account = { ...(st.account && st.account.type === type ? st.account : {}), type, planType: params.planType || (st.account || {}).planType }; st.read = true; }
+        else if (params.authMode === null) { st.account = null; st.read = true; }
         /* Another sign-in may have other limits; the next appearance asks again. */
         loadedAt = 0;
         changed();
