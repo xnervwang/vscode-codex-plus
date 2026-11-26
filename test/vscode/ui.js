@@ -5416,7 +5416,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     /*
      * Where else a conversation is open, in Agent Plus's session list (src/writer-locks.js): a process holding the
      * conversation's writer lock, first a stand-in that only takes the lock, then Codex's own terminal interface on it,
-     * started in a pseudo-terminal from the codex program of the Codex extension. The holders are read from /proc/locks,
+     * started in a pseudo-terminal from the codex program of the Codex extension with --no-daemon. The holders are read from /proc/locks,
      * so only on Linux.
      */
     await step('a conversation another Codex process has open', async () => {
@@ -5440,7 +5440,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
           check(!!await until(() => /held/.test(heard), 15000, 200), 'a stand-in process holds the conversation\'s writer lock', heard);
           const away = await slRowSays(t.id, (r) => r.stripe === 'elsewhere' && r.away === 'terminal', 40000);
           check(!!away, 'held by another process, its row in Agent Plus\'s session list has the outlined stripe and, before its time, the icon of another program', await slRow(t.id));
-          check(!!away && /Open in \S+ process \d+/.test(away.hover), 'and its hover names that process and its id', away && away.hover);
+          check(!!away && /\bOpen in \S+ process \d+/.test(away.hover), 'and its hover names that process and its id, and, with no turn running, says it is open there, not running', away && away.hover);
         } finally {
           try { holder.stdin.end(); } catch (_) { /* closed */ }
           await Promise.race([exited, sleep(5000)]);
@@ -5454,7 +5454,9 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       const hasScript = cp.spawnSync('script', ['--version'], { encoding: 'utf8' }).status === 0;
       if (!bin || !hasScript) { note(`${bin ? 'no script(1) here' : 'no codex program in the Codex extension'}, so Codex's terminal interface was not started on the conversation`); return; }
       const quote = (x) => `'${String(x).replace(/'/g, "'\\''")}'`;
-      const tui = cp.spawn('script', ['-qfc', `${quote(bin)} resume ${t.id}`, '/dev/null'],
+      /* The Codex extension's program has no package of its own for the terminal interface, which then runs without
+         Codex's background server only when asked to. */
+      const tui = cp.spawn('script', ['-qfc', `${quote(bin)} --no-daemon resume ${t.id}`, '/dev/null'],
         { env: { ...env, TERM: 'xterm-256color' }, cwd: profile.folder, detached: true, stdio: ['pipe', 'pipe', 'pipe'] });
       let screen = '';
       tui.stdout.on('data', (d) => { screen = (screen + d).slice(-20000); });

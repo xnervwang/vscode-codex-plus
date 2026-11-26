@@ -34,11 +34,11 @@ module.exports = async ({ eq }) => {
   const term = { pid: 7, kind: 'terminal', label: 'terminal pts/3 in ~/w', detail: ['process 7'] };
   const execHolder = { pid: 8, kind: 'exec', label: 'codex exec in ~/w', detail: ['process 8'] };
   const there = L.sessionOf(t('a'), conv, null, [term]);
-  const idle = L.sessionOf(t('a'), { ...conv, running: false }, null, [term, execHolder]);
+  const idle = L.sessionOf(t('a'), { ...conv, running: true, activity: 'stopped' }, null, [term, execHolder]);
   eq([there.elsewhere, idle.elsewhere.map((p) => p.running), L.sessionOf(t('a'), conv, null, []).elsewhere,
     L.sessionOf(t('a'), conv, null, Array.from({ length: 12 }, (_, i) => ({ ...term, pid: i }))).elsewhere.length],
   [[{ kind: 'terminal', label: 'terminal pts/3 in ~/w', detail: ['process 7'], running: true }], [false, true], undefined, 8],
-  'a conversation another Codex process holds open lists it as a place, running there while the conversation runs or when it is a codex exec; none lists no place, and at most eight are listed');
+  'a conversation another Codex process holds open lists it as a place, running there while a turn runs or when it is a codex exec, not while it is only recent; none lists no place, and at most eight are listed');
   eq([L.sessionOf(t('a'), conv, null, [term], { here: true }).processes, there.processes, L.sessionOf(t('a'), conv, null, [], { here: true }).processes],
     [2, undefined, undefined], 'held open elsewhere while this window shows it too, it is open in two processes at once; one place alone is not counted');
 
