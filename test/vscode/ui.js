@@ -5464,7 +5464,12 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       try {
         const inTerm = await slRowSays(t.id, (r) => r.stripe === 'elsewhere' && r.away === 'terminal' && /Open in terminal (pts\/\d+|tty\w*)/.test(r.hover), 60000);
         if (inTerm) check(true, 'Codex\'s terminal interface on the conversation: its row is drawn as open somewhere else, and its hover says in which terminal', inTerm.hover);
-        else note(`Codex's terminal interface did not take the conversation's writer lock within a minute (it may have stopped at a first-run question); its screen ended: ${screen.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, '').replace(/\s+/g, ' ').slice(-300)}`);
+        else {
+          const lw = require('../../src/writer-locks'), lr = require('../../src/left-running');
+          const argvOf = (pid) => { try { return fs.readFileSync(`/proc/${pid}/cmdline`, 'latin1').split('\0'); } catch (_) { return []; } };
+          const holders = lw.holders({ codexHome: profile.codexHome, proc: '/proc', all: lr.processes('/proc'), argvOf, isExec: lr.isCodexExec }).filter((h) => h.thread === t.id);
+          note(`Codex's terminal interface was not shown as holding the conversation within a minute; holders read now: ${JSON.stringify(holders.map((h) => [h.kind, h.label]))}; row: ${JSON.stringify(await slRow(t.id))}; its screen ended: ${screen.replace(/\x1b\[[0-9;?<>]*[A-Za-z~]/g, ' ').replace(/\x1b\][^\x07\x1b]*(\x07|\x1b\\)/g, ' ').replace(/\s+/g, ' ').slice(-800)}`);
+        }
       } finally {
         try { process.kill(-tui.pid, 'SIGTERM'); } catch (_) { try { tui.kill(); } catch (__) { /* gone */ } }
         await sleep(2000);
