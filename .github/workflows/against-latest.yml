@@ -9,6 +9,11 @@
 # longer parses; anything else is the check not having run at all, which is also worth a red run, because a check that
 # quietly stopped working reads the same as one that keeps passing.
 #
+# A red run is seen only by someone who looks, so a failure of the build's own (exit 1) also opens an issue naming the
+# Codex version, one issue for each version whatever its state, quoting the lines that failed. A check that could not
+# run (exit 2) opens none: it says nothing about the build. Run by hand with issue_preview, the run shows in its
+# summary the issue it would open, and opens none.
+#
 # A Codex release that is simply not in src/supported-versions.json is not a failure and prints as a note: the edits
 # matching a build is not the whole of what that file claims, and only a machine with that Codex installed can
 # establish the rest.
@@ -19,9 +24,15 @@ on:
     # 06:17 UTC. Not on the hour, which is when the scheduler is busiest and runs are likeliest to be dropped.
     - cron: '17 6 * * *'
   workflow_dispatch:
+    inputs:
+      issue_preview:
+        description: Show in the run's summary the issue a failure opens, and open none
+        type: boolean
+        default: false
 
 permissions:
   contents: read
+  issues: write
 
 jobs:
   against-latest:
@@ -32,11 +43,13 @@ jobs:
         with:
           node-version: '24'
       - name: node test/against-latest.js
+        id: latest
         run: |
-          set +e
-          node test/against-latest.js
-          code=$?
-          set -e
+          set -o pipefail
+          code=0
+          node test/against-latest.js 2>&1 | tee report.txt || code=$?
+          version=$(sed -n 's/^openai\.chatgpt \([^ ]*\).*/\1/p' report.txt | head -n 1)
+          { echo "code=$code"; echo "version=$version"; } >> "${GITHUB_OUTPUT:-/dev/null}"
           if [ "$code" -eq 0 ]; then exit 0; fi
           if [ "$code" -eq 1 ]; then
             echo "::error::An edit of the patch no longer fits the Codex being shipped. src/host.js or src/webview-inject.js needs updating before anyone's Codex updates."
@@ -44,3 +57,80 @@ jobs:
             echo "::error::The check did not run (exit $code), so whether the patch still fits is unknown."
           fi
           exit "$code"
+
+      - name: Put the report in the run summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo '## Against the latest Codex'
+            if [ "${{ steps.latest.outputs.code }}" != '0' ] && [ "${{ steps.latest.outputs.code }}" != '1' ]; then
+              echo 'The check could not run, so it says nothing about the build.'
+            fi
+            echo '```'
+            cat report.txt || echo 'the check produced no report'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Open an issue when the build failed the check
+        if: always() && (steps.latest.outputs.code == '1' || inputs.issue_preview)
+        uses: actions/github-script@v9
+        env:
+          VERSION: ${{ steps.latest.outputs.version }}
+          PREVIEW: ${{ inputs.issue_preview }}
+        with:
+          script: |
+            const fs = require('fs');
+            const version = process.env.VERSION || 'an unknown build';
+            const preview = process.env.PREVIEW === 'true';
+            const title = `Codex ${version} failed the check against the latest Codex`;
+
+            // One issue for each Codex version, closed ones included: the check runs every day, and a version stays the
+            // newest for days.
+            const all = await github.paginate(github.rest.issues.listForRepo, {
+              owner: context.repo.owner, repo: context.repo.repo, state: 'all', per_page: 100,
+            });
+            const already = all.find((i) => !i.pull_request && i.title === title);
+
+            let report = 'the check produced no report';
+            try { report = fs.readFileSync('report.txt', 'utf8'); } catch (_) {}
+            // An issue body holds at most 65536 characters, so it quotes the lines that failed and links the run, whose
+            // summary has the whole report.
+            const run = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const LIMIT = 40000;
+            let failing = report.split('\n').filter((l) => /^FAIL\b|^openai\.chatgpt /.test(l)).join('\n');
+            if (failing.length > LIMIT) failing = failing.slice(0, LIMIT) + '\n... cut here; the run summary has every line';
+
+            const body = [
+              `The daily check ran against Codex **${version}**, the build the marketplace is shipping, and failed.`,
+              '',
+              'An edit of the patch that does not match exactly once, or a patched file that no longer parses, leaves that build',
+              'unpatched for everyone who updates to it. A request or question tool missing from `src/protocol-known.js` can leave',
+              'a conversation waiting with nothing said about it.',
+              '',
+              '### What the check said',
+              '',
+              `The lines that failed are below; the whole report is in the summary of [the run](${run}).`,
+              '',
+              '```',
+              failing.trim() || report.trim().slice(-LIMIT),
+              '```',
+              '',
+              '### Where to look',
+              '',
+              'The edits are in `src/host.js`, `src/webview-inject.js` and `src/manifest.js`, and the lists of requests and',
+              'question tools in `src/protocol-known.js`. Run `node test/against-latest.js` to reproduce.',
+            ].join('\n');
+
+            if (preview) {
+              await core.summary.addHeading('The issue a failure would open', 3)
+                .addRaw(already ? `Already reported: #${already.number}, so none would be opened.\n\n` : '')
+                .addRaw(`**${title}**\n\n`).addCodeBlock(body, 'markdown').write();
+              core.info(already ? `already reported as #${already.number}` : `would open: ${title}`);
+              return;
+            }
+            if (already) {
+              core.info(`already reported for this version: #${already.number}`);
+              return;
+            }
+            await github.rest.issues.create({ owner: context.repo.owner, repo: context.repo.repo, title, body });

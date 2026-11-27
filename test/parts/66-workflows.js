@@ -22,19 +22,23 @@ const path = require('path');
 const DIR = path.join('.github', 'workflows');
 
 /** The block scalar under the last `run: |` in `text`, dedented. */
-function runScript(text) {
+/* The script of a `run: |` block of `text`: the first that contains `needle`, or with none given the last one. */
+function runScript(text, needle = '') {
   const lines = text.split(/\r?\n/);
-  const at = lines.map((l, i) => (/^\s*run:\s*\|\s*$/.test(l) ? i : -1)).filter((i) => i >= 0).pop();
-  if (at === undefined) return '';
-  const indent = (lines[at].match(/^\s*/) || [''])[0].length;
-  const out = [];
-  for (let i = at + 1; i < lines.length; i++) {
-    if (lines[i].trim() === '') { out.push(''); continue; }
-    const own = (lines[i].match(/^\s*/) || [''])[0].length;
-    if (own <= indent) break;
-    out.push(lines[i].slice(indent + 2));
-  }
-  return out.join('\n');
+  const block = (at) => {
+    const indent = (lines[at].match(/^\s*/) || [''])[0].length;
+    const out = [];
+    for (let i = at + 1; i < lines.length; i++) {
+      if (lines[i].trim() === '') { out.push(''); continue; }
+      const own = (lines[i].match(/^\s*/) || [''])[0].length;
+      if (own <= indent) break;
+      out.push(lines[i].slice(indent + 2));
+    }
+    return out.join('\n');
+  };
+  const blocks = lines.map((l, i) => (/^\s*run:\s*\|\s*$/.test(l) ? i : -1)).filter((i) => i >= 0).map(block);
+  if (!blocks.length) return '';
+  return needle ? blocks.find((b) => b.includes(needle)) || '' : blocks[blocks.length - 1];
 }
 
 module.exports = ({ ok, bad, eq, tmp, root }) => {
@@ -135,7 +139,7 @@ module.exports = ({ ok, bad, eq, tmp, root }) => {
    * fits, 1 when one does not, and anything else when the check could not run at all. All but the first have to end
    * the step, or the workflow goes green while the patch quietly does nothing for everyone who updates.
    */
-  const script = runScript(latest);
+  const script = runScript(latest, 'node test/against-latest.js');
   eq(script.includes('node test/against-latest.js'), true, 'the step is a shell script, which these checks could read');
   const bin = tmp('stub-node');
   const home = tmp('fake-repo');
@@ -155,6 +159,23 @@ module.exports = ({ ok, bad, eq, tmp, root }) => {
   const broken = run(2);
   eq(broken.status, 2, 'a check that could not run at all ends the step too, since it proves nothing either way');
   eq(/did not run/.test(broken.out), true, 'and says that is what happened, rather than naming an edit');
+
+  /* What the step hands the issue step: its exit code and the Codex version the report's first line names. */
+  {
+    const out = path.join(tmp('gh-output'), 'out');
+    fs.writeFileSync(path.join(bin, 'node'), '#!/bin/sh\necho "openai.chatgpt 26.1.2 for linux-x64"\necho "FAIL  host: an edit matched 0 times"\nexit 1\n', { mode: 0o755 });
+    const r = cp.spawnSync('bash', ['-c', script], { cwd: home, env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, GITHUB_OUTPUT: out }, encoding: 'utf8' });
+    const said = fs.existsSync(out) ? fs.readFileSync(out, 'utf8') : '';
+    eq([r.status, /^code=1$/m.test(said), /^version=26\.1\.2$/m.test(said), fs.existsSync(path.join(home, 'report.txt'))], [1, true, true, true],
+      'the step keeps the report and says its exit code and the Codex version the report names, for the step that opens an issue');
+  }
+  /* A failure of the build's own opens one issue for each Codex version; one that could not run opens none. */
+  eq(/^\s+issues: write$/m.test(latest), true, 'the daily check may open issues');
+  eq(/if: always\(\) && \(steps\.latest\.outputs\.code == '1' \|\| inputs\.issue_preview\)/.test(latest), true,
+    'its issue step runs on an exit of 1 only, the build\'s own failure, or when a run by hand asks for a preview');
+  eq([/const title = `Codex \$\{version\} /.test(latest), /state: 'all'/.test(latest), /i\.title === title/.test(latest), /issues\.create\(/.test(latest)],
+    [true, true, true, true], 'the issue is titled by the version and opened only when no issue of any state has that title');
+  eq(/if \(preview\) \{[\s\S]*?return;\s*\}[\s\S]*issues\.create\(/.test(latest), true, 'and a preview shows the issue in the run\'s summary without opening it');
 
   /* The ways a step is made to pass whatever it did. None of them is a thing to add here by accident. */
   for (const swallow of ['continue-on-error', '|| true', '|| exit 0', '&& exit 0']) {
