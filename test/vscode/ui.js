@@ -4752,9 +4752,17 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
       {
         const own = `${title} (itself)`;
         await tabNamed(named).click();
-        /* The page of the tab in front, found again: an earlier step may have built it anew. */
-        const here = await frameWhere((want) => document.visibilityState === 'visible' && innerWidth >= 800
-          && !!document.querySelector('[data-codex-composer-root]') && want.some((w) => document.body.innerText.includes(w)), 30000, [named, title]);
+        /* The page of the tab in front, found again: an earlier step may have built it anew. The widest page showing the
+           conversation is the tab's, should Codex's sidebar show it too. */
+        const here = await until(async () => {
+          let best = null, width = 0;
+          for (const f of page.frames()) {
+            const w = await f.evaluate((want) => (document.visibilityState === 'visible' && !!document.querySelector('[data-codex-composer-root]')
+              && want.some((x) => document.body.innerText.includes(x)) ? innerWidth : 0), [named, title]).catch(() => 0);
+            if (w > width) { best = f; width = w; }
+          }
+          return best;
+        }, 30000, 500);
         check(!!here, 'the conversation renamed by hand shows in its tab before it renames itself', await frontTab());
         if (here) {
           const said = model.sent('Renamed: the title is now');
