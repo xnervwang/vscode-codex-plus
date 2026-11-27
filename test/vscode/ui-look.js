@@ -562,12 +562,17 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
   try {
     await w.hostUp();
 
+    /* What every notification of this extension's starts with (src/notice-time.js). Until a page has told the extension
+       the zone of the machine VS Code runs on, as at the first start, the time names this machine's zone. */
+    const NOTICE_TIME = 'A notification\'s text starts with the time it was shown, in brackets, hours and minutes such as [14:05], '
+      + 'with the zone\'s name after them, such as [14:05 UTC], until a Codex page has told Codex Plus the time zone of the machine VS Code runs on; '
+      + 'a modal dialog has no time.';
     /* ═══ start-up: the patch and the plugin ═══ */
     const patched = await until(async () => { const s = await patchState(); return s && s.targets.every(([, x]) => x === 'patched') && s; }, 120000, 1000);
     if (!patched) note(`Codex was not patched in 120 s: ${JSON.stringify(await patchState())}`);
     await look('trust-hooks-prompt', {
       expect: 'Codex Plus asks, in a modal dialog in the middle of the dimmed window or in a notification at the bottom right, "Trust the work plan hooks in Codex?", '
-        + 'saying what the hooks are, with a button to trust them and one to cancel.',
+        + 'saying what the hooks are, with a button to trust them and one to cancel. ' + NOTICE_TIME,
     }, async () => {
       const box = await until(trustShown, 60000, 500);
       if (!box) throw new Error('no trust prompt in 60 s');
@@ -579,7 +584,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       trustAuto = true;
     }
     await look('patched-reload-prompt', {
-      expect: 'A notification at the bottom right says Codex is patched and the window has to be reloaded, with a Reload button. No error notification is shown.',
+      expect: 'A notification at the bottom right says Codex is patched and the window has to be reloaded, with a Reload button. No error notification is shown. ' + NOTICE_TIME,
       unchanged: 'The rest of the window as before, now without the trust prompt.',
     }, async () => {
       const shown = await until(() => page.evaluate(() => [...document.querySelectorAll('.notification-toast')].some((e) => e.offsetParent && /Codex is patched/.test(e.innerText))), 15000, 500);

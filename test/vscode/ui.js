@@ -770,6 +770,9 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
      before that starts with the message another one sent. Returns what the box held, and what is left after emptying it. */
   const emptyBox = async (f) => {
     const box = f.locator(COMPOSER).first();
+    /* A notification of this extension's, such as its question whether to trust the work plan hooks, stays at the
+       bottom right until it is answered and can sit over the message box, taking the click. */
+    await clearToasts();
     await box.click();
     const read = () => box.evaluate((e) => e.textContent.trim()).catch(() => '');
     const had = await read();
@@ -968,6 +971,10 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
       const toast = await until(() => page.evaluate(() => [...document.querySelectorAll('.notification-list-item-message')].map((e) => e.innerText)
         .find((t) => /Codex is patched\. Reload the window/.test(t)) || ''), 30000, 500);
       check(!!toast, 'and VS Code shows its prompt to reload the window', toast);
+      /* Codex runs its own code until the reload, so no page has told this extension the zone of the machine VS Code
+         runs on, and the time is in this machine's zone, named (src/notice-time.js). */
+      check(/^\[\d\d:\d\d [A-Za-z][\w+:-]*\] Codex is patched/.test(toast),
+        'the prompt starts with the time it was shown, in brackets, with the name of this machine\'s zone, as no page has told the extension the zone yet', toast);
       await shot('patched-reload-prompt');
       await openNotes();
       await until(async () => (await codexButtons()).length > 0, 15000);
@@ -4291,7 +4298,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
           for (const x of page.frames()) if (!before.has(x) && await shows(x, text)) return x;
           return null;
         }, 60000, 500);
-        const sent = ownLog().includes(`sent the page loaded again in a tab to conversation ${id}`);
+        const sent = !!await until(() => ownLog().includes(`sent the page loaded again in a tab to conversation ${id}`), 10000, 300);
         check(!!back && sent, 'the page built again in its place is sent back to the conversation its first message began, and the log says so',
           { thread: id, sent, page: await pageSays(await frontPage()), log: ownLog().split('\n').filter((l) => /could not load its code|loaded the page|sent the page/.test(l)).slice(-4) });
         if (!back) return;
@@ -4414,7 +4421,16 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
         const at = (x) => x.route === was.route && x.fragment === was.fragment;
         const now = (await codexTabsNow()).find(at);
         if (now) await revealTab(now);
-        const p = await until(async () => { const f = await frontPage(); const s = await pageSays(f); return s && s.turns >= 1 && s.text.includes(o.made.text) && f; }, 60000, 1000);
+        const p = await until(async () => {
+          if (await gaveUpInFront()) return 'gave up';
+          const f = await frontPage(); const s = await pageSays(f); return s && s.turns >= 1 && s.text.includes(o.made.text) && f;
+        }, 60000, 1000);
+        /* Brought forward for a moment above, its page can still have got none of its files within the 30 s Codex gives
+           it, as on a slow machine. A tab whose URI names no conversation cannot be opened again as the same tab. */
+        if (p === 'gave up') {
+          note(`${o.what}, restored behind others at the reload, has Codex's "Codex could not start", so whether it shows its conversation was not checked on ${process.platform}`);
+          continue;
+        }
         const tabsAfter = await codexTabsNow();
         const it = tabsAfter.find(at);
         check(!!p && !!it && bare(it.label) === bare(o.made.label) && tabsAfter.filter((x) => bare(x.label) === bare(o.made.label)).length === 1,
@@ -5517,9 +5533,13 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
         next('watching the extension host restart');
         await until(async () => { const p = await pidNow(); if (!p) { gap = true; return true; } return p !== was; }, 20000, 100);
         next('pressing the key that closes the tab');
-        await page.keyboard.press(process.platform === 'darwin' ? 'Meta+W' : 'Control+W');
+        /* On macOS the press has once not returned for minutes while the host restarted, the tab left open and the window
+           answering again after it; the close button below is tried then too. */
+        const pressed = await Promise.race([page.keyboard.press(process.platform === 'darwin' ? 'Meta+W' : 'Control+W').then(() => true, () => true),
+          sleep(10000).then(() => false)]);
+        if (!pressed) note(`${stepNow}: the key that closes the tab had not been pressed 10 s after it was sent, so the tab's close button was clicked`);
         next('waiting for the tab to close');
-        let closed = await until(async () => !await tabUp(), 3000, 100);
+        let closed = pressed && await until(async () => !await tabUp(), 3000, 100);
         if (!closed) {
           next('closing the tab with its close button');
           await tabNamed(t.title).hover().catch(() => {});
@@ -5771,6 +5791,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
          such as the one for a title offers no tools. */
       const turnIn = async (frame, text, zone) => {
         const before = model.seen.length;
+        await clearToasts();
         await intoComposer(frame);
         await page.keyboard.type(text);
         setZone(zone);

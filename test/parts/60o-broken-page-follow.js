@@ -89,9 +89,13 @@ module.exports = async ({ eq, tmp, root }) => {
   eq(to('late'), [`/local/${LATE}`], 'and when that conversation\'s first turn starts, the new page is sent to it');
 
   const named = open('named', uri(`/local/${NAMED}`), NAMED, `/local/${NAMED}`);
+  const namedFrom = logged.length;
   await breaks(named);
   up(named);
   eq(to('named'), [], 'a tab showing the conversation its URI names gets a new page on that conversation already, and is sent nowhere');
+  eq([logged.slice(namedFrom).some((l) => l.includes(`opens conversation ${NAMED} by itself, which the tab's URI names`)),
+    logged.slice(namedFrom).some((l) => /no conversation to go to yet/.test(l))], [true, false],
+  'and the log says the new page opens that conversation by itself, not that it has none to go to');
 
   const own = open('own', uri(NEW, 'new-4'), null, NEW);
   ask(own, 'o1');

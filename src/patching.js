@@ -881,9 +881,12 @@ function noteTurn(msg) {
 const turnBegun = (thread) => turnsRunning.has(thread) || turnsEnded.has(thread);
 function followAfterReload(rec) {
   const to = [...rec.started].reverse().find(turnBegun) || rec.thread || '';
-  rec.follow = { starts: new Set(rec.starts), threads: new Set(rec.started), up: false, to: to !== namedBy(rec.uri) ? to : '' };
+  const own = to && to === namedBy(rec.uri) ? to : '';
+  rec.follow = { starts: new Set(rec.starts), threads: new Set(rec.started), up: false, to: own ? '' : to, own };
   if (deps && deps.log) {
-    deps.log(`the page loaded again in a tab is to go to ${rec.follow.to ? `conversation ${rec.follow.to}` : 'no conversation yet'} once it is up; `
+    const where = rec.follow.to ? `is to go to conversation ${rec.follow.to} once it is up`
+      : own ? `opens conversation ${own} by itself, which the tab's URI names` : 'is to go to no conversation yet once it is up';
+    deps.log(`the page loaded again in a tab ${where}; `
       + `${rec.follow.starts.size} start(s) of the page before it had no answer, and ${rec.follow.threads.size} conversation(s) it began are known`);
   }
 }
@@ -1446,7 +1449,7 @@ function installHooks() {
     if (msg && msg.kind === 'boxShown') {
       const rec = recordOfWebview(webview);
       if (rec && rec.follow) {
-        if (!rec.follow.up && !rec.follow.to && deps && deps.log) deps.log('the page loaded again in a tab is up, with no conversation to go to yet');
+        if (!rec.follow.up && !rec.follow.to && !rec.follow.own && deps && deps.log) deps.log('the page loaded again in a tab is up, with no conversation to go to yet');
         rec.follow.up = true;
         goFollowed(rec);
       }
