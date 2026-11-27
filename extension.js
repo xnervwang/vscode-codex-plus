@@ -42,6 +42,7 @@ const openTimes = require('./src/open-times');
 const codexConfig = require('./src/codex-config');
 const uninstallPlan = require('./src/uninstall-plan');
 const wakeup = require('./src/wakeup');
+const retitle = require('./src/retitle');
 const detachedEnds = require('./src/detached-ends');
 const bgEnds = require('./src/bg-ends');
 const { SHARE_DIR } = require('./src/left-running');
@@ -550,6 +551,18 @@ async function activate(context) {
     /* A goal changed, by a command here, by the model or by Codex itself: the list reads the goals database again. */
     if (m.startsWith('thread/goal/')) source._poll();
   }));
+  /* A conversation renaming itself with the work plan's set_title (src/retitle.js), through this window's app-server as
+     the session list's Rename does. */
+  const titles = retitle.createRetitle({ dir: () => install.planDir(files.codexHome()), log: say,
+    shownHere: () => [...memory.openThreads(), patching.sidebarShowing()].filter(Boolean),
+    rolloutOf: (id) => files.rolloutOf(id), tail: (file, bytes) => files.tailLines(file, bytes),
+    trusted: () => trusted() && keepsShared(),
+    rename: async (id, name) => {
+      const r = await askAppServer('thread/name/set', { threadId: id, name });
+      source._poll();
+      return r.outcome === 'done' ? { outcome: 'done' } : { outcome: 'failed', reason: r.outcome === 'sent' ? 'Codex did not answer' : String(r.reason || '') };
+    } });
+  context.subscriptions.push(titles.start());
   /* The Agent map's goal buttons run the commands of the same name, and its Remove deletes the wake-up through
      src/wakeup.js. */
   const agentMap = (thread) => agentMaps.mapOf(thread, { reader, stateOf: (id) => source.threadState(id), detached: (id) => source.detachedOf(id),
