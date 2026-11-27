@@ -77,6 +77,7 @@ let state = { active: false, reason: 'not checked yet', provider: null };
  *   titled    the title this extension gave the panel for its conversation, or ''
  *   turn      the id of the newest turn its page said it shows, or ''
  *   uri       its tab's URI, fragment included, as the host patch kept it, or '' with an older patch
+ *   follow    after this extension loaded its page again, where the new page is to be sent (followAfterReload), or unset
  * }
  * A page outside this map is one of the sidebar's: Codex opens every editor panel through one of the two places the
  * patch hands panels over from.
@@ -849,6 +850,7 @@ function noteTurn(msg) {
   } else {
     turnsRunning.set(thread, { at: Date.now(), heard: true });
     keepNewest(turnsRunning);
+    for (const rec of registry.values()) followed(rec, thread);
     const turn = msg.params.turn && msg.params.turn.id;
     if (typeof turn === 'string' && turn) {
       turnThreads.set(turn, thread);
@@ -859,6 +861,34 @@ function noteTurn(msg) {
     }
   }
   return thread;
+}
+/*
+ * A page this extension loaded again (src/broken-pages.js) starts on the route its tab's URI names: a new conversation
+ * page for a New tab, or the conversation the URI names. When the page that broke showed, or had just begun, another
+ * conversation, the new page is sent to it once it is up, which its first message says ('tz'). A conversation the page
+ * began counts once one of its turns has started, so a thread Codex made ahead of any message (prewarm) is not
+ * followed; one whose start had no answer yet, or whose first turn had not started, is followed when that comes. The
+ * new page starting a conversation of its own ends it.
+ */
+const turnBegun = (thread) => turnsRunning.has(thread) || turnsEnded.has(thread);
+function followAfterReload(rec) {
+  const to = [...rec.started].reverse().find(turnBegun) || rec.thread || '';
+  rec.follow = { starts: new Set(rec.starts), threads: new Set(rec.started), up: false, to: to !== namedBy(rec.uri) ? to : '' };
+}
+function followed(rec, thread) {
+  if (!rec.follow || !thread || !rec.follow.threads.has(thread) || !turnBegun(thread)) return;
+  rec.follow.to = thread !== namedBy(rec.uri) ? thread : '';
+  goFollowed(rec);
+}
+function goFollowed(rec) {
+  const f = rec.follow;
+  if (!f || !f.up || !f.to) return;
+  rec.follow = null;
+  const p = state.provider;
+  const panel = [...registry].find(([, r]) => r === rec);
+  if (!panel || !p || typeof p.sendMessageToPanel !== 'function') return;
+  try { p.sendMessageToPanel(panel[0], { type: 'navigate-to-route', path: `/local/${f.to}` }); } catch (_) { return; }
+  if (deps && deps.log) deps.log(`sent the page loaded again in a tab to conversation ${f.to}, which the page before it showed`);
 }
 /** What this window's app-server last said of a conversation's turns, for the source to set against its rollout. */
 function turnHeard(thread) {
@@ -1268,6 +1298,7 @@ function installHooks() {
     const rec = recordOfWebview(webview);
     if (!rec || !request || request.id === undefined || request.id === null) return;
     if (kind !== 'prewarm' && request.method !== 'thread/start') return;
+    if (kind !== 'prewarm') rec.follow = null;
     rec.starts.add(String(request.id));
     while (rec.starts.size > PAGE_KEEP) rec.starts.delete(rec.starts.values().next().value);
   };
@@ -1277,6 +1308,7 @@ function installHooks() {
     const t = response.result && response.result.thread;
     if (!t || typeof t.id !== 'string' || !t.id || t.ephemeral === true) return;
     rec.started = rec.started.filter((id) => id !== t.id).concat(t.id).slice(-PAGE_KEEP);
+    if (rec.follow && rec.follow.starts.delete(String(response.id))) { rec.follow.threads.add(t.id); followed(rec, t.id); }
     refreshPanels().catch(() => { /* the next poll settles it */ });
   };
   globalThis.__codexExtrasMessage = (webview, msg, provider) => {
@@ -1285,6 +1317,7 @@ function installHooks() {
     if (msg && msg.kind === 'tz' && typeof msg.timeZone === 'string' && deps && deps.onTimeZone) deps.onTimeZone(msg.timeZone);
     if (msg && msg.kind === 'tz') {
       const rec = recordOfWebview(webview);
+      if (rec && rec.follow) { rec.follow.up = true; goFollowed(rec); }
       if (rec) {
         mapSent.delete(webview);
         if (rec.thread) postMap({ webview }, rec.thread);
@@ -1394,9 +1427,14 @@ function installHooks() {
     if (msg && msg.kind === 'brokenPage' && msg.reason === 'module' && webview) {
       const rec = recordOfWebview(webview);
       const file = typeof msg.file === 'string' && /^[\w.-]{1,120}$/.test(msg.file) ? msg.file : '';
-      if (!brokenPages) brokenPages = require('./broken-pages').createBrokenPages({ log: (l) => { if (deps && deps.log) deps.log(l); } });
+      if (!brokenPages) {
+        brokenPages = require('./broken-pages').createBrokenPages({ log: (l) => { if (deps && deps.log) deps.log(l); },
+          waitMs: deps && Number.isFinite(deps.reloadWaitMs) ? deps.reloadWaitMs : undefined });
+      }
       const where = !rec ? 'in Codex\'s sidebar' : rec.thread ? `in the tab of conversation ${rec.thread}` : 'in a tab of a conversation not started yet';
-      brokenPages.report({ webview, key: rec ? rec.uri || where : 'sidebar', where, file }).catch(() => {});
+      brokenPages.report({ webview, key: rec ? rec.uri || where : 'sidebar', where, file })
+        .then((r) => { if (r === 'loaded' && rec && [...registry.values()].includes(rec)) followAfterReload(rec); })
+        .catch(() => {});
     }
     if (msg && msg.kind === 'writerConflict' && deps && deps.log) {
       const line = writerConflictLine(msg);
