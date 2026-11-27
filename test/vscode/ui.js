@@ -3489,6 +3489,11 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
       await checkCurrent(t.id, how);
       const listed = await until(async () => { const r = await hereRows(); return r && r.includes(t.id) && r; }, 15000, 500);
       check(!!listed, `${how}, its row in Agent Plus's session list has the stripe of a conversation open in this window`, await hereRows());
+      /* Where it is, from the source's shownIn: the sidebar, unless a tab here has it too. */
+      const inTab = (await codexTabsNow()).some((x) => x.route === `/local/${t.id}`);
+      const where = await slRowSays(t.id, (r) => /Open in this window/.test(r.hover) && /Open in this window, in the sidebar/.test(r.hover) === !inTab);
+      check(!!where, `${how}, the row's hover says it is open in this window${inTab ? ', with a tab of it here too, not in the sidebar' : ', in the sidebar'}`,
+        { inTab, hover: ((await slRow(t.id)) || {}).hover });
       await planShown(t.id, how);
       /* Codex's sidebar showing the conversation counts as looking at it, so a reply landing there with the window
          focused is not unread, and Agent Plus neither announces nor counts it. */
