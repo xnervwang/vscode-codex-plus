@@ -154,11 +154,11 @@ module.exports = async ({ eq, tmp, root }) => {
       'one in Codex\'s sidebar is shown here too, and one this window has in neither is not');
 
     /* ── shownIn ── */
-    eq((source.features || []).includes('shownIn'), true, '`features` lists shownIn, so Agent Plus asks where a conversation shows() found is');
+    eq((source.features || []).includes('shownIn'), true, '`features` lists shownIn, so Agent Plus asks where shows() found a conversation');
     eq([source.shownIn(W), source.shownIn(S), source.shownIn(E), source.shownIn('')], ['tab', 'sidebar', '', ''],
-      'one in a tab is in a tab, one only Codex\'s sidebar shows is in the sidebar, and one in neither, or no conversation, is nowhere');
+      'a conversation in a tab gives tab, one only Codex\'s sidebar shows gives sidebar, and one in neither, or none given, gives an empty string');
     side = W;
-    eq(source.shownIn(W), 'tab', 'one both a tab and the sidebar show is in its tab');
+    eq(source.shownIn(W), 'tab', 'one both a tab and the sidebar show gives tab');
   } finally {
     source.dispose();
   }

@@ -35,7 +35,8 @@ jobs:
       - uses: actions/checkout@v7
         with:
           path: vscode-codex-plus
-      # The Agent Plus commit .github/agent-plus-commit names, except on the daily run, which takes its newest commit.
+      # The Agent Plus commit named in .github/agent-plus-commit, except on the daily run, which takes its newest
+      # commit.
       - name: Which Agent Plus
         id: core
         shell: bash

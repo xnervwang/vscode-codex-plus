@@ -6,9 +6,9 @@
 # without a commit here.
 #
 # The results folder of each platform and shard is kept as an artifact whether the run passed or not: the screenshots
-# of every step, the crops, a diff image of each crop that failed, VS Code's logs, and for a step that failed what the
-# window held then (its state/ folder). A platform with no approved copies yet only saves its crops there, with a note in
-# the log.
+# of every step, the crops, a diff image of each crop that failed, VS Code's logs, and, for a step that failed, the
+# window's HTML and text at that moment (its state/ folder). A platform with no approved copies yet only saves its crops
+# there, with a note in the log.
 name: vscode
 
 on:
@@ -21,8 +21,8 @@ on:
     # against-latest.yml (06:17).
     - cron: '53 7 * * *'
   # By hand: one system or all three, and with `steps` only the window test steps whose names match that regular
-  # expression, with the steps they rely on (test/vscode/ui.js stepsToRun). Used to try a fix of one failure on the
-  # system it failed on.
+  # expression, with the steps they rely on (test/vscode/ui.js stepsToRun). It is for trying a fix of one failure on
+  # the system it failed on.
   workflow_dispatch:
     inputs:
       os:
@@ -61,7 +61,7 @@ jobs:
         run: |
           vsix=$(bash build/pack.sh | tail -n 1)
           mv "$vsix" extension.vsix
-      # This extension depends on Agent Plus, so the run installs it too: the commit .github/agent-plus-commit names,
+      # This extension depends on Agent Plus, so the run installs it too: the commit named in .github/agent-plus-commit,
       # except on the daily run (and by hand with agent_plus latest), which takes Agent Plus's newest commit. Checked
       # out after the build above, whose checks read the files under this folder.
       - name: Which Agent Plus
@@ -92,8 +92,8 @@ jobs:
             core.vsix
 
   # Every step on one machine takes about half an hour, so a full run cuts the steps into the five shards of
-  # test/vscode/ui.js SHARD_STARTS and runs them side by side on each system; a shard first runs the steps the ones in it
-  # rely on. A run by hand with `steps` given has one job per system instead, shard 0.
+  # test/vscode/ui.js SHARD_STARTS and runs them side by side on each system; before its own steps, a shard runs the
+  # earlier steps they rely on. A run by hand that gives `steps` has one job per system instead, as shard 0.
   run:
     needs: package
     strategy:
@@ -104,8 +104,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     env:
       CODEX_PLUS_UI_STEPS: ${{ inputs.steps }}
-      # A push is checked against the newest Codex src/supported-versions.json lists; the daily run, against the newest
-      # Codex released, tells of a release this extension still has to be fitted to.
+      # A push is checked against the newest Codex listed in src/supported-versions.json; the daily run, against the
+      # newest Codex released, shows when a new Codex release needs changes in this extension.
       CODEX_PLUS_UI_CODEX: ${{ (github.event_name == 'schedule' || inputs.codex == 'latest') && 'latest' || 'supported' }}
       CODEX_PLUS_UI_SHARD: ${{ matrix.shard != 0 && format('{0}/5', matrix.shard) || '' }}
     steps:

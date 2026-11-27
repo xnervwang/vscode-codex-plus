@@ -100,7 +100,7 @@ module.exports = async ({ eq, tmp, root }) => {
       'its page, which Codex has not had ready yet, is not sent anywhere before Codex\'s code in it has asked anything');
     globalThis.__codexExtrasPageRequest(back.webview, { id: 'r1', method: 'thread/start', params: {} }, 'prewarm');
     eq(two.sent.filter(([n]) => n === 'restored New tab').map(([, m]) => [m.type, m.path]), [['navigate-to-route', `/local/${NEW}`]],
-      'and once it has, the page, which Codex opens as a new conversation, is sent back to that conversation');
+      'and once it has, the page, which Codex opened as a new conversation, is sent to the conversation the tab showed before the reload');
     eq([patching._registry.get(backEmpty).thread, two.sent.some(([n]) => n === 'restored empty New tab')], ['', false],
       'a restored New tab nothing was typed into stays a new conversation, and its page is left alone');
     await patching.refreshPanels();

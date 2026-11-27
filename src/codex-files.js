@@ -295,9 +295,9 @@ function goals(home = codexHome()) {
  * Whether Codex has filled its state database from the rollouts on disk. Codex builds the database when its app-server
  * first starts in a home and records the pass in backfill_state; until its row says complete, a conversation it has
  * not reached is missing from the threads table or not yet marked archived. Every Codex this extension supports
- * creates that table and then writes its row, in two steps, so a database without the table or without a row is one
- * Codex is still building: false then, as while there is no database. The table is looked up first because a failed
- * query closes the connection that the cached thread list depends on.
+ * creates that table first and writes its row later, so a database without the table or without a row is one Codex is
+ * still building, and does not count as filled. The table is looked up first because a failed query closes the
+ * connection that the cached thread list depends on.
  */
 function backfillDone(home = codexHome()) {
   const file = stateDbPath(home);

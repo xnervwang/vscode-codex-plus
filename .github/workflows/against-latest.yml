@@ -9,12 +9,11 @@
 # longer parses; anything else is the check not having run at all, which is also worth a red run, because a check that
 # quietly stopped working reads the same as one that keeps passing.
 #
-# A red run is seen only by someone who looks, so a failure of the build's own (exit 1) also opens an issue naming the
-# Codex version, quoting the lines that failed. There is one issue for each version: a failure finds it open and leaves
-# it, or finds it closed and opens it again. A later pass against the same version closes it, saying on which commit
-# the check passed, so whether it is fixed is the check's to say. A check that could not run (exit 2) touches no issue:
-# it says nothing about the build. Run by hand with issue_preview, the run says in its summary what it would do to the
-# issue, and does nothing.
+# A failure of the build itself (exit 1) also goes into an issue naming the Codex version and quoting the lines that
+# failed, so it is seen without anyone opening the runs. A version has at most one issue: a later failure reopens it if
+# it was closed, and a later pass against the same version closes it, naming the commit the check passed on. A check
+# that could not run (exit 2) leaves every issue as it is: it says nothing about the build. Run by hand with
+# issue_preview, the workflow only writes in the run's summary what it would do to the issue.
 #
 # A Codex release that is simply not in src/supported-versions.json is not a failure and prints as a note: the edits
 # matching a build is not the whole of what that file claims, and only a machine with that Codex installed can
@@ -90,15 +89,13 @@ jobs:
             const repo = { owner: context.repo.owner, repo: context.repo.repo };
             const commit = `[${context.sha.slice(0, 7)}](${context.serverUrl}/${repo.owner}/${repo.repo}/commit/${context.sha})`;
             const title = `Codex ${version || 'an unknown build'} failed the check against the latest Codex`;
-            /* What a preview does instead of each change: say it, in the log and in the run's summary. */
             const said = [];
             const act = async (what, fn) => { said.push(what); core.info(what); if (!preview) await fn(); };
             const done = async () => {
               if (preview) await core.summary.addHeading('What this run does to the issue of this version', 3).addRaw(said.join('\n\n') || 'Nothing.').write();
             };
 
-            // One issue for each Codex version, closed ones included: the check runs every day, and a version stays the
-            // newest for days.
+            // Closed issues are searched too: the check runs every day, and a version stays the newest for days.
             const all = await github.paginate(github.rest.issues.listForRepo, { ...repo, state: 'all', per_page: 100 });
             const already = all.find((i) => !i.pull_request && i.title === title);
 
@@ -116,19 +113,20 @@ jobs:
 
             let report = 'the check produced no report';
             try { report = fs.readFileSync('report.txt', 'utf8'); } catch (_) {}
-            // An issue body holds at most 65536 characters, so it quotes the lines that failed and links the run, whose
-            // summary has the whole report.
+            // An issue body holds at most 65536 characters; the run's summary has the whole report.
             const run = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
             const LIMIT = 40000;
             let failing = report.split('\n').filter((l) => /^FAIL\b|^openai\.chatgpt /.test(l)).join('\n');
             if (failing.length > LIMIT) failing = failing.slice(0, LIMIT) + '\n... cut here; the run summary has every line';
 
             const body = [
-              `The daily check ran against Codex **${version}**, the build the marketplace is shipping, and failed.`,
+              // One string per paragraph: GitHub shows each newline of an issue body as a line break.
+              `The daily check tested **${version}**, the Codex build the VS Code marketplace was shipping at the time, and it failed.`,
               '',
-              'An edit of the patch that does not match exactly once, or a patched file that no longer parses, leaves that build',
-              'unpatched for everyone who updates to it. A request or question tool missing from `src/protocol-known.js` can leave',
-              'a conversation waiting with nothing said about it.',
+              'Each edit in the Codex Plus patch must match exactly once in the Codex file it changes. If an edit does not, or a '
+                + 'patched file no longer parses, everyone who updates to that build runs it without the patch. If '
+                + '`src/protocol-known.js` omits an app-server request or question tool from the new build, a conversation can wait '
+                + 'for the user without Codex Plus ever showing that wait.',
               '',
               '### What the check said',
               '',
@@ -140,8 +138,8 @@ jobs:
               '',
               '### Where to look',
               '',
-              'The edits are in `src/host.js`, `src/webview-inject.js` and `src/manifest.js`, and the lists of requests and',
-              'question tools in `src/protocol-known.js`. Run `node test/against-latest.js` to reproduce.',
+              'The edits are in `src/host.js`, `src/webview-inject.js` and `src/manifest.js`, and the lists of requests and '
+                + 'question tools in `src/protocol-known.js`. Run `node test/against-latest.js` to reproduce.',
             ].join('\n');
 
             if (already && already.state === 'open') {

@@ -519,8 +519,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
         const f = await frontPage();
         /* The newest turn is the one in view. Playwright gives a box inside a frame in the window's own coordinates. */
         const turn = f && f.locator('[data-turn-key]').last();
-        /* A long newest turn shown down to its end has its top above the page's frame, where a point would land on the
-           tab bar; so it is brought into view and the point taken inside the part of it the frame shows. */
+        /* When the newest turn is long and scrolled to its end, its top is above the page's frame, where a point would
+           land on the tab bar. */
         if (turn) await turn.scrollIntoViewIfNeeded().catch(() => {});
         const talk = turn && await turn.boundingBox();
         const shown = f && await f.frameElement().then((e) => e.boundingBox()).catch(() => null);
@@ -659,7 +659,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
    * and its fetches (fetchesIn), so that a run says how often it came and where even when no check failed on it.
    */
   let stepNow = '';
-  /* When each recovery page was found, for a step to tell whether one came after something it did. */
+  /* The time each recovery page was found, so a step can tell whether one appeared after its own action. */
   const snagTimes = [];
   const watched = new Set([page]), snagged = new WeakSet();
   let snagBusy = false;
@@ -716,13 +716,12 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
   /* Everything Codex Plus's output channel has written in this run, across reloads. NO_ANCHORS matches its line for a
      page whose message box or messages the page script did not recognise (src/patching.js anchorsMissingLine). */
   const ownLog = () => walk(path.join(profile.user, 'logs')).filter((f) => /Codex Plus\.log$/.test(f)).map((f) => fs.readFileSync(f, 'utf8')).join('\n');
-  /* When Codex's own log says a page of it did not start within its own wait (reason=renderer_ready_timeout), each such
-     line's time; Codex writes its log lines in local time. */
+  /* Codex writes its log lines in local time. */
   const codexStalls = () => walk(path.join(profile.user, 'logs')).filter((f) => /[\\/]openai\.chatgpt[\\/]Codex\.log$/.test(f))
     .flatMap((f) => fs.readFileSync(f, 'utf8').split('\n')).filter((l) => /reason=renderer_ready_timeout/.test(l))
     .map((l) => Date.parse(l.slice(0, 23).replace(' ', 'T'))).filter(Number.isFinite);
-  /* Whether Codex Plus's log says, since `t0`, that a page could not load Codex's code: it says so before it loads the
-     page again, two seconds later, so a recovery page that came and went between two looks is still known. */
+  /* Codex Plus logs that a page could not load Codex's code two seconds before it loads the page again, so a recovery
+     page that came and went between two looks is still caught. */
   const pageBrokeSince = (t0) => ownLog().split('\n').some((l) => /could not load its code/.test(l) && Date.parse(l.slice(0, 24)) >= t0 - 1000);
   const NO_ANCHORS = /the page script recognised none of [^\n]*/g;
   const noAnchors = () => ownLog().match(NO_ANCHORS) || [];
@@ -770,8 +769,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
      before that starts with the message another one sent. Returns what the box held, and what is left after emptying it. */
   const emptyBox = async (f) => {
     const box = f.locator(COMPOSER).first();
-    /* A notification of this extension's, such as its question whether to trust the work plan hooks, stays at the
-       bottom right until it is answered and can sit over the message box, taking the click. */
+    /* Notifications from this extension, such as the question whether to trust the work plan hooks, stay at the bottom
+       right until answered and can cover the message box, taking the click. */
     await clearToasts();
     await box.click();
     const read = () => box.evaluate((e) => e.textContent.trim()).catch(() => '');
@@ -972,9 +971,9 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
         .find((t) => /Codex is patched\. Reload the window/.test(t)) || ''), 30000, 500);
       check(!!toast, 'and VS Code shows its prompt to reload the window', toast);
       /* Codex runs its own code until the reload, so no page has told this extension the zone of the machine VS Code
-         runs on, and the time is in this machine's zone, named (src/notice-time.js). */
+         runs on, and the time is in this machine's zone (src/notice-time.js). */
       check(/^\[\d\d:\d\d [A-Za-z][\w+:-]*\] Codex is patched/.test(toast),
-        'the prompt starts with the time it was shown, in brackets, with the name of this machine\'s zone, as no page has told the extension the zone yet', toast);
+        'the prompt starts with the time it was shown, in brackets, with the name of this machine\'s zone', toast);
       await shot('patched-reload-prompt');
       await openNotes();
       await until(async () => (await codexButtons()).length > 0, 15000);
@@ -1660,7 +1659,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
       writeRows(id, ROWS);
       const full = await barSays(codex, (b) => b.bubbles === ALL && b.red === '1 to decide');
       check(!!full && !full.compact && full.name,
-        'a plan with rows doing, waiting on the user and to do draws the bar: Plan, a bubble of 2 doing and one of 1 to do, and the row waiting in "1 to decide"',
+        'a plan with rows doing, waiting on the user and to do draws the bar: Plan, bubbles for 2 doing and 1 to do, and the row waiting in "1 to decide"',
         full || await barIn(codex));
       check(placed(full), 'the bar sits just above the message box, 6 px clear of it, and is as wide as it', full);
       /* Where even the space between the top of the conversation and the bar is too short for the rail, it stays below
@@ -1729,7 +1728,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
       writeRows(id, [ROWS[0], { title: 'Change the retry delay', state: 'done', since, closed: since, children: [{ title: 'Read the sync job', state: 'done', since, closed: since }] },
         ROWS[2], ROWS[3], { title: 'Write the release note', state: 'todo', since }]);
       const fewer = await barSays(codex, (b) => b.bubbles === 'todo 2' && b.red === '1 to decide');
-      check(!!fewer, 'rows closed leave fewer open, and with none doing the bar has no doing bubble', fewer || await barIn(codex));
+      check(!!fewer, 'closing rows lowers the counts, and once no row is doing the doing bubble goes away', fewer || await barIn(codex));
       writeRows(id, ROWS);
       await barSays(codex, (b) => b.bubbles === ALL);
 
@@ -3635,7 +3634,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
             narrow = await barSays(sidePage, (b) => b.compact, 10000) || await barIn(sidePage);
           }
           check(!!narrow && narrow.compact && narrow.bubbles === SIDE && narrow.red === '1' && !narrow.name && placed(narrow),
-            'in Codex\'s sidebar, narrower than 400 px, the bar is compact: no Plan, the bubbles, and only the number of questions, as wide as the box and just above it',
+            'in Codex\'s sidebar, narrower than 400 px, the bar is compact (no Plan, the bubbles, and the question count alone) and sits just above the box, as wide as it',
             narrow || await barIn(sidePage));
           /* The compact bar takes the same room as the full one. */
           fs.rmSync(path.join(PLANS, `${t.id}.json`), { force: true });
@@ -3935,8 +3934,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
      * its reply in front is neither announced nor counted, and Agent Plus's session list gives its row the stripe of a
      * conversation open here and draws it as current. Resolves to { id, label, text } of the conversation, or null.
      */
-    /* The `how` of each first message whose page Codex's own failure left with no conversation to follow, for a step
-       that sets two of them side by side. */
+    /* The `how` of each first message after which Codex's own failure left no conversation to follow; a step that
+       compares two such messages reads it. */
     const firstBroke = new Set();
     const firstMessage = async (f, text, how) => {
       /* The first message makes the page the conversation's page, which loads more of Codex's code; with VS Code still
@@ -3963,10 +3962,10 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
         const g = await until(async () => { const v = await frontPage(); return v && v !== f && v; }, 30000, 500);
         if (g) { note(`${how}: Codex's page failed after the first message, and the conversation went on in the page Codex Plus built again`); f = g; }
       }
-      /* The recovery page can be in the page Codex Plus built again rather than in `f`, which is gone by then; and when
-         the page built again is sent to the conversation only once its first turn has started, and a page that broke
-         more often than Codex Plus loads one again stays broken. So a recovery page found anywhere, or one Codex Plus's
-         log tells of, since the message was typed counts. */
+      /* The recovery page can be in the page Codex Plus built again rather than in `f`, which is gone by then. The page
+         built again is sent to the conversation only once its first turn has started, and a page that breaks more often
+         than Codex Plus reloads it stays broken. So a recovery page found anywhere since the message was typed counts,
+         and so does one that Codex Plus's log reports. */
       if (!named && (await f.evaluate(() => /hit a snag/i.test(document.body.innerText)).catch(() => false)
         || await brokenInFront() === 'ChatGPT hit a snag' || snagTimes.some((t) => t >= typedAt) || pageBrokeSince(typedAt))) {
         model.release();
@@ -4026,7 +4025,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
     };
     /* `press` and the new page it opens (newPageSince). A new page Codex replaced with its recovery page, or one Codex's
        log says did not start, has no conversation for Codex Plus to open again, and is Codex's page failing rather than
-       what a step checks: that is noted, its tab closed, and `press` done once more. */
+       what a step checks: the helper notes it, closes its tab and runs `press` again. */
     const newPageAfter = async (what, press) => {
       let before = new Set(page.frames()), wasFront = await frontPage();
       const pressed = Date.now();
@@ -4035,8 +4034,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
       const fetched = f ? null : await fetchesOf();
       const stalled = !f && !fetched && codexStalls().some((t) => t >= pressed - 1000);
       if (fetched || stalled) {
-        note(fetched ? `${what}: the new page has Codex's recovery page, so its tab was closed and that was done again; its fetches of Codex's code: ${JSON.stringify(fetched)}`
-          : `${what}: Codex's log says the new page did not start within its own wait (renderer_ready_timeout), so its tab was closed and that was done again`);
+        note(fetched ? `${what}: the new page has Codex's recovery page, so its tab was closed and another opened the same way; its fetches of Codex's code: ${JSON.stringify(fetched)}`
+          : `${what}: Codex's log says the new page did not start within its own wait (renderer_ready_timeout), so its tab was closed and another opened the same way`);
         await exec('workbench.action.closeActiveEditor');
         before = new Set(page.frames());
         wasFront = await frontPage();
@@ -4265,13 +4264,13 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
      * A New tab whose page Codex Plus has to build again (src/broken-pages.js) just after its first message began the
      * conversation: the new page opens on the New route, and Codex Plus sends it to that conversation (src/patching.js
      * followAfterReload). Codex failing to load one of its modules cannot be made to happen, so the report the page
-     * script sends then is handed to the extension host here; the rest, the page built again and where it goes, is
-     * the window's own.
+     * script sends then is handed to the extension host here; everything after it, building the new page and sending it
+     * on, happens in the real window.
      */
     await step('a New tab\'s page built again after its first message', async () => {
       await openNotes();
       const f = await newPageAfter('New Codex Agent', () => exec('chatgpt.newCodexPanel'));
-      check(!!f, 'New Codex Agent opens a new conversation page in a tab, for its page to be built again');
+      check(!!f, 'New Codex Agent opens a new conversation page in a tab for the step to rebuild');
       if (!f) return;
       const text = 'Summarise the open bugs for 1.2.';
       const shows = (x, t) => x.evaluate((w) => document.body.innerText.includes(w), t).catch(() => false);
@@ -4292,21 +4291,21 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
           globalThis.__codexExtrasMessage(panel.webview, { type: 'codex-extras', kind: 'brokenPage', reason: 'module', file: 'local-conversation-page-test.js' },
             p._state().provider);
           return true;`).catch((e) => String(e));
-        check(reported === true, 'the page of the tab in front is reported as one that could not load Codex\'s code', reported);
+        check(reported === true, 'the page in the front tab is reported as unable to load Codex\'s code', reported);
         if (reported !== true) return;
         const back = await until(async () => {
           for (const x of page.frames()) if (!before.has(x) && await shows(x, text)) return x;
           return null;
         }, 60000, 500);
         const sent = !!await until(() => ownLog().includes(`sent the page loaded again in a tab to conversation ${id}`), 10000, 300);
-        check(!!back && sent, 'the page built again in its place is sent back to the conversation its first message began, and the log says so',
+        check(!!back && sent, 'the page built again in its place is sent to the conversation its first message began, and Codex Plus\'s log records it',
           { thread: id, sent, page: await pageSays(await frontPage()), log: ownLog().split('\n').filter((l) => /could not load its code|loaded the page|sent the page/.test(l)).slice(-4) });
         if (!back) return;
         model.release();
         const ended = await until(() => back.evaluate((r) => document.body.innerText.includes(r), REPLY).catch(() => false), 30000, 500);
         const tab = await frontTab();
         check(!!ended && !!tab && bare(tab.label).startsWith(text.slice(0, 20)),
-          'and the turn goes on in it: the reply lands there, and the tab is titled by the conversation', { ended: !!ended, tab });
+          'and the turn goes on there: the reply lands in the new page, and the tab takes the conversation\'s title', { ended: !!ended, tab });
       } finally {
         model.release();
         await settle('a New tab\'s page built again: before its tab is closed', 0);
@@ -5537,7 +5536,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
            answering again after it; the close button below is tried then too. */
         const pressed = await Promise.race([page.keyboard.press(process.platform === 'darwin' ? 'Meta+W' : 'Control+W').then(() => true, () => true),
           sleep(10000).then(() => false)]);
-        if (!pressed) note(`${stepNow}: the key that closes the tab had not been pressed 10 s after it was sent, so the tab's close button was clicked`);
+        if (!pressed) note(`${stepNow}: the key press that closes the tab had not returned after 10 s, so the tab's close button was clicked instead`);
         next('waiting for the tab to close');
         let closed = pressed && await until(async () => !await tabUp(), 3000, 100);
         if (!closed) {

@@ -4,12 +4,13 @@
 
 'use strict';
 /*
- * A page this extension loads again after Codex replaced it with its recovery page (src/broken-pages.js) starts on the
- * route its tab's URI names, which for a New tab is a new conversation page. A page that broke just as its first
- * message turned it into the conversation's page would lose that conversation from its tab, so the new page is sent to
- * the conversation the page before it had begun (src/patching.js followAfterReload): once Codex's code in the new page
- * sends its first request, and once that conversation's first turn has started. A thread Codex made ahead of any message is not followed, nor is the
- * conversation a tab's URI names already, and a conversation the new page begins itself ends it.
+ * When Codex replaces a page with its recovery page, this extension loads the page again (src/broken-pages.js), and the
+ * new page starts on the route its tab's URI names, which for a New tab is a new conversation page. If the page broke
+ * just as its first message started a conversation, the tab would lose that conversation, so the new page is sent to
+ * the conversation the broken page had begun (src/patching.js followAfterReload), once Codex's code in the new page
+ * sends its first request and that conversation's first turn has started. A thread Codex made ahead of any message is
+ * not followed, nor is the conversation the tab's URI already names. Once the new page begins a conversation of its
+ * own, nothing is followed.
  */
 const path = require('path');
 const fake = require('../fake-vscode');
@@ -50,8 +51,8 @@ module.exports = async ({ eq, tmp, root }) => {
     globalThis.__codexExtrasMessage(p.webview, { type: 'codex-extras', kind: 'brokenPage', reason: 'module', file: 'local-conversation-page-x.js' }, provider);
     await tick(60);
   };
-  /* The page script's first message, and its word that Codex has drawn the message box; or, in `asks`, a first request
-     of Codex's own code in the page instead. */
+  /* Two ways a new page shows that Codex's code in it is running: `up` reports that Codex drew the message box, and
+     `asks` sends a first request of Codex's own. Both send the page script's first message before that. */
   const hello = (p) => globalThis.__codexExtrasMessage(p.webview, { type: 'codex-extras', kind: 'tz', timeZone: 'UTC' }, provider);
   let reqs = 0;
   const up = (p) => { hello(p); globalThis.__codexExtrasMessage(p.webview, { type: 'codex-extras', kind: 'boxShown' }, provider); };
@@ -66,9 +67,9 @@ module.exports = async ({ eq, tmp, root }) => {
   await breaks(begun);
   hello(begun);
   eq([/Codex Plus loaded this page again/.test(begun.webview.html), to('begun')], [true, []],
-    'a New tab whose page broke just after its first message started a turn gets a new page, sent nowhere while Codex\'s code in it has asked nothing');
+    'when a New tab\'s page breaks just after its first message started a turn, the tab gets a new page, which is not sent anywhere before Codex\'s code in it has asked something');
   up(begun);
-  eq(to('begun'), [`/local/${BEGUN}`], 'once up, the new page is sent to the conversation the page before it had begun');
+  eq(to('begun'), [`/local/${BEGUN}`], 'once up, the new page is sent to the conversation the broken page had begun');
   up(begun);
   eq(to('begun').length, 1, 'and only once');
 
@@ -84,7 +85,7 @@ module.exports = async ({ eq, tmp, root }) => {
   await breaks(late);
   asks(late);
   answer(late, 'l1', LATE);
-  eq(to('late'), [], 'a start the page sent before it broke is answered after Codex\'s code in the new page has asked something, before its first turn: nothing yet');
+  eq(to('late'), [], 'when the start the broken page sent is answered after Codex\'s code in the new page has asked something, but before that conversation\'s first turn, nothing is sent yet');
   turn(LATE, 'tl');
   eq(to('late'), [`/local/${LATE}`], 'and when that conversation\'s first turn starts, the new page is sent to it');
 
@@ -92,7 +93,7 @@ module.exports = async ({ eq, tmp, root }) => {
   const namedFrom = logged.length;
   await breaks(named);
   up(named);
-  eq(to('named'), [], 'a tab showing the conversation its URI names gets a new page on that conversation already, and is sent nowhere');
+  eq(to('named'), [], 'a tab whose URI names the conversation it shows gets a new page already on that conversation, and is not sent anywhere');
   eq([logged.slice(namedFrom).some((l) => l.includes(`opens conversation ${NAMED} by itself, which the tab's URI names`)),
     logged.slice(namedFrom).some((l) => /no conversation to go to yet/.test(l))], [true, false],
   'and the log says the new page opens that conversation by itself, not that it has none to go to');
@@ -106,7 +107,7 @@ module.exports = async ({ eq, tmp, root }) => {
   turn(LEFT, 'to1');
   answer(own, 'o2', OWN);
   turn(OWN, 'to2');
-  eq(to('own'), [], 'once the new page begins a conversation of its own, the one the page before it began is not followed');
+  eq(to('own'), [], 'once the new page begins a conversation of its own, the conversation the broken page began is not followed');
   eq(logged.filter((l) => /sent the page loaded again/.test(l)).length, 2, 'each page sent to a conversation says so in the log');
   for (const d of context.subscriptions) { try { d.dispose(); } catch (_) { /* gone */ } }
 };

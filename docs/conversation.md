@@ -59,13 +59,15 @@ If the [rail of your messages](#the-rail-of-your-messages) would end too close t
 From left to right, the bar shows:
 
 - A list icon and "Plan".
-- A bubble for each of the states doing, waiting, discussing and to do that has rows, in that order, with the state's icon and the number of its rows. Parked rows have no bubble. When all rows are done, a green tick and "All rows done" take their place.
-- "N to decide" on solid orange, the colour of the question mark the Work plan view gives a row waiting for your answer: the number of this conversation's [plan questions](work-plan.md#answering-a-plan-question) waiting for your answer. Those rows count here only, not in their state's bubble.
+- One bubble per state with open rows, in this order: doing, waiting, discussing and to do. Each bubble shows the state's icon and row count. Parked rows have no bubble. When all rows are done, a green tick and "All rows done" replace the bubbles.
+- "N to decide" counts this conversation's [plan questions](work-plan.md#answering-a-plan-question) waiting for your answer. Its solid orange background matches the question mark Agent Plus's Work plan view shows on rows waiting for your answer. Those rows count here only, not in their state's bubble.
 - An arrow.
 
 Below 400 px wide, for example in Codex's sidebar, the bar leaves out "Plan" and the arrow, and "N to decide" shows only the number.
 
-Rest the pointer on the bar for 350 ms to see a list above it: over a bubble, that state's rows; over "N to decide", the questions; anywhere else, the full title of the most deeply nested row in progress and up to 30 open rows. Click the bar to open this conversation's plan in the Work plan view of Agent Plus, the companion extension. Click "N to decide" to open Agent Plus's Answer view at the first question. The bar uses the plan summary from Agent Plus and stays hidden if your release of Agent Plus does not provide plan summaries. The bar is on by default. Turn off `codexPlus.planBar` to hide it, or `codexPlus.enabled` to turn off Codex Plus.
+Rest the pointer on the bar for 350 ms to open a list above it. Hover over a state's bubble to see its rows, or over "N to decide" to see the questions waiting for your answer. Anywhere else on the bar, the list starts with the full title of the most deeply nested doing row, followed by up to 30 open rows.
+
+Click the bar to open this conversation's plan in the Work plan view of Agent Plus, the companion extension. Click "N to decide" to open Agent Plus's Answer view at the first question. The bar uses the plan summary from Agent Plus and stays hidden if your release of Agent Plus does not provide plan summaries. The bar is on by default. Turn off `codexPlus.planBar` to hide it, or `codexPlus.enabled` to turn off Codex Plus.
 
 ## Images in replies
 

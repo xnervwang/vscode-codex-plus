@@ -21,8 +21,8 @@ const path = require('path');
 
 const DIR = path.join('.github', 'workflows');
 
-/** The block scalar under the last `run: |` in `text`, dedented. */
-/* The script of a `run: |` block of `text`: the first that contains `needle`, or with none given the last one. */
+/* The script of the first `run: |` block of `text` that contains `needle`, or of the last block when no needle is
+   given. */
 function runScript(text, needle = '') {
   const lines = text.split(/\r?\n/);
   const block = (at) => {
@@ -160,17 +160,16 @@ module.exports = ({ ok, bad, eq, tmp, root }) => {
   eq(broken.status, 2, 'a check that could not run at all ends the step too, since it proves nothing either way');
   eq(/did not run/.test(broken.out), true, 'and says that is what happened, rather than naming an edit');
 
-  /* What the step hands the issue step: its exit code and the Codex version the report's first line names. */
+  /* What the step passes to the issue step: its exit code, and the Codex version named on the report's first line. */
   {
     const out = path.join(tmp('gh-output'), 'out');
     fs.writeFileSync(path.join(bin, 'node'), '#!/bin/sh\necho "openai.chatgpt 26.1.2 for linux-x64"\necho "FAIL  host: an edit matched 0 times"\nexit 1\n', { mode: 0o755 });
     const r = cp.spawnSync('bash', ['-c', script], { cwd: home, env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, GITHUB_OUTPUT: out }, encoding: 'utf8' });
     const said = fs.existsSync(out) ? fs.readFileSync(out, 'utf8') : '';
     eq([r.status, /^code=1$/m.test(said), /^version=26\.1\.2$/m.test(said), fs.existsSync(path.join(home, 'report.txt'))], [1, true, true, true],
-      'the step keeps the report and says its exit code and the Codex version the report names, for the step that opens an issue');
+      'the step keeps the report and passes its exit code and the Codex version the report names to the step that opens an issue');
   }
-  /* The issue of a Codex version: a failure of the build's own opens it, or opens it again; a later pass closes it; a
-     check that could not run leaves it. */
+  /* The step that opens, reopens and closes the issue of each Codex version. */
   eq(/^\s+issues: write$/m.test(latest), true, 'the daily check may open and close issues');
   eq(/if: always\(\) && \(steps\.latest\.outputs\.code == '0' \|\| steps\.latest\.outputs\.code == '1'\)/.test(latest), true,
     'its issue step runs on an exit of 0 or 1, what the build itself showed, and not when the check could not run');
@@ -179,7 +178,7 @@ module.exports = ({ ok, bad, eq, tmp, root }) => {
   eq([/already\.state === 'open'[\s\S]*?left as it is/.test(latest), /issues\.update\(\{ \.\.\.repo, issue_number: already\.number, state: 'open' \}\)/.test(latest)], [true, true],
     'a failure leaves the open issue of its version as it is, and opens a closed one again');
   eq([/if \(passed\) \{[\s\S]*?The check passed on \$\{commit\} against Codex \$\{version\}\.[\s\S]*?state: 'closed'/.test(latest)], [true],
-    'a pass closes the open issue of its version, after saying on which commit the check passed against which version');
+    'a pass closes the open issue of its version, with a comment naming the commit and the version the check passed on');
   eq(/const act = async \(what, fn\) => \{ said\.push\(what\); core\.info\(what\); if \(!preview\) await fn\(\); \}/.test(latest), true,
     'and a preview says each thing it would do to the issue without doing it');
 

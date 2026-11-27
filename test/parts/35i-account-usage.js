@@ -58,13 +58,13 @@ module.exports = async ({ eq }) => {
     { account: [{ label: 'Sign-in', value: 'ChatGPT' }, { label: 'Plan', value: 'Plus' }], windows: [], tokens: [{ label: 'Tokens today', value: 5 }] }, 'tokens by day are shown when Codex has them, with no money');
   eq([viewOf({ account: null, read: true }).account, viewOf({ account: null }).account, viewOf({ account: { type: 'somethingNew' }, read: true }).account],
     [[{ label: 'Sign-in', value: 'Not signed in' }], [{ label: 'Sign-in', value: 'Not known yet' }], [{ label: 'Sign-in', value: 'Signed in' }]],
-    'with no account the section says so: not signed in once Codex has answered, not known yet before, and signed in to a kind it does not know');
+    'with no account the section says so: not signed in once Codex has answered, not known yet before it has; an account of a kind this extension does not know shows as signed in');
   const out = createAccountUsage({ ask: async (m) => (m === 'account/read' ? { outcome: 'done', result: { account: null, requiresOpenaiAuth: true } } : { outcome: 'failed' }), now: () => t });
   eq([out.view().account, (await out.load()).account], [[{ label: 'Sign-in', value: 'Not known yet' }], [{ label: 'Sign-in', value: 'Not signed in' }]],
     'before Codex is asked the section says not known yet, and once account/read answers with no account, not signed in');
   out.heard('account/updated', { authMode: 'apikey' });
   out.heard('account/updated', { authMode: null });
-  eq(out.view().account, [{ label: 'Sign-in', value: 'Not signed in' }], 'a sign-out heard afterwards is not signed in again');
+  eq(out.view().account, [{ label: 'Sign-in', value: 'Not signed in' }], 'after a sign-out is heard, the section says not signed in again');
 
   /* ── handed to Agent Plus's session list, which draws it at the top ── */
   const { accountOf } = require('../../src/session-list-source');

@@ -774,9 +774,9 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
       return false;
     },
     shows(sessionId) { return !!sessionId && (openThreads().includes(sessionId) || sidebarInFront() === sessionId); },
-    /* Where a conversation shows() finds is: a tab when one here has it, such as a New tab whose conversation only the
-       patch knows, else Codex's sidebar when it shows it; '' for neither. Agent Plus names the place in its session
-       list's hover and reopens a closed conversation there. */
+    /* Where shows() finds a conversation: 'tab' when a tab here has it, such as a New tab whose conversation only the
+       patch knows, else 'sidebar' when Codex's sidebar shows it, '' for neither. Agent Plus names the place in its
+       session list's hover and reopens a closed conversation there. */
     shownIn(sessionId) {
       if (!sessionId) return '';
       if (openThreads().includes(sessionId)) return 'tab';

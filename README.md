@@ -31,9 +31,9 @@ Codex writes a [brief](docs/work-plan.md#the-brief) for each conversation with a
 
 ### The plan bar
 
-The [plan bar](docs/conversation.md#the-plan-bar) above Codex's message box counts the plan's open rows by state and shows how many need your answer. Click the bar to open the plan in Agent Plus, or click "N to decide" to open the first question.
+The [plan bar](docs/conversation.md#the-plan-bar) above Codex's message box counts the plan's open rows by state and shows how many need your answer. Click the bar to open the conversation's plan in Agent Plus. Clicking "N to decide" takes you to the first question waiting for your answer.
 
-![The plan bar above Codex's message box: a bubble for each state with open rows and one question to decide](images/shots/plan-bar.png)
+![The plan bar: a bubble for each state with open rows and one question to decide](images/shots/plan-bar.png)
 
 ### Wake-ups
 

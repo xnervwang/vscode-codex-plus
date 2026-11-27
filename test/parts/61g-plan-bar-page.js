@@ -89,7 +89,7 @@ module.exports = async ({ eq, root }) => {
 
   p.send(bar({ summary: { total: 0, done: 0, counts: {}, current: null, allDone: true, questions: 0, open: [] } }));
   eq([!!drawn(), /All rows done/.test(drawn().textContent), bubbles(drawn())],
-    [true, true, []], 'a plan with no open row says so, with no bubble');
+    [true, true, []], 'a plan with no open row shows All rows done and no bubble');
 
   p.send(bar({ summary: null }));
   eq([drawn(), room(), barStyle()], [null, false, 0], 'a conversation with no plan has no bar, no room for one and no style of it left');

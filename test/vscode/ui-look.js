@@ -588,8 +588,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
   try {
     await w.hostUp();
 
-    /* What every notification of this extension's starts with (src/notice-time.js). Until a page has told the extension
-       the zone of the machine VS Code runs on, as at the first start, the time names this machine's zone. */
+    /* What every notification of this extension's starts with (src/notice-time.js). At the first start no page has told
+       the extension the zone of the machine VS Code runs on yet, so the time carries this machine's zone name. */
     const NOTICE_TIME = 'A notification\'s text starts with the time it was shown, in brackets, hours and minutes such as [14:05], '
       + 'with the zone\'s name after them, such as [14:05 UTC], until a Codex page has told Codex Plus the time zone of the machine VS Code runs on; '
       + 'a modal dialog has no time.';
@@ -714,8 +714,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         + '"Can you find where the retry delay for the inventory sync is set?", "Why does the nightly export skip archived rows?" and "Add a dry-run flag to the cleanup script". '
         + 'Each row has Codex\'s logo, its title and at the right how long ago it was last active. The conversation just started, whose tab is in front, has a solid stripe at the start of its row '
         + 'and is drawn as the current one, and no other row is. "Can you find where the retry delay for the inventory sync is set?" has a red dot at the top right of its logo, as its work plan asks '
-        + 'the user a question put after the user\'s last message; the other rows have no dot. No row has the list\'s envelope of a reply not seen, the made-up conversations '
-        + 'having been seen. Above them an ACCOUNT & USAGE section holds a Codex block that says Not signed in, since the made-up provider has no account.',
+        + 'the user a question put after the user\'s last message; the other rows have no dot. No row has the list\'s envelope for an unread reply, since the made-up conversations '
+        + 'count as seen. Above them an ACCOUNT & USAGE section holds a Codex block that says Not signed in.',
     }, async () => {
       /* The step before left notes.txt in front. */
       if (freshTitle) await tab(freshTitle).click();
@@ -838,7 +838,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       const b = document.querySelector('[data-codex-extras="plan-bar"]');
       return b ? [...b.querySelectorAll('.apb-b')].map((x) => x.getAttribute('data-state') + ' ' + x.textContent.trim()).join() : '';
     }).catch(() => '');
-    const PLAN_BAR = 'From the left: a list icon and "Plan" in bold; a small blue-tinted bubble with a blue play icon and 1, for the row doing; a purple-tinted bubble '
+    const PLAN_BAR = 'From the left: a list icon and "Plan" in bold; a small blue-tinted bubble with a blue play icon and 1, for the row in progress; a purple-tinted bubble '
       + 'with a purple circle and 1, for the row to do; then empty space; at the right a solid orange pill with a question mark and "1 to decide" in dark letters, and an '
       + 'arrow. The row waiting for the answer has no bubble of its own: it is the 1 in "1 to decide". ';
     await look('plan-bar', {
@@ -846,7 +846,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         + 'It covers neither the last lines of the conversation nor the message box: the conversation ends above it. The toolbar inside the message box is unchanged.',
     }, async () => {
       if (!await until(async () => (await barBubbles()) === 'doing 1,todo 1', 20000, 500)) {
-        tell('the plan bar did not show a bubble of 1 doing and one of 1 to do within 20 s');
+        tell('the plan bar did not show bubbles for 1 doing and 1 to do within 20 s');
       }
       await toBottom();
       return planBarBox();
@@ -1279,7 +1279,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         unchanged: 'The first row of the plan is done by now, so it has no bubble.',
       }, async () => {
         if (!await until(async () => (await barBubbles()) === 'todo 1', 20000, 500)) {
-          tell('the plan bar did not show just a bubble of 1 to do within 20 s');
+          tell('the plan bar did not show only a bubble for 1 to do within 20 s');
         }
         return planBarBox();
       });
@@ -1712,7 +1712,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
           const bubbles = b ? [...b.querySelectorAll('.apb-b')].map((x) => x.getAttribute('data-state') + ' ' + x.textContent.trim()).join() : '';
           return bubbles === 'doing 1,todo 1' && { compact: b.getAttribute('data-compact') === '1', page: innerWidth };
         }), 20000, 500);
-        if (!drawn) tell('the sidebar\'s plan bar did not show a bubble of 1 doing and one of 1 to do within 20 s');
+        if (!drawn) tell('the sidebar\'s plan bar did not show bubbles for 1 doing and 1 to do within 20 s');
         else if (!drawn.compact) tell(`the sidebar's page is ${drawn.page} px wide, so its plan bar is the full one`);
         /* The pointer rests where the step before clicked the Agent map pill; with the pill gone or shorter now, the meter
            next to it can have moved under the pointer and opened its hover box. It is moved first to an empty spot near the

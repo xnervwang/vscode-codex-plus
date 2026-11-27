@@ -78,7 +78,8 @@ let state = { active: false, reason: 'not checked yet', provider: null };
  *   titled    the title this extension gave the panel for its conversation, or ''
  *   turn      the id of the newest turn its page said it shows, or ''
  *   uri       its tab's URI, fragment included, as the host patch kept it, or '' with an older patch
- *   follow    after this extension loaded its page again, where the new page is to be sent (followAfterReload), or unset
+ *   follow    where a page this extension loaded again, or a restored page Codex has not had ready, is to be sent
+ *             once Codex's code in it runs (followAfterReload, goFollowed); its `to` is '' while there is nowhere to go yet
  * }
  * A page outside this map is one of the sidebar's: Codex opens every editor panel through one of the two places the
  * patch hands panels over from.
@@ -354,9 +355,9 @@ function restoreShown(panel, rec) {
   setTimeout(() => {
     const p = state.provider;
     if (!p || typeof p.sendMessageToPanel !== 'function' || registry.get(panel) !== rec || rec.thread !== want) return;
-    /* Codex keeps a message for a page it has not had ready yet, and a page that takes it longer to start than it waits
-       (its renderer_ready_timeout) has lost that message: such a page is sent there once Codex's code in it asks
-       something, as a page loaded again is (goFollowed). */
+    /* Codex holds a message for a page it has not had ready, but the message is lost if the page takes longer to start
+       than Codex's renderer_ready_timeout. So such a page is sent there once Codex's code in it asks the host something
+       (goFollowed). */
     const entry = p.editorPanels && typeof p.editorPanels.get === 'function' ? p.editorPanels.get(panel) : null;
     if (entry && entry.ready === false) { rec.follow = { starts: new Set(), threads: new Set(), up: false, to: want, restored: true }; return; }
     try { p.sendMessageToPanel(panel, { type: 'navigate-to-route', path: `/local/${want}` }); } catch (_) { /* the panel is gone */ }
@@ -871,12 +872,11 @@ function noteTurn(msg) {
 /*
  * A page this extension loaded again (src/broken-pages.js) starts on the route its tab's URI names: a new conversation
  * page for a New tab, or the conversation the URI names. When the page that broke showed, or had just begun, another
- * conversation, the new page is sent to it once Codex's code in it is running, which the page script says when Codex
- * has drawn its message box ('boxShown'), as does a first request of Codex's own to the host: the page script's own
- * first message comes before either, and a navigation sent then is lost. A conversation the
- * page began counts once one of its turns has started, so a thread Codex made ahead of any message (prewarm) is not
- * followed; one whose start had no answer yet, or whose first turn had not started, is followed when that comes. The
- * new page starting a conversation of its own ends it.
+ * conversation, the new page is sent there once Codex's code in it is running: the page script reports that when Codex
+ * has drawn its message box ('boxShown'), and a first request of Codex's own to the host shows it too. A navigation
+ * sent earlier, with the page script's own first message, is lost. A conversation the page began counts only once one
+ * of its turns has started, so a thread Codex made ahead of any message (prewarm) is not followed; one with no answer
+ * to its start yet, or no turn yet, is followed once it has both. A conversation the new page starts itself ends this.
  */
 const turnBegun = (thread) => turnsRunning.has(thread) || turnsEnded.has(thread);
 function followAfterReload(rec) {
@@ -885,9 +885,9 @@ function followAfterReload(rec) {
   rec.follow = { starts: new Set(rec.starts), threads: new Set(rec.started), up: false, to: own ? '' : to, own };
   if (deps && deps.log) {
     const where = rec.follow.to ? `is to go to conversation ${rec.follow.to} once it is up`
-      : own ? `opens conversation ${own} by itself, which the tab's URI names` : 'is to go to no conversation yet once it is up';
+      : own ? `opens conversation ${own} by itself, which the tab's URI names` : 'has no conversation to go to yet';
     deps.log(`the page loaded again in a tab ${where}; `
-      + `${rec.follow.starts.size} start(s) of the page before it had no answer, and ${rec.follow.threads.size} conversation(s) it began are known`);
+      + `${rec.follow.starts.size} start(s) the broken page sent had no answer yet, and ${rec.follow.threads.size} conversation(s) it began are known`);
   }
 }
 function followed(rec, thread) {
@@ -906,7 +906,7 @@ function goFollowed(rec) {
   if (!panel || !p || typeof p.sendMessageToPanel !== 'function') return;
   try { p.sendMessageToPanel(panel[0], { type: 'navigate-to-route', path: `/local/${f.to}` }); } catch (_) { return; }
   if (deps && deps.log) {
-    deps.log(f.restored ? `sent the restored page of a tab to conversation ${f.to}, which the tab showed before the reload, once Codex's code in it had started`
+    deps.log(f.restored ? `Codex's code in the restored page of a tab has started, so the page was sent to conversation ${f.to}, which the tab showed before the reload`
       : `sent the page loaded again in a tab to conversation ${f.to}, which the page before it showed`);
   }
 }

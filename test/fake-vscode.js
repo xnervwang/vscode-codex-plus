@@ -45,7 +45,7 @@ class MarkdownString {
 }
 class FileDecoration { constructor(badge, tooltip, color) { Object.assign(this, { badge, tooltip, color }); } }
 
-/* The time src/notice-time.js puts before a notification's text, and every notification shown without it. */
+/* The timestamp src/notice-time.js puts before a notification's text, and every notification shown without one. */
 const STAMP = /^\[([^\]]+)\] /;
 const unstamped = [];
 
@@ -59,9 +59,9 @@ function create() {
     said: [], answers: [], handlers: {}, external: [], externalAnswer: true, picks: [], quickPicks: [], treeViews: {}, inputs: [], statusMessages: [],
     webviewViews: {} };
   /* A notification is answered with the button the test set for text it contains (control.answer), else dismissed. Its
-     text is recorded without the time src/notice-time.js puts before it, which is kept as `stamp`; one shown without
-     that time is also listed in `unstamped`, which test/parts/99-notice-times.js reads after every part. A modal dialog
-     is not a notification and carries none. */
+     text is recorded without its timestamp, which is kept as `stamp`; one shown without a timestamp is also listed in
+     `unstamped`, which test/parts/99-notice-times.js reads once every other part has run. A modal dialog is not a
+     notification and has no timestamp. */
   const answer = async (raw, ...rest) => {
     const buttons = rest.filter((b) => typeof b === 'string');
     const options = rest.find((b) => b && typeof b === 'object');

@@ -44,9 +44,9 @@ const hasWindow = (w) => !!(w && typeof w.usedPercent === 'number' && Number.isF
 
 /*
  * The section's contents: { account: [{ label, value }], windows: [{ name, usedPercent, resetsAt }], tokens: [{ label,
- * value }] }. resetsAt is in seconds since the epoch; the page formats it. With no account the section still says so,
- * "Not signed in" once Codex has answered account/read without one and "Not known yet" before it has, so that it reads
- * apart from an agent that has no such section. `read` is whether Codex has answered.
+ * value }] }. resetsAt is in seconds since the epoch; the page formats it. With no account the section still has its
+ * Sign-in line, so that it reads apart from an agent that has no such section. `read` is whether Codex has answered
+ * account/read.
  */
 function viewOf({ account, limits, usage, read = false }, today = new Date().toISOString().slice(0, 10)) {
   if (!account) return { account: [{ label: 'Sign-in', value: read ? 'Not signed in' : 'Not known yet' }], windows: [], tokens: [] };

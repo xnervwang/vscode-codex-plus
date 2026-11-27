@@ -379,7 +379,7 @@ async function activate(context) {
   log = vscode.window.createOutputChannel('Codex Plus');
   context.subscriptions.push(log);
   memento = context.globalState;
-  /* A notification's time is in the zone of the machine VS Code runs on, which a page told this extension last time. */
+  /* Notification times use the time zone a page last reported, which is the zone of the machine VS Code runs on. */
   noticeTime.setReaderZone(() => context.globalState.get('codexPlus.clientTimeZone') || '');
   const say = (m) => log.appendLine(`${new Date().toISOString()} ${m}`);
   /* Said once, in the log only: an unrecorded Codex is a thing to know, not a thing to interrupt anyone about. */

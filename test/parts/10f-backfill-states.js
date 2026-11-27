@@ -4,9 +4,9 @@
 
 'use strict';
 /*
- * Whether Codex has filled its state database (src/codex-files.js backfillDone), at each point of Codex building it:
- * the session list's one import waits for it, so a database read while Codex is still creating it must not count as
- * filled.
+ * Whether Codex has filled its state database (src/codex-files.js backfillDone), checked after each step Codex takes
+ * to build it: the session list's one import waits for it, so a database read while Codex is still creating it must
+ * not count as filled.
  */
 const fs = require('fs');
 const path = require('path');
@@ -29,6 +29,6 @@ module.exports = ({ eq, tmp }) => {
   seen();
   db.close();
   eq(states, [false, false, false, false, true],
-    'no database, one without backfill_state, the table without its row and a pass still running are all not filled yet; only a complete pass is');
+    'filled only once the backfill_state row says complete');
   fs.rmSync(home, { recursive: true, force: true });
 };
