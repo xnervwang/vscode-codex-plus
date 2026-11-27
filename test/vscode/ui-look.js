@@ -253,6 +253,20 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
   let stepNo = 0, previous = null, told = [];
   /* A line for the current step's log saying what the step did beyond its expect, such as answering VS Code's prompt. */
   const tell = (line) => told.push(`[ui-look note] ${line}`);
+  const runNote = note;
+  /* What a step throws when this machine cannot be put into the step's state, which is not the extension's failing: the
+     step keeps the error as its note and the run notes it rather than counting a failure. */
+  const notHere = (why) => Object.assign(new Error(why), { notHere: true });
+  /* Codex runs a sandboxed command under bubblewrap, which on some machines cannot bind the root directory at all; the
+     command then exits at once with bwrap's message as its output, in the conversation's rollout. */
+  const sandboxRefused = (id) => {
+    try {
+      const sessions = path.join(profile.codexHome, 'sessions');
+      const file = fs.readdirSync(sessions, { recursive: true }).map((r) => path.join(sessions, String(r))).find((f) => f.endsWith(`${id}.jsonl`));
+      const m = /bwrap: [^"\\]*/.exec(fs.readFileSync(file, 'utf8').split('\n').slice(-30).join('\n'));
+      return m ? m[0] : '';
+    } catch (_) { return ''; }
+  };
   /* The last user-role message of a conversation's rollout holding `part`; hooks add user-role messages of their own. */
   const lastUserText = (id, part) => {
     try {
@@ -299,11 +313,17 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     try {
       box = await act();
     } catch (e) {
-      const why = String((e && e.stack) || e).split('\n').slice(0, 3).join(' | ');
-      note = `the step's actions failed: ${why}`;
-      said.push(`[ui-look] ${note}`);
-      said.push(`[ui-look] the tabs then: ${JSON.stringify(await tabs().catch((x) => String(x))).slice(0, 600)}`);
-      check(false, `${name}: its actions ran`, why);
+      if (e && e.notHere) {
+        note = `the window could not be put into this step's state on this machine: ${e.message}`;
+        said.push(`[ui-look] ${note}`);
+        runNote(`${name}: ${e.message}`);
+      } else {
+        const why = String((e && e.stack) || e).split('\n').slice(0, 3).join(' | ');
+        note = `the step's actions failed: ${why}`;
+        said.push(`[ui-look] ${note}`);
+        said.push(`[ui-look] the tabs then: ${JSON.stringify(await tabs().catch((x) => String(x))).slice(0, 600)}`);
+        check(false, `${name}: its actions ran`, why);
+      }
     }
     await sleep(300);
     const n = String(++stepNo).padStart(2, '0');
@@ -1071,19 +1091,25 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     await away();
 
     /* ═══ work left running after a turn ═══ */
+    let leftRefused = '';
     await look('left-running-command', {
       expect: 'After a turn that started "sleep 30" in the background has ended, the tab\'s logo carries a hollow green ring rather than a solid dot, the conversation\'s row in the session list a green ring, and the row below the message box '
         + 'says at its right end that a command is still running.',
     }, async () => {
       model.script(t0.id, [{ call: 'exec_command', args: { cmd: 'sleep 30', yield_time_ms: 1000 } }, { reply: 'Started the job.' }]);
       await type('Start the background command and come back.');
-      if (!await until(async () => model.left() === 0 && ((await dotsOn(title)) || {}).ring && (await sideRow()) === 'greenRing', 40000, 500)) throw new Error('the conversation had no green ring after its turn');
+      if (!await until(async () => model.left() === 0 && ((await dotsOn(title)) || {}).ring && (await sideRow()) === 'greenRing', 40000, 500)) {
+        leftRefused = sandboxRefused(t0.id);
+        if (leftRefused) throw notHere(`Codex's own sandbox could not start the command ("${leftRefused}"), so it ended at once and nothing was left running`);
+        throw new Error('the conversation had no green ring after its turn');
+      }
       await sleep(4000);
       return union([await tab(title).boundingBox(), await bottomBox(160)]);
     });
     await look('left-running-row-hover', {
       expect: 'The hover box of the conversation\'s row in Agent Plus\'s session list, under the row, ends with the line "A background command is still running", which Codex Plus gives it.',
     }, async () => {
+      if (leftRefused) throw notHere(`the step before left nothing running, as Codex's own sandbox could not start its command ("${leftRefused}")`);
       await showList();
       await away();
       await row(t0.id).hover();
