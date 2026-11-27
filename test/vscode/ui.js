@@ -3941,7 +3941,10 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
         const g = await until(async () => { const v = await frontPage(); return v && v !== f && v; }, 30000, 500);
         if (g) { note(`${how}: Codex's page failed after the first message, and the conversation went on in the page Codex Plus built again`); f = g; }
       }
-      if (!named && await f.evaluate(() => /hit a snag/i.test(document.body.innerText)).catch(() => false)) {
+      /* The recovery page can be in the page Codex Plus built again rather than in `f`, which is gone by then, so the
+         page in front is looked at too. */
+      if (!named && (await f.evaluate(() => /hit a snag/i.test(document.body.innerText)).catch(() => false)
+        || await brokenInFront() === 'ChatGPT hit a snag')) {
         model.release();
         const why = `${how}: Codex's own page failed after the first message ("ChatGPT hit a snag"), so there was no conversation page to follow`;
         /* Codex's recovery page, drawn when one of its own modules failed to load: never seen on Linux, where it would be a
