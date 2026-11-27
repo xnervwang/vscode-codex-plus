@@ -24,7 +24,9 @@ Resting on a rail row shows its time and first 220 characters together in a box 
 
 Your messages have a bar down their leading edge in the theme's focus colour. `codexPlus.userMessageEdge` turns the bar off. `codexPlus.userMessageColor` sets their text colour to a CSS colour such as `#90EE90`, `lightgreen` or `rgb(144,238,144)`. An empty value, the default, keeps Codex's colour.
 
-A Stop hook can prompt Codex to continue a turn. Its bubble appears on your side with "Hook feedback" underneath. Codex Plus folds it to one dim line. It drops the bubble background and skips your message bar and text colour. Folding has no separate setting. Click the line to show the whole prompt, then click it again to fold it. Codex Plus's own notices about work a conversation left running reach Codex as your messages too, starting with "Codex Plus notice, not a message from the user", and fold the same way.
+A Stop hook can prompt Codex to continue a turn. Its bubble appears on your side with "Hook feedback" underneath. Codex Plus folds it to one dim line. It drops the bubble background and skips your message bar and text colour. Folding has no separate setting. Click the line to show the whole prompt, then click it again to fold it.
+
+When a command your conversation started detached (with `nohup` or `setsid`) stops, Codex Plus queues a notice in that conversation. If your conversation started a background Claude Code session (`claude --bg`), Codex Plus queues a notice in that conversation when the session finishes, fails, waits for an answer or is stopped. In both cases, Codex receives the notice as a user message. The notice starts with "Codex Plus notice, not a message from the user" and folds and expands like a Stop hook's prompt. For more on detached commands and `claude --bg` sessions, see [Status dots and unread replies](session-list.md#status-dots-and-unread-replies).
 
 ## Links to your other conversations
 

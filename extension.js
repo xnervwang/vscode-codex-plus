@@ -1330,7 +1330,7 @@ async function installPlugin(context, say, { interactive, load }) {
     writeHookSettings(context);
     problem('install', null);
     notePython(context, say, python);
-    await trustPlugin(say, { interactive: true });
+    await trustPlugin(say, { interactive: true, installed: !!interactive });
     return true;
   } catch (e) {
     problem('install', notInstalled('Installing it into Codex', e.message));
@@ -1376,7 +1376,7 @@ function tokenModeLine() {
  * while the dialog was open, nothing is written and the new list is shown instead.
  */
 const TRUST_ROUNDS = 3;
-async function trustPlugin(say, { interactive, command = false }) {
+async function trustPlugin(say, { interactive, command = false, installed = false }) {
   if (!trusted()) return;
   const binary = codexProgram();
   if (!binary) {
@@ -1393,11 +1393,13 @@ async function trustPlugin(say, { interactive, command = false }) {
       if (command) noticeTime.error(vscode, `Could not list the work plan hooks: ${e.message}`);
       return;
     }
-    /* Asked for by the user, by this command or by an install, the result is a notification. */
+    /* `installed` when the user asked for the install; an install of a newer copy at activation only says so in the
+       status bar. */
     if (!st.review.length) {
       problem('trust', null);
       if (command) noticeTime.info(vscode, 'Codex Plus: Every work plan hook is trusted already.');
-      else if (interactive) noticeTime.info(vscode, 'Codex Plus: the work plan plugin is installed in Codex, and its hooks are trusted.');
+      else if (installed) noticeTime.info(vscode, 'Codex Plus: the work plan plugin is installed, and its hooks are trusted.');
+      else if (interactive) vscode.window.setStatusBarMessage('The work plan hooks are trusted.', 4000);
       return;
     }
     const go = 'Trust them';

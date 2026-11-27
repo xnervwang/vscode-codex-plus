@@ -139,8 +139,21 @@ module.exports = async ({ eq, note, tmp, root }) => {
     eq(shown(), ['Codex does not run the work plan hooks yet', 'codexPlus.trustWorkPlanHooks'],
       'with the hooks not trusted and the question dismissed, the row says so, and clicking it asks again');
     fs.unlinkSync(path.join(codexHome, 'untrusted'));
+    control.state.said.length = 0;
     await ext._ensurePlugin(context, () => {});
     eq(shown(), null, 'and once nothing is left to fix the row goes');
+    const INSTALLED = 'Codex Plus: the work plan plugin is installed, and its hooks are trusted.';
+    /* A copy whose files differ from this extension's is installed again at activation, without asking. */
+    for (const d of fs.readdirSync(codexHome, { recursive: true }).map(String).filter((n) => n.endsWith('.codex-extras-digest'))) {
+      fs.writeFileSync(path.join(codexHome, d), 'stale\n');
+    }
+    control.state.said.length = 0;
+    const logged = [];
+    await ext._ensurePlugin(context, (l) => logged.push(l));
+    eq([logged.some((l) => /^installed work plan plugin /.test(l)), control.state.said.some((s) => s.message === INSTALLED)], [true, false],
+      'an install of its own, at activation, gives no notification');
+    eq((await toldNow('codexPlus.installWorkPlanPlugin')).includes(INSTALLED), true,
+      'Install the Work Plan Plugin run by hand says in a notification that the plugin is installed and its hooks are trusted');
     eq(await toldNow('codexPlus.trustWorkPlanHooks'), ['Codex Plus: Every work plan hook is trusted already.'],
       'Trust the Work Plan Hooks run with nothing left to trust says so in a notification, not only in the status bar for a few seconds');
   } finally {

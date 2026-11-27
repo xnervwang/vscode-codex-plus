@@ -858,7 +858,7 @@
     if (o.tag === 'button') card.setAttribute('type', 'button');
     card.setAttribute(MARK + '-card', o.kind);
     card.appendChild(line);
-    /* It wraps rather than being cut: a card of work ends it with when the work started. */
+    /* A card of work ends this line with the time the work started, which a line cut short would hide. */
     var meta = mk('span', 'padding-left:14px;color:' + DIM + ';font-size:.85em;overflow-wrap:anywhere;', o.meta || '');
     meta.setAttribute(MARK + '-meta', '');
     card.appendChild(meta);
@@ -1194,7 +1194,7 @@
     row.appendChild(a); row.appendChild(b); row.appendChild(c);
     return row;
   }
-  /* `whole`, a part of `text` such as a model's name, is kept on one line rather than broken at its hyphens. */
+  /* `whole` is a part such as a model's name, which the box would otherwise break at its hyphens. */
   function ctxNote(text, whole) {
     var d = document.createElement('div');
     var at = whole ? text.indexOf(whole) : -1;
@@ -3134,8 +3134,8 @@
    * one dim line. A click toggles it.
    *
    * It folds other hooks' prompts too: after the window reloads, Codex no longer says which hook a prompt came from.
-   * The notices this extension sends a conversation about work it left running (src/detached-ends.js, src/bg-ends.js)
-   * go in as user messages as well, and are folded the same way.
+   * The notices from src/detached-ends.js and src/bg-ends.js, about work a conversation left running, go in as user
+   * messages as well.
    */
   var HOOK = MARK + '-hook', HOOK_UP = 16, HOOK_SHEET = 'hook-fold', HOOK_WIRED = '__codexExtrasHookWired';
   var OWN_NOTICE = /^Codex Plus notice, not a message from the user:/;

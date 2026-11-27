@@ -65,7 +65,7 @@ module.exports = async ({ eq, note, tmp, root }) => {
   ]);
   const plans = path.join(home, 'plugins', 'data', 'agent-work-plan-codex-extras');
   fs.mkdirSync(plans, { recursive: true });
-  /* Asked after the conversation's last user message, as Agent Plus counts a question that holds a conversation up. */
+  /* Agent Plus's status bar counts only a question asked after the conversation's last user message. */
   fs.writeFileSync(path.join(plans, asking.id + '.json'), JSON.stringify({ nodes: [{ title: 'Merge', state: 'waiting', waitingOn: 'user', question: 'Merge it?',
     since: new Date().toISOString() }] }));
   vscode.workspace.workspaceFolders = [{ uri: vscode.Uri.file(ws) }];

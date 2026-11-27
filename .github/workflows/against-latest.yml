@@ -120,8 +120,8 @@ jobs:
             if (failing.length > LIMIT) failing = failing.slice(0, LIMIT) + '\n... cut here; the run summary has every line';
 
             const body = [
-              // One string per paragraph: GitHub shows each newline of an issue body as a line break.
-              `The daily check tested **${version}**, the Codex build the VS Code marketplace was shipping at the time, and it failed.`,
+              // GitHub shows each newline of an issue body as a line break, so each paragraph is one string.
+              `The daily compatibility check for the Codex Plus patch failed against Codex **${version}**.`,
               '',
               'Each edit in the Codex Plus patch must match exactly once in the Codex file it changes. If an edit does not, or a '
                 + 'patched file no longer parses, everyone who updates to that build runs it without the patch. If '

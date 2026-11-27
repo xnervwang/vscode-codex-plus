@@ -214,7 +214,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
   const PARTS = { sidebar: 'workbench.parts.sidebar', editor: 'workbench.parts.editor', panel: 'workbench.parts.panel',
     statusbar: 'workbench.parts.statusbar', auxiliary: 'workbench.parts.auxiliarybar', titlebar: 'workbench.parts.titlebar' };
   const toastsBox = () => boxIn(null, '.notifications-toasts .notification-toast, .notifications-center.visible');
-  /* VS Code shows one line of a long notification until it is expanded; the newest one is. */
+  /* VS Code shows one line of a long notification until it is expanded; this expands the newest one. */
   const expandToast = async () => {
     await exec('notifications.focusToasts').catch(() => {});
     await exec('notification.expand').catch(() => {});
@@ -260,11 +260,11 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
   /* A line for the current step's log saying what the step did beyond its expect, such as answering VS Code's prompt. */
   const tell = (line) => told.push(`[ui-look note] ${line}`);
   const runNote = note;
-  /* What a step throws when this machine cannot be put into the step's state, which is not the extension's failing: the
-     step keeps the error as its note and the run notes it rather than counting a failure. */
+  /* What a step throws when it cannot be set up on this machine: the step's note and the run's report say why, and no
+     failure is counted. */
   const notHere = (why) => Object.assign(new Error(why), { notHere: true });
   /* Codex runs a sandboxed command under bubblewrap, which on some machines cannot bind the root directory at all; the
-     command then exits at once with bwrap's message as its output, in the conversation's rollout. */
+     command then exits at once, and the conversation's rollout has bwrap's message as its output. */
   const sandboxRefused = (id) => {
     try {
       const sessions = path.join(profile.codexHome, 'sessions');
@@ -320,7 +320,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       box = await act();
     } catch (e) {
       if (e && e.notHere) {
-        note = `the window could not be put into this step's state on this machine: ${e.message}`;
+        note = `this step could not be set up on this machine: ${e.message}`;
         said.push(`[ui-look] ${note}`);
         runNote(`${name}: ${e.message}`);
       } else {
@@ -921,14 +921,14 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     await look('reply-unread', {
       expect: `With notes.txt in front when the reply lands, the conversation has stopped: its tab\'s Codex logo carries no dot and the tab\'s title reads "${title} 📩", the envelope once and last; `
         + 'its row in the session list has no dot and a small envelope icon after its title, and no envelope inside the title; Agent Plus\'s status bar does not count it; '
-        + 'and no notification says it finished, as this window shows it, in the tab behind notes.txt, whose envelope tells of it.',
+        + 'and no notification says it finished, as the conversation is open in this window.',
     }, async () => {
       await openNotes();
       await sleep(800);
       model.release();
       await until(async () => { const d = await dotsOn(title); return d && d.working === 0 && d.waiting === 0 && (await labelOf(title)) === `${title} ${ENVELOPE}`; }, 60000, 500);
       /* Agent Plus would announce a conversation stopped with an unread reply after 5 seconds, but not one the focused
-         window shows anywhere (its src/attention.js), so it is given a little longer than that to show none. */
+         window shows anywhere (its src/attention.js); the step waits a little longer than that for a notification that should not come. */
       if (await until(async () => (await toastLines()).some((l) => l.includes(`"${title}" finished`)), 9000, 500)) {
         tell(`a "finished" notification was shown; the window has the focus: ${await call('return vscode.window.state.focused;').catch((e) => String(e))}`);
       }
@@ -1076,7 +1076,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     await codex.locator(hookBubble).last().click().catch(() => {});
     writePlan('done');
     await look('reply-duration', {
-      expect: 'Above the last reply, to a message that had no tools run and so no "Worked for" of Codex\'s own, its time is followed by how long the turn took, and then its figures, as "14:02:11  3s · ctx 0% · gpt-6.1-sol medium".',
+      expect: 'The last turn ran no tools, so Codex shows no "Worked for" of its own; above the last reply its time is followed by how long the turn took, and then its figures, as "14:02:11  3s · ctx 0% · gpt-6.1-sol medium".',
     }, async () => {
       const REPLY = 'The delay is read from SYNC_RETRY_MS.';
       model.script(t0.id, [{ reply: REPLY }]);
@@ -1112,7 +1112,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await type('Start the background command and come back.');
       if (!await until(async () => model.left() === 0 && ((await dotsOn(title)) || {}).ring && (await sideRow()) === 'greenRing', 40000, 500)) {
         leftRefused = sandboxRefused(t0.id);
-        if (leftRefused) throw notHere(`Codex's own sandbox could not start the command ("${leftRefused}"), so it ended at once and nothing was left running`);
+        if (leftRefused) throw notHere(`Codex's own sandbox could not start the command ("${leftRefused}"), so nothing was left running`);
         throw new Error('the conversation had no green ring after its turn');
       }
       await sleep(4000);
@@ -1121,7 +1121,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     await look('left-running-row-hover', {
       expect: 'The hover box of the conversation\'s row in Agent Plus\'s session list, under the row, ends with the line "A background command is still running", which Codex Plus gives it.',
     }, async () => {
-      if (leftRefused) throw notHere(`the step before left nothing running, as Codex's own sandbox could not start its command ("${leftRefused}")`);
+      if (leftRefused) throw notHere('the step before left nothing running; its note says why');
       await showList();
       await away();
       await row(t0.id).hover();
@@ -1321,7 +1321,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         await type('Show the test images.');
         if (!await until(async () => { await toBottom(); return (await drawnImgs()) >= 4; }, 30000, 500)) throw new Error(`only ${await drawnImgs()} of the images were drawn`);
         await sleep(1500);
-        /* The first image at the top of the conversation, below the header Codex draws over it, which leaves room for all. */
+        /* Codex draws its header over the top of the conversation, so the first image goes just below it. */
         await codex.evaluate(() => {
           const first = document.querySelector('img[alt="test chart"]');
           const s = document.querySelector('[data-app-action-timeline-scroll]');
@@ -1763,8 +1763,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       return part(PARTS.panel);
     });
     await look('open-times', {
-      expect: 'Show How Long Opening a Codex Page Took writes, in the same channel, how long each Codex page of this run took to open, one line each. This Codex logs only how long a page took to start, '
-        + 'which the output says, so the lines have no stages and nothing explains a stage.',
+      expect: 'Show How Long Opening a Codex Page Took writes, in the same channel, how long each Codex page of this run took to open, one line each. This Codex logs only a page\'s start-up time, '
+        + 'and the output says so; the lines list no stages, and no line says what "script run" is.',
     }, async () => {
       await exec('codexPlus.showOpenTimes');
       await sleep(2500);
@@ -1789,7 +1789,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       return toastsBox();
     });
     await look('install-plugin-again', {
-      expect: 'Install the Work Plan Plugin into Codex installs it again and says so in a notification, that it is installed and its hooks are trusted, or asks again to trust its hooks; no error notification.',
+      expect: 'Install the Work Plan Plugin into Codex installs it again and shows a notification that it is installed and its hooks are trusted, or asks again to trust its hooks; no error notification.',
     }, async () => {
       await exec('notifications.clearAll');
       await start('codexPlus.installWorkPlanPlugin');

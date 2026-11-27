@@ -105,5 +105,5 @@ module.exports = async ({ eq, tmp }) => {
   'the report counts those starts as pages, and says Codex logged no more about them');
   const pagesOnly = ot.reportLines(starts.filter((x) => x.surface === 'page'), { zone: 'UTC', last: 5 });
   eq([pagesOnly.some((l) => /"script run"/.test(l)), told.some((l) => /"script run" is when/.test(l))], [false, true],
-    'and says what "script run" is only when a start it shows has that stage, as the conversation page among them does');
+    'and explains "script run" only when one of the starts listed has that stage');
 };
