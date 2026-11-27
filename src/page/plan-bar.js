@@ -9,15 +9,14 @@
  * (planSummary in docs/protocol.md). Exported as one global, agentPlusPlanBar; under Node it is also a module, for the
  * tests. The source is ASCII and ES5, like the page scripts.
  *
- * It counts the open rows by state in bubbles, one for each state of BUBBLES that has rows, and the rows waiting for
- * the user's answer in a solid "N to decide" part; a row that asks is counted there only, so the numbers add up to the
- * rows still open but parked. Narrower than COMPACT_BELOW, it drops the word Plan and the arrow, and "to decide" keeps
- * only its number. Hovering a bubble lists its rows, hovering "to decide" its questions, and hovering the rest of the
- * bar every open row.
+ * Each state of BUBBLES (doing, waiting, discussing, todo) that has open rows gets a bubble counting them, except rows
+ * waiting for the user's answer: they are counted in a solid "N to decide" part, so the numbers add up to the open rows
+ * that are not parked. Narrower than COMPACT_BELOW (400 CSS pixels), the bar leaves out the word Plan at its start and
+ * the arrow at its end, and "to decide" shows only its number.
  */
 var agentPlusPlanBar = (function () {
   'use strict';
-  /* Below this measured width, in CSS pixels, the bar is compact. Four bubbles and "to decide" still fit below it. */
+  /* In CSS pixels of the bar's measured width; four bubbles and "to decide" still fit below it. */
   var COMPACT_BELOW = 400;
   var HYSTERESIS = 24;
   /* A hover list shows at most this many rows, the same limit as the summary's. */
@@ -25,14 +24,13 @@ var agentPlusPlanBar = (function () {
   var HOVER_MS = 350;
   var MARK = 'data-agent-plus-plan-bar';
 
-  /* The states that get a bubble, in their order on the bar: what is moving, what is held up, what is still being talked
-     over, what waits to start. Parked and done rows have none. WORD names a state in the hover and the spoken label. */
+  /* The states that get a bubble, in their order on the bar, from work under way to work not started. Parked and done
+     rows have none. WORD names a state in the hover and the spoken label. */
   var BUBBLES = ['doing', 'waiting', 'discussing', 'todo'];
   var WORD = { doing: 'doing', waiting: 'waiting', discussing: 'discussing', todo: 'to do', parked: 'parked', done: 'done' };
 
-  /* The colours of the work plan view's state icons (LOOK in src/workplan-view.js), as the page's theme variables. A
-     bubble draws its icon in its state's colour on a tint of it: TINT percent of the colour, more in light themes, whose
-     orange and yellow are so close that lighter tints of them look the same. */
+  /* The colours of the work plan view's state icons (LOOK in src/workplan-view.js), as the page's theme variables.
+     Light themes get a higher TINT: their orange and yellow are so close that lighter tints of them look the same. */
   var COLOR = {
     done: 'var(--vscode-charts-green, #89d185)',
     doing: 'var(--vscode-charts-blue, #3794ff)',
@@ -42,8 +40,8 @@ var agentPlusPlanBar = (function () {
     parked: 'var(--vscode-descriptionForeground, #8c8c8c)'
   };
   var TINT = { dark: 24, light: 45 };
-  /* "to decide" is filled with the colour of the question mark the work plan view gives a row waiting for the user's
-     answer (src/workplan-view.js), with dark words on it; the high contrast themes make that colour a deep orange or a
+  /* "to decide" is filled with the colour of the work plan view's question mark (src/workplan-view.js), with dark
+     words on it; the high contrast themes make that colour a deep orange or a
      dark blue, where the words are white. Not the status bar's warning colour, which some themes make red. */
   var ASK = 'var(--vscode-charts-orange, #d18616)';
   var ASK_TEXT = '#1f1f1f';
@@ -102,11 +100,12 @@ var agentPlusPlanBar = (function () {
   var plural = function (n, one, many) { return n + ' ' + (n === 1 ? one : many); };
 
   /*
-   * What the bar draws for `summary` at `width`, or null for no bar: { compact, bubbles: [{ state, n }], done, questions:
-   * the "to decide" text or '', label: the bar's spoken text, lists: the hover list for each part, under the bubble's
-   * state, 'ask' for "to decide" and '' for the rest of the bar, each { now, head, rows: [{ state, text, depth }], more } }.
-   * `wasCompact` is the form drawn last, for the hysteresis. A width of 0 is one not measured yet, and draws the full bar.
-   * A summary without `asking` (from a core older than the bubbles) counts its asking rows in their states' bubbles too.
+   * What the bar draws for `summary` at `width`, or null for no bar:
+   *   { compact, bubbles: [{ state, n }], done, questions, label, lists }
+   * `lists` holds the hover list of each part, under the bubble's state, 'ask' for "to decide" and '' for the rest of
+   * the bar, each { now, head, rows: [{ state, text, depth }], more }. `wasCompact` is the form drawn last, for the
+   * hysteresis. A summary without `asking`
+   * (from a core older than the bubbles) counts its asking rows in their states' bubbles too.
    */
   function model(summary, width, wasCompact) {
     var s = summary;
@@ -204,7 +203,6 @@ var agentPlusPlanBar = (function () {
     el.setAttribute('tabindex', '0');
     if (o.css) el.style.cssText = o.css;
     el.style.display = 'none';
-    /* `key` is the part the pointer is over: a bubble's state, 'ask', or '' for the rest of the bar. */
     var shown = null, summary = null, width = 0, compact = false, drawn = '', list = null, timer = 0, hovering = false, key = '';
     var win = doc.defaultView || (typeof window === 'object' ? window : null);
     var call = function (fn) { if (typeof fn === 'function') { try { fn(); } catch (e) { /* the page's own handler */ } } };
@@ -299,7 +297,6 @@ var agentPlusPlanBar = (function () {
       if (list) showList();
     }
 
-    /* The part of the bar `target` is in. */
     var keyOf = function (target) {
       for (var n = target; n && n !== el; n = n.parentNode) {
         var k = n.getAttribute ? n.getAttribute('data-key') : null;
@@ -312,7 +309,6 @@ var agentPlusPlanBar = (function () {
       if (ev.key !== 'Enter' && ev.key !== ' ') return;
       ev.preventDefault(); call(o.onOpen);
     });
-    /* A list comes after the pointer rests a moment; moved to another part while one shows, the list changes at once. */
     el.addEventListener('mouseover', function (ev) {
       var next = keyOf(ev.target);
       if (hovering && next === key && (list || timer)) return;
