@@ -5342,13 +5342,14 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
       await sleep(Math.max(0, restoredAt + 40000 - Date.now()));
       check(await toFront(behind), 'codexPlus.loadRestoredTabs on: a click more than 30 seconds after the reload brings the tab behind to the front', await tabs());
       /* The page of the tab now in front, not any page of the window: the tabs still behind can show Codex's "Codex could
-         not start" from the reload, and a hidden page can hold the same conversation. Codex's header cuts a long title
-         short. */
+         not start" from the reload, and a hidden page can hold the same conversation. The page is known by the notice
+         this round sent the conversation, or by its title: Codex's header cuts a long title short, and a page Codex
+         loaded behind can come to the front with "New chat" in its header in place of the title. */
       const drawn = await until(async () => {
         for (const f of page.frames()) {
           try {
             if (!await f.evaluate((want) => !!document.querySelector('[data-codex-composer-root]') && document.querySelectorAll('[data-turn-key]').length >= 1
-              && document.body.innerText.includes(want), behind.title.slice(0, 30))) continue;
+              && want.some((w) => document.body.innerText.includes(w)), [behind.title.slice(0, 30), `sleep ${pid.behind} # window test`])) continue;
             const host = f.parentFrame() && await f.parentFrame().frameElement();
             if (host && await host.isVisible()) return f;
           } catch (_) { /* not ready, or gone */ }
