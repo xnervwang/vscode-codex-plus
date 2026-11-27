@@ -44,6 +44,14 @@ Wake-ups go only to Codex conversations open in this window. A conversation open
 
 `Codex Plus: Show Status` lists the wake-ups that are set. A conversation's Agent map (see [The message box's toolbar](message-box-toolbar.md)) shows its own wake-up with Remove. The work plan plugin keeps the wake-up as `<conversation ID>.wakeup` in its data folder, with `<conversation ID>.woke` beside it to record when it last fired and whether it is paused. Both files are deleted with the conversation.
 
+## Renaming the conversation
+
+The work plan plugin's `retitle` skill tells Codex to call `set_title` when you ask, when the work becomes clear and the title is still a placeholder or the opening words of your first message, or when the work changes. It tells Codex to keep your manual title unless you ask and to omit progress words, dates and marks.
+
+A VS Code window showing the conversation in a tab or Codex's sidebar takes the request immediately. Another window with Codex Plus takes it after two seconds. Windows in Restricted Mode skip requests. Codex Plus requires a matching `set_title` call and title in the conversation's own record (its rollout), so one conversation cannot rename another.
+
+Codex Plus strips the envelope and other marks it appends, collapses repeated spaces and truncates the title to 80 characters. It uses Codex's app-server connection, like Rename in the session list. The tab and sidebar show the result. Request and reply files in the plugin's `retitle/` data subfolder are removed when older than 10 minutes.
+
 ## Your time zone
 
 When Codex runs on another machine, the plugin tells Codex your time zone, that machine's zone and the current time. It says nothing when Codex's own page (the web page Codex draws its conversation in, in the sidebar or a tab) has told Codex the same zone since the last compaction through `<codex_apps_client_time_context>`. This needs the plugin and the patch. `codexPlus.tellCodexYourTimeZone` turns it off.

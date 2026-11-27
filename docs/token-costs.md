@@ -51,8 +51,8 @@ The tables below show the text Codex Plus adds to what Codex sends the model. Al
 
 | What | When | At most | Turned off by |
 | --- | --- | --- | --- |
-| The work plan skill in Codex's list of skills | Every call | Its name and a 573-character description, which Codex shortens to fit the list's budget | `Codex Plus: Stop Loading the Work Plan Plugin`, or the Interface features token mode |
-| The `work_plan` MCP server's six tools | Codex 0.167 finds MCP tools through its tool search, so their definitions join the context once a search returns them | 7,583 characters for all six | `Codex Plus: Stop Loading the Work Plan Plugin`, or the Interface features token mode |
+| The work plan plugin's two skills in Codex's list of skills | Every call | Their names and descriptions of 573 and 94 characters, which Codex shortens to fit the list's budget | `Codex Plus: Stop Loading the Work Plan Plugin`, or the Interface features token mode |
+| The `work_plan` MCP server's seven tools | Codex 0.167 finds MCP tools through its tool search, so their definitions join the context once a search returns them | 8,521 characters for all seven | `Codex Plus: Stop Loading the Work Plan Plugin`, or the Interface features token mode |
 | Codex's own list of skills, when `codexPlus.skillsListBudget` is not 0 | Every call | That many tokens | `codexPlus.skillsListBudget` at 0, the default |
 
 ## Costing nothing

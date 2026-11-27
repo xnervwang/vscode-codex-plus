@@ -17,6 +17,9 @@ for, named by a thread id: the tools write only there.
 
 set_wakeup and clear_wakeup keep a conversation's wake-up, <thread id>.wakeup in the same data directory: the Codex Plus
 extension reads it in every window and, when it is due, queues the prompt for that conversation (src/wakeup.js there).
+
+set_title asks for a new title of the conversation through plan_common.request_retitle, which puts a request in
+retitle/ of the same data directory and waits for the window hosting the conversation to answer (src/retitle.js there).
 """
 import importlib.util
 import json
@@ -41,6 +44,7 @@ def load_row_command():
 
 
 ROW = load_row_command()
+import plan_common  # noqa: E402
 PROTOCOL = "2025-06-18"
 WAKEUP_DAYS = 7
 MAX_EVERY_MINUTES = 24 * 60
@@ -121,6 +125,12 @@ TOOLS = [
      "annotations": dict(ANNOTATIONS, title="Remove this conversation's wake-up", idempotentHint=True),
      "inputSchema": {"type": "object", "required": ["thread"], "additionalProperties": False,
                      "properties": {"thread": THREAD}}},
+    {"name": "set_title", "description": "Rename this conversation, as the retitle skill says when to. The VS Code window "
+     "hosting it checks that the request came from this conversation, takes out marks and extra spaces, cuts the title "
+     "at 80 characters and sets it; the answer comes within about 15 seconds, at most about 25.",
+     "annotations": dict(ANNOTATIONS, title="Rename this conversation", idempotentHint=True),
+     "inputSchema": {"type": "object", "required": ["plan", "title"], "additionalProperties": False, "properties": {
+         "plan": PLAN, "title": {"type": "string", "description": "The new title."}}}},
 ]
 
 
@@ -188,9 +198,27 @@ def clear_wakeup(args):
     return "Wake-up removed."
 
 
+def set_title(args):
+    path = plan_path(args.get("plan"))
+    title = args.get("title")
+    if not isinstance(title, str):
+        raise Refused("title is the new title, as text.")
+    got = plan_common.request_retitle(os.path.basename(path)[:-len(".json")], title, directory=os.path.dirname(path), via="tool")
+    outcome, reason = got.get("outcome"), got.get("reason") or ""
+    if outcome == "done":
+        return "Renamed: the title is now %s." % json.dumps(got.get("title") or "", ensure_ascii=False)
+    if outcome == "untaken":
+        return "Not renamed, because no window took the request: %s. The title did not change." % reason
+    if outcome == "unclear":
+        return "Unclear: %s. Whether the title changed is not known." % reason
+    raise Refused("Not renamed: %s." % reason)
+
+
 def call(name, args):
     if not isinstance(args, dict):
         raise Refused("The arguments are not an object.")
+    if name == "set_title":
+        return set_title(args)
     if name == "set_wakeup":
         return set_wakeup(args)
     if name == "clear_wakeup":

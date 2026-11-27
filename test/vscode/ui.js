@@ -4747,6 +4747,22 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
         check(!!await until(async () => (await labelOf(named)) === named, 20000, 500), `and going to it again after leaving it takes the envelope away (${how})`,
           { label: await labelOf(named), front: await frontTab(), focused: await focused().catch(() => null) });
       }
+      /* The conversation renaming itself: the model calls the work plan's set_title, and this window, which shows it,
+         answers the request (src/retitle.js), without the envelope the title was given. */
+      if (codex) {
+        const own = `${title} (itself)`;
+        const said = model.sent('Renamed: the title is now');
+        model.script(t.id, [{ call: 'set_title', namespace: 'mcp__work_plan', args: { plan: path.join(PLANS, `${t.id}.json`), title: `${own} ${ENVELOPE}` } },
+          { reply: 'Renamed.' }]);
+        await tabNamed(named).click();
+        await intoComposer(codex);
+        await codex.locator(COMPOSER).first().pressSequentially('Give this conversation a title of its own.');
+        await codex.locator(COMPOSER).first().press('Enter');
+        await renamedTo(own, 'renamed by the conversation itself with the work plan\'s set_title');
+        check(!!await until(() => model.sent('Renamed: the title is now') > said, 30000, 500),
+          'and set_title tells the model the title it now has', model.seen.slice(-2).map((x) => x.context));
+        model.script(null);
+      }
       /* Puts the name back for the steps after this one. On macOS the box has gone again before the name could be typed
          into it, once, so it is asked for again. */
       for (let tries = 0; tries < 3; tries++) {

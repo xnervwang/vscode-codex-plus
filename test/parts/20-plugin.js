@@ -138,8 +138,8 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
     encoding: 'utf8', env: { ...process.env, PYTHONDONTWRITEBYTECODE: '1', CODEX_HOME: mcpHome } });
   const replies = r.stdout.trim().split('\n').filter(Boolean).map((l) => JSON.parse(l));
   eq(replies.map((x) => x.id), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], 'the MCP server answers every request and no notification');
-  eq(replies[1].result.tools.map((t) => t.name), ['set_row', 'add_row', 'set_summary', 'set_status', 'set_wakeup', 'clear_wakeup'],
-    'it offers set_row, add_row, set_summary, set_status, set_wakeup and clear_wakeup');
+  eq(replies[1].result.tools.map((t) => t.name), ['set_row', 'add_row', 'set_summary', 'set_status', 'set_wakeup', 'clear_wakeup', 'set_title'],
+    'it offers set_row, add_row, set_summary, set_status, set_wakeup, clear_wakeup and set_title');
   eq(replies[2].result.isError, false, 'add_row creates the plan');
   eq(JSON.parse(fs.readFileSync(plan, 'utf8')).nodes[0].state, 'doing', 'with the row in it');
   eq(replies[3].result.isError, true, 'a move to waiting without waiting_on is refused, as by the row command');
@@ -156,6 +156,40 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
       false, false],
     'set_summary and set_status write the brief as the row command does, refuse a part past its width and a plan outside the plan '
       + 'directory, and run without an approval');
+  }
+
+  // set_title asks the window hosting the conversation, here src/retitle.js over the same data directory, and says what it answered.
+  {
+    const retitle = require(path.join(root, 'src', 'retitle.js'));
+    const thread = path.basename(plan, '.json');
+    const rollout = path.join(mcpHome, 'rollout.jsonl');
+    const asked = (title) => fs.writeFileSync(rollout, JSON.stringify({ timestamp: new Date().toISOString(), type: 'response_item',
+      payload: { type: 'function_call', name: 'set_title', namespace: 'mcp__work_plan', arguments: JSON.stringify({ plan, title }), call_id: 'c' } }) + '\n');
+    const renamed = [];
+    let clock = Date.now();
+    const host = retitle.createRetitle({ dir: () => data, shownHere: () => [thread], rolloutOf: () => rollout,
+      tail: (f) => fs.readFileSync(f, 'utf8').split('\n').filter(Boolean).reverse(), now: () => clock,
+      sleep: async (ms) => { clock += ms; }, rename: async (id, name) => { renamed.push([id, name]); return { outcome: 'done' }; } });
+    const ask = (title) => new Promise((resolve) => {
+      const child = cp.spawn(py, [path.join(hooksDir, 'plan-mcp.py')], { env: { ...process.env, PYTHONDONTWRITEBYTECODE: '1', CODEX_HOME: mcpHome } });
+      let out = '';
+      child.stdout.on('data', (d) => { out += d; });
+      const timer = setInterval(() => { clock = Date.now(); host.tick().catch(() => {}); }, 100);
+      child.on('close', () => { clearInterval(timer); resolve(out.trim().split('\n').filter(Boolean).map((l) => JSON.parse(l)).pop()); });
+      child.stdin.end([msgs[0], msgs[1], { jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'set_title', arguments: { plan, title } } }]
+        .map((x) => JSON.stringify(x)).join('\n') + '\n');
+    });
+    asked('Retry delay 📩');
+    const done = await ask('Retry delay 📩');
+    eq([done.result.isError, done.result.content[0].text, renamed], [false, 'Renamed: the title is now "Retry delay".', [[thread, 'Retry delay']]],
+      'set_title has the window rename the conversation, without the envelope, and says the title it now has');
+    renamed.length = 0;
+    const refused = await ask('Asked by no call');
+    eq([refused.result.isError, /^Not renamed: the conversation's own record has no set_title call/.test(refused.result.content[0].text), renamed.length],
+      [true, true, 0], 'and when the conversation\'s own record has no call asking for that title, it says it was not renamed and why');
+    const tool = replies[1].result.tools.find((t) => t.name === 'set_title');
+    eq([tool.inputSchema.required, tool.annotations.destructiveHint, tool.annotations.openWorldHint], [['plan', 'title'], false, false],
+      'set_title takes the plan and the title, and runs without an approval');
   }
 
   // A row moved to the archive is changed through the tools as any other: set_row puts it back.

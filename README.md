@@ -41,6 +41,10 @@ The model can set a [wake-up](docs/work-plan.md#wake-ups) with the work plan plu
 
 ![The Agent map with a wake-up's card opened to its whole prompt](images/shots/wake-up.png)
 
+### Renaming the conversation
+
+Your Codex conversation can rename itself with `set_title`. Codex Plus installs the work plan plugin into Codex. Like `set_row` and `set_wakeup`, `set_title` comes from the plugin's MCP server and needs no sandbox approval. It returns the resulting title or the reason for failure within about 15 seconds (at most about 25). With no Codex Plus window open, it reports that the title stayed unchanged. See [renaming the conversation](docs/work-plan.md#renaming-the-conversation).
+
 ### Your time zone
 
 When Codex runs on another machine, the work plan plugin tells Codex [your time zone](docs/work-plan.md#your-time-zone), that machine's time zone and the current time. The plugin skips this message if Codex's own page has already told Codex your time zone since the last compaction. You can turn the time zone message off with `codexPlus.tellCodexYourTimeZone`.
