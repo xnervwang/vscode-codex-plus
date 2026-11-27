@@ -10,9 +10,11 @@
 # quietly stopped working reads the same as one that keeps passing.
 #
 # A red run is seen only by someone who looks, so a failure of the build's own (exit 1) also opens an issue naming the
-# Codex version, one issue for each version whatever its state, quoting the lines that failed. A check that could not
-# run (exit 2) opens none: it says nothing about the build. Run by hand with issue_preview, the run shows in its
-# summary the issue it would open, and opens none.
+# Codex version, quoting the lines that failed. There is one issue for each version: a failure finds it open and leaves
+# it, or finds it closed and opens it again. A later pass against the same version closes it, saying on which commit
+# the check passed, so whether it is fixed is the check's to say. A check that could not run (exit 2) touches no issue:
+# it says nothing about the build. Run by hand with issue_preview, the run says in its summary what it would do to the
+# issue, and does nothing.
 #
 # A Codex release that is simply not in src/supported-versions.json is not a failure and prints as a note: the edits
 # matching a build is not the whole of what that file claims, and only a machine with that Codex installed can
@@ -26,7 +28,7 @@ on:
   workflow_dispatch:
     inputs:
       issue_preview:
-        description: Show in the run's summary the issue a failure opens, and open none
+        description: Say in the run's summary what this run would do to the issue of its Codex version, and do nothing
         type: boolean
         default: false
 
@@ -72,25 +74,45 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Open an issue when the build failed the check
-        if: always() && (steps.latest.outputs.code == '1' || inputs.issue_preview)
+      - name: Open, or close, the issue of this Codex version
+        if: always() && (steps.latest.outputs.code == '0' || steps.latest.outputs.code == '1')
         uses: actions/github-script@v9
         env:
+          CODE: ${{ steps.latest.outputs.code }}
           VERSION: ${{ steps.latest.outputs.version }}
           PREVIEW: ${{ inputs.issue_preview }}
         with:
           script: |
             const fs = require('fs');
-            const version = process.env.VERSION || 'an unknown build';
+            const passed = process.env.CODE === '0';
+            const version = process.env.VERSION || '';
             const preview = process.env.PREVIEW === 'true';
-            const title = `Codex ${version} failed the check against the latest Codex`;
+            const repo = { owner: context.repo.owner, repo: context.repo.repo };
+            const commit = `[${context.sha.slice(0, 7)}](${context.serverUrl}/${repo.owner}/${repo.repo}/commit/${context.sha})`;
+            const title = `Codex ${version || 'an unknown build'} failed the check against the latest Codex`;
+            /* What a preview does instead of each change: say it, in the log and in the run's summary. */
+            const said = [];
+            const act = async (what, fn) => { said.push(what); core.info(what); if (!preview) await fn(); };
+            const done = async () => {
+              if (preview) await core.summary.addHeading('What this run does to the issue of this version', 3).addRaw(said.join('\n\n') || 'Nothing.').write();
+            };
 
             // One issue for each Codex version, closed ones included: the check runs every day, and a version stays the
             // newest for days.
-            const all = await github.paginate(github.rest.issues.listForRepo, {
-              owner: context.repo.owner, repo: context.repo.repo, state: 'all', per_page: 100,
-            });
+            const all = await github.paginate(github.rest.issues.listForRepo, { ...repo, state: 'all', per_page: 100 });
             const already = all.find((i) => !i.pull_request && i.title === title);
+
+            if (passed) {
+              if (!version || !already || already.state !== 'open') {
+                said.push(version ? `No open issue is titled "${title}", so none is closed.` : 'The report names no version, so no issue is closed.');
+                return done();
+              }
+              await act(`Closes #${already.number}, saying the check passed on ${context.sha.slice(0, 7)} against Codex ${version}.`, async () => {
+                await github.rest.issues.createComment({ ...repo, issue_number: already.number, body: `The check passed on ${commit} against Codex ${version}.` });
+                await github.rest.issues.update({ ...repo, issue_number: already.number, state: 'closed', state_reason: 'completed' });
+              });
+              return done();
+            }
 
             let report = 'the check produced no report';
             try { report = fs.readFileSync('report.txt', 'utf8'); } catch (_) {}
@@ -122,15 +144,15 @@ jobs:
               'question tools in `src/protocol-known.js`. Run `node test/against-latest.js` to reproduce.',
             ].join('\n');
 
-            if (preview) {
-              await core.summary.addHeading('The issue a failure would open', 3)
-                .addRaw(already ? `Already reported: #${already.number}, so none would be opened.\n\n` : '')
-                .addRaw(`**${title}**\n\n`).addCodeBlock(body, 'markdown').write();
-              core.info(already ? `already reported as #${already.number}` : `would open: ${title}`);
-              return;
+            if (already && already.state === 'open') {
+              said.push(`#${already.number} is open for this version already, so it is left as it is.`);
+            } else if (already) {
+              await act(`Opens #${already.number} again, saying the check failed again on ${context.sha.slice(0, 7)}.`, async () => {
+                await github.rest.issues.update({ ...repo, issue_number: already.number, state: 'open' });
+                await github.rest.issues.createComment({ ...repo, issue_number: already.number,
+                  body: `The check failed again on ${commit} against Codex ${version}; the lines that failed are in the summary of [the run](${run}).` });
+              });
+            } else {
+              await act(`Opens "${title}":\n\n${'```'}markdown\n${body}\n${'```'}`, () => github.rest.issues.create({ ...repo, title, body }));
             }
-            if (already) {
-              core.info(`already reported for this version: #${already.number}`);
-              return;
-            }
-            await github.rest.issues.create({ owner: context.repo.owner, repo: context.repo.repo, title, body });
+            return done();

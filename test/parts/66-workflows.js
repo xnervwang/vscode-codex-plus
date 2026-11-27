@@ -169,13 +169,19 @@ module.exports = ({ ok, bad, eq, tmp, root }) => {
     eq([r.status, /^code=1$/m.test(said), /^version=26\.1\.2$/m.test(said), fs.existsSync(path.join(home, 'report.txt'))], [1, true, true, true],
       'the step keeps the report and says its exit code and the Codex version the report names, for the step that opens an issue');
   }
-  /* A failure of the build's own opens one issue for each Codex version; one that could not run opens none. */
-  eq(/^\s+issues: write$/m.test(latest), true, 'the daily check may open issues');
-  eq(/if: always\(\) && \(steps\.latest\.outputs\.code == '1' \|\| inputs\.issue_preview\)/.test(latest), true,
-    'its issue step runs on an exit of 1 only, the build\'s own failure, or when a run by hand asks for a preview');
-  eq([/const title = `Codex \$\{version\} /.test(latest), /state: 'all'/.test(latest), /i\.title === title/.test(latest), /issues\.create\(/.test(latest)],
-    [true, true, true, true], 'the issue is titled by the version and opened only when no issue of any state has that title');
-  eq(/if \(preview\) \{[\s\S]*?return;\s*\}[\s\S]*issues\.create\(/.test(latest), true, 'and a preview shows the issue in the run\'s summary without opening it');
+  /* The issue of a Codex version: a failure of the build's own opens it, or opens it again; a later pass closes it; a
+     check that could not run leaves it. */
+  eq(/^\s+issues: write$/m.test(latest), true, 'the daily check may open and close issues');
+  eq(/if: always\(\) && \(steps\.latest\.outputs\.code == '0' \|\| steps\.latest\.outputs\.code == '1'\)/.test(latest), true,
+    'its issue step runs on an exit of 0 or 1, what the build itself showed, and not when the check could not run');
+  eq([/const title = `Codex \$\{version \|\| 'an unknown build'\} /.test(latest), /state: 'all'/.test(latest), /i\.title === title/.test(latest), /issues\.create\(/.test(latest)],
+    [true, true, true, true], 'the issue is titled by the version, and a failure opens one only when no issue of any state has that title');
+  eq([/already\.state === 'open'[\s\S]*?left as it is/.test(latest), /issues\.update\(\{ \.\.\.repo, issue_number: already\.number, state: 'open' \}\)/.test(latest)], [true, true],
+    'a failure leaves the open issue of its version as it is, and opens a closed one again');
+  eq([/if \(passed\) \{[\s\S]*?The check passed on \$\{commit\} against Codex \$\{version\}\.[\s\S]*?state: 'closed'/.test(latest)], [true],
+    'a pass closes the open issue of its version, after saying on which commit the check passed against which version');
+  eq(/const act = async \(what, fn\) => \{ said\.push\(what\); core\.info\(what\); if \(!preview\) await fn\(\); \}/.test(latest), true,
+    'and a preview says each thing it would do to the issue without doing it');
 
   /* The ways a step is made to pass whatever it did. None of them is a thing to add here by accident. */
   for (const swallow of ['continue-on-error', '|| true', '|| exit 0', '&& exit 0']) {
