@@ -4749,19 +4749,25 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
       }
       /* The conversation renaming itself: the model calls the work plan's set_title, and this window, which shows it,
          answers the request (src/retitle.js), without the envelope the title was given. */
-      if (codex) {
+      {
         const own = `${title} (itself)`;
-        const said = model.sent('Renamed: the title is now');
-        model.script(t.id, [{ call: 'set_title', namespace: 'mcp__work_plan', args: { plan: path.join(PLANS, `${t.id}.json`), title: `${own} ${ENVELOPE}` } },
-          { reply: 'Renamed.' }]);
         await tabNamed(named).click();
-        await intoComposer(codex);
-        await codex.locator(COMPOSER).first().pressSequentially('Give this conversation a title of its own.');
-        await codex.locator(COMPOSER).first().press('Enter');
-        await renamedTo(own, 'renamed by the conversation itself with the work plan\'s set_title');
-        check(!!await until(() => model.sent('Renamed: the title is now') > said, 30000, 500),
-          'and set_title tells the model the title it now has', model.seen.slice(-2).map((x) => x.context));
-        model.script(null);
+        /* The page of the tab in front, found again: an earlier step may have built it anew. */
+        const here = await frameWhere((want) => document.visibilityState === 'visible' && innerWidth >= 800
+          && !!document.querySelector('[data-codex-composer-root]') && want.some((w) => document.body.innerText.includes(w)), 30000, [named, title]);
+        check(!!here, 'the conversation renamed by hand shows in its tab before it renames itself', await frontTab());
+        if (here) {
+          const said = model.sent('Renamed: the title is now');
+          model.script(t.id, [{ call: 'set_title', namespace: 'mcp__work_plan', args: { plan: path.join(PLANS, `${t.id}.json`), title: `${own} ${ENVELOPE}` } },
+            { reply: 'Renamed.' }]);
+          await intoComposer(here);
+          await here.locator(COMPOSER).first().pressSequentially('Give this conversation a title of its own.');
+          await here.locator(COMPOSER).first().press('Enter');
+          await renamedTo(own, 'renamed by the conversation itself with the work plan\'s set_title');
+          check(!!await until(() => model.sent('Renamed: the title is now') > said, 30000, 500),
+            'and set_title tells the model the title it now has', model.seen.slice(-2).map((x) => x.context));
+          model.script(null);
+        }
       }
       /* Puts the name back for the steps after this one. On macOS the box has gone again before the name could be typed
          into it, once, so it is asked for again. */
