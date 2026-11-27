@@ -1387,11 +1387,11 @@ async function trustPlugin(say, { interactive, command = false }) {
       if (command) noticeTime.error(vscode, `Could not list the work plan hooks: ${e.message}`);
       return;
     }
-    /* From the command the result is a notification; after an install it only goes to the status bar. */
+    /* Asked for by the user, by this command or by an install, the result is a notification. */
     if (!st.review.length) {
       problem('trust', null);
       if (command) noticeTime.info(vscode, 'Codex Plus: Every work plan hook is trusted already.');
-      else if (interactive) vscode.window.setStatusBarMessage('The work plan hooks are trusted.', 4000);
+      else if (interactive) noticeTime.info(vscode, 'Codex Plus: the work plan plugin is installed in Codex, and its hooks are trusted.');
       return;
     }
     const go = 'Trust them';

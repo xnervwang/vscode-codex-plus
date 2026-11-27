@@ -838,8 +838,8 @@
   }
   /*
    * A card. `o.dot` is a state of dotEl, `o.title` the first line, `o.after` what follows the title on it, `o.meta` the
-   * second line; `o.tag` the element it is (a div by default). Its hover text is `o.note` and then the second line,
-   * which a narrow side bar cuts short. A card with `o.body` is the summary of a <details> that opens the body below it
+   * second line; `o.tag` the element it is (a div by default). Its hover text is `o.note` and then the second line.
+   * A card with `o.body` is the summary of a <details> that opens the body below it
    * on a click, with an arrow that says so; `o.key` is its key in `open`, which keeps it open or closed across redraws.
    */
   function mapCard(o, open) {
@@ -858,7 +858,8 @@
     if (o.tag === 'button') card.setAttribute('type', 'button');
     card.setAttribute(MARK + '-card', o.kind);
     card.appendChild(line);
-    var meta = mk('span', 'padding-left:14px;color:' + DIM + ';font-size:.85em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;', o.meta || '');
+    /* It wraps rather than being cut: a card of work ends it with when the work started. */
+    var meta = mk('span', 'padding-left:14px;color:' + DIM + ';font-size:.85em;overflow-wrap:anywhere;', o.meta || '');
     meta.setAttribute(MARK + '-meta', '');
     card.appendChild(meta);
     mapLabelled(card, [o.note, o.meta].filter(Boolean).join('\n'));
@@ -1193,9 +1194,19 @@
     row.appendChild(a); row.appendChild(b); row.appendChild(c);
     return row;
   }
-  function ctxNote(text) {
+  /* `whole`, a part of `text` such as a model's name, is kept on one line rather than broken at its hyphens. */
+  function ctxNote(text, whole) {
     var d = document.createElement('div');
-    d.textContent = text;
+    var at = whole ? text.indexOf(whole) : -1;
+    if (at < 0) d.textContent = text;
+    else {
+      var w = document.createElement('span');
+      w.textContent = whole;
+      w.style.whiteSpace = 'nowrap';
+      d.appendChild(document.createTextNode(text.slice(0, at)));
+      d.appendChild(w);
+      d.appendChild(document.createTextNode(text.slice(at + whole.length)));
+    }
     d.style.cssText = 'opacity:.55;padding:1px 0 3px 0;';
     return d;
   }
@@ -1241,7 +1252,7 @@
     }
     ctxBox.appendChild(track);
     ctxBox.appendChild(ctxRow('Context window', kfmt(u.window)));
-    if (u.windowFrom) ctxBox.appendChild(ctxNote(windowNote(u.windowFrom)));
+    if (u.windowFrom) ctxBox.appendChild(ctxNote(windowNote(u.windowFrom), u.windowFrom.model || ''));
     ctxBox.appendChild(ctxRow('In context', kfmt(u.used), pctOf(u.used, u.window)));
     ctxBox.appendChild(ctxRow('Free', kfmt(Math.max(0, u.window - u.used)), pctOf(Math.max(0, u.window - u.used), u.window), true));
     if (u.line > 0) {
