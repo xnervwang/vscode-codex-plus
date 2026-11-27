@@ -1306,7 +1306,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
           chunk('IDAT', zlib.deflateSync(Buffer.concat(Array.from({ length: h }, () => line)))), chunk('IEND', Buffer.alloc(0))]);
       };
       const chart = path.join(profile.folder, 'test-chart.png'), diagram = path.join(profile.folder, 'test-diagram.svg');
-      fs.writeFileSync(chart, png(320, 180));
+      /* Small enough that the five fit in the conversation's view at once, the chart twice among them. */
+      fs.writeFileSync(chart, png(200, 100));
       fs.writeFileSync(diagram, '<svg xmlns="http://www.w3.org/2000/svg" width="160" height="90"><rect width="80" height="90" fill="#2a2"/><rect x="80" width="80" height="90" fill="#a2a"/></svg>');
       const reply = `Chart: ![test chart](${chart})\n\nDiagram: ![test diagram](${diagram})\n\nSame chart: ![test file url](file://${chart})\n\n`
         + `Inline: ![test inline](data:image/png;base64,${png(12, 12).toString('base64')})\n\nWeb: ![test web](https://example.com/test-logo.png)`;
