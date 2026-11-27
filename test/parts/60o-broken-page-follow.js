@@ -7,8 +7,8 @@
  * A page this extension loads again after Codex replaced it with its recovery page (src/broken-pages.js) starts on the
  * route its tab's URI names, which for a New tab is a new conversation page. A page that broke just as its first
  * message turned it into the conversation's page would lose that conversation from its tab, so the new page is sent to
- * the conversation the page before it had begun (src/patching.js followAfterReload): once the new page is up, and once
- * that conversation's first turn has started. A thread Codex made ahead of any message is not followed, nor is the
+ * the conversation the page before it had begun (src/patching.js followAfterReload): once Codex's code in the new page
+ * sends its first request, and once that conversation's first turn has started. A thread Codex made ahead of any message is not followed, nor is the
  * conversation a tab's URI names already, and a conversation the new page begins itself ends it.
  */
 const path = require('path');
@@ -50,7 +50,12 @@ module.exports = async ({ eq, tmp, root }) => {
     globalThis.__codexExtrasMessage(p.webview, { type: 'codex-extras', kind: 'brokenPage', reason: 'module', file: 'local-conversation-page-x.js' }, provider);
     await tick(60);
   };
-  const up = (p) => globalThis.__codexExtrasMessage(p.webview, { type: 'codex-extras', kind: 'tz', timeZone: 'UTC' }, provider);
+  /* The page script's first message, and its word that Codex has drawn the message box; or, in `asks`, a first request
+     of Codex's own code in the page instead. */
+  const hello = (p) => globalThis.__codexExtrasMessage(p.webview, { type: 'codex-extras', kind: 'tz', timeZone: 'UTC' }, provider);
+  let reqs = 0;
+  const up = (p) => { hello(p); globalThis.__codexExtrasMessage(p.webview, { type: 'codex-extras', kind: 'boxShown' }, provider); };
+  const asks = (p) => { hello(p); globalThis.__codexExtrasPageRequest(p.webview, { id: `u${++reqs}`, method: 'config/read', params: {} }, 'request'); };
   const to = (name) => sent.filter(([n, m]) => n === name && m.type === 'navigate-to-route').map(([, m]) => m.path);
 
   const NEW = '/extension/panel/new';
@@ -59,8 +64,9 @@ module.exports = async ({ eq, tmp, root }) => {
   answer(begun, 'b1', BEGUN);
   turn(BEGUN, 'tb');
   await breaks(begun);
+  hello(begun);
   eq([/Codex Plus loaded this page again/.test(begun.webview.html), to('begun')], [true, []],
-    'a New tab whose page broke just after its first message started a turn gets a new page, sent nowhere before it is up');
+    'a New tab whose page broke just after its first message started a turn gets a new page, sent nowhere while Codex\'s code in it has asked nothing');
   up(begun);
   eq(to('begun'), [`/local/${BEGUN}`], 'once up, the new page is sent to the conversation the page before it had begun');
   up(begun);
@@ -76,9 +82,9 @@ module.exports = async ({ eq, tmp, root }) => {
   const late = open('late', uri(NEW, 'new-3'), null, NEW);
   ask(late, 'l1');
   await breaks(late);
-  up(late);
+  asks(late);
   answer(late, 'l1', LATE);
-  eq(to('late'), [], 'a start the page sent before it broke is answered after the new page is up, before its first turn: nothing yet');
+  eq(to('late'), [], 'a start the page sent before it broke is answered after Codex\'s code in the new page has asked something, before its first turn: nothing yet');
   turn(LATE, 'tl');
   eq(to('late'), [`/local/${LATE}`], 'and when that conversation\'s first turn starts, the new page is sent to it');
 

@@ -2971,6 +2971,14 @@
    * script's version, nothing else.
    */
   var MISS_PASSES = 3, MISS_MS = 5000, missRun = 0, missSince = 0, missTold = false;
+  /* Once per page, that Codex has drawn its message box: Codex's own code in the page is running and takes the host's
+     messages, which the host waits for before it sends a page to a conversation (src/patching.js goFollowed). */
+  var boxTold = false;
+  function noteBox() {
+    if (boxTold || !composerRoot()) return;
+    boxTold = true;
+    post({ kind: 'boxShown' });
+  }
   function noteMisses(list) {
     var turns = list ? lastTurns : all(document, SEL.turn).length;
     var composer = !!composerRoot();
@@ -3186,6 +3194,7 @@
     fixImages();
     foldHooks();
     var list = entries();
+    noteBox();
     noteMisses(list);
     if (!list) { dropNav(); return; }
     noteShownTurn(list);

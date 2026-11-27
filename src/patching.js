@@ -353,6 +353,11 @@ function restoreShown(panel, rec) {
   setTimeout(() => {
     const p = state.provider;
     if (!p || typeof p.sendMessageToPanel !== 'function' || registry.get(panel) !== rec || rec.thread !== want) return;
+    /* Codex keeps a message for a page it has not had ready yet, and a page that takes it longer to start than it waits
+       (its renderer_ready_timeout) has lost that message: such a page is sent there once Codex's code in it asks
+       something, as a page loaded again is (goFollowed). */
+    const entry = p.editorPanels && typeof p.editorPanels.get === 'function' ? p.editorPanels.get(panel) : null;
+    if (entry && entry.ready === false) { rec.follow = { starts: new Set(), threads: new Set(), up: false, to: want, restored: true }; return; }
     try { p.sendMessageToPanel(panel, { type: 'navigate-to-route', path: `/local/${want}` }); } catch (_) { /* the panel is gone */ }
   }, 0);
 }
@@ -865,8 +870,10 @@ function noteTurn(msg) {
 /*
  * A page this extension loaded again (src/broken-pages.js) starts on the route its tab's URI names: a new conversation
  * page for a New tab, or the conversation the URI names. When the page that broke showed, or had just begun, another
- * conversation, the new page is sent to it once it is up, which its first message says ('tz'). A conversation the page
- * began counts once one of its turns has started, so a thread Codex made ahead of any message (prewarm) is not
+ * conversation, the new page is sent to it once Codex's code in it is running, which the page script says when Codex
+ * has drawn its message box ('boxShown'), as does a first request of Codex's own to the host: the page script's own
+ * first message comes before either, and a navigation sent then is lost. A conversation the
+ * page began counts once one of its turns has started, so a thread Codex made ahead of any message (prewarm) is not
  * followed; one whose start had no answer yet, or whose first turn had not started, is followed when that comes. The
  * new page starting a conversation of its own ends it.
  */
@@ -884,11 +891,16 @@ function goFollowed(rec) {
   const f = rec.follow;
   if (!f || !f.up || !f.to) return;
   rec.follow = null;
+  /* A restored tab the user has since sent to another conversation stays there. */
+  if (f.restored && rec.thread !== f.to) return;
   const p = state.provider;
   const panel = [...registry].find(([, r]) => r === rec);
   if (!panel || !p || typeof p.sendMessageToPanel !== 'function') return;
   try { p.sendMessageToPanel(panel[0], { type: 'navigate-to-route', path: `/local/${f.to}` }); } catch (_) { return; }
-  if (deps && deps.log) deps.log(`sent the page loaded again in a tab to conversation ${f.to}, which the page before it showed`);
+  if (deps && deps.log) {
+    deps.log(f.restored ? `sent the restored page of a tab to conversation ${f.to}, which the tab showed before the reload, once Codex's code in it had started`
+      : `sent the page loaded again in a tab to conversation ${f.to}, which the page before it showed`);
+  }
 }
 /** What this window's app-server last said of a conversation's turns, for the source to set against its rollout. */
 function turnHeard(thread) {
@@ -1297,8 +1309,11 @@ function installHooks() {
     if (deps && typeof deps.adjustRequest === 'function') { try { deps.adjustRequest(request, kind); } catch (_) { /* sent as it was */ } }
     const rec = recordOfWebview(webview);
     if (!rec || !request || request.id === undefined || request.id === null) return;
+    if (rec.follow) {
+      if (kind !== 'prewarm' && request.method === 'thread/start') rec.follow = null;
+      else { rec.follow.up = true; goFollowed(rec); }
+    }
     if (kind !== 'prewarm' && request.method !== 'thread/start') return;
-    if (kind !== 'prewarm') rec.follow = null;
     rec.starts.add(String(request.id));
     while (rec.starts.size > PAGE_KEEP) rec.starts.delete(rec.starts.values().next().value);
   };
@@ -1317,7 +1332,6 @@ function installHooks() {
     if (msg && msg.kind === 'tz' && typeof msg.timeZone === 'string' && deps && deps.onTimeZone) deps.onTimeZone(msg.timeZone);
     if (msg && msg.kind === 'tz') {
       const rec = recordOfWebview(webview);
-      if (rec && rec.follow) { rec.follow.up = true; goFollowed(rec); }
       if (rec) {
         mapSent.delete(webview);
         if (rec.thread) postMap({ webview }, rec.thread);
@@ -1423,6 +1437,10 @@ function installHooks() {
       const sound = ['done', 'approval', 'question'].includes(msg.sound) ? msg.sound : 'other';
       const said = CHIME_STATES[msg.state] || 'the audio context is in a state this extension does not know, so nothing may have been heard';
       deps.log(`chime ${sound}: ${said}`);
+    }
+    if (msg && msg.kind === 'boxShown') {
+      const rec = recordOfWebview(webview);
+      if (rec && rec.follow) { rec.follow.up = true; goFollowed(rec); }
     }
     if (msg && msg.kind === 'brokenPage' && msg.reason === 'module' && webview) {
       const rec = recordOfWebview(webview);

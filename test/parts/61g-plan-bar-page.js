@@ -52,6 +52,8 @@ module.exports = async ({ eq, root }) => {
   eq(b && [b.style.top, b.style.left, b.style.width], [`${BOX.top - 32}px`, `${BOX.left}px`, `${BOX.width}px`],
     'just above the message box, 6 px clear of it, and as wide as it');
   eq([room(), barStyle()], [true, 1], 'and the box is given 32 px more top margin, the bar\'s height and its gap, so it covers nothing above the box');
+  p.send(bar());
+  eq(p.posted.filter((m) => m.kind === 'boxShown').length, 1, 'the page tells the host once that Codex has drawn its message box, however many passes see it');
   eq(/position:fixed;z-index:25;/.test(b.style.cssText), true, 'it sits on Codex\'s content and under every overlay Codex draws, as the row below the box does');
   const bubbles = (e) => Array.from(e.querySelectorAll('.apb-b')).map((x) => x.getAttribute('data-state') + ' ' + x.textContent);
   eq([b.getAttribute('data-compact'), b.querySelectorAll('.apb-name').length, bubbles(b), b.querySelectorAll('.apb-q').length],
