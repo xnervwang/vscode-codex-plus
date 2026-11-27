@@ -3134,13 +3134,16 @@
    * one dim line. A click toggles it.
    *
    * It folds other hooks' prompts too: after the window reloads, Codex no longer says which hook a prompt came from.
+   * The notices this extension sends a conversation about work it left running (src/detached-ends.js, src/bg-ends.js)
+   * go in as user messages as well, and are folded the same way.
    */
   var HOOK = MARK + '-hook', HOOK_UP = 16, HOOK_SHEET = 'hook-fold', HOOK_WIRED = '__codexExtrasHookWired';
+  var OWN_NOTICE = /^Codex Plus notice, not a message from the user:/;
   function hookFed(el) {
     var f = fiberOf(el);
     for (var i = 0; f && i < HOOK_UP; i++, f = f.return) {
       var p = f.memoizedProps, item = p && typeof p === 'object' ? p.item : null;
-      if (item && typeof item === 'object' && item.type === 'user-message') return item.hookFeedback === true;
+      if (item && typeof item === 'object' && item.type === 'user-message') return item.hookFeedback === true || OWN_NOTICE.test(String(item.message || ''));
     }
     return false;
   }

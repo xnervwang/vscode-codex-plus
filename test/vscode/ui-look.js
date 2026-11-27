@@ -1148,7 +1148,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     }, async () => { await openMap(); return mapBox(); });
     await closeMap();
     await look('detached-end-notice', {
-      expect: 'Once "sleep 40" has ended, the conversation is sent a notice from Codex Plus that the detached command is no longer running and its exit code cannot be known; it shows at the bottom of the conversation with Codex\'s reply after it, and the green ring is gone.',
+      expect: 'Once "sleep 40" has ended, the conversation is sent a notice from Codex Plus that the detached command is no longer running and its exit code cannot be known; it shows at the bottom of the conversation '
+        + 'folded to one dim line without a bubble, as a hook\'s prompt is, with Codex\'s reply after it, and the green ring is gone.',
     }, async () => {
       if (!await until(() => model.sent('Codex Plus notice') > notices, 90000, 1000)) throw new Error('no notice reached the model in 90 s');
       await until(async () => !(((await dotsOn(title)) || {}).working >= 6), 30000, 1000);

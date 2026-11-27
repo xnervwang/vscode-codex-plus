@@ -41,7 +41,8 @@ module.exports = async ({ eq, root }) => {
   const page = pageUnder(root, dom);
   const asked = message(dom, 't1', 'Draw the chart.', {});
   const hook = message(dom, 't1b', 'The summary of this conversation has not been written, and the plan has rows.', { hookFeedback: true });
-  const turn = dom.el('div', { attrs: { 'data-turn-key': 'history-content:turn:t1' }, kids: [asked.anchor, hook.anchor] });
+  const notice = message(dom, 't1c', 'Codex Plus notice, not a message from the user: a command this conversation left running detached is no longer running.', {});
+  const turn = dom.el('div', { attrs: { 'data-turn-key': 'history-content:turn:t1' }, kids: [asked.anchor, hook.anchor, notice.anchor] });
   const scroller = dom.el('div', { attrs: { 'data-app-action-timeline-scroll': '' }, rect: { top: 0, height: 700 }, kids: [turn] });
   dom.setBody(dom.el('body', { kids: [scroller] }));
 
@@ -51,6 +52,7 @@ module.exports = async ({ eq, root }) => {
   page.view();
   eq(state(), [[null, true], ['fold', false]],
     "the hook's prompt is folded and has no user edge, and the user's own message is left as it is with its edge");
+  eq(notice.bubble.getAttribute('data-codex-extras-hook'), 'fold', 'the notice this extension sends a conversation as a user message is folded the same way');
   eq(sheets(), 1, 'one stylesheet does the folding');
   const sheet = dom.document.head.querySelector('style[data-codex-extras="hook-fold"]').textContent;
   const colourRules = sheet.split('}').map((r) => r.split('{')).filter(([sel, body]) => sel && /(^|;)color:/.test(body || '')).map(([sel]) => sel);
