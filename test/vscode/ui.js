@@ -3928,6 +3928,9 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
      * its reply in front is neither announced nor counted, and Agent Plus's session list gives its row the stripe of a
      * conversation open here and draws it as current. Resolves to { id, label, text } of the conversation, or null.
      */
+    /* The `how` of each first message whose page Codex's own failure left with no conversation to follow, for a step
+       that sets two of them side by side. */
+    const firstBroke = new Set();
     const firstMessage = async (f, text, how) => {
       /* The first message makes the page the conversation's page, which loads more of Codex's code; with VS Code still
          serving what other pages asked for, that code does not come and Codex draws its recovery page instead. */
@@ -3965,7 +3968,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
            failure to look into, and on macOS and Windows it has come from Codex now and then. */
         const fetched = await fetchesOf();
         if (process.platform === 'linux') check(false, why, { page: await pageSays(f), fetched });
-        else note(`${why}; not checked on ${process.platform}; its fetches of Codex's code short of a whole 200: ${JSON.stringify(fetched)}`);
+        else { firstBroke.add(how); note(`${why}; not checked on ${process.platform}; its fetches of Codex's code short of a whole 200: ${JSON.stringify(fetched)}`); }
         return null;
       }
       /* When the tab is not titled, the conversation's entry in Codex's state database at that moment shows whether
@@ -4188,6 +4191,11 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
       const b = await firstMessage(two.f, 'Draft the rollback plan for 1.2.', 'the second tab New Codex Agent opened');
       check(!!await toFront(one.tab, one.f), 'the first tab New Codex Agent opened is still there, and comes to the front by its URI', { want: one.tab, tabs: await codexTabsNow() });
       const a = await firstMessage(one.f, 'Write the test plan for 1.2.', 'the first tab New Codex Agent opened');
+      const lost = ['the second tab New Codex Agent opened', 'the first tab New Codex Agent opened'].filter((x) => firstBroke.has(x));
+      if (lost.length) {
+        note(`${lost.join(' and ')}: Codex's own page failed after the first message, so whether the two tabs hold two different conversations was not checked`);
+        return;
+      }
       check(!!a && !!b && a.id !== b.id && bare(a.label) !== bare(b.label), 'the two tabs hold two different conversations, each titled by its own',
         { a, b, tabs: await codexTabsNow() });
       if (!a || !b) return;
