@@ -3797,7 +3797,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
       const list = page.locator('.quick-input-widget .quick-input-list .monaco-list-row');
       check(await list.first().waitFor({ state: 'visible', timeout: 10000 }).then(() => true, () => false), 'clicking it opens the list of modes');
       const rows = await list.allInnerTexts();
-      check(rows.length === 4 && /Essential features/.test(rows[1] || '') && /the work plan and time-zone note, plus notes for reply images or a steward/.test(rows[1] || ''),
+      check(rows.length === 4 && /Essential features/.test(rows[1] || '') && /the work plan and time-zone note, plus notes for reply images or a supervisor/.test(rows[1] || ''),
         'four modes, each with a line under its name saying what it runs', rows);
       await shot('token-mode-list');
       await list.filter({ hasText: 'Essential features' }).first().click();
