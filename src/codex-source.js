@@ -825,11 +825,13 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
       if (sessionId) poll({ tell: true });
     },
     /* Claude Code's Mark as Unread: the conversation stays unread until the user looks at it again. For the one in
-       front, that means switching away and coming back. */
+       front, that means switching away and coming back. Returns the conversations it took to be in front, '' for none. */
     markUnread(sessionId) {
-      if (!sessionId || typeof seen.markUnread !== 'function') return;
-      seen.markUnread(sessionId, frontThreads().includes(sessionId));
+      if (!sessionId || typeof seen.markUnread !== 'function') return '';
+      const front = frontThreads();
+      seen.markUnread(sessionId, front.includes(sessionId));
       changed.fire();
+      return front.join(', ');
     },
     markRead(sessionId) {
       if (!sessionId || typeof seen.markRead !== 'function') return;

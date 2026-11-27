@@ -1198,7 +1198,13 @@ function registerCommands(context, { source, memory, say, link, opens, account }
       say(`the session list's import: ${got.archived.length} archived, ${got.groups.length} group(s), ${got.pinned.length} pinned`);
       return got;
     },
-    noteSeen(ids, seen) { for (const id of Array.isArray(ids) ? ids : []) { if (seen) source.markRead(id); else source.markUnread(id); } },
+    noteSeen(ids, seen) {
+      for (const id of Array.isArray(ids) ? ids : []) {
+        if (seen) { source.markRead(id); say(`the session list marked ${id} read`); continue; }
+        const front = source.markUnread(id);
+        say(`the session list marked ${id} unread; in front then: ${front || 'none'}`);
+      }
+    },
     accountInfo({ sessionId = '' } = {}) {
       account.load().catch(() => { /* drawn as it was */ });
       return sessionList.accountOf(account.view(), sessionId ? source.threadState(sessionId) : null);

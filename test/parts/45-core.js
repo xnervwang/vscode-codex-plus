@@ -16,6 +16,16 @@ const path = require('path');
 const fixture = require('../fixture');
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+/* Resolves to what `fn` gives once it is truthy, or to that last value after `ms`: a busy machine can take more than a
+   moment to register the source and list its conversations. */
+const until = async (fn, ms = 10000, every = 100) => {
+  const t0 = Date.now();
+  for (;;) {
+    const v = await fn();
+    if (v || Date.now() - t0 >= ms) return v;
+    await wait(every);
+  }
+};
 
 module.exports = async ({ eq, note, tmp, root }) => {
   const core = process.env.AGENT_WORK_PLAN_DIR || path.join(root, '..', 'vscode-agent-plus');
@@ -78,7 +88,11 @@ module.exports = async ({ eq, note, tmp, root }) => {
     eq([control.state.context['agentPlus.alone'], exported.agentPlus.protocol], [false, 1],
       'Agent Plus sees Codex Plus depends on it, and speaks protocol 1');
     await require(path.join(root, 'extension.js')).activate(selfContext);
-    await wait(400);
+    await until(() => {
+      const t = control.state.views['agentPlus.conversations'], st = control.state.status.find((i) => i.id === 'agentPlus.conversations');
+      return control.state.context['codexPlus.registered'] && t && t.provider.getChildren().some((e) => e.kind === 'conversation')
+        && st && st.text.endsWith('1 conversation needs you');
+    });
     eq([control.state.context['codexPlus.registered'], control.state.log.some((l) => /conversation source registered: Codex \(codex\)/.test(l))],
       [true, true], 'the Codex source is registered with Agent Plus');
     const tree = control.state.views['agentPlus.conversations'].provider;
@@ -134,7 +148,8 @@ module.exports = async ({ eq, note, tmp, root }) => {
     await control.state.handlers['agentPlus.answerQuestion'](Object.assign({}, tree.getTreeItem(qrow2).command.arguments[0], { row: '1' }));
     view2.states.delete(view2.current.key);
     view2.receive({ type: 'send', key: view2.current.key, text: 'Yes, now.' });
-    await wait(400);
+    await until(() => posted.filter((m) => m.type === 'navigate-to-route').length >= 2 && view2.states.get(view2.current.key)
+      && view2.states.get(view2.current.key).kind === 'submitted');
     const typed = posted.filter((m) => m.type === 'navigate-to-route');
     eq([typed.map((m) => m.path), typed.map((m) => m.state.prefillPrompt.split('\n').pop()), view2.states.get(view2.current.key).kind],
       [[`/local/${asking.id}`, `/local/${asking.id}`], ['Yes.', 'Yes, now.'], 'submitted'],
