@@ -424,9 +424,11 @@ function rolloutState(file, lines = null) {
     /* A compressed rollout is decompressed once, and each window is cut from that text. */
     const real = existingRollout(file);
     const text = real && real.endsWith('.zst') ? compressedText(real) : undefined;
+    /* The context and the user's last message are wanted too, not only the latest turn's start: a compaction writes
+       the new history as one long line, which a tail cuts and drops, and both can be before it. */
     for (let limit = TAIL_START; ; limit *= 4) {
       const st = rolloutState(file, text === undefined ? tailLines(file, limit) : textTail(text, limit));
-      if ((st.startedMs && st.model) || limit >= size || limit >= TAIL_MAX) return st;
+      if ((st.startedMs && st.model && st.context && st.lastUserMs) || limit >= size || limit >= TAIL_MAX) return st;
     }
   }
   const st = { working: false, turnId: '', startedMs: 0, endedMs: 0, durationMs: 0, context: null, tokens: null, model: '', effort: '',

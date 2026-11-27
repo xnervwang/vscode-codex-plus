@@ -715,7 +715,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         + 'Each row has Codex\'s logo, its title and at the right how long ago it was last active. The conversation just started, whose tab is in front, has a solid stripe at the start of its row '
         + 'and is drawn as the current one, and no other row is. "Can you find where the retry delay for the inventory sync is set?" has a red dot at the top right of its logo, as its work plan asks '
         + 'the user a question put after the user\'s last message; the other rows have no dot. No row has the list\'s envelope for an unread reply, since the made-up conversations '
-        + 'count as seen. Above them an ACCOUNT & USAGE section holds a Codex block that says Not signed in.',
+        + 'count as seen. Above them the ACCOUNT & USAGE heading, collapsed as the section starts.',
     }, async () => {
       /* The step before left notes.txt in front. */
       if (freshTitle) await tab(freshTitle).click();
@@ -731,7 +731,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     });
     await look('account-not-signed-in', {
       expect: 'The ACCOUNT & USAGE section at the top of Agent Plus\'s session list, expanded: a block headed by Codex\'s logo and the name Codex, and under it one line, '
-        + 'Sign-in at the left and Not signed in at the right, and no bars, since the made-up provider has no account. Below a thin line, THIS CONVERSATION in small capitals, '
+        + 'Sign-in at the left and Not signed in at the right, and no bars, since the made-up provider has no account. Below it, in the same block with no line between, THIS CONVERSATION in small capitals, '
         + 'the title of the conversation in front and its Tokens. Nothing is cut off or overlaps.',
     }, async () => {
       await toList();
@@ -917,6 +917,11 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await type('How is the inventory sync retry delay configured?');
       if (!await until(() => model.turns() > turns, 20000, 300)) throw new Error('the message reached no model');
       await until(async () => { const d = await dotsOn(title); return d && d.working >= 6 && !d.ring; }, 20000, 500);
+      /* The row's dot is red until the session list reads the new message's time: the plan's question was put after
+         the user's last message before this one. */
+      const sent = Date.now();
+      if (await until(async () => (await sideRow()) === 'green', 20000, 300)) tell(`the session list row turned green ${((Date.now() - sent) / 1000).toFixed(1)} s after the tab's dot`);
+      else tell(`the session list row's dot was still "${await sideRow()}" 20 s after the tab's dot turned green`);
       await sleep(800);
       return tabAndRow();
     });
@@ -1309,15 +1314,15 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       };
       const chart = path.join(profile.folder, 'test-chart.png'), diagram = path.join(profile.folder, 'test-diagram.svg');
       /* Small enough that the five fit in the conversation's view at once, the chart twice among them. */
-      fs.writeFileSync(chart, png(200, 100));
-      fs.writeFileSync(diagram, '<svg xmlns="http://www.w3.org/2000/svg" width="160" height="90"><rect width="80" height="90" fill="#2a2"/><rect x="80" width="80" height="90" fill="#a2a"/></svg>');
+      fs.writeFileSync(chart, png(120, 60));
+      fs.writeFileSync(diagram, '<svg xmlns="http://www.w3.org/2000/svg" width="96" height="54"><rect width="48" height="54" fill="#2a2"/><rect x="48" width="48" height="54" fill="#a2a"/></svg>');
       const reply = `Chart: ![test chart](${chart})\n\nDiagram: ![test diagram](${diagram})\n\nSame chart: ![test file url](file://${chart})\n\n`
         + `Inline: ![test inline](data:image/png;base64,${png(12, 12).toString('base64')})\n\nWeb: ![test web](https://example.com/test-logo.png)`;
       const drawnImgs = () => codex.evaluate(() => [...document.querySelectorAll('img')].filter((i) => /^test /.test(i.alt) && i.naturalWidth > 0).length).catch(() => 0);
       const imagesBox = () => inCodex('img[alt^="test "], a[data-codex-extras="img-stand"], span[data-codex-extras="img-stand"]');
       await look('reply-images', {
         expect: 'A reply drawing a red-and-blue PNG chart and a green-and-purple SVG by absolute path, the same chart from a file:// URL and a small data: image, each at its own size and no larger than 640 by 480, '
-          + 'and the image at a web address shown as a plain link "test web" with no image.',
+          + 'and the image at a web address shown as a link "test web" in the theme\'s link colour, with no image.',
       }, async () => {
         model.script(t0.id, [{ reply }]);
         await type('Show the test images.');
@@ -1333,7 +1338,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         return (await imagesBox()) || bottomBox(600);
       });
       await look('reply-images-off', {
-        expect: 'With codexPlus.replyImages off the four drawn images become "[Image]" text, and the web link stays a link.',
+        expect: 'With codexPlus.replyImages off the four drawn images become "[Image]" text, and the web link stays a link in the link colour.',
       }, async () => {
         await setting('replyImages', false);
         await until(async () => (await drawnImgs()) === 0, 15000, 500);
@@ -1353,6 +1358,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         expect: 'A reply that names the conversation "' + t1.title + '" three ways, each drawn in the theme\'s link colour: its title in corner brackets, its thread id, and its whole title on its own '
           + 'in the second paragraph. The corner brackets and the rest of the sentences are in the reply\'s own colour. The pointer rests on the first link, and a label beside it gives that '
           + 'conversation\'s title, "Codex conversation" with the first 8 characters of its id, and when it was last active.',
+        unchanged: 'The script turned codexPlus.replyImages back on after the step before, so the images of the reply above are drawn again.',
       }, async () => {
         model.script(t0.id, [{ reply }]);
         await type('Which conversations were those?');
@@ -1382,7 +1388,6 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     await setting('wakeUps', undefined);
     await setting('tokenMode', undefined, 'agentPlus');
     await look('wake-up-sent', {
-      unchanged: 'The script turned codexPlus.replyImages back on after the step before, so the reply\'s images are drawn again.',
       expect: 'A wake-up due on the idle conversation is sent into it as a message whose first line reads "[Wake-up set in this conversation: sent by its timer, not by the user, ...]" followed by the prompt '
         + '"Check whether the nightly export has finished.", and Codex answers it.',
     }, async () => {
@@ -1449,6 +1454,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await ctxItem('Resume Goal').click({ timeout: 5000 });
       if (!await until(async () => (await goalOf()) === 'goal', 30000, 500)) throw new Error(`the row's goal badge is ${JSON.stringify(await goalOf())}`);
       await sleep(2000);
+      if (!await codex.evaluate(() => !!document.querySelector('[data-codex-extras="meter"]'))) tell('the context meter is not in the toolbar while the goal\'s turn runs');
       return union([await rowBox(t0.id), await tab(title).boundingBox(), await toolbar()]);
     });
     await pick(row(t0.id), ['Pause Goal']).catch((e) => note(`Pause Goal: ${e.message}`));
@@ -1574,7 +1580,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       return part(PARTS.panel);
     });
     await look('answer-question', {
-      expect: 'A click on the question\'s row shows it in the Answer view: the conversation, the row "Decide the default delay", the question, a text box holding "Keep it at 30 seconds." and Send and Open buttons.',
+      expect: 'A click on the question\'s row shows it in the Answer view: the conversation, the row "Decide the default delay", the question, a text box holding "Keep it at 30 seconds." and the buttons "Go to the conversation" and Send.',
     }, async () => {
       await panelRow('Should the default retry delay').click();
       answer = await frameWhere(() => { const m = document.getElementById('main'); return !!m && getComputedStyle(m).display !== 'none' && !!document.getElementById('text'); }, 20000);
@@ -1678,7 +1684,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
           + 'THIS CONVERSATION over a card with the conversation\'s title (cut short with an ellipsis if the sidebar is too narrow), with the model and tokens in context under it. '
           + 'Below it, WAKE-UPS 1: a card of "Look at the export logs again." over "every 30 min" and its times, with a Remove button. Then GOAL 1: a card of '
           + '"Find out why archived rows are skipped" over "paused" and its tokens, with Resume and Clear. The dialog fits inside the sidebar; the cards are no wider than '
-          + 'it, and a second line too long for it ends in an ellipsis; the headings, badges and lines are as in the editor tab.',
+          + 'it, and a second line too long for it wraps onto the next line; the headings, badges and lines are as in the editor tab.',
       }, async () => {
         const w0 = JSON.parse(fs.readFileSync(wakeupFile, 'utf8'));
         const at = Math.floor(Date.now() / 1000);
@@ -1813,7 +1819,9 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await until(async () => (await toastLines()).length > 0 || !!await trustShown(), 20000, 500);
       await sleep(800);
       const t = await trustShown();
-      return t ? t.boundingBox() : toastsBox();
+      if (t) return t.boundingBox();
+      await expandToast();
+      return toastsBox();
     });
     {
       const t = await trustShown();
@@ -1833,6 +1841,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     /* ═══ the patch removed and put back: last, since it takes the page's additions away ═══ */
     await look('remove-patch-prompt', {
       expect: 'Remove the Patch from Codex says Codex\'s own files are back and the window has to be reloaded to run them, with a Reload button.',
+      unchanged: 'Removing the patch also has the open pages take Codex Plus\'s additions off at once, so the conversation\'s tab behind the notification has no times, rail, buttons, '
+        + 'meter, pill or plan bar, and the work plan hook\'s prompt shows as Codex draws it, under "Hook feedback".',
     }, async () => {
       await exec('notifications.clearAll');
       await start('codexPlus.removePatch');

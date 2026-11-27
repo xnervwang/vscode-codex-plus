@@ -3087,10 +3087,13 @@
       var css = document.createElement('style');
       css.setAttribute(MARK, IMG_STAND);
       /* Codex caps a reply's image at 10rem high, too small to read a chart in. The cap here is 640 by 480 px, the size
-         of a matplotlib figure saved with the defaults, and 70% of the panel's height. */
+         of a matplotlib figure saved with the defaults, and 70% of the panel's height. Codex gives a bare <a> no colour,
+         so a web image's link takes the colour of the links to conversations. */
       css.textContent = '[' + IMG_HIDDEN + ']{display:none !important;}'
         + SEL.assistant + ' img[class*="max-h-["]{max-height:min(480px,70vh) !important;max-width:min(100%,640px) !important;'
-        + 'width:auto !important;height:auto !important;}';
+        + 'width:auto !important;height:auto !important;}'
+        + 'a[' + MARK + '="' + IMG_STAND + '"]{color:var(--vscode-textLink-foreground,#4493f8);}'
+        + 'a[' + MARK + '="' + IMG_STAND + '"]:hover{text-decoration:underline;}';
       document.head.appendChild(css);
     }
     var found = on ? all(document, SEL.assistant + ' img,' + SEL.assistant + ' button[disabled]') : [];

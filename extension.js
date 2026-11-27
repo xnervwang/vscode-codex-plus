@@ -804,7 +804,7 @@ function registerCommands(context, { source, memory, say, link, opens, account }
       await install.setPluginEnabled({ binary, home: files.codexHome(), enabled: false });
       say(`Codex is now set to skip the work plan plugin in ${files.codexHome()}`);
       noticeTime.info(vscode, 'Codex Plus: Codex will not load the work plan plugin. It stays installed, with its '
-        + 'hooks still trusted; "Install the Work Plan Plugin into Codex" has it loaded again.');
+        + 'hooks still trusted; "Codex Plus: Install the Work Plan Plugin into Codex" has it loaded again.');
     } catch (e) { noticeTime.error(vscode, `Could not change whether Codex loads the plugin: ${e.message}`); }
   });
   reg('newInTab', () => newConversationInTab(say));
