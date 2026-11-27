@@ -663,7 +663,7 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
   const source = {
     protocol: PROTOCOL,
     /* ['brief'] while the conversation brief and the work plan both run. */
-    get features() { return (enabled() && briefs() ? ['brief'] : []).concat(['openHere', 'shows', 'prefill']); },
+    get features() { return (enabled() && briefs() ? ['brief'] : []).concat(['openHere', 'shows', 'shownIn', 'prefill']); },
     id: 'codex',
     label: 'Codex',
     extensionId: EXTENSION_ID,
@@ -774,6 +774,14 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
       return false;
     },
     shows(sessionId) { return !!sessionId && (openThreads().includes(sessionId) || sidebarInFront() === sessionId); },
+    /* Where a conversation shows() finds is: a tab when one here has it, such as a New tab whose conversation only the
+       patch knows, else Codex's sidebar when it shows it; '' for neither. Agent Plus names the place in its session
+       list's hover and reopens a closed conversation there. */
+    shownIn(sessionId) {
+      if (!sessionId) return '';
+      if (openThreads().includes(sessionId)) return 'tab';
+      return sidebarInFront() === sessionId ? 'sidebar' : '';
+    },
     async openHere(sessionId) {
       if (!files.THREAD_ID.test(String(sessionId || ''))) return false;
       try { return await tabs.openInTab(vscode, sessionId); } catch (e) { log(`open ${sessionId}: ${e.message}`); return false; }

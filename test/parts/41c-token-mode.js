@@ -130,11 +130,11 @@ module.exports = async ({ eq, note, tmp, root }) => {
     got.unset = [given(unset.hooks()), unset.source.features];
     unset.close();
     eq(got, {
-      interface: [[false, false, false], ['openHere', 'shows', 'prefill', 'sessions', 'sessionImport', 'sessionSeen', 'accountInfo'], 'Token mode: Interface features (agentPlus.tokenMode); in Codex: work plan off, time-zone note off, conversation brief off, wake-ups off, notices when a detached command stops off'],
-      essential: [[true, true, false], ['openHere', 'shows', 'prefill', 'sessions', 'sessionImport', 'sessionSeen', 'accountInfo'], 'Token mode: Essential features (agentPlus.tokenMode); in Codex: work plan on, time-zone note on, conversation brief off, wake-ups off, notices when a detached command stops off'],
-      all: [[true, true, true], ['brief', 'openHere', 'shows', 'prefill', 'sessions', 'sessionImport', 'sessionSeen', 'accountInfo'], 'Token mode: All features (agentPlus.tokenMode); in Codex: work plan on, time-zone note on, conversation brief on, wake-ups on, notices when a detached command stops on'],
-      custom: [[false, false, false], ['openHere', 'shows', 'prefill', 'sessions', 'sessionImport', 'sessionSeen', 'accountInfo'], 'Token mode: Custom (agentPlus.tokenMode); in Codex: work plan off, time-zone note off, conversation brief off, wake-ups off, notices when a detached command stops off'],
-      unset: [[true, true, true], ['brief', 'openHere', 'shows', 'prefill', 'sessions', 'sessionImport', 'sessionSeen', 'accountInfo']],
+      interface: [[false, false, false], ['openHere', 'shows', 'shownIn', 'prefill', 'sessions', 'sessionImport', 'sessionSeen', 'accountInfo'], 'Token mode: Interface features (agentPlus.tokenMode); in Codex: work plan off, time-zone note off, conversation brief off, wake-ups off, notices when a detached command stops off'],
+      essential: [[true, true, false], ['openHere', 'shows', 'shownIn', 'prefill', 'sessions', 'sessionImport', 'sessionSeen', 'accountInfo'], 'Token mode: Essential features (agentPlus.tokenMode); in Codex: work plan on, time-zone note on, conversation brief off, wake-ups off, notices when a detached command stops off'],
+      all: [[true, true, true], ['brief', 'openHere', 'shows', 'shownIn', 'prefill', 'sessions', 'sessionImport', 'sessionSeen', 'accountInfo'], 'Token mode: All features (agentPlus.tokenMode); in Codex: work plan on, time-zone note on, conversation brief on, wake-ups on, notices when a detached command stops on'],
+      custom: [[false, false, false], ['openHere', 'shows', 'shownIn', 'prefill', 'sessions', 'sessionImport', 'sessionSeen', 'accountInfo'], 'Token mode: Custom (agentPlus.tokenMode); in Codex: work plan off, time-zone note off, conversation brief off, wake-ups off, notices when a detached command stops off'],
+      unset: [[true, true, true], ['brief', 'openHere', 'shows', 'shownIn', 'prefill', 'sessions', 'sessionImport', 'sessionSeen', 'accountInfo']],
     }, 'every setting turned off: each mode decides as its table says, Custom follows the settings, and nothing set is All features');
   }
 
@@ -150,8 +150,8 @@ module.exports = async ({ eq, note, tmp, root }) => {
     const custom = [given(w.hooks()), w.source.features, fired];
     w.change({ 'agentPlus.tokenMode': 'all' });
     const all = [given(w.hooks()), w.source.features, fired];
-    eq([before, essential, custom, all], [[[true, true, true], ['brief', 'openHere', 'shows', 'prefill', 'sessions', 'sessionImport', 'sessionSeen', 'accountInfo']], [[true, true, false], ['openHere', 'shows', 'prefill', 'sessions', 'sessionImport', 'sessionSeen', 'accountInfo'], 1],
-      [[true, true, false], ['openHere', 'shows', 'prefill', 'sessions', 'sessionImport', 'sessionSeen', 'accountInfo'], 2], [[true, true, true], ['brief', 'openHere', 'shows', 'prefill', 'sessions', 'sessionImport', 'sessionSeen', 'accountInfo'], 3]],
+    eq([before, essential, custom, all], [[[true, true, true], ['brief', 'openHere', 'shows', 'shownIn', 'prefill', 'sessions', 'sessionImport', 'sessionSeen', 'accountInfo']], [[true, true, false], ['openHere', 'shows', 'shownIn', 'prefill', 'sessions', 'sessionImport', 'sessionSeen', 'accountInfo'], 1],
+      [[true, true, false], ['openHere', 'shows', 'shownIn', 'prefill', 'sessions', 'sessionImport', 'sessionSeen', 'accountInfo'], 2], [[true, true, true], ['brief', 'openHere', 'shows', 'shownIn', 'prefill', 'sessions', 'sessionImport', 'sessionSeen', 'accountInfo'], 3]],
     'a change of mode rewrites config.json at once and tells Agent Plus the conversations changed; back in Custom the settings are as they were');
     eq(w.control.state.said.filter((s) => /token mode/.test(s.message)).length, 0, 'changing the mode itself says nothing');
 
