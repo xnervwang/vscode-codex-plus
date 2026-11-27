@@ -721,6 +721,9 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
   const codexStalls = () => walk(path.join(profile.user, 'logs')).filter((f) => /[\\/]openai\.chatgpt[\\/]Codex\.log$/.test(f))
     .flatMap((f) => fs.readFileSync(f, 'utf8').split('\n')).filter((l) => /reason=renderer_ready_timeout/.test(l))
     .map((l) => Date.parse(l.slice(0, 23).replace(' ', 'T'))).filter(Number.isFinite);
+  /* Whether Codex Plus's log says, since `t0`, that a page could not load Codex's code: it says so before it loads the
+     page again, two seconds later, so a recovery page that came and went between two looks is still known. */
+  const pageBrokeSince = (t0) => ownLog().split('\n').some((l) => /could not load its code/.test(l) && Date.parse(l.slice(0, 24)) >= t0 - 1000);
   const NO_ANCHORS = /the page script recognised none of [^\n]*/g;
   const noAnchors = () => ownLog().match(NO_ANCHORS) || [];
   const agentFront = () => {
@@ -3946,10 +3949,11 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
         if (g) { note(`${how}: Codex's page failed after the first message, and the conversation went on in the page Codex Plus built again`); f = g; }
       }
       /* The recovery page can be in the page Codex Plus built again rather than in `f`, which is gone by then; and when
-         the page broke before it said which conversation it had started, the page built again is a new conversation
-         page with no recovery page left to see. So a recovery page found anywhere since the message was typed counts. */
+         the page built again is sent to the conversation only once its first turn has started, and a page that broke
+         more often than Codex Plus loads one again stays broken. So a recovery page found anywhere, or one Codex Plus's
+         log tells of, since the message was typed counts. */
       if (!named && (await f.evaluate(() => /hit a snag/i.test(document.body.innerText)).catch(() => false)
-        || await brokenInFront() === 'ChatGPT hit a snag' || snagTimes.some((t) => t >= typedAt))) {
+        || await brokenInFront() === 'ChatGPT hit a snag' || snagTimes.some((t) => t >= typedAt) || pageBrokeSince(typedAt))) {
         model.release();
         const why = `${how}: Codex's own page failed after the first message ("ChatGPT hit a snag"), so there was no conversation page to follow`;
         /* Codex's recovery page, drawn when one of its own modules failed to load: never seen on Linux, where it would be a
@@ -4235,6 +4239,60 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
       }
       const still = (await codexTabsNow()).filter((y) => opened.some((x) => sameTab(x, y)));
       check(!still.length, 'and the tabs this step opened are closed again', still);
+    });
+
+    /*
+     * A New tab whose page Codex Plus has to build again (src/broken-pages.js) just after its first message began the
+     * conversation: the new page opens on the New route, and Codex Plus sends it to that conversation (src/patching.js
+     * followAfterReload). Codex failing to load one of its modules cannot be made to happen, so the report the page
+     * script sends then is handed to the extension host here; the rest, the page built again and where it goes, is
+     * the window's own.
+     */
+    await step('a New tab\'s page built again after its first message', async () => {
+      await openNotes();
+      const f = await newPageAfter('New Codex Agent', () => exec('chatgpt.newCodexPanel'));
+      check(!!f, 'New Codex Agent opens a new conversation page in a tab, for its page to be built again');
+      if (!f) return;
+      const text = 'Summarise the open bugs for 1.2.';
+      const shows = (x, t) => x.evaluate((w) => document.body.innerText.includes(w), t).catch(() => false);
+      await settle('a New tab\'s page built again: before its first message', 0);
+      model.hold();
+      try {
+        await intoComposer(f);
+        await f.locator(COMPOSER).first().pressSequentially(text);
+        await f.locator(COMPOSER).first().press('Enter');
+        const id = await until(() => rolloutWith(text), 20000, 500);
+        const begun = id && await until(() => call(`${OWN} return own('patching').turnHeard(arg).startedMs > 0;`, id).catch(() => false), 15000, 300);
+        check(!!id && !!begun, 'its first message begins a conversation whose turn this window\'s app-server has started', { thread: id, seen: model.seen.slice(-3) });
+        if (!id || !begun) return;
+        const before = new Set(page.frames());
+        const reported = await call(`${OWN} const p = own('patching');
+          const panel = [...p._registry.keys()].find((x) => { try { return x.active; } catch (_) { return false; } });
+          if (!panel) return false;
+          globalThis.__codexExtrasMessage(panel.webview, { type: 'codex-extras', kind: 'brokenPage', reason: 'module', file: 'local-conversation-page-test.js' },
+            p._state().provider);
+          return true;`).catch((e) => String(e));
+        check(reported === true, 'the page of the tab in front is reported as one that could not load Codex\'s code', reported);
+        if (reported !== true) return;
+        const back = await until(async () => {
+          for (const x of page.frames()) if (!before.has(x) && await shows(x, text)) return x;
+          return null;
+        }, 60000, 500);
+        const sent = ownLog().includes(`sent the page loaded again in a tab to conversation ${id}`);
+        check(!!back && sent, 'the page built again in its place is sent back to the conversation its first message began, and the log says so',
+          { thread: id, sent, page: await pageSays(await frontPage()), log: ownLog().split('\n').filter((l) => /could not load its code|loaded the page|sent the page/.test(l)).slice(-4) });
+        if (!back) return;
+        model.release();
+        const ended = await until(() => back.evaluate((r) => document.body.innerText.includes(r), REPLY).catch(() => false), 30000, 500);
+        const tab = await frontTab();
+        check(!!ended && !!tab && bare(tab.label).startsWith(text.slice(0, 20)),
+          'and the turn goes on in it: the reply lands there, and the tab is titled by the conversation', { ended: !!ended, tab });
+      } finally {
+        model.release();
+        await settle('a New tab\'s page built again: before its tab is closed', 0);
+        const t = await frontTab();
+        if (t && /chatgpt\.conversationEditor/.test(t.view || '')) await exec('workbench.action.closeActiveEditor');
+      }
     });
 
     /* The Agent map's row of a sub-agent opens the sub-agent's own conversation in a tab. */
