@@ -136,8 +136,8 @@ async function fetchStage() {
   const child = cp.spawnSync(prog, rest, { stdio: 'inherit', env: { ...process.env, CODEX_PLUS_UI_OFFLINE_HOW: offline } });
   process.exitCode = child.status === 0 ? 0 : 1;
   /* On a machine of someone's own the root is removed once the results are somewhere else; a CI runner is thrown away.
-     A process the run started can still be writing in it for a moment, so the removal is tried again, and a root left
-     behind is said rather than taken for a failed run. */
+     A process the run started can still be writing in it for a moment, and a root left behind must not fail a run
+     whose checks passed. */
   if (!out.startsWith(root + path.sep) && process.env.CI !== 'true' && !process.env.CODEX_PLUS_UI_KEEP) {
     try { fs.rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 1000 }); } catch (e) { console.log(`note  ${root} was not removed: ${e.message}`); }
   }

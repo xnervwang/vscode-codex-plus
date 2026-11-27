@@ -16,8 +16,7 @@ const path = require('path');
 const fixture = require('../fixture');
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-/* Resolves to what `fn` gives once it is truthy, or to that last value after `ms`: a busy machine can take more than a
-   moment to register the source and list its conversations. */
+/* A busy machine can take more than a moment to register the source and list its conversations. */
 const until = async (fn, ms = 10000, every = 100) => {
   const t0 = Date.now();
   for (;;) {

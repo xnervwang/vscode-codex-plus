@@ -825,9 +825,10 @@ function createCodexSource(vscode, { log = () => {}, reader, patching = null, en
       if (sessionId) poll({ tell: true });
     },
     /* Claude Code's Mark as Unread: the conversation stays unread until the user looks at it again. For the one in
-       front, that means switching away and coming back. Returns the conversations it took to be in front, '' for none. */
+       front, that means switching away and coming back. */
     markUnread(sessionId) {
-      if (!sessionId || typeof seen.markUnread !== 'function') return '';
+      /* null: nothing was marked, so the caller has nothing to log. */
+      if (!sessionId || typeof seen.markUnread !== 'function') return null;
       const front = frontThreads();
       seen.markUnread(sessionId, front.includes(sessionId));
       changed.fire();

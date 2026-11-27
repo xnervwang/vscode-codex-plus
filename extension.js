@@ -1202,7 +1202,7 @@ function registerCommands(context, { source, memory, say, link, opens, account }
       for (const id of Array.isArray(ids) ? ids : []) {
         if (seen) { source.markRead(id); say(`the session list marked ${id} read`); continue; }
         const front = source.markUnread(id);
-        say(`the session list marked ${id} unread; in front then: ${front || 'none'}`);
+        if (front !== null) say(`the session list marked ${id} unread; in front then: ${front || 'none'}`);
       }
     },
     accountInfo({ sessionId = '' } = {}) {
@@ -1393,8 +1393,8 @@ async function trustPlugin(say, { interactive, command = false, installed = fals
       if (command) noticeTime.error(vscode, `Could not list the work plan hooks: ${e.message}`);
       return;
     }
-    /* `installed` when the user asked for the install; an install of a newer copy at activation only says so in the
-       status bar. */
+    /* `installed` only for an install the user asked for, not for those Codex Plus makes by itself: at activation,
+       after a change of token mode, or after the offered Python download. */
     if (!st.review.length) {
       problem('trust', null);
       if (command) noticeTime.info(vscode, 'Codex Plus: Every work plan hook is trusted already.');
