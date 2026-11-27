@@ -2743,7 +2743,6 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
       const drawn = () => codex.evaluate(() => ({
         imgs: [...document.querySelectorAll('img')].filter((i) => /^test /.test(i.alt)).map((i) => [i.alt, i.naturalWidth > 0 && i.getBoundingClientRect().height > 0]),
         stands: [...document.querySelectorAll('[data-codex-extras="img-stand"]:not(style)')].map((n) => [n.tagName.toLowerCase(), n.textContent, n.getAttribute('href') || '', getComputedStyle(n).color]),
-        /* The theme's link colour, as a computed colour to compare a link's with. */
         link: (() => { const e = document.createElement('span'); e.style.color = 'var(--vscode-textLink-foreground,#4493f8)'; document.body.appendChild(e); const c = getComputedStyle(e).color; e.remove(); return c; })(),
         /* For a check that fails: how far up each image's React fibers the media component is, and whether it sits in a reply. */
         depth: [...document.querySelectorAll('img')].filter((i) => /^test /.test(i.alt)).map((i) => {
@@ -2763,7 +2762,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
       check(!!linked && !linked.imgs.some((x) => x[0] === 'test web'), 'and the image at a web address is a plain link named by its alt text, with no image of its own',
         linked || await drawn());
       const webLink = linked && linked.stands.find((x) => x[0] === 'a' && x[1] === 'test web');
-      check(!!webLink && webLink[3] === linked.link, 'and that link is in the theme\'s link colour', linked && { link: linked.link, stand: webLink });
+      check(!!webLink && webLink[3] === linked.link, 'the web image\'s link is in the theme\'s link colour', linked && { link: linked.link, stand: webLink });
       await shot('images-on');
 
       await setting('replyImages', false);

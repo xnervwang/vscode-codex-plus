@@ -32,10 +32,8 @@ module.exports = async ({ eq, tmp }) => {
     'a turn that has made no model call yet is working, with the context and tokens of the newest token_count, the last turn\'s');
   eq([st.lastTool, st.model], [null, 'gpt-test'], 'while the tool call it shows as running is its own, of which it has none yet, and the model is its own');
 
-  /* A compaction writes the thread's new history as one long line, and the turn after it, as a goal's, can start with
-     no message of the user's. The tail first read then holds that turn's start but only the end of the long line, which
-     is dropped as a partial line, while the last context and the user's last message are before it. They are found by
-     reading further back, as they are when the line is short. */
+  /* A compaction writes the thread's new history as one long line, and a goal's turn after it can start without a
+     message from the user. */
   const G = '01a1eeee-0000-7000-8000-0000000000a3', gat = t0 + 60000;
   const afterCompaction = (pad) => [
     { timestamp: iso(gat - 2), type: 'compacted', payload: { message: 'summary', replacement_history: [{ type: 'message', role: 'user', content: [{ type: 'input_text', text: 'x'.repeat(pad) }] }] } },
@@ -52,7 +50,7 @@ module.exports = async ({ eq, tmp }) => {
   };
   const short = rollout('compacted-short', 100), long = rollout('compacted-long', 100 * 1024);
   eq([short.working, short.context && short.context.used, short.lastUserMs > 0], [true, 79000, true],
-    'a turn Codex starts after a short compaction line has the last context and the user\'s last message');
+    'after a short compaction line, the turn Codex starts has the last context and the user\'s last message');
   eq([long.working, long.turnId, long.context, long.tokens && long.tokens.total, long.lastUserMs],
     [true, G, short.context, short.tokens && short.tokens.total, short.lastUserMs], 'and so does one after a compaction line longer than the first tail read');
 };
