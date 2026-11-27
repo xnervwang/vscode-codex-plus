@@ -5531,19 +5531,19 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
         let gap = false;
         next('watching the extension host restart');
         await until(async () => { const p = await pidNow(); if (!p) { gap = true; return true; } return p !== was; }, 20000, 100);
-        next('pressing the key that closes the tab');
-        /* On macOS the press has once not returned for minutes while the host restarted, the tab left open and the window
-           answering again after it; the close button below is tried then too. */
-        const pressed = await Promise.race([page.keyboard.press(process.platform === 'darwin' ? 'Meta+W' : 'Control+W').then(() => true, () => true),
-          sleep(10000).then(() => false)]);
-        if (!pressed) note(`${stepNow}: the key press that closes the tab had not returned after 10 s, so the tab's close button was clicked instead`);
+        /* The tab's close button first: on macOS the key that closes a tab has more than once not been taken for 10 s
+           and more while the host restarted, and a close that late can land after the new host has reopened the tab. */
+        next('clicking the tab\'s close button');
+        await tabNamed(t.title).hover({ timeout: 3000 }).catch(() => {});
+        await tabNamed(t.title).locator('.tab-actions .action-label').first().click({ timeout: 3000 }).catch(() => {});
         next('waiting for the tab to close');
-        let closed = pressed && await until(async () => !await tabUp(), 3000, 100);
+        let closed = await until(async () => !await tabUp(), 3000, 100);
         if (!closed) {
-          next('closing the tab with its close button');
-          await tabNamed(t.title).hover().catch(() => {});
-          await tabNamed(t.title).locator('.tab-actions .action-label').first().click({ timeout: 3000 }).catch(() => {});
-          closed = await until(async () => !await tabUp(), 3000, 100);
+          next('pressing the key that closes the tab');
+          const pressed = await Promise.race([page.keyboard.press(process.platform === 'darwin' ? 'Meta+W' : 'Control+W').then(() => true, () => true),
+            sleep(10000).then(() => false)]);
+          if (!pressed) note(`${stepNow}: the close button left the tab open, and the key that closes it had not been taken 10 s later`);
+          closed = pressed && await until(async () => !await tabUp(), 3000, 100);
         }
         next('waiting for the new extension host');
         const back = await w.hostUp(at).then(() => true, () => false);
