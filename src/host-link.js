@@ -15,6 +15,7 @@
  * with at all.
  */
 const { CORE_ID, findCore, coreHas, link: linkCore } = require('./core-link');
+const noticeTime = require('./notice-time');
 
 const REGISTERED_KEY = 'codexPlus.registered';
 const TOLD_KEY = 'codexPlus.toldNoCore';
@@ -26,7 +27,7 @@ const TOLD_KEY = 'codexPlus.toldNoCore';
 function link(vscode, source, { log = () => {}, memento = null } = {}) {
   const tell = (why) => {
     const open = 'Show Agent Plus';
-    Promise.resolve(vscode.window.showWarningMessage(`Codex Plus shows its conversations through Agent Plus, and ${why}. `
+    Promise.resolve(noticeTime.warning(vscode, `Codex Plus shows its conversations through Agent Plus, and ${why}. `
       + 'Install or update it.', open)).then((pick) => (pick === open ? vscode.commands.executeCommand('extension.open', CORE_ID) : undefined))
       .catch((e) => log(`opening Agent Plus's page failed: ${e.message}`));
   };

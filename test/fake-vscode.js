@@ -45,6 +45,10 @@ class MarkdownString {
 }
 class FileDecoration { constructor(badge, tooltip, color) { Object.assign(this, { badge, tooltip, color }); } }
 
+/* The time src/notice-time.js puts before a notification's text, and every notification shown without it. */
+const STAMP = /^\[([^\]]+)\] /;
+const unstamped = [];
+
 function create() {
   const tabsChanged = new EventEmitter();
   const groupsChanged = new EventEmitter();
@@ -54,11 +58,18 @@ function create() {
   const state = { commands: [], context: {}, extensions: new Map(), clipboard: '', views: [], status: [], log: [], registered: [],
     said: [], answers: [], handlers: {}, external: [], externalAnswer: true, picks: [], quickPicks: [], treeViews: {}, inputs: [], statusMessages: [],
     webviewViews: {} };
-  /* A notification is answered with the button the test set for text it contains (control.answer), else dismissed. */
-  const answer = async (message, ...rest) => {
+  /* A notification is answered with the button the test set for text it contains (control.answer), else dismissed. Its
+     text is recorded without the time src/notice-time.js puts before it, which is kept as `stamp`; one shown without
+     that time is also listed in `unstamped`, which test/parts/99-notice-times.js reads after every part. A modal dialog
+     is not a notification and carries none. */
+  const answer = async (raw, ...rest) => {
     const buttons = rest.filter((b) => typeof b === 'string');
     const options = rest.find((b) => b && typeof b === 'object');
-    state.said.push(options ? { message, buttons, options } : { message, buttons });
+    const m = typeof raw === 'string' ? STAMP.exec(raw) : null;
+    const message = m ? raw.slice(m[0].length) : raw;
+    if (!m && !(options && options.modal === true)) unstamped.push(String(raw));
+    const stamp = m ? m[1] : '';
+    state.said.push(options ? { message, buttons, options, stamp } : { message, buttons, stamp });
     for (const [match, pick] of state.answers) if (String(message).includes(match)) return typeof pick === 'function' ? pick(message, buttons) : pick;
     return undefined;
   };
@@ -182,4 +193,4 @@ function memento(init = {}) {
   return { get: (k, d) => (m.has(k) ? m.get(k) : d), update: async (k, v) => { m.set(k, v); }, keys: () => [...m.keys()] };
 }
 
-module.exports = { create, install, memento, EventEmitter, Uri };
+module.exports = { create, install, memento, EventEmitter, Uri, unstamped };

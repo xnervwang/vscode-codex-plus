@@ -51,6 +51,7 @@ const path = require('path');
 const targets = require('./adapters');
 const { applyAll } = require('./patch-target');
 const { notSupported } = require('./edits');
+const noticeTime = require('./notice-time');
 const linked = targets.filter((t) => !t.standsAlone);
 const { activeThread } = require('./codex-tabs');
 const { iconsFor } = require('./logo-dot');
@@ -1561,7 +1562,7 @@ function sayNotSupported(vscode, dir) {
   const ext = vscode.extensions.getExtension('openai.chatgpt');
   const version = String(((ext && ext.packageJSON) || {}).version || '') || path.basename(dir);
   const details = vscode.l10n.t(SHOW_DETAILS);
-  Promise.resolve(vscode.window.showWarningMessage(vscode.l10n.t(NOT_SUPPORTED_MESSAGE, version), details))
+  Promise.resolve(noticeTime.warning(vscode, vscode.l10n.t(NOT_SUPPORTED_MESSAGE, version), details))
     .then((pick) => (pick === details ? vscode.commands.executeCommand('codexPlus.status') : undefined))
     .catch(() => { /* dismissed, or the window is closing */ });
 }
@@ -1592,7 +1593,7 @@ async function ensurePatched(vscode, context, log, mode) {
   const offer = async (message) => {
     reloadOffered = true;
     const reload = 'Reload Window';
-    const pick = await vscode.window.showInformationMessage(message, reload);
+    const pick = await noticeTime.info(vscode, message, reload);
     if (pick === reload) await vscode.commands.executeCommand('workbench.action.reloadWindow');
   };
   const TAB_BAR = 'Codex Plus put its own tab bar button in place of Codex\'s, with a title that says what it opens. Reload the window for it to take effect.';
@@ -1666,7 +1667,7 @@ async function offerReloadIfStale() {
   reloadOffered = true;
   state.reason = 'patched after this window\'s Codex started; reload to connect';
   const reload = 'Reload Window';
-  const pick = await vscode.window.showInformationMessage('Codex was patched after this window\'s Codex started, so here it '
+  const pick = await noticeTime.info(vscode, 'Codex was patched after this window\'s Codex started, so here it '
     + 'still runs its own code: no tab dots, no answers delivered, no chimes. Reload this window to connect it.', reload);
   if (pick === reload) await vscode.commands.executeCommand('workbench.action.reloadWindow');
   return true;

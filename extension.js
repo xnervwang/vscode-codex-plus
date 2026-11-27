@@ -29,6 +29,7 @@ const { createConversationLinks } = require('./src/convo-links');
 const { createPlanBars } = require('./src/plan-bars');
 const { TabMemory } = require('./src/tab-memory');
 const sessionList = require('./src/session-list-source');
+const noticeTime = require('./src/notice-time');
 const { COLOR_KEY, PINNED_SECTION } = sessionList;
 const accountUsage = require('./src/account-usage');
 const patching = require('./src/patching');
@@ -103,7 +104,7 @@ function standsDown() {
 
 async function offerReloadForStale() {
   const reload = 'Reload Window';
-  const pick = await vscode.window.showInformationMessage('This window is running an earlier build of Codex Plus than the one now installed. '
+  const pick = await noticeTime.info(vscode, 'This window is running an earlier build of Codex Plus than the one now installed. '
     + 'Reload the window to run it.', reload);
   if (pick === reload) await vscode.commands.executeCommand('workbench.action.reloadWindow');
 }
@@ -294,7 +295,7 @@ function offerHandWindow(context, say, model, inFile) {
   const instead = found.want
     ? `replace it with the ${t(found.want.value)} the setting gives${found.want.text !== t(found.want.value) ? ` (${found.want.text})` : ''}`
     : 'remove it from config.toml so that the setting applies to your other models';
-  vscode.window.showInformationMessage(`Codex Plus: config.toml sets model_context_window to ${t(found.file)}, which this extension `
+  noticeTime.info(vscode, `Codex Plus: config.toml sets model_context_window to ${t(found.file)}, which this extension `
     + `did not write, so codexPlus.contextWindow is not applied. Keep ${t(found.file)} and record it in the setting for ${model}, `
     + `or ${instead}?`, keep, other).then(async (pick) => {
     if (pick === keep) {
@@ -333,7 +334,7 @@ function tellWindowChange() {
   windowToldAt = setTimeout(() => {
     windowToldAt = null;
     if (!patching.panelThreads().length && !patching.sidebarShowing()) return;
-    vscode.window.showInformationMessage('Codex Plus: the new context window applies to conversations you start or open after this. '
+    noticeTime.info(vscode, 'Codex Plus: the new context window applies to conversations you start or open after this. '
       + 'Conversations already loaded, including tabs closed in the last few hours, keep their window until you run Developer: Reload Window.');
   }, 1200);
 }
@@ -378,6 +379,8 @@ async function activate(context) {
   log = vscode.window.createOutputChannel('Codex Plus');
   context.subscriptions.push(log);
   memento = context.globalState;
+  /* A notification's time is in the zone of the machine VS Code runs on, which a page told this extension last time. */
+  noticeTime.setReaderZone(() => context.globalState.get('codexPlus.clientTimeZone') || '');
   const say = (m) => log.appendLine(`${new Date().toISOString()} ${m}`);
   /* Said once, in the log only: an unrecorded Codex is a thing to know, not a thing to interrupt anyone about. */
   { const line = supported.noticeLine(codexVersion()); if (line) say(line); }
@@ -520,7 +523,7 @@ async function activate(context) {
     if (PAGE_SETTINGS.some((k) => e.affectsConfiguration(`${CONFIG}.${k}`))) {
       const typed = String(cfg().get('userMessageColor', '') || '').trim();
       if (typed && !patching.safeColor(typed)) {
-        vscode.window.showWarningMessage(`Codex Plus: "${typed}" is not a CSS colour (use for example #90EE90, `
+        noticeTime.warning(vscode, `Codex Plus: "${typed}" is not a CSS colour (use for example #90EE90, `
           + 'lightgreen or rgb(144,238,144)); the colour of your own messages is left as Codex draws it.');
       }
       patching.refreshPanels().catch((err) => say(`redrawing the Codex pages: ${err.message}`));
@@ -680,7 +683,7 @@ function registerCommands(context, { source, memory, say, link, opens, account }
   };
   const restricted = () => {
     if (trusted()) return false;
-    vscode.window.showInformationMessage('Codex Plus: in Restricted Mode nothing is installed or changed. Trust the workspace first.');
+    noticeTime.info(vscode, 'Codex Plus: in Restricted Mode nothing is installed or changed. Trust the workspace first.');
     return true;
   };
 
@@ -770,7 +773,7 @@ function registerCommands(context, { source, memory, say, link, opens, account }
     const lines = patching.removePatch(vscode);
     say(lines.join('\n'));
     const reload = 'Reload Window';
-    if (await vscode.window.showInformationMessage('Codex\'s own files are back. Reload the window to run them.', reload) === reload) {
+    if (await noticeTime.info(vscode, 'Codex\'s own files are back. Reload the window to run them.', reload) === reload) {
       await vscode.commands.executeCommand('workbench.action.reloadWindow');
     }
   });
@@ -796,13 +799,13 @@ function registerCommands(context, { source, memory, say, link, opens, account }
   reg('stopLoadingWorkPlanPlugin', async () => {
     if (restricted()) return;
     const binary = codexProgram();
-    if (!binary) { vscode.window.showErrorMessage('The codex program of the Codex extension was not found.'); return; }
+    if (!binary) { noticeTime.error(vscode, 'The codex program of the Codex extension was not found.'); return; }
     try {
       await install.setPluginEnabled({ binary, home: files.codexHome(), enabled: false });
       say(`Codex is now set to skip the work plan plugin in ${files.codexHome()}`);
-      vscode.window.showInformationMessage('Codex Plus: Codex will not load the work plan plugin. It stays installed, with its '
+      noticeTime.info(vscode, 'Codex Plus: Codex will not load the work plan plugin. It stays installed, with its '
         + 'hooks still trusted; "Install the Work Plan Plugin into Codex" has it loaded again.');
-    } catch (e) { vscode.window.showErrorMessage(`Could not change whether Codex loads the plugin: ${e.message}`); }
+    } catch (e) { noticeTime.error(vscode, `Could not change whether Codex loads the plugin: ${e.message}`); }
   });
   reg('newInTab', () => newConversationInTab(say));
   /* The patch first: VS Code hands Codex's link to the window it last saw focused, which may be another one. */
@@ -846,20 +849,20 @@ function registerCommands(context, { source, memory, say, link, opens, account }
     // A tab already showing it without naming it in its URI: raise that panel, or opening the URI leaves a second tab
     // on the same conversation.
     if (!tabs.codexTabs(vscode).some((t) => t.thread === id) && patching.revealPanel(id)) return;
-    if (!(await tabs.openInTab(vscode, id))) vscode.window.showWarningMessage('Codex could not open that conversation in a tab.');
+    if (!(await tabs.openInTab(vscode, id))) noticeTime.warning(vscode, 'Codex could not open that conversation in a tab.');
   });
   reg('reopenClosedSession', async () => {
     const id = memory.reopenTarget();
     memory.reopened();
     if (!id) { await vscode.commands.executeCommand('workbench.action.reopenClosedEditor'); return; }
-    if (!(await tabs.openInTab(vscode, id))) vscode.window.showWarningMessage('Codex could not open that conversation in a tab.');
+    if (!(await tabs.openInTab(vscode, id))) noticeTime.warning(vscode, 'Codex could not open that conversation in a tab.');
   });
   reg('openThreadInSidebar', async (arg) => {
     const id = threadArg(arg);
     if (!id) return;
     await unarchiveToOpen(id);
     if (await patching.openInSidebar(id) || await tabs.openRouteInSidebar(vscode, tabs.threadRoute(id))) return;
-    vscode.window.showInformationMessage('Codex did not take the link that opens a conversation in its sidebar, so it was opened in a tab instead.');
+    noticeTime.info(vscode, 'Codex did not take the link that opens a conversation in its sidebar, so it was opened in a tab instead.');
     await tabs.openInTab(vscode, id);
   });
   /* A command acts on the selection VS Code passes when the clicked conversation is in it, otherwise on the one it is
@@ -884,7 +887,7 @@ function registerCommands(context, { source, memory, say, link, opens, account }
   const changeThread = async (doing, method, params) => done(doing, await askAppServer(method, params));
   /* Shows why Codex refused, or has the list read Codex's files again. */
   const done = (doing, r) => {
-    if (r && r.outcome === 'failed') { vscode.window.showErrorMessage(`Codex could not ${doing}: ${r.reason}`); return false; }
+    if (r && r.outcome === 'failed') { noticeTime.error(vscode, `Codex could not ${doing}: ${r.reason}`); return false; }
     source._poll();
     return true;
   };
@@ -1003,7 +1006,7 @@ function registerCommands(context, { source, memory, say, link, opens, account }
     if (ids.length) source._poll({ tell: true });
     if (!refused.length) return;
     say(`Could not ${doing}:\n  ${refused.join('\n  ')}`);
-    vscode.window.showWarningMessage(`${refused.length} conversation${refused.length === 1 ? '' : 's'} could not be ${doing}d; the output "Codex Plus" lists them.`);
+    noticeTime.warning(vscode, `${refused.length} conversation${refused.length === 1 ? '' : 's'} could not be ${doing}d; the output "Codex Plus" lists them.`);
   };
   /*
    * Codex shows no archived conversation: a tab or its sidebar routed to one draws a new conversation instead. So one
@@ -1243,7 +1246,7 @@ function findPython(context) {
    download at a time. */
 const downloadPython = pythonOffer.single(async (context, say) => {
   if (!pythonRuntime.build()) {
-    vscode.window.showInformationMessage('Codex Plus: python.org publishes an embeddable Python for Windows only. '
+    noticeTime.info(vscode, 'Codex Plus: python.org publishes an embeddable Python for Windows only. '
       + 'On this machine, install Python 3 and run "Codex Plus: Install the Work Plan Plugin into Codex".');
     return null;
   }
@@ -1251,7 +1254,7 @@ const downloadPython = pythonOffer.single(async (context, say) => {
     { location: vscode.ProgressLocation.Notification, title: `Downloading Python ${pythonRuntime.VERSION} from python.org` },
     () => pythonRuntime.download(undefined, { userAgent: 'codex-plus' }));
   say(`python download: ${r.said}`);
-  if (!r.ok) { vscode.window.showErrorMessage(`Codex Plus: downloading Python failed. ${r.said}`); return null; }
+  if (!r.ok) { noticeTime.error(vscode, `Codex Plus: downloading Python failed. ${r.said}`); return null; }
   return r;
 });
 
@@ -1284,7 +1287,7 @@ const NOT_TRUSTED = { title: 'Codex does not run the work plan hooks yet', descr
 function notePython(context, say, python) {
   problem('python', python ? null : noPython(context));
   if (python) return;
-  pythonOffer.offer({ ask: (...a) => vscode.window.showInformationMessage(...a), get: () => downloadPython(context, say) })
+  pythonOffer.offer({ ask: (...a) => noticeTime.info(vscode, ...a), get: () => downloadPython(context, say) })
     .then(async (got) => { if (got) await installPlugin(context, say, { interactive: false }); })
     .catch((e) => say(`offering Python: ${e.message}`));
 }
@@ -1295,7 +1298,7 @@ async function installPlugin(context, say, { interactive, load }) {
   const binary = codexProgram();
   if (!binary) {
     problem('install', notInstalled('Finding the codex program of the Codex extension', 'It is looked for in that extension\'s bin folder, and at chatgpt.cliExecutable when that is set.'));
-    if (interactive) vscode.window.showErrorMessage('The codex program of the Codex extension was not found.');
+    if (interactive) noticeTime.error(vscode, 'The codex program of the Codex extension was not found.');
     return false;
   }
   try {
@@ -1308,7 +1311,7 @@ async function installPlugin(context, say, { interactive, load }) {
      */
     if (!python && interactive && pythonRuntime.build()) {
       const go = 'Download Python';
-      const pick = await vscode.window.showInformationMessage('Work plans need Python 3, and none was found.',
+      const pick = await noticeTime.info(vscode, 'Work plans need Python 3, and none was found.',
         { detail: `Download Python ${pythonRuntime.VERSION} from python.org (11 MB), saved in `
           + `${pythonRuntime.home(context.globalStorageUri.fsPath)}? Nothing is installed system-wide.` }, go, 'Not now');
       if (pick === go && await downloadPython(context, say)) python = await findPython(context);
@@ -1326,7 +1329,7 @@ async function installPlugin(context, say, { interactive, load }) {
   } catch (e) {
     problem('install', notInstalled('Installing it into Codex', e.message));
     say(`installing the plugin failed: ${e.message}`);
-    if (interactive) vscode.window.showErrorMessage(`Could not install the work plan plugin: ${e.message}`);
+    if (interactive) noticeTime.error(vscode, `Could not install the work plan plugin: ${e.message}`);
     return false;
   }
 }
@@ -1371,7 +1374,7 @@ async function trustPlugin(say, { interactive, command = false }) {
   if (!trusted()) return;
   const binary = codexProgram();
   if (!binary) {
-    if (command) vscode.window.showErrorMessage('The codex program of the Codex extension was not found.');
+    if (command) noticeTime.error(vscode, 'The codex program of the Codex extension was not found.');
     return;
   }
   for (let round = 0; round < TRUST_ROUNDS; round++) {
@@ -1381,13 +1384,13 @@ async function trustPlugin(say, { interactive, command = false }) {
     let st;
     try { st = await install.hookStatus({ binary, home, cwds }); } catch (e) {
       say(`listing hooks failed: ${e.message}`);
-      if (command) vscode.window.showErrorMessage(`Could not list the work plan hooks: ${e.message}`);
+      if (command) noticeTime.error(vscode, `Could not list the work plan hooks: ${e.message}`);
       return;
     }
     /* From the command the result is a notification; after an install it only goes to the status bar. */
     if (!st.review.length) {
       problem('trust', null);
-      if (command) vscode.window.showInformationMessage('Codex Plus: Every work plan hook is trusted already.');
+      if (command) noticeTime.info(vscode, 'Codex Plus: Every work plan hook is trusted already.');
       else if (interactive) vscode.window.setStatusBarMessage('The work plan hooks are trusted.', 4000);
       return;
     }
@@ -1395,7 +1398,7 @@ async function trustPlugin(say, { interactive, command = false }) {
     const detail = `Codex runs hooks outside its sandbox and only after you trust them. These ${st.review.length} come from the work plan plugin`
       + ` in ${home}:\n\n` + st.review.map((h) => `${h.eventName}: ${h.command}`).join('\n')
       + '\n\nYou can also trust them in Codex: Settings > Hooks.';
-    const pick = await vscode.window.showWarningMessage('Trust the work plan hooks in Codex?', { modal: interactive || round > 0, detail }, go, 'Open Codex settings');
+    const pick = await noticeTime.warning(vscode, 'Trust the work plan hooks in Codex?', { modal: interactive || round > 0, detail }, go, 'Open Codex settings');
     if (pick !== go) problem('trust', NOT_TRUSTED);
     if (pick === 'Open Codex settings') { try { await vscode.commands.executeCommand('chatgpt.openSidebar'); } catch (_) { /* gone */ } return; }
     if (pick !== go) return;
@@ -1406,9 +1409,9 @@ async function trustPlugin(say, { interactive, command = false }) {
       say(`trusted ${r.trusted} work plan hook(s) in ${home}`);
       problem('trust', null);
       return;
-    } catch (e) { vscode.window.showErrorMessage(`Could not trust the hooks: ${e.message}`); return; }
+    } catch (e) { noticeTime.error(vscode, `Could not trust the hooks: ${e.message}`); return; }
   }
-  vscode.window.showWarningMessage('The work plan hooks kept changing while you were asked, so none was trusted. Try again.');
+  noticeTime.warning(vscode, 'The work plan hooks kept changing while you were asked, so none was trusted. Try again.');
 }
 
 /* An uninstall is handed to the uninstall script here rather than left until VS Code deletes the folder

@@ -98,6 +98,17 @@ module.exports = async ({ eq, note, tmp, root }) => {
     };
     eq(await toldNow('codexPlus.trustWorkPlanHooks'), ['The codex program of the Codex extension was not found.'],
       'Trust the Work Plan Hooks run with no codex program says so, rather than nothing');
+    /* The time before it is in the zone of the machine VS Code runs on, which a page told this extension, and without the
+       zone's name; until a page has told it, in this machine's zone, named. */
+    const stampNow = (zone) => require('../../src/notice-time').stampOf(Date.now(), { zone });
+    const unnamed = control.state.said[0].stamp;
+    await context.globalState.update('codexPlus.clientTimeZone', 'Pacific/Kiritimati');
+    const before = stampNow('Pacific/Kiritimati');
+    await toldNow('codexPlus.trustWorkPlanHooks');
+    const kiritimati = control.state.said[0].stamp, after = stampNow('Pacific/Kiritimati');
+    await context.globalState.update('codexPlus.clientTimeZone', undefined);
+    eq([[before, after].includes(kiritimati), /^\d\d:\d\d$/.test(kiritimati), / [A-Za-z][\w+:-]*$/.test(unnamed)], [true, true, true],
+      'a notification starts with its time in the zone a page told this extension, without its name, and before that in this machine\'s zone, named');
 
     /* A codex program, and no Python on the PATH. */
     control.state.config.cliExecutable = codex;
