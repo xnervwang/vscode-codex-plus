@@ -659,6 +659,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
    * and its fetches (fetchesIn), so that a run says how often it came and where even when no check failed on it.
    */
   let stepNow = '';
+  /* When each recovery page was found, for a step to tell whether one came after something it did. */
+  const snagTimes = [];
   const watched = new Set([page]), snagged = new WeakSet();
   let snagBusy = false;
   const snagWatch = setInterval(async () => {
@@ -671,6 +673,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
           const r = await fetchesIn(f);
           if (!r) continue;
           snagged.add(f);
+          snagTimes.push(Date.now());
           note(`during "${stepNow}" Codex drew its recovery page in a page${pg === page ? '' : ' of another window'}; its fetches of Codex's code short of a whole 200: ${JSON.stringify(r)}`);
         }
       }
@@ -3929,6 +3932,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
       check(!box.left, `${how}: its message box is empty before the first message is typed`, box);
       if (box.had) note(`${how}: the page opened with ${JSON.stringify(box.had.slice(0, 80))} in its message box, the draft Codex keeps for every new conversation page`);
       /* Typing into the message box itself, since keys sent to the window have landed in another tab's box on Windows. */
+      const typedAt = Date.now();
       await intoComposer(f);
       await f.locator(COMPOSER).first().pressSequentially(text);
       await f.locator(COMPOSER).first().press('Enter');
@@ -3941,10 +3945,11 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
         const g = await until(async () => { const v = await frontPage(); return v && v !== f && v; }, 30000, 500);
         if (g) { note(`${how}: Codex's page failed after the first message, and the conversation went on in the page Codex Plus built again`); f = g; }
       }
-      /* The recovery page can be in the page Codex Plus built again rather than in `f`, which is gone by then, so the
-         page in front is looked at too. */
+      /* The recovery page can be in the page Codex Plus built again rather than in `f`, which is gone by then; and when
+         the page broke before it said which conversation it had started, the page built again is a new conversation
+         page with no recovery page left to see. So a recovery page found anywhere since the message was typed counts. */
       if (!named && (await f.evaluate(() => /hit a snag/i.test(document.body.innerText)).catch(() => false)
-        || await brokenInFront() === 'ChatGPT hit a snag')) {
+        || await brokenInFront() === 'ChatGPT hit a snag' || snagTimes.some((t) => t >= typedAt))) {
         model.release();
         const why = `${how}: Codex's own page failed after the first message ("ChatGPT hit a snag"), so there was no conversation page to follow`;
         /* Codex's recovery page, drawn when one of its own modules failed to load: never seen on Linux, where it would be a
