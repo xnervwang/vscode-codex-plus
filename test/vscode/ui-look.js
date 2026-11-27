@@ -735,12 +735,14 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         + 'the title of the conversation in front and its Tokens. Nothing is cut off or overlaps.',
     }, async () => {
       await toList();
-      const said = await until(() => list.evaluate(() => { const a = document.querySelector('.sl-section[data-key="account"]');
-        return !!a && !a.classList.contains('sl-hidden') && /Not signed in/.test(a.innerText); }).catch(() => false), 30000, 500);
-      if (!said) throw new Error(`Account & usage does not say Not signed in: ${JSON.stringify(await listState())}`);
+      /* A collapsed section has its lines hidden, so it is opened before its words are read. */
+      await until(() => list.evaluate(() => !!document.querySelector('.sl-section[data-key="account"]')).catch(() => false), 30000, 500);
       if (!await list.evaluate(() => document.querySelector('.sl-section[data-key="account"]').classList.contains('sl-open'))) {
         await list.locator('.sl-section[data-key="account"] .sl-head').first().click();
       }
+      const said = await until(() => list.evaluate(() => { const a = document.querySelector('.sl-section[data-key="account"]');
+        return !!a && !a.classList.contains('sl-hidden') && /Not signed in/.test(a.innerText); }).catch(() => false), 30000, 500);
+      if (!said) throw new Error(`Account & usage does not say Not signed in: ${JSON.stringify(await listState())}`);
       await away();
       return inList('.sl-section[data-key="account"]');
     });
