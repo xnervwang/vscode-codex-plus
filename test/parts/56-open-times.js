@@ -103,4 +103,7 @@ module.exports = async ({ eq, tmp }) => {
   eq([/3 found/.test(told[0]), told.some((l) => /page: 2 opened, median 4\.6s, slowest 5\.8s$/.test(l)),
     told.some((l) => /Codex logged only how long it took to start/.test(l))], [true, true, true],
   'the report counts those starts as pages, and says Codex logged no more about them');
+  const pagesOnly = ot.reportLines(starts.filter((x) => x.surface === 'page'), { zone: 'UTC', last: 5 });
+  eq([pagesOnly.some((l) => /"script run"/.test(l)), told.some((l) => /"script run" is when/.test(l))], [false, true],
+    'and says what "script run" is only when a start it shows has that stage, as the conversation page among them does');
 };

@@ -228,7 +228,8 @@ function reportLines(spans, { zone = '', last = 5 } = {}) {
     `Opening a Codex page, as Codex's own log times it (${spans.length} found; times in ${zone || 'UTC'}):`,
     ...summaryLines(spans),
     ...(spans.some((s) => s.mounted) ? ['  for a "page", Codex logged only how long it took to start, not whether it was the sidebar or a tab, nor its stages'] : []),
-    `  the last ${shown.length}, newest last; "script run" is when Codex's page script had loaded and run:`,
+    `  the last ${shown.length}, newest last${shown.some((x) => num(x.marks && x.marks.renderer_entry_evaluated) != null)
+      ? '; "script run" is when Codex\'s page script had loaded and run' : ''}:`,
     ...shown.map((s) => `    ${describe(s, zone)}`),
   ];
 }

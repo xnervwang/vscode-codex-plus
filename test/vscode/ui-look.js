@@ -214,6 +214,12 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
   const PARTS = { sidebar: 'workbench.parts.sidebar', editor: 'workbench.parts.editor', panel: 'workbench.parts.panel',
     statusbar: 'workbench.parts.statusbar', auxiliary: 'workbench.parts.auxiliarybar', titlebar: 'workbench.parts.titlebar' };
   const toastsBox = () => boxIn(null, '.notifications-toasts .notification-toast, .notifications-center.visible');
+  /* VS Code shows one line of a long notification until it is expanded; the newest one is. */
+  const expandToast = async () => {
+    await exec('notifications.focusToasts').catch(() => {});
+    await exec('notification.expand').catch(() => {});
+    await sleep(400);
+  };
   const tabsBox = () => boxIn(null, '.editor-group-container.active .title');
   const viewport = () => page.evaluate(() => ({ width: innerWidth, height: innerHeight }));
 
@@ -914,16 +920,17 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     });
     await look('reply-unread', {
       expect: `With notes.txt in front when the reply lands, the conversation has stopped: its tab\'s Codex logo carries no dot and the tab\'s title reads "${title} 📩", the envelope once and last; `
-        + 'its row in the session list has no dot and a small envelope icon after its title, and no envelope inside the title; Agent Plus\'s status bar does not count it, as a reply not read is left to its notification, '
-        + `and a notification says "${title}" finished, with two buttons, Open and Dismiss, and no progress bar.`,
+        + 'its row in the session list has no dot and a small envelope icon after its title, and no envelope inside the title; Agent Plus\'s status bar does not count it; '
+        + 'and no notification says it finished, as this window shows it, in the tab behind notes.txt, whose envelope tells of it.',
     }, async () => {
       await openNotes();
       await sleep(800);
       model.release();
       await until(async () => { const d = await dotsOn(title); return d && d.working === 0 && d.waiting === 0 && (await labelOf(title)) === `${title} ${ENVELOPE}`; }, 60000, 500);
-      /* Agent Plus announces a conversation once it has stayed stopped with an unread reply for 5 seconds. */
-      if (!await until(async () => (await toastLines()).some((l) => l.includes(`"${title}" finished`)), 20000, 500)) {
-        tell(`no "finished" notification in 20 s; the window has the focus: ${await call('return vscode.window.state.focused;').catch((e) => String(e))}`);
+      /* Agent Plus would announce a conversation stopped with an unread reply after 5 seconds, but not one the focused
+         window shows anywhere (its src/attention.js), so it is given a little longer than that to show none. */
+      if (await until(async () => (await toastLines()).some((l) => l.includes(`"${title}" finished`)), 9000, 500)) {
+        tell(`a "finished" notification was shown; the window has the focus: ${await call('return vscode.window.state.focused;').catch((e) => String(e))}`);
       }
       await until(async () => ((await slRow(t0.id)) || {}).unread, 10000, 300);
       await sleep(1500);
@@ -1039,7 +1046,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await until(async () => (await labelOf(title)) !== null, 20000, 500);
     } catch (e) { tell(`putting the title and the side bar back failed: ${(e && e.message) || e}`); }
     await look('reply-read', {
-      expect: `Bringing the tab to the front takes the envelope off its title, which reads "${title}" again, and the unread mark off its row in the list; the stopped conversation has no dot on its logo or its row. The count goes off the bell, and the notification closes.`,
+      expect: `Bringing the tab to the front takes the envelope off its title, which reads "${title}" again, and the unread mark off its row in the list; the stopped conversation has no dot on its logo or its row, and the bell has no count.`,
     }, async () => {
       await tab(title).click();
       await until(async () => { const d = await dotsOn(title); return d && d.waiting === 0 && d.working === 0 && (await labelOf(title)) === title; }, 20000, 500);
@@ -1069,8 +1076,13 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     await codex.locator(hookBubble).last().click().catch(() => {});
     writePlan('done');
     await look('reply-duration', {
-      expect: 'Above the last reply its time is followed, when Codex shows no "Worked for" of its own, by how long the turn took, and then its figures, as "14:02:11  3s · ctx 0% · gpt-6.1-sol medium".',
+      expect: 'Above the last reply, to a message that had no tools run and so no "Worked for" of Codex\'s own, its time is followed by how long the turn took, and then its figures, as "14:02:11  3s · ctx 0% · gpt-6.1-sol medium".',
     }, async () => {
+      const REPLY = 'The delay is read from SYNC_RETRY_MS.';
+      model.script(t0.id, [{ reply: REPLY }]);
+      await type('Where is the retry delay read from?');
+      if (!await until(async () => model.left() === 0 && await codex.evaluate((r) => document.body.innerText.includes(r), REPLY).catch(() => false), 30000, 500)) throw new Error('the reply did not come');
+      await sleep(1500);
       await toBottom();
       return bottomBox(520);
     });
@@ -1308,10 +1320,11 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
         await type('Show the test images.');
         if (!await until(async () => { await toBottom(); return (await drawnImgs()) >= 4; }, 30000, 500)) throw new Error(`only ${await drawnImgs()} of the images were drawn`);
         await sleep(1500);
+        /* The first image at the top of the conversation, below the header Codex draws over it, which leaves room for all. */
         await codex.evaluate(() => {
-          const web = [...document.querySelectorAll('[data-codex-extras="img-stand"]')].find((x) => x.textContent === 'test web');
+          const first = document.querySelector('img[alt="test chart"]');
           const s = document.querySelector('[data-app-action-timeline-scroll]');
-          if (web && s) { web.scrollIntoView({ block: 'end', container: 'nearest' }); s.scrollBy(0, 60); }
+          if (first && s) { first.scrollIntoView({ block: 'start', container: 'nearest' }); s.scrollBy(0, -90); }
         });
         await sleep(800);
         return (await imagesBox()) || bottomBox(600);
@@ -1617,6 +1630,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       expect: 'Open in Sidebar, in the menu of the row "Why does the nightly export skip archived rows?" in Agent Plus\'s session list, with notes.txt the tab in front, shows that conversation in Codex\'s sidebar on the right, '
         + 'with a time on each message and reply, each inside its column; in the list its row has a solid stripe at its start, as open in this window, and is drawn as the current conversation, with no other row drawn so.',
     }, async () => {
+      tell('before this step the script set agentPlus.tokenMode back to its default, All features');
       await openNotes();
       await toList();
       await pick(row(t1.id), ['Open in Sidebar']);
@@ -1748,7 +1762,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       return part(PARTS.panel);
     });
     await look('open-times', {
-      expect: 'Show How Long Opening a Codex Page Took writes, in the same channel, how long each Codex page of this run took to open: the page script, the first screen, the conversation or home page, the restore.',
+      expect: 'Show How Long Opening a Codex Page Took writes, in the same channel, how long each Codex page of this run took to open, one line each. This Codex logs only how long a page took to start, '
+        + 'which the output says, so the lines have no stages and nothing explains a stage.',
     }, async () => {
       await exec('codexPlus.showOpenTimes');
       await sleep(2500);
@@ -1759,7 +1774,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
     }, async () => {
       await exec('codexPlus.openSettings');
       await sleep(2500);
-      return part(PARTS.editor);
+      return (await boxIn(null, '.settings-editor')) || part(PARTS.editor);
     });
     await exec('workbench.action.closeActiveEditor');
     trustAuto = false;
@@ -1769,17 +1784,18 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await exec('notifications.clearAll');
       await start('codexPlus.stopLoadingWorkPlanPlugin');
       await until(async () => (await toastLines()).length > 0, 20000, 500);
-      await sleep(500);
+      await expandToast();
       return toastsBox();
     });
     await look('install-plugin-again', {
-      expect: 'Install the Work Plan Plugin into Codex installs it again and says so, or asks again to trust its hooks; no error notification.',
+      expect: 'Install the Work Plan Plugin into Codex installs it again and says so in a notification, that it is installed and its hooks are trusted, or asks again to trust its hooks; no error notification.',
     }, async () => {
       await exec('notifications.clearAll');
       await start('codexPlus.installWorkPlanPlugin');
       await until(async () => (await toastLines()).length > 0 || !!await trustShown(), 30000, 500);
       await sleep(1000);
       const t = await trustShown();
+      if (!t) await expandToast();
       return t ? t.boundingBox() : toastsBox();
     });
     {
@@ -1807,7 +1823,7 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
       await exec('notifications.clearAll');
       await start('codexPlus.downloadPython');
       await until(async () => (await toastLines()).length > 0, 20000, 500);
-      await sleep(500);
+      await expandToast();
       return toastsBox();
     });
 
