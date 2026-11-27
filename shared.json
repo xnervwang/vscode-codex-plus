@@ -1,5 +1,5 @@
 {
-  "core": "3fbdf1b3ea4db02c0b0f23cd40508b972ee4f216",
+  "core": "6cf1aaf5c16b4c9083ac841babad8b9c61002a86",
   "files": [
     {
       "path": "build/sync-shared.js",
@@ -82,9 +82,14 @@
       "sha256": "313c8ab8f80b95f9e0f555e72c89ed6d4bd0de805601fc69ffadb609231eda3c"
     },
     {
+      "path": "src/notice-time.js",
+      "from": "src/notice-time.js",
+      "sha256": "575eeadcbc2ae04258c78dfd600cde0f31b717bbafb6eeb96cf58b52b126cf0b"
+    },
+    {
       "path": "src/token-mode.js",
       "from": "src/token-mode.js",
-      "sha256": "83fd03f44579844674e6733ed24161a483355da11728f81a8667e12813911174"
+      "sha256": "5603bb5304d0dd2d361741d41b4e54c9318fe04fbf4c9aaeb5860aa4a5a28969"
     },
     {
       "path": "src/page/kit.js",
