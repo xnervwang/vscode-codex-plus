@@ -1334,6 +1334,12 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
           const s = document.querySelector('[data-app-action-timeline-scroll]');
           if (first && s) { first.scrollIntoView({ block: 'start', container: 'nearest' }); s.scrollBy(0, -90); }
         });
+        await sleep(300);
+        /* When the reply is already at the bottom, the 90 px cannot be scrolled up and push its last line out of view. */
+        await codex.evaluate(() => {
+          const web = [...document.querySelectorAll('[data-codex-extras="img-stand"]')].find((e) => /test web/.test(e.textContent));
+          if (web) web.scrollIntoView({ block: 'nearest', container: 'nearest' });
+        });
         await sleep(800);
         return (await imagesBox()) || bottomBox(600);
       });
