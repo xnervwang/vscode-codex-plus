@@ -121,7 +121,7 @@ function onDisk(home) {
     out.running = await ask('thread/archive', IDS.T);
     await wait(1000);
     out.running.heard.push(...took());
-    /* A is archived: Codex refuses to rename it, and src/thread-rename.js renames it through the archive. */
+    /* A is archived, so Codex refuses thread/name/set for it. */
     out.renameArchived = await ask('thread/name/set', IDS.A, { name: 'Renamed A' });
     const through = async (method, params) => {
       const r = await server.request(method, params);

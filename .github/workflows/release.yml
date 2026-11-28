@@ -1,9 +1,8 @@
 # Pushing a tag v<version> publishes that commit to the Visual Studio Marketplace and Open VSX. Neither needs a stored
 # token: both have this file in this repository set up as a trusted publisher.
 #
-# The checks that take seconds come first, then every window test step on the three systems (vscode.yml), and the
-# extension is packed and uploaded only once both have passed. Re-running the failed jobs of a run reruns only the
-# shards that failed and then publishes.
+# Publishing waits for the checks job, which takes seconds and so runs first, and for every window test step on Linux,
+# macOS and Windows (vscode.yml). "Re-run failed jobs" on a failed run reruns only the jobs that failed, then publishes.
 name: release
 
 on:

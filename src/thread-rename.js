@@ -4,12 +4,12 @@
 
 'use strict';
 /*
- * Renaming a Codex conversation with the app-server's thread/name/set. Codex renames only a conversation whose rollout
- * is under sessions/; for an archived one it answers "no rollout found for thread id". That one is taken out of the
- * archive, renamed and archived again, so it stays archived under its new name.
+ * Renaming a Codex conversation with the app-server's thread/name/set, which Codex applies only to a conversation whose
+ * rollout is under sessions/; for an archived one it answers "no rollout found for thread id". That one is taken out of
+ * the archive, renamed and archived again.
  *
  * Codex then records the time of that last archive. A pass of src/archive-sweep.js, which runs only while Agent Plus's
- * session list does not manage archiving, counts the conversation's days from the rename, which can only put its
+ * session list does not manage archiving, treats the conversation as archived at the rename, which can only put its
  * deletion off. The session list keeps its own archive time.
  */
 const NOT_ACTIVE = /^no rollout found for thread id/;
@@ -17,7 +17,7 @@ const NOT_ACTIVE = /^no rollout found for thread id/;
 const why = (r) => (r && r.outcome === 'sent' ? 'Codex did not answer' : String((r && r.reason) || 'Codex did not say why'));
 
 /*
- * `ask(method, params)` resolves to { outcome, reason }, as askAppServer in extension.js does. Resolves to
+ * `ask(method, params)` resolves to { outcome, reason }, as askAppServer in extension.js does. The answer is
  * { outcome: 'done' } or { outcome: 'failed', reason }.
  */
 async function renameThread(ask, threadId, name) {
