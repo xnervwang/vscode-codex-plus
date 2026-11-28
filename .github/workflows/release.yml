@@ -1,5 +1,9 @@
 # Pushing a tag v<version> publishes that commit to the Visual Studio Marketplace and Open VSX. Neither needs a stored
 # token: both have this file in this repository set up as a trusted publisher.
+#
+# The checks that take seconds come first, then every window test step on the three systems (vscode.yml), and the
+# extension is packed and uploaded only once both have passed. Re-running the failed jobs of a run reruns only the
+# shards that failed and then publishes.
 name: release
 
 on:
@@ -14,14 +18,8 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  publish:
+  checks:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write
-    env:
-      VSCE: '@vscode/vsce@4.1.1'
-      OVSX: 'ovsx@1.4.0'
     steps:
       - uses: actions/checkout@v7
         with:
@@ -81,6 +79,28 @@ jobs:
       # The Agent Plus on the Marketplace has to accept this extension's protocol major.
       - name: node test/against-core.js
         run: node test/against-core.js
+
+  window:
+    needs: checks
+    permissions:
+      contents: read
+    uses: ./.github/workflows/vscode.yml
+
+  publish:
+    needs: window
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      VSCE: '@vscode/vsce@4.1.1'
+      OVSX: 'ovsx@1.4.0'
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
 
       # vsce packs the release, because build/pack.sh leaves the README's relative links as they are. .vscodeignore
       # gives the two the same files.

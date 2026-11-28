@@ -71,8 +71,9 @@ module.exports = ({ ok, bad, eq, tmp, root }) => {
   const ui = read('vscode.yml');
   eq(!!ui, true, 'the workflow that runs the extension in a real VS Code window is there too');
   if (ui) {
-    eq([/^\s+push:\s*\n(\s*#.*\n)*\s+branches:\s*\[main,\s*'ci\/\*\*'\]/m.test(ui), /^\s+pull_request:/m.test(ui), /workflow_dispatch:/.test(ui)], [true, true, true],
-      'it runs on a push to main or to a ci/ branch, on a pull request, and by hand');
+    const on = ui.split(/^jobs:/m)[0];
+    eq([/^\s+push:/m.test(on), /^\s+pull_request:/m.test(on), /^\s+workflow_call:/m.test(on), /^\s+workflow_dispatch:/m.test(on)], [false, false, true, true],
+      'it runs on no push and no pull request, which check.yml covers, but when release.yml calls it and by hand');
     const cron = (text) => ((/cron:\s*'([^']+)'/.exec(text) || [])[1] || '').trim().split(/\s+/);
     const [minute, hour, ...days] = cron(ui);
     const others = [check, latest].map((t) => cron(t).slice(0, 2).join(' '));
@@ -93,9 +94,9 @@ module.exports = ({ ok, bad, eq, tmp, root }) => {
     const pinned = (fs.readFileSync(path.join(root, '.github', 'agent-plus-commit'), 'utf8').split('\n').find((l) => l && !l.startsWith('#')) || '').trim();
     eq([/^[0-9a-f]{40}$/.test(pinned), [ui, check].every((t) => /grep -v '\^#' [\w./-]*\.github\/agent-plus-commit/.test(t) && /ref:\s*\$\{\{\s*steps\.core\.outputs\.ref\s*\}\}/.test(t)
       && /github\.event_name \}\}" = schedule \]/.test(t))], [true, true],
-      'a push builds against the Agent Plus commit .github/agent-plus-commit names, and the daily run against its newest commit');
+      'a push and a release build against the Agent Plus commit .github/agent-plus-commit names, and the daily runs against its newest commit');
     eq(/CODEX_PLUS_UI_CODEX:\s*\$\{\{\s*\(github\.event_name == 'schedule' \|\| inputs\.codex == 'latest'\) && 'latest' \|\| 'supported'\s*\}\}/.test(ui), true,
-      'a push installs the newest Codex src/supported-versions.json lists, and the daily run the newest released');
+      'a release installs the newest Codex src/supported-versions.json lists, and the daily run the newest released');
     const runJs = fs.readFileSync(path.join(root, 'test', 'vscode', 'run.js'), 'utf8');
     eq(/require\('\.\.\/\.\.\/src\/supported'\)\.versions\(\)\.pop\(\)/.test(runJs) && /want === 'latest'\) return 'openai\.chatgpt'/.test(runJs), true,
       'and test/vscode/run.js installs that one by default, the marketplace\'s newest with CODEX_PLUS_UI_CODEX=latest');
@@ -115,6 +116,10 @@ module.exports = ({ ok, bad, eq, tmp, root }) => {
     eq(order.every((at, i) => at >= 0 && (i === 0 || at > order[i - 1])), true,
       'the tag is on main, the version is new to both registries, and the suite and the check against the Marketplace\'s Agent Plus pass, all before the package is built, kept and published');
     eq((rel.match(/--skip-duplicate/g) || []).length, 2, 'and each upload skips a registry that already has the version, so a rerun can finish a release');
+    const job = (name) => (new RegExp(`\\n  ${name}:\\n([\\s\\S]*?)(?=\\n  \\w[\\w-]*:\\n|$)`).exec(rel) || [])[1] || '';
+    eq([/needs:\s*checks/.test(job('window')), /uses:\s*\.\/\.github\/workflows\/vscode\.yml/.test(job('window')), /needs:\s*window/.test(job('publish')),
+      /check\.js|against-core|merge-base/.test(job('publish')), /package --out/.test(job('checks'))], [true, true, true, false, false],
+      'every window test step runs on the three systems once the quick checks pass, and the extension is packed and published only after that');
   }
 
   for (const [name, text] of [['check.yml', check], ['against-latest.yml', latest], ['vscode.yml', ui], ['release.yml', rel]].filter(([, t]) => t)) {
