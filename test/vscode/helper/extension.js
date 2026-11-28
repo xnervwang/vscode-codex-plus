@@ -61,8 +61,8 @@ function activate(context) {
   write(`host-${process.pid}.json`, { pid: process.pid, at: Date.now(), version: vscode.version, platform: process.platform, folder: own });
 }
 
-/* The window sends an extension host the message to stop as it stops sending it events, so once this file is there
-   nothing in that host hears the window. */
+/* The window stops sending an extension host events when it tells the host to stop, so once host-<pid>.stopping is
+   there nothing in that host hears the window. */
 function deactivate() {
   const dir = process.env.CODEX_PLUS_UI_CONTROL;
   if (dir) try { fs.writeFileSync(path.join(dir, `host-${process.pid}.stopping`), String(Date.now())); } catch (_) { /* the test then waits for the process to exit */ }

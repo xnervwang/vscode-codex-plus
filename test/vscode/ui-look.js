@@ -1335,7 +1335,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check, 
           if (first && s) { first.scrollIntoView({ block: 'start', container: 'nearest' }); s.scrollBy(0, -90); }
         });
         await sleep(300);
-        /* When the reply is already at the bottom, the 90 px cannot be scrolled up and push its last line out of view. */
+        /* When the reply is already at the bottom, scrolling up those 90 px pushes its last line out of view; this
+           scrolls it back in. */
         await codex.evaluate(() => {
           const web = [...document.querySelectorAll('[data-codex-extras="img-stand"]')].find((e) => /test web/.test(e.textContent));
           if (web) web.scrollIntoView({ block: 'nearest', container: 'nearest' });

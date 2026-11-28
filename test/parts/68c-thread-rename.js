@@ -4,9 +4,8 @@
 
 'use strict';
 /*
- * Renaming through the app-server (src/thread-rename.js): Codex answers "no rollout found" for an archived conversation,
- * which is then taken out of the archive, renamed and archived again. test/parts/35v-thread-archive-codex.js checks the
- * same with Codex itself.
+ * Codex answers "no rollout found" for an archived conversation, which is then unarchived, renamed and archived again;
+ * test/parts/35v-thread-archive-codex.js checks the same with Codex itself.
  */
 const path = require('path');
 
@@ -15,7 +14,6 @@ const GONE = `no rollout found for thread id ${ID}`;
 
 module.exports = async ({ eq, root }) => {
   const { renameThread } = require(path.join(root, 'src', 'thread-rename.js'));
-  /* Answers each request in turn from `answers`, by method, and records what was asked. */
   const asker = (answers) => {
     const asked = [];
     const left = Object.fromEntries(Object.entries(answers).map(([m, list]) => [m, [...list]]));

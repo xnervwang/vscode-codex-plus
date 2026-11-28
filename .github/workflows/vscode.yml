@@ -2,9 +2,9 @@
 # the window draws differ between Linux, macOS and Windows, and check.yml runs on Linux only, with neither installed.
 # This one installs the newest VS Code and Codex on each of the three and runs the extension in a real window
 # (test/vscode/run.js): it drives the window, checks what it shows, and compares crops of this extension's elements with
-# the approved copies for that platform. Every step on the three systems takes over two hours of runner time, so it runs
-# once a day, since either upstream can change without a commit here, and before each release, which release.yml does
-# by calling it; a push to main runs check.yml only. By hand it runs only the steps a fix touches.
+# the approved copies for that platform. A full run takes over two hours of runner time, so a push to main runs
+# check.yml only. This workflow runs once a day, since VS Code, Codex and Agent Plus, which this extension depends on,
+# can all change without a commit here, and before each release, called by release.yml.
 #
 # The results folder of each platform and shard is kept as an artifact whether the run passed or not: the screenshots
 # of every step, the crops, a diff image of each crop that failed, VS Code's logs, and, for a step that failed, the
@@ -17,11 +17,11 @@ on:
     # 07:53 UTC. Not on the hour or the half hour, when the scheduler is busiest, and apart from check.yml (05:41) and
     # against-latest.yml (06:17).
     - cron: '53 7 * * *'
-  # From release.yml, which publishes only once every step has passed on the three systems.
+  # From release.yml, which publishes only after this run passes.
   workflow_call:
   # By hand: one system or all three, and with `steps` only the window test steps whose names match that regular
-  # expression, with the steps they rely on (test/vscode/ui.js stepsToRun). It is for trying a fix on a branch, or a
-  # change to this workflow, which a run by hand on that branch takes from there.
+  # expression, with the steps they rely on (test/vscode/ui.js stepsToRun). It is for trying a fix, or a change to this
+  # file, on a branch: a run started there uses that branch's copy of this file.
   workflow_dispatch:
     inputs:
       os:
