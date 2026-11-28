@@ -43,6 +43,7 @@ const codexConfig = require('./src/codex-config');
 const uninstallPlan = require('./src/uninstall-plan');
 const wakeup = require('./src/wakeup');
 const retitle = require('./src/retitle');
+const threadRename = require('./src/thread-rename');
 const detachedEnds = require('./src/detached-ends');
 const bgEnds = require('./src/bg-ends');
 const { SHARE_DIR } = require('./src/left-running');
@@ -558,9 +559,9 @@ async function activate(context) {
     rolloutOf: (id) => files.rolloutOf(id), tail: (file, bytes) => files.tailLines(file, bytes),
     trusted: () => trusted() && keepsShared(),
     rename: async (id, name) => {
-      const r = await askAppServer('thread/name/set', { threadId: id, name });
+      const r = await threadRename.renameThread(askAppServer, id, name);
       source._poll();
-      return r.outcome === 'done' ? { outcome: 'done' } : { outcome: 'failed', reason: r.outcome === 'sent' ? 'Codex did not answer' : String(r.reason || '') };
+      return r;
     } });
   context.subscriptions.push(titles.start());
   /* The Agent map's goal buttons run the commands of the same name, and its Remove deletes the wake-up through
@@ -915,7 +916,7 @@ function registerCommands(context, { source, memory, say, link, opens, account }
     const name = await vscode.window.showInputBox({ prompt: 'A new title for this Codex conversation', value: was, valueSelection: [0, was.length] });
     const next = withoutEnvelope(name || '').trim();
     if (name === undefined || !next || next === stored) return;
-    await changeThread('rename it', 'thread/name/set', { threadId: id, name: next });
+    done('rename it', await threadRename.renameThread(askAppServer, id, next));
   });
   reg('markThreadUnread', (arg, selected) => { for (const id of chosen(arg, selected)) source.markUnread(id); });
   /*
@@ -1180,9 +1181,9 @@ function registerCommands(context, { source, memory, say, link, opens, account }
         if (action === 'rename') {
           const id = ids[0], name = withoutEnvelope(String(opts.title || '')).replace(/\s+/g, ' ').trim();
           if (!id || !name) return { results: ids.map((x) => failed(x, 'no title', 'refused')) };
-          const r = await askAppServer('thread/name/set', { threadId: id, name });
+          const r = await threadRename.renameThread(askAppServer, id, name);
           source._poll();
-          return { results: [r.outcome === 'done' ? { sessionId: id, outcome: 'done' } : failed(id, r.outcome === 'sent' ? 'Codex did not answer' : String(r.reason || ''))] };
+          return { results: [r.outcome === 'done' ? { sessionId: id, outcome: 'done' } : failed(id, r.reason)] };
         }
         if (action === 'delete') { await snapshotIn(); return { results: await deleteForList(ids) }; }
         if (GOALS[action]) {

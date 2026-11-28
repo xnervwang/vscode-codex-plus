@@ -1286,6 +1286,27 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
       check(!!kept, 'and Agent Plus\'s list keeps it in Archived', await slRow(old.id, 'archived'));
     });
 
+    /* A conversation Codex archived, renamed with Rename as the session list and the tab's menu run it. Codex renames
+       only one that is not archived, so this extension takes it out of the archive, renames it and archives it again
+       (src/thread-rename.js). */
+    await step('a conversation Codex archived, renamed', async () => {
+      const t = ARCHIVED[0];
+      const name = `${t.title} (renamed while archived)`;
+      const stored = () => call(`${OWN} const x = (own('codex-files').listThreads() || []).find((y) => y.id === arg);
+        return x ? { title: x.title, archived: !!x.archived } : null;`, t.id).catch(() => null);
+      const inArchive = () => { try { return fs.readdirSync(path.join(profile.codexHome, 'archived_sessions'), { recursive: true }).some((n) => String(n).includes(t.id)); } catch (_) { return false; } };
+      await call('vscode.commands.executeCommand(\'codexPlus.renameThread\', arg); return true;', t.id);
+      const box = page.locator('.quick-input-widget input').first();
+      if (!await box.waitFor({ state: 'visible', timeout: 10000 }).then(() => true, () => false)) throw new Error('Rename asked for no name');
+      await box.fill(name);
+      await box.press('Enter');
+      const got = await until(async () => { const x = await stored(); return x && x.title === name && x.archived && x; }, 30000, 1000);
+      check(!!got, 'it takes the new name in Codex and stays archived', await stored());
+      check(inArchive(), 'with its rollout still in archived_sessions/', inArchive());
+      check(!!await slRowSays(t.id, (r) => r.section === 'archived' && r.title === name, 15000),
+        'and Agent Plus\'s session list shows it in Archived under the new name', await slRow(t.id, 'archived'));
+    });
+
     /* The made-up conversation that no other step uses, archived in Agent Plus's list and deleted from its Archived
        section. The list's confirmation lists what will be deleted in this extension's words, and Delete goes to this
        extension, which has Codex delete the rollout. */

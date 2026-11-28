@@ -49,6 +49,11 @@ module.exports = async ({ eq, note, root }) => {
   eq([out.runningBefore, sorted(out.running.heard.filter((h) => /^(turn\/completed|thread\/archived)/.test(h))), out.running.disk.where.T],
     [[], ['thread/archived T', 'turn/completed T interrupted'], 'archived_sessions'],
     'one with a turn running has that turn stopped, which it was not before the request, and is archived; this is why Archive leaves a running one alone');
+  eq(out.renameArchived.answer, { error: 'no rollout found for thread id <id>' }, 'Codex does not rename an archived conversation: it says it has no rollout for it');
+  const n = out.renamed;
+  eq([n.answer, n.name, n.disk.where.A, n.disk.rows.A.archived, n.disk.rows.A.inArchive],
+    [{ outcome: 'done' }, 'Renamed A', 'archived_sessions', 1, true],
+    'renameThread (src/thread-rename.js) takes it out of the archive, renames it and archives it again, so it is archived under the new name');
   const u = out.unarchive;
   eq([u.answer, sorted(u.heard), u.disk.where.P, u.disk.where.S, u.disk.rows.P.archived, u.disk.rows.P.archivedAt],
     [{ thread: 'P' }, ['thread/unarchived P', 'thread/unarchived S'], 'sessions/<day>', 'sessions/<day>', 0, null],

@@ -121,6 +121,18 @@ function onDisk(home) {
     out.running = await ask('thread/archive', IDS.T);
     await wait(1000);
     out.running.heard.push(...took());
+    /* A is archived: Codex refuses to rename it, and src/thread-rename.js renames it through the archive. */
+    out.renameArchived = await ask('thread/name/set', IDS.A, { name: 'Renamed A' });
+    const through = async (method, params) => {
+      const r = await server.request(method, params);
+      return r.error ? { outcome: 'failed', reason: r.error.message } : { outcome: 'done', result: r.result };
+    };
+    took();
+    const answer = await require(path.join(__dirname, '..', 'src', 'thread-rename')).renameThread(through, IDS.A, 'Renamed A');
+    await wait(800);
+    const listed = await server.request('thread/list', { archived: true, limit: 50 });
+    out.renamed = { answer, heard: took(), disk: onDisk(home),
+      name: ((((listed.result && listed.result.data) || []).find((t) => t.id === IDS.A)) || {}).name || null };
     out.unarchive = await ask('thread/unarchive', IDS.P);
     out.unarchive.answer = out.unarchive.answer && out.unarchive.answer.thread ? { thread: letter(out.unarchive.answer.thread.id) } : out.unarchive.answer;
     out.unarchiveAgain = await ask('thread/unarchive', IDS.P);
