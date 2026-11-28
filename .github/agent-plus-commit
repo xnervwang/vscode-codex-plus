@@ -2,4 +2,4 @@
 # (.github/workflows/vscode.yml and check.yml). It is moved by hand to a newer commit once this extension passes against
 # that one. The daily runs, and a run of vscode.yml by hand with agent_plus latest, take Agent Plus's newest commit
 # instead, so a change there that breaks this extension shows up there without failing anyone's push.
-83c4c1196af34d171415a6b6eff71b3878e6d33f
+0a043988d2909787467938164a17f99a611f6b00

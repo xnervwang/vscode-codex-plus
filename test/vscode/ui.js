@@ -1286,9 +1286,9 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
       check(!!kept, 'and Agent Plus\'s list keeps it in Archived', await slRow(old.id, 'archived'));
     });
 
-    /* A conversation Codex archived, renamed with Rename as the session list and the tab's menu run it. Codex renames
-       only one that is not archived, so this extension takes it out of the archive, renames it and archives it again
-       (src/thread-rename.js). */
+    /* A conversation Codex archived, renamed with Rename as the tab's menu runs it, then with the pencil on its row in
+       the session list's Archived section. Codex renames only one that is not archived, so this extension takes it out
+       of the archive, renames it and archives it again (src/thread-rename.js). */
     await step('a conversation Codex archived, renamed', async () => {
       const t = ARCHIVED[0];
       const name = `${t.title} (renamed while archived)`;
@@ -1305,6 +1305,22 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
       check(inArchive(), 'with its rollout still in archived_sessions/', inArchive());
       check(!!await slRowSays(t.id, (r) => r.section === 'archived' && r.title === name, 15000),
         'and Agent Plus\'s session list shows it in Archived under the new name', await slRow(t.id, 'archived'));
+      const again = `${t.title} (pencil while archived)`;
+      if (!await sl.evaluate(() => { const s = document.querySelector('.sl-section[data-key="archived"]'); return !s || s.classList.contains('sl-open'); })) {
+        await sl.locator('.sl-section[data-key="archived"] .sl-head').first().click();
+      }
+      const row = slRowOf(t, 'archived');
+      await row.hover();
+      await row.locator('.sl-act[data-act="rename"]').first().click();
+      if (!await until(() => sl.evaluate(() => !!document.querySelector('.sl-title.sl-editing')), 5000, 200)) throw new Error('the pencil on the archived row opened no name to edit');
+      await page.keyboard.press(process.platform === 'darwin' ? 'Meta+A' : 'Control+A');
+      await page.keyboard.type(again);
+      await page.keyboard.press('Enter');
+      const viaList = await until(async () => { const x = await stored(); return x && x.title === again && x.archived && x; }, 30000, 1000);
+      check(!!viaList, 'the pencil on its row in the list\'s Archived section renames it in Codex too, and it stays archived', await stored());
+      check(inArchive(), 'with its rollout still in archived_sessions/ after that', inArchive());
+      check(!!await slRowSays(t.id, (r) => r.section === 'archived' && r.title === again, 15000),
+        'and the row stays in Archived under that name', await slRow(t.id, 'archived'));
     });
 
     /* The made-up conversation that no other step uses, archived in Agent Plus's list and deleted from its Archived
