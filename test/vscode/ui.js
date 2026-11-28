@@ -5579,8 +5579,9 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
     await step('a tab closed while the extension host was away', async () => {
       const t = threads[1];
       const tabUp = () => page.evaluate((want) => [...document.querySelectorAll('.tabs-container .tab')].some((e) => e.textContent.includes(want)), t.title);
-      /* The tab is closed the moment the extension host is told to restart, when nothing in the host is left to record it.
-         Killing the host instead closes a window started for extension development, as this one is. */
+      /* The tab is closed once the old extension host has been told to stop, when nothing in it hears the window any
+         more, and before the new host starts. Killing the host instead closes a window started for extension
+         development, as this one is. */
       const dropRound = async (doing, cut) => {
         const next = (what) => { if (cut.done) throw new Error('given up'); doing.now = what; };
         next('opening the tab');
@@ -5590,18 +5591,22 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
         next('clicking the tab');
         await tabNamed(t.title).click();
         await sleep(3000);
-        const pidNow = () => call('return process.pid;', null, 300).catch(() => 0);
         next('reading the extension host\'s pid');
-        const was = await pidNow();
+        const was = await call('return process.pid;', null, 10000).catch(() => 0);
         const at = Date.now();
         next('waiting for Codex\'s pages to settle');
         await settle('a tab closed while the extension host was away: before the extension host restarted');
         next('asking the extension host to restart');
         call('setTimeout(() => vscode.commands.executeCommand("workbench.action.restartExtensionHost"), 50); return true;', null, 3000).catch(() => {});
-        /* Watches for a moment when no host answers: the old host gone and the new one not yet up. */
-        let gap = false;
+        /* The old host is away once the helper in it was told to stop (helper/extension.js), or once its process is
+           gone. A call it does not answer within a short limit is not enough: the helper looks for requests every
+           150 ms, and a busy host that still hears the window can miss the limit and record the close. */
+        const away = () => {
+          if (fs.existsSync(path.join(profile.control, `host-${was}.stopping`))) return true;
+          try { process.kill(was, 0); return false; } catch (e) { return e.code !== 'EPERM'; }
+        };
         next('watching the extension host restart');
-        await until(async () => { const p = await pidNow(); if (!p) { gap = true; return true; } return p !== was; }, 20000, 100);
+        const gap = !!was && !!await until(away, 30000, 50);
         /* The tab's close button first: on macOS a press of the key that closes a tab has more than once taken over
            10 s to return while the host restarted, and a close that late can land after the new host has reopened
            the tab. */
@@ -5633,8 +5638,8 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
         const late = new Promise((_, no) => { timer = setTimeout(() => { cut.done = true; no(new Error(`a round of closing the tab took more than ${ROUND_MS / 1000} s; it was ${doing.now}`)); }, ROUND_MS); });
         try { return await Promise.race([dropRound(doing, cut), late]); } finally { clearTimeout(timer); }
       };
-      /* If no moment without a host was seen, the close may have been recorded, and the check after it proves nothing. */
-      const unmet = (r) => { if (r.gap) return false; note(`no moment without an extension host was seen on ${process.platform} while it restarted (${JSON.stringify(r)}), so the tab may have been closed under a host that recorded it; not checked`); return true; };
+      /* If the old host was not seen to stop, the close may have been recorded, and the check after it proves nothing. */
+      const unmet = (r) => { if (r.gap) return false; note(`the old extension host was not seen to stop on ${process.platform} while it restarted (${JSON.stringify(r)}), so the tab may have been closed under a host that recorded it; not checked`); return true; };
       const first = await dropOnce();
       check(first.closed && first.back, 'the tab is closed as the extension host restarts, and a new host starts', first);
       if (!unmet(first)) {

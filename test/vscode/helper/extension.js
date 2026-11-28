@@ -8,9 +8,9 @@
  * outside the window, so it writes a request file into the folder CODEX_PLUS_UI_CONTROL names and this extension runs
  * the request's body with `vscode` in scope and writes the result back. Files rather than a socket, because the
  * window is reloaded during the run: the extension host restarts, and the requests left in the folder wait for the next
- * one. Each extension host writes host-<pid>.json when it is up, with the folder its window has open. A request that
- * names a folder is run only by the window with that folder open, which lets the windows of one run share the control
- * folder.
+ * one. Each extension host writes host-<pid>.json when it is up, with the folder its window has open, and
+ * host-<pid>.stopping when it is told to stop. A request that names a folder is run only by the window with that folder
+ * open, which lets the windows of one run share the control folder.
  */
 const fs = require('fs');
 const path = require('path');
@@ -61,4 +61,11 @@ function activate(context) {
   write(`host-${process.pid}.json`, { pid: process.pid, at: Date.now(), version: vscode.version, platform: process.platform, folder: own });
 }
 
-module.exports = { activate, deactivate() {} };
+/* The window sends an extension host the message to stop as it stops sending it events, so once this file is there
+   nothing in that host hears the window. */
+function deactivate() {
+  const dir = process.env.CODEX_PLUS_UI_CONTROL;
+  if (dir) try { fs.writeFileSync(path.join(dir, `host-${process.pid}.stopping`), String(Date.now())); } catch (_) { /* the test then waits for the process to exit */ }
+}
+
+module.exports = { activate, deactivate };
