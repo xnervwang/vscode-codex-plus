@@ -4,21 +4,22 @@
 
 'use strict';
 /*
- * A conversation renaming itself. The work plan's MCP tool set_title (or the retitle.py command, which Codex's sandbox
- * lets write here only with the user's approval) puts a request in retitle/ in the plugin's data folder, through
- * plan_common.request_retitle, and waits for the answer beside it:
+ * A conversation renaming itself. The work plan's MCP tool set_title puts a request in retitle/ in the plugin's data
+ * folder, through plan_common.request_retitle, and waits for the answer in the same folder:
  *
  *   <key>.json         { format: 1, key, agent, sessionId, title, at, via: 'tool' | 'command' }
  *   <key>.claimed      the request, once a window has taken it
  *   <key>.result.json  { format: 1, key, outcome: 'done' | 'refused' | 'failed', reason, title, at }
  *
- * One window answers: the one that renames <key>.json to <key>.claimed. A window that shows the conversation takes it
- * at once; any other waits OTHERS_WAIT_MS first, so a conversation open nowhere is still renamed.
+ * The retitle.py command makes the same request, but Codex's sandbox lets it write there only with the user's approval.
+ *
+ * Only the window that renames <key>.json to <key>.claimed answers. A window that shows the conversation takes it at
+ * once; any other takes it after OTHERS_WAIT_MS, in case no window shows the conversation.
  *
  * The request is believed only when the conversation's own rollout records the call that made it, with the same title,
  * so one conversation cannot rename another. Codex writes that record on its own schedule, which can be after the tool
- * has started, so the rollout is read again for up to VERIFY_MS. The name is then set through this window's app-server,
- * as the session list's Rename does, without the marks Codex Plus draws after a title.
+ * has started, and the rollout is read again for up to VERIFY_MS until the call appears. The name is then set through
+ * this window's app-server, as the session list's Rename does, without the marks Codex Plus draws after a title.
  */
 const fs = require('fs');
 const path = require('path');
@@ -35,7 +36,7 @@ const OTHERS_WAIT_MS = 2000;
 /* Within the requester's 15 seconds, leaving it time to read the answer. */
 const VERIFY_MS = 8000;
 const VERIFY_EVERY_MS = 500;
-/* How long before the request its call may have been recorded: the model's call is written before the tool runs. */
+/* Codex can record a call before it runs the tool. */
 const CALL_BEFORE_MS = 5 * 60e3;
 const STALE_MS = 10 * 60e3;
 const TAIL_BYTES = 1 << 20;
@@ -44,7 +45,6 @@ const MCP_NAMESPACE = 'mcp__work_plan';
 const TOOL = 'set_title';
 const SHELLS = new Set(['exec_command', 'shell', 'local_shell', 'container.exec']);
 
-/** `title` as it is set: no marks, spaces joined, cut to TITLE_MAX characters. */
 function cleanTitle(title) {
   const plain = withoutMarks(String(title == null ? '' : title)).replace(/\s+/g, ' ').trim();
   return [...plain].slice(0, TITLE_MAX).join('').trim();
@@ -54,7 +54,6 @@ function parse(text) {
   try { const v = JSON.parse(text); return v && typeof v === 'object' ? v : null; } catch (_) { return null; }
 }
 
-/** The request in `text`, or null when it is not one this window answers. */
 function requestOf(text, key) {
   const r = parse(text);
   if (!r || r.format !== FORMAT || r.key !== key || r.agent !== AGENT) return null;
@@ -63,17 +62,11 @@ function requestOf(text, key) {
   return { key, sessionId: r.sessionId, title: r.title, at: +r.at, via: r.via === 'command' ? 'command' : 'tool' };
 }
 
-/* The command line of a shell call's arguments, whichever field this Codex puts it in. */
 function commandOf(args) {
   const c = args && (args.cmd !== undefined ? args.cmd : args.command);
   return Array.isArray(c) ? c.map(String).join(' ') : typeof c === 'string' ? c : '';
 }
 
-/**
- * Whether the rollout lines `lines` record the call that made `req`: set_title on the work plan's MCP server with the
- * same title, or a shell command running retitle.py with the title in it, recorded in the CALL_BEFORE_MS before the
- * request or after it.
- */
 function askedIn(lines, req) {
   for (const line of lines) {
     if (!line.includes('function_call') || !line.includes(req.via === 'command' ? 'retitle' : TOOL)) continue;
@@ -95,9 +88,8 @@ function askedIn(lines, req) {
 }
 
 /*
- * `dir()` is the plugin's data folder; `shownHere()` the threads this window shows; `rolloutOf(id)` a thread's rollout
- * path or ''; `tail(file, bytes)` its last lines; `rename(id, name)` sets a thread's name and resolves to
- * { outcome: 'done' | 'failed', reason }; `trusted()` false in Restricted Mode, where this window takes no request.
+ * `dir()` is the plugin's data folder. `rename(id, name)` resolves to { outcome: 'done' } or { outcome: 'failed',
+ * reason }. `trusted()` is false in Restricted Mode.
  */
 function createRetitle({ dir, shownHere = () => [], rolloutOf, tail, rename, trusted = () => true, now = Date.now,
   sleep = (ms) => new Promise((r) => setTimeout(r, ms)), log = () => {} }) {
@@ -109,7 +101,7 @@ function createRetitle({ dir, shownHere = () => [], rolloutOf, tail, rename, tru
     const tmp = `${file}.${process.pid}.tmp`;
     try { fs.writeFileSync(tmp, JSON.stringify(value)); fs.renameSync(tmp, file); } catch (e) {
       try { fs.unlinkSync(tmp); } catch (_) { /* gone */ }
-      log(`retitle: the answer could not be written: ${e.message}`);
+      log(`retitle: could not write the answer: ${e.message}`);
     }
   };
 
@@ -127,10 +119,10 @@ function createRetitle({ dir, shownHere = () => [], rolloutOf, tail, rename, tru
 
   async function answer(req) {
     if (!await verified(req)) {
-      return ['refused', `the conversation's own record has no ${req.via === 'command' ? 'retitle.py command' : `${TOOL} call`} asking for this title`, ''];
+      return ['refused', `the conversation's record has no ${req.via === 'command' ? 'retitle.py command' : `${TOOL} call`} asking for this title`, ''];
     }
     const name = cleanTitle(req.title);
-    if (!name) return ['refused', 'nothing is left of the title once its marks and extra spaces are taken out', ''];
+    if (!name) return ['refused', 'the title is empty without marks and extra spaces', ''];
     let r;
     try { r = await rename(req.sessionId, name); } catch (e) { r = { outcome: 'failed', reason: (e && e.message) || String(e) }; }
     return r && r.outcome === 'done' ? ['done', 'renamed', name] : ['failed', String((r && r.reason) || 'Codex did not rename it'), ''];
@@ -157,7 +149,7 @@ function createRetitle({ dir, shownHere = () => [], rolloutOf, tail, rename, tru
     }
   }
 
-  /* One look at the folder: takes each request this window should answer now. Resolves once they are answered. */
+  /* One look at the folder. */
   async function tick() {
     if (!trusted()) return;
     const d = folder();
@@ -187,7 +179,6 @@ function createRetitle({ dir, shownHere = () => [], rolloutOf, tail, rename, tru
   let timer = null;
   return {
     tick,
-    /* Starts the look every TICK_MS; the result's dispose() stops it. */
     start() {
       if (!timer) timer = setInterval(() => { tick().catch((e) => log(`retitle: ${e.message}`)); }, TICK_MS);
       return { dispose: () => { if (timer) clearInterval(timer); timer = null; } };

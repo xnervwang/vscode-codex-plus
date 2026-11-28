@@ -18,8 +18,8 @@ for, named by a thread id: the tools write only there.
 set_wakeup and clear_wakeup keep a conversation's wake-up, <thread id>.wakeup in the same data directory: the Codex Plus
 extension reads it in every window and, when it is due, queues the prompt for that conversation (src/wakeup.js there).
 
-set_title asks for a new title of the conversation through plan_common.request_retitle, which puts a request in
-retitle/ of the same data directory and waits for the window hosting the conversation to answer (src/retitle.js there).
+set_title hands the new title to plan_common.request_retitle, which puts a request in retitle/ of the same data
+directory and waits for the window hosting the conversation to answer (src/retitle.js there).
 """
 import importlib.util
 import json
@@ -125,9 +125,9 @@ TOOLS = [
      "annotations": dict(ANNOTATIONS, title="Remove this conversation's wake-up", idempotentHint=True),
      "inputSchema": {"type": "object", "required": ["thread"], "additionalProperties": False,
                      "properties": {"thread": THREAD}}},
-    {"name": "set_title", "description": "Rename this conversation, as the retitle skill says when to. The VS Code window "
-     "hosting it checks that the request came from this conversation, takes out marks and extra spaces, cuts the title "
-     "at 80 characters and sets it; the answer comes within about 15 seconds, at most about 25.",
+    {"name": "set_title", "description": "Rename this conversation when the retitle skill says to. The VS Code "
+     "window hosting it renames it only when the request came from this conversation, and sets the title without "
+     "marks or extra spaces, cut at 80 characters. The answer comes within about 15 seconds, at most about 25.",
      "annotations": dict(ANNOTATIONS, title="Rename this conversation", idempotentHint=True),
      "inputSchema": {"type": "object", "required": ["plan", "title"], "additionalProperties": False, "properties": {
          "plan": PLAN, "title": {"type": "string", "description": "The new title."}}}},
@@ -206,11 +206,11 @@ def set_title(args):
     got = plan_common.request_retitle(os.path.basename(path)[:-len(".json")], title, directory=os.path.dirname(path), via="tool")
     outcome, reason = got.get("outcome"), got.get("reason") or ""
     if outcome == "done":
-        return "Renamed: the title is now %s." % json.dumps(got.get("title") or "", ensure_ascii=False)
+        return "Renamed to %s." % json.dumps(got.get("title") or "", ensure_ascii=False)
     if outcome == "untaken":
-        return "Not renamed, because no window took the request: %s. The title did not change." % reason
+        return "Not renamed: %s." % reason
     if outcome == "unclear":
-        return "Unclear: %s. Whether the title changed is not known." % reason
+        return "Unclear whether the title changed: %s." % reason
     raise Refused("Not renamed: %s." % reason)
 
 

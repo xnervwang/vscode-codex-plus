@@ -43,7 +43,7 @@ The model can set a [wake-up](docs/work-plan.md#wake-ups) with the work plan plu
 
 ### Renaming the conversation
 
-Your Codex conversation can rename itself with `set_title`. Codex Plus installs the work plan plugin into Codex. Like `set_row` and `set_wakeup`, `set_title` comes from the plugin's MCP server and needs no sandbox approval. It returns the resulting title or the reason for failure within about 15 seconds (at most about 25). With no Codex Plus window open, it reports that the title stayed unchanged. See [renaming the conversation](docs/work-plan.md#renaming-the-conversation).
+Your Codex conversation can rename itself with `set_title` when you ask for a new title, when the work is clear but the title is still a placeholder or the opening words of your first message, or when the work has moved on and the title no longer fits. Like `set_wakeup`, `set_title` is a tool of the work plan plugin's [MCP server](docs/work-plan.md#work-plan) and needs no sandbox approval. It answers the model within about 15 seconds (at most about 25) with the title Codex Plus set, which may be shorter than requested or lack the marks Codex Plus adds to titles, such as the envelope for an unread reply; if Codex Plus did not rename the conversation, the answer says why. With no Codex Plus window open, it reports that the title did not change. See [renaming the conversation](docs/work-plan.md#renaming-the-conversation).
 
 ### Your time zone
 

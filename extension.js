@@ -551,8 +551,8 @@ async function activate(context) {
     /* A goal changed, by a command here, by the model or by Codex itself: the list reads the goals database again. */
     if (m.startsWith('thread/goal/')) source._poll();
   }));
-  /* A conversation renaming itself with the work plan's set_title (src/retitle.js), through this window's app-server as
-     the session list's Rename does. */
+  /* Renames a conversation that asks for it with the work plan's set_title (src/retitle.js), through this window's
+     app-server as the session list's Rename does. */
   const titles = retitle.createRetitle({ dir: () => install.planDir(files.codexHome()), log: say,
     shownHere: () => [...memory.openThreads(), patching.sidebarShowing()].filter(Boolean),
     rolloutOf: (id) => files.rolloutOf(id), tail: (file, bytes) => files.tailLines(file, bytes),

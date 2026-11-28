@@ -4747,13 +4747,14 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
         check(!!await until(async () => (await labelOf(named)) === named, 20000, 500), `and going to it again after leaving it takes the envelope away (${how})`,
           { label: await labelOf(named), front: await frontTab(), focused: await focused().catch(() => null) });
       }
-      /* The conversation renaming itself: the model calls the work plan's set_title, and this window, which shows it,
-         answers the request (src/retitle.js), without the envelope the title was given. */
+      /* The conversation renames itself: the model calls the work plan's set_title with an envelope in the title. This
+         window shows the conversation, so it answers the request (src/retitle.js), and the name it sets has no
+         envelope. */
       {
         const own = `${title} (itself)`;
         await tabNamed(named).click();
-        /* The page of the tab in front, found again: an earlier step may have built it anew. The widest page showing the
-           conversation is the tab's, should Codex's sidebar show it too. */
+        /* Find the tab's page again, since an earlier step may have rebuilt it. If Codex's sidebar shows the
+           conversation too, the tab's page is the wider one. */
         const here = await until(async () => {
           let best = null, width = 0;
           for (const f of page.frames()) {
@@ -4763,17 +4764,17 @@ async function run({ exe, profile, env, playwright, model, threads, out, check: 
           }
           return best;
         }, 30000, 500);
-        check(!!here, 'the conversation renamed by hand shows in its tab before it renames itself', await frontTab());
+        check(!!here, 'the page of the conversation\'s tab is found again', await frontTab());
         if (here) {
-          const said = model.sent('Renamed: the title is now');
+          const said = model.sent('Renamed to ');
           model.script(t.id, [{ call: 'set_title', namespace: 'mcp__work_plan', args: { plan: path.join(PLANS, `${t.id}.json`), title: `${own} ${ENVELOPE}` } },
             { reply: 'Renamed.' }]);
           await intoComposer(here);
           await here.locator(COMPOSER).first().pressSequentially('Give this conversation a title of its own.');
           await here.locator(COMPOSER).first().press('Enter');
-          await renamedTo(own, 'renamed by the conversation itself with the work plan\'s set_title');
-          check(!!await until(() => model.sent('Renamed: the title is now') > said, 30000, 500),
-            'and set_title tells the model the title it now has', model.seen.slice(-2).map((x) => x.context));
+          await renamedTo(own, 'renamed by its own set_title call');
+          check(!!await until(() => model.sent('Renamed to ') > said, 30000, 500),
+            'and set_title tells the model it was renamed', model.seen.slice(-2).map((x) => x.context));
           model.script(null);
         }
       }

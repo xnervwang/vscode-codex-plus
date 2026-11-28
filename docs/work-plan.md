@@ -46,11 +46,11 @@ Wake-ups go only to Codex conversations open in this window. A conversation open
 
 ## Renaming the conversation
 
-The work plan plugin's `retitle` skill tells Codex to call `set_title` when you ask, when the work becomes clear and the title is still a placeholder or the opening words of your first message, or when the work changes. It tells Codex to keep your manual title unless you ask and to omit progress words, dates and marks.
+The work plan plugin's `retitle` skill tells Codex to call `set_title` when you ask it to rename the conversation. The skill also calls for `set_title` when the work changes or when the work becomes clear and the title is still a placeholder or the opening words of your first message. The skill instructs Codex to keep a title you set manually unless you request a new one, and to omit progress words, dates and marks such as the envelope Codex Plus adds to a title while a reply is unread.
 
-A VS Code window showing the conversation in a tab or Codex's sidebar takes the request immediately. Another window with Codex Plus takes it after two seconds. Windows in Restricted Mode skip requests. Codex Plus requires a matching `set_title` call and title in the conversation's own record (its rollout), so one conversation cannot rename another.
+`set_title` leaves a request in the plugin's `retitle/` data subfolder. A VS Code window with Codex Plus that shows the conversation in a tab or in Codex's sidebar checks that subfolder every half second and answers the request on its next check. Any other window with Codex Plus can answer only after the request has waited two seconds. Only one window answers. Windows in Restricted Mode skip requests. Codex Plus requires a matching `set_title` call and title in the conversation's own record (its rollout), so one conversation cannot rename another.
 
-Codex Plus strips the envelope and other marks it appends, collapses repeated spaces and truncates the title to 80 characters. It uses Codex's app-server connection, like Rename in the session list. The tab and sidebar show the result. Request and reply files in the plugin's `retitle/` data subfolder are removed when older than 10 minutes.
+Codex Plus strips the envelope and other marks it appends, collapses repeated spaces and truncates the title to 80 characters. It uses Codex's app-server connection, like Rename in the session list. Request and reply files in that subfolder are removed when older than 10 minutes.
 
 ## Your time zone
 

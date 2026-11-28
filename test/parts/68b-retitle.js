@@ -51,8 +51,8 @@ module.exports = async ({ eq, tmp, root }) => {
   await host.tick();
   let r = result(k);
   eq([r && r.outcome, r && r.title, renamed, left()], ['done', 'Fix the retry delay', [[A, 'Fix the retry delay']], [`${k}.result.json`]],
-    'a request from the conversation this window shows is taken at once: the name is set without the envelope and extra spaces, and only the answer is left');
-  eq([r.format, r.key, typeof r.reason, r.at], [1, k, 'string', now], 'the answer carries the format, the key, a reason and when it was written');
+    'the window showing the conversation takes its request at once and sets the name without the envelope or extra spaces, leaving only the answer file');
+  eq([r.format, r.key, typeof r.reason, r.at], [1, k, 'string', now], 'the answer has the format, the key, a reason and the time it was written');
   fs.unlinkSync(path.join(folder, `${k}.result.json`));
 
   /* Not shown here: taken after OTHERS_WAIT_MS. */
@@ -60,10 +60,10 @@ module.exports = async ({ eq, tmp, root }) => {
   call(B, 'Export archived rows', now);
   k = ask(B, 'Export archived rows');
   await host.tick();
-  eq([left(), renamed.length], [[`${k}.json`], 0], 'a request from a conversation this window does not show is left for a window that shows it');
+  eq([left(), renamed.length], [[`${k}.json`], 0], 'this window first leaves alone a request for a conversation it does not show');
   now += rt.OTHERS_WAIT_MS;
   await host.tick();
-  eq([result(k) && result(k).outcome, renamed], ['done', [[B, 'Export archived rows']]], `and taken once it has waited ${rt.OTHERS_WAIT_MS} ms`);
+  eq([result(k) && result(k).outcome, renamed], ['done', [[B, 'Export archived rows']]], `and takes it once the request has waited ${rt.OTHERS_WAIT_MS} ms`);
   fs.unlinkSync(path.join(folder, `${k}.result.json`));
 
   /* The call is not in the conversation's own rollout: refused, after reading it again for a while. */
@@ -73,7 +73,7 @@ module.exports = async ({ eq, tmp, root }) => {
   await host.tick();
   r = result(k);
   eq([r && r.outcome, renamed.length, slept >= rt.VERIFY_MS], ['refused', 0, true],
-    'a request whose call is not in that conversation\'s own rollout is refused, after the rollout is read again for the time Codex may take to write it');
+    'a request whose call is not in that conversation\'s own rollout is refused, but only after the window has kept reading the rollout for as long as Codex may take to write the call');
   fs.unlinkSync(path.join(folder, `${k}.result.json`));
 
   /* The call is written after the request was taken. */
@@ -84,7 +84,7 @@ module.exports = async ({ eq, tmp, root }) => {
     rename: async (id, name) => { renamed.push([id, name]); return { outcome: 'done' }; }, now: () => now,
     sleep: async (ms) => { now += ms; if (now - t0 >= 1500 && !fs.readFileSync(rollouts[A], 'utf8').includes('Written late')) call(A, 'Written late', t0); } });
   await host2.tick();
-  eq([result(late) && result(late).outcome, renamed], ['done', [[A, 'Written late']]], 'a call Codex records only after the request was taken is found when the rollout is read again');
+  eq([result(late) && result(late).outcome, renamed], ['done', [[A, 'Written late']]], 'the window reads the rollout again and finds a call that Codex records only after the request was taken');
   fs.unlinkSync(path.join(folder, `${late}.result.json`));
 
   /* An old call with the same title does not count. */
@@ -92,7 +92,7 @@ module.exports = async ({ eq, tmp, root }) => {
   call(A, 'Asked long ago', now - 10 * 60e3);
   k = ask(A, 'Asked long ago');
   await host.tick();
-  eq([result(k) && result(k).outcome, renamed.length], ['refused', 0], 'a call recorded long before the request does not make it believed');
+  eq([result(k) && result(k).outcome, renamed.length], ['refused', 0], 'a request is refused when the only call asking for its title was recorded long before it');
   fs.unlinkSync(path.join(folder, `${k}.result.json`));
 
   /* Marks only, and a long title. */
@@ -124,7 +124,7 @@ module.exports = async ({ eq, tmp, root }) => {
   shell(A, "python3 /x/hooks/retitle.py <<'EOF'\nBy the command\nEOF", now);
   k = ask(A, 'By the command\n', { via: 'command' });
   await host.tick();
-  eq([result(k) && result(k).outcome, renamed], ['done', [[A, 'By the command']]], 'a request from the retitle.py command is believed when the conversation ran that command with the title');
+  eq([result(k) && result(k).outcome, renamed], ['done', [[A, 'By the command']]], 'a request from the retitle.py command is believed when the conversation ran it with that title');
   fs.unlinkSync(path.join(folder, `${k}.result.json`));
 
   /* Not this window's to answer. */
@@ -145,7 +145,7 @@ module.exports = async ({ eq, tmp, root }) => {
   const claimed = path.join(folder, `${k}.claimed`);
   fs.renameSync(path.join(folder, `${k}.json`), claimed);
   await host.tick();
-  eq([left(), renamed.length], [[`${k}.claimed`], 0], 'a request another window has taken is left to it');
+  eq([left(), renamed.length], [[`${k}.claimed`], 0], 'this window leaves alone a request another window has taken');
 
   /* Old files go. */
   const old = (Date.now() - rt.STALE_MS - 60e3) / 1000;

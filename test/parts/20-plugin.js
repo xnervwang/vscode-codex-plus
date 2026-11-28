@@ -158,7 +158,7 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
       + 'directory, and run without an approval');
   }
 
-  // set_title asks the window hosting the conversation, here src/retitle.js over the same data directory, and says what it answered.
+  // src/retitle.js, over the same data directory, stands in for the window hosting the conversation.
   {
     const retitle = require(path.join(root, 'src', 'retitle.js'));
     const thread = path.basename(plan, '.json');
@@ -181,11 +181,11 @@ module.exports = async ({ ok, bad, note, eq, tmp, root }) => {
     });
     asked('Retry delay 📩');
     const done = await ask('Retry delay 📩');
-    eq([done.result.isError, done.result.content[0].text, renamed], [false, 'Renamed: the title is now "Retry delay".', [[thread, 'Retry delay']]],
-      'set_title has the window rename the conversation, without the envelope, and says the title it now has');
+    eq([done.result.isError, done.result.content[0].text, renamed], [false, 'Renamed to "Retry delay".', [[thread, 'Retry delay']]],
+      'set_title has the window rename the conversation, without the envelope, and replies with the new title');
     renamed.length = 0;
     const refused = await ask('Asked by no call');
-    eq([refused.result.isError, /^Not renamed: the conversation's own record has no set_title call/.test(refused.result.content[0].text), renamed.length],
+    eq([refused.result.isError, /^Not renamed: the conversation's record has no set_title call/.test(refused.result.content[0].text), renamed.length],
       [true, true, 0], 'and when the conversation\'s own record has no call asking for that title, it says it was not renamed and why');
     const tool = replies[1].result.tools.find((t) => t.name === 'set_title');
     eq([tool.inputSchema.required, tool.annotations.destructiveHint, tool.annotations.openWorldHint], [['plan', 'title'], false, false],
